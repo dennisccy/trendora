@@ -16,8 +16,8 @@ import {
   formatStreak,
   insufficientLabel,
   regimeLabel,
+  resolveDrawdownExpectationsPanelState,
   type DistributionCell,
-  type DrawdownExpectations,
   type LossStreakCell,
 } from "@/lib/evidence";
 import { fetchEvidence, type CertifiedClaim, type EvidenceLedgerResponse } from "@/lib/api";
@@ -233,26 +233,44 @@ function ClaimRow({ claim }: { claim: CertifiedClaim }) {
           </Field>
         </dl>
 
-        <DrawdownExpectationsPanel expectations={claim.expectations} />
+        <DrawdownExpectationsPanel claim={claim} />
       </CardContent>
     </Card>
   );
 }
 
 /** J-25 — the phase-conditional drawdown & dry-spell expectations panel: an additive section inside the
- *  SAME claim card, below the existing field grid. Renders NOTHING when `expectations` is absent/null
- *  (mirrors the Stock-detail RiskBudgetCard's "return null when absent" precedent, iter-40) — never an
- *  error boundary, never a blank placeholder. Reads `claim.expectations` VERBATIM — no client-side
- *  recompute; every figure is the served median/p90/streak, re-formatted only. Renders for ANY claim
- *  regardless of its PASS/FAIL verdict (outcome-neutral, J-25) — descriptive history, never a forecast. */
-function DrawdownExpectationsPanel({
-  expectations,
-}: {
-  expectations: DrawdownExpectations | null | undefined;
-}) {
-  if (!expectations) {
+ *  SAME claim card, below the existing field grid. Renders NOTHING when `expectations` is absent/null with
+ *  no status field (mirrors the Stock-detail RiskBudgetCard's "return null when absent" precedent,
+ *  iter-40) — never an error boundary, never a blank placeholder. Reads `claim.expectations` VERBATIM — no
+ *  client-side recompute; every figure is the served median/p90/streak, re-formatted only. Renders for ANY
+ *  claim regardless of its PASS/FAIL verdict (outcome-neutral, J-25) — descriptive history, never a
+ *  forecast.
+ *
+ *  ops-hardening iter-29 (AG-8): branches on `resolveDrawdownExpectationsPanelState` (the single, pure
+ *  authority) so a genuine per-claim compute failure THIS request (`expectations_status === "unavailable"`)
+ *  renders a calm inline note instead of being indistinguishable from the pre-existing "not applicable"
+ *  (absent) case. */
+function DrawdownExpectationsPanel({ claim }: { claim: CertifiedClaim }) {
+  const state = resolveDrawdownExpectationsPanelState(claim);
+  if (state.kind === "absent") {
     return null;
   }
+  if (state.kind === "unavailable") {
+    // A routine transient-failure disclosure, not an error banner — same calm `text-text-faint` treatment
+    // the "Pending — monitored as new data matures" forward-walk cell above already uses on this card.
+    return (
+      <div className="border-t border-border pt-3" data-testid="evidence-expectations-unavailable">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-text-faint">
+          Historical drawdown &amp; dry-spell expectations
+        </h3>
+        <p className="mt-0.5 text-xs text-text-faint">
+          Unavailable — monitored and refreshed as new data arrives.
+        </p>
+      </div>
+    );
+  }
+  const { expectations } = state;
   return (
     <div className="space-y-2 border-t border-border pt-3" data-testid="evidence-expectations-panel">
       <div>

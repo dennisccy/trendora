@@ -33,7 +33,7 @@ from __future__ import annotations
 
 import inspect
 import json
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 from sqlmodel import Session, select
@@ -140,9 +140,16 @@ def lab_engine(tmp_path):
     return engine
 
 
-def _cfg_batch(batch: int):
+def _cfg_batch(batch: int, run_chunk: int | None = None):
+    """The real config with `research.read_batch_size` overridden to `batch` (the ROW-count `yield_per`
+    probe) and `research.factor_join_run_chunk` (the iter-29 RUN-COUNT accumulator width — a DIFFERENT unit)
+    overridden to `run_chunk`, defaulting to the same value so every pre-existing chunk-independence probe
+    varies BOTH knobs (a huge value collapses the shared pool build back to the pre-iter-29 single sweep)."""
     cfg = load_config()
-    return cfg.model_copy(update={"research": cfg.research.model_copy(update={"read_batch_size": batch})})
+    return cfg.model_copy(update={"research": cfg.research.model_copy(update={
+        "read_batch_size": batch,
+        "factor_join_run_chunk": batch if run_chunk is None else run_chunk,
+    })})
 
 
 def _bytes(obj) -> str:
@@ -360,6 +367,130 @@ def test_shared_pool_read_is_bounded_and_run_id_id_ordered():
     assert ".order_by(ScannerResult.run_id, ScannerResult.id)" in src, "must order by (run_id, id)"
     # the real materialization call is `session.exec(...).all()` -> `).all()`; only code, never the docstring.
     assert ").all()" not in src, "shared pool must not materialize an unbounded .all()"
+
+
+# ==================================================================================================
+# 4b. iter-29 fix-2 (AG-8) — the JOIN ACCUMULATOR is run-chunked, not just the source streams
+#
+# Streaming both source queries was never enough: `fr_by_h` was one map per horizon holding every distinct
+# (run_id, symbol) pair of the FULL history at once (~4.0M entries across the 5 config horizons on the live
+# basis). That accumulator's fill site is where `logs/backend.log` recorded the live `MemoryError` that made
+# `GET /research/factor-lab?all=true` return 500 on 4 of 4 visits — the page's ONLY consumer, since
+# `FactorLabPage` requests `?all=true` on mount. The proofs below pin the bound at the SHIPPED width and
+# pin that the chunking changed no value.
+# ==================================================================================================
+def _all_pools_reference_unchunked(session, factors, horizons, as_of, cfg):
+    """A pinned copy of the PRE-FIX `_all_factor_observations_by_horizon` body: ONE unbounded `fr_by_h`
+    accumulator built from a SINGLE un-sliced FR scan over the whole history, and ONE un-sliced
+    `ScannerResult` sweep (no `_all_fr_slice_map`, no chunk loop). The regression oracle for the chunked
+    rewrite's byte-identity proof — it calls the SAME unchanged `_extract_factor_value` /
+    `parse_factor_source` helpers the real function still uses, so any divergence can only come from the
+    chunking itself."""
+    from app.engine.research import _extract_factor_value, parse_factor_source
+
+    parsed_by_key = {f.key: parse_factor_source(f.source) for f in factors}
+    batch = cfg.research.read_batch_size
+    fr_stmt = select(
+        ForwardReturn.horizon, ForwardReturn.run_id, ForwardReturn.symbol,
+        ForwardReturn.realized_return, ForwardReturn.max_drawdown,
+    ).where(ForwardReturn.horizon.in_(horizons))
+    if as_of is not None:
+        fr_stmt = fr_stmt.join(ScannerRun, ScannerRun.id == ForwardReturn.run_id).where(
+            ScannerRun.asof_date <= as_of
+        )
+    fr_by_h = {h: {} for h in horizons}
+    runs_with_fr_set = set()
+    for h, run_id, symbol, realized_return, max_drawdown in session.exec(fr_stmt).yield_per(batch):
+        fr_by_h[h][(run_id, symbol)] = (realized_return, max_drawdown)
+        runs_with_fr_set.add(run_id)
+    runs_with_fr = sorted(runs_with_fr_set)
+    res_stmt = (
+        select(ScannerResult)
+        .where(ScannerResult.run_id.in_(runs_with_fr))
+        .order_by(ScannerResult.run_id, ScannerResult.id)
+    )
+    results = session.exec(res_stmt).yield_per(batch) if runs_with_fr else []
+    pools = {h: [] for h in horizons}
+    for res in results:
+        values = None
+        for h in horizons:
+            fr = fr_by_h[h].get((res.run_id, res.ticker))
+            if fr is None:
+                continue
+            if values is None:
+                values = {key: _extract_factor_value(res, parsed) for key, parsed in parsed_by_key.items()}
+            realized, max_drawdown = fr
+            pools[h].append({
+                "run_id": res.run_id, "ticker": res.ticker, "return": realized,
+                "max_drawdown": max_drawdown, "values": values,
+            })
+    return pools
+
+
+@pytest.mark.parametrize("as_of", [None, date(2025, 1, 31)])
+def test_shared_pools_chunked_equal_the_pinned_unchunked_reference(lab_engine, as_of):
+    """The run-chunked shared-pool build is byte-identical to the pinned pre-fix single-accumulator
+    reference — same rows, same per-horizon order, same factor values — for all-history AND an as-of window
+    that splits the fixture's two runs."""
+    cfg = _cfg_batch(2, run_chunk=1)  # 1 run id per slice over the fixture's 2 runs -> real chunking
+    factors = list(cfg.research.factor_lab.factors)
+    horizons = list(cfg.walk_forward.horizons)
+    with Session(lab_engine) as session:
+        chunked = _all_factor_observations_by_horizon(session, factors, horizons, as_of, cfg=cfg)
+        reference = _all_pools_reference_unchunked(session, factors, horizons, as_of, cfg)
+    assert _bytes(chunked) == _bytes(reference), f"chunked pools != pinned pre-fix pools (as_of={as_of})"
+
+
+def test_shared_pool_accumulator_is_chunk_bounded_at_the_shipped_config(tmp_path, monkeypatch):
+    """The all-horizons join accumulator is bounded at the SHIPPED `research.factor_join_run_chunk` — no
+    `_cfg_batch` override, because an override is exactly how the first iter-29 bound shipped inert. Builds
+    a fixture with (shipped width + 3) runs so real chunking is REQUIRED, then asserts the builder made >= 2
+    slice reads and that no single slice's maps ever held the whole fixture's (run_id, symbol) pairs."""
+    import app.engine.research as research
+
+    cfg = load_config()  # the REAL config.yaml — deliberately NOT overridden
+    width = cfg.research.factor_join_run_chunk
+    n_runs, tickers = width + 3, ("AA", "BB")
+    engine = make_engine(f"sqlite:///{tmp_path / 'all_shipped_chunk.db'}")
+    create_db_and_tables(engine)
+    with Session(engine) as session:
+        for i in range(n_runs):
+            run = _add_run(session, date(2025, 1, 1) + timedelta(days=i), regime_label="Risk-on")
+            for j, base in enumerate(tickers):
+                ticker = f"{base}{i}"
+                _add_result(session, run.id, ticker, rank=j + 1, lead=float(50 + (i % 7) + j),
+                            entry=float(40 + j), risk=float(30 + j),
+                            rs_spy_3m=float(j) / 10.0, atr_pct=float(j) / 100.0)
+                for h in POPULATED_HORIZONS:
+                    _add_fr(session, run.id, ticker, ret=0.01 * (i + 1), horizon=h, mdd=-0.03)
+        session.commit()
+
+    observed_sizes: list[int] = []
+    real_slice_map = research._all_fr_slice_map
+
+    def _wrapped(session, horizons, slice_run_ids, batch):
+        result = real_slice_map(session, horizons, slice_run_ids, batch)
+        observed_sizes.append(sum(len(m) for m in result.values()))
+        return result
+
+    monkeypatch.setattr(research, "_all_fr_slice_map", _wrapped)
+    factors = list(cfg.research.factor_lab.factors)
+    horizons = list(cfg.walk_forward.horizons)
+    with Session(engine) as session:
+        pools = research._all_factor_observations_by_horizon(session, factors, horizons, None, cfg=cfg)
+
+    total_pairs = n_runs * len(tickers) * len(POPULATED_HORIZONS)
+    assert sum(len(p) for p in pools.values()) == total_pairs, "sanity: every fixture pair must surface"
+    assert len(observed_sizes) >= 2, (
+        f"the SHIPPED config produced {len(observed_sizes)} chunk(s) over {n_runs} runs — the all-horizons "
+        f"accumulator bound is inert at the real configuration (width={width})"
+    )
+    assert max(observed_sizes) <= width * len(tickers) * len(POPULATED_HORIZONS), (
+        f"a slice exceeded its configured run-chunk width: {max(observed_sizes)} entries"
+    )
+    assert max(observed_sizes) < total_pairs, (
+        "the live accumulator must never hold the WHOLE fixture's pairs at once under the shipped config"
+    )
 
 
 @pytest.mark.parametrize("as_of", [None, date(2025, 1, 31)])

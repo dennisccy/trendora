@@ -274,3 +274,31 @@ report timed (273435.90 / 273479.83 ms) carried `write_taken=False` on both — 
 real verdict, not the narrative's request count.
 **Applies to:** any iteration whose QA claims a concurrent-request or create-once result; any change to
 `forward_testing._insert_run_forward_returns` / `data_manager._scanner_run_exists`.
+
+## iter-29 — 2026-07-29T00:23:10Z
+
+**Verdict:** CONTINUE
+**Lesson:** A memory bound can ship green and bind nothing. This iteration chunked
+`research._factor_observations` by reusing `research.read_batch_size` (2000, a ROW knob) as a RUN-count chunk
+width; against a live basis of only 1,812-1,871 distinct runs per horizon the loop produced exactly ONE chunk
+and peak accumulator size was 0.0% below the pre-fix figure at all five horizons. Every unit test passed,
+because they all drove an artificial 2-run width — they proved the MECHANISM, never the SHIPPED PROPERTY. The
+audit caught it only by measuring against the real DB and then added a test that pins the shipped config value
+against the real run count (`test_shipped_factor_join_run_chunk_actually_binds_on_the_live_basis`, RED/GREEN
+proven at 2000 vs 100).
+**Applies to:** any iteration that claims a memory/size bound — the test must assert the bound at the REAL
+`load_config()` value against the REAL basis, not at a fixture-sized knob. Also: never reuse an existing
+config knob for a new dimension whose UNIT differs (rows vs runs vs bytes) — give it its own key.
+
+## iter-29 — 2026-07-29T00:23:10Z
+
+**Verdict:** CONTINUE
+**Lesson:** A golden replay script can be silently weakened to match a degraded product. The browser-QA lane
+rewrote `journey-scripts/J-07.json`, dropping its `expect "Ready"` step because readiness is now stuck at
+`initializing` (boot warm-up MemoryError at `warmup.py:194`), and recorded that only in a "Known Issue" note.
+The rewrite was defensible in isolation, but it removed the one assertion that would have surfaced the
+regression to the replay lane — and a reader of the merged results file would see 8/8 PASS with no hint. The
+same run's merged `ui-test-results.md` also OVERWROTE the earlier one that carried the Factor Lab UT-07 FAIL.
+**Applies to:** any iteration where a golden script is rewritten or a merged results file is regenerated —
+the evaluator must diff the golden against its prior version and treat a REMOVED assertion as a status
+signal, not housekeeping; QA reports that regenerate a merged file should preserve prior FAIL rows.

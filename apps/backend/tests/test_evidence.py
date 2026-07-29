@@ -21,6 +21,7 @@ from pathlib import Path
 import pytest
 from sqlmodel import Session
 
+import app.engine.forward_testing as forward_testing
 import app.engine.market_phase as market_phase
 from app.config import REPO_ROOT, load_config
 from app.db import create_db_and_tables, make_engine
@@ -615,6 +616,110 @@ def test_build_payload_session_provided_unresolvable_claim_no_expectations_key(t
     with Session(evidence_dd_engine) as session:
         payload = build_evidence_payload(str(ledger), session=session, config=load_config())
     assert "expectations" not in payload["claims"][0]
+    # ops-hardening iter-29 (AG-8) error-case regression: the pre-existing HONEST-None path (an
+    # unresolvable cohort, `compute_drawdown_expectations` returning None WITHOUT raising) must stay
+    # byte-unchanged by the new per-claim failure guard below — no `expectations_status` field either.
+    # This is what proves the new field is ADDITIVE (only on a caught exception), never a replacement of
+    # the pre-existing silent-omission behavior.
+    assert "expectations_status" not in payload["claims"][0]
+
+
+# ==================================================================================================
+# ops-hardening iter-29 (AG-8) — a per-claim `compute_drawdown_expectations_cached` failure
+# (`MemoryError` or otherwise) must never abort the response for the OTHER claims: the failing claim's row
+# omits `expectations` and carries the new `expectations_status: "unavailable"` field; every other claim's
+# row is byte-unchanged (isolate-and-continue, mirroring the EXISTING per-claim `MemoryError`-then-continue
+# convention `data_manager.py`'s drawdown-expectations ingest warm loop already uses near
+# `data_manager.py:3361` — TC-4).
+# ==================================================================================================
+@pytest.fixture()
+def evidence_dd_two_claims_engine(tmp_path, monkeypatch):
+    """TWO independently resolvable claims in ONE fixture, dedicated (not a mutation of `evidence_dd_engine`
+    above, so its own two existing tests stay untouched): AAA (leadership_score, decile 10, horizon 20 —
+    byte-identical setup to `evidence_dd_engine`) plus BBB (entry_quality_score, decile 10, horizon 20) in
+    the SAME run/date. BBB's high `entry_quality_score` / baseline `leadership_score` (and AAA's inverse)
+    mean each name is the SOLE decile-10 member of its OWN factor's single-observation cohort — adding BBB
+    does not disturb AAA's leadership_score decile-10 membership (still {AAA} alone, n=1)."""
+    engine = make_engine(f"sqlite:///{tmp_path / 'evidence_dd_two.db'}")
+    create_db_and_tables(engine)
+    d = date(2025, 1, 10)
+    with Session(engine) as session:
+        run = ScannerRun(
+            asof_date=d, created_at=datetime.now(timezone.utc), provider="seed", benchmark="SPY",
+            regime_score=50.0, regime_label="Risk-on", regime_components_json="[]",
+            new_high_low_json="{}", candidate_counts_json="{}",
+        )
+        session.add(run)
+        session.flush()
+        session.add(ScannerResult(
+            run_id=run.id, ticker="AAA", name="AAA", sector="Technology",
+            leadership_score=90.0, leadership_bucket="A",
+            entry_quality_score=50.0, entry_quality_bucket="C",
+            risk_score=50.0, risk_bucket="C",
+            setup_status="Actionable", rank=1, record_json="{}",
+        ))
+        session.add(ForwardReturn(
+            run_id=run.id, symbol="AAA", horizon=20, asof_date=d, entry_close=100.0,
+            measured_date=d + timedelta(days=40), realized_return=0.02,
+            max_drawdown=-0.05, underwater_days=3, time_to_recover_days=5,
+        ))
+        session.add(ScannerResult(
+            run_id=run.id, ticker="BBB", name="BBB", sector="Technology",
+            leadership_score=50.0, leadership_bucket="C",
+            entry_quality_score=90.0, entry_quality_bucket="A",
+            risk_score=50.0, risk_bucket="C",
+            setup_status="Actionable", rank=2, record_json="{}",
+        ))
+        session.add(ForwardReturn(
+            run_id=run.id, symbol="BBB", horizon=20, asof_date=d, entry_close=100.0,
+            measured_date=d + timedelta(days=40), realized_return=0.03,
+            max_drawdown=-0.04, underwater_days=2, time_to_recover_days=4,
+        ))
+        session.commit()
+
+    def _fake_ctx(session=None, as_of=None, config=None):
+        return {d.isoformat(): {"phase": "Expansion", "severity": 10.0, "p_bear": 0.05}}
+
+    monkeypatch.setattr(market_phase, "phase_context_by_date", _fake_ctx)
+    return engine
+
+
+def test_build_payload_per_claim_compute_failure_is_isolated(
+    tmp_path, evidence_dd_two_claims_engine, monkeypatch
+):
+    """TC-4: `compute_drawdown_expectations_cached` monkeypatched to raise `MemoryError` for exactly ONE of
+    two resolvable claims. The failing claim's row carries `expectations_status: "unavailable"` and no
+    `expectations` key; the OTHER claim's row carries its normal `expectations` key, fully unaffected —
+    proving one claim's compute failure never blanks the rest of the `/evidence` response."""
+    ledger = tmp_path / "certified-claims.jsonl"
+    append_entry(str(ledger), _pass_entry("leadership_score"))
+    append_entry(str(ledger), _pass_entry("entry_quality_score", factor="entry_quality_score"))
+
+    real_cached = forward_testing.compute_drawdown_expectations_cached
+
+    def _flaky_cached(session, claim, config=None):
+        if claim.get("factor") == "leadership_score":
+            raise MemoryError("synthetic TC-4 failure")
+        return real_cached(session, claim, config)
+
+    monkeypatch.setattr(forward_testing, "compute_drawdown_expectations_cached", _flaky_cached)
+
+    with Session(evidence_dd_two_claims_engine) as session:
+        payload = build_evidence_payload(str(ledger), session=session, config=load_config())
+
+    rows = payload["claims"]
+    assert len(rows) == 2
+    failed_row = next(r for r in rows if r["claim"]["factor"] == "leadership_score")
+    ok_row = next(r for r in rows if r["claim"]["factor"] == "entry_quality_score")
+
+    assert failed_row.get("expectations_status") == "unavailable"
+    assert "expectations" not in failed_row
+
+    assert "expectations_status" not in ok_row
+    assert "expectations" in ok_row
+    assert ok_row["expectations"]["horizon"] == 20
+    exp_phase = next(p for p in ok_row["expectations"]["by_phase"] if p["phase"] == "Expansion")
+    assert exp_phase["n"] == 1
 
 
 def test_resolve_ledger_path_env_override(tmp_path, monkeypatch):

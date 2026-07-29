@@ -1,0 +1,150 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-ops-hardening-iter-29",
+  "base_url": "http://localhost:3255",
+  "iteration": 29,
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "See today's market at a glance",
+      "narration": "The homepage opens straight to today's market score. There is nothing to set up and nothing to wait for.",
+      "point_out": "The market score, already filled in on the very first look.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "goto",
+        "url": "/"
+      },
+      "expect": {
+        "text": "Market Regime"
+      }
+    },
+    {
+      "n": 2,
+      "title": "See the record behind every claim",
+      "narration": "The Evidence page keeps a running list of certified claims. A pattern only counts as proven once it earns a place here.",
+      "point_out": "The list of certified claims, fully loaded and ready to inspect.",
+      "journey": "J-06",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "goto",
+        "url": "/evidence"
+      },
+      "expect": {
+        "text": "leadership_score"
+      }
+    },
+    {
+      "n": 3,
+      "title": "Check one claim's full track record",
+      "narration": "Each claim carries its own history of past pullbacks and recoveries. This table shows phase-by-phase risk metrics for holding the pattern.",
+      "point_out": "A full table of real numbers showing how this signal has performed during past downturns, not a blank space.",
+      "journey": "J-06",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "click",
+        "target": {
+          "css": "[data-testid='evidence-expectations-table']"
+        }
+      },
+      "expect": {
+        "text": "Phase"
+      }
+    },
+    {
+      "n": 4,
+      "title": "Confirm every kind of claim still works",
+      "narration": "Some claims come from different research tools entirely. They kept working correctly through this round of changes too.",
+      "point_out": "A combination-research claim card, fully populated with real data.",
+      "journey": "J-07",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "click",
+        "target": {
+          "role": "link",
+          "name": "Multi-factor combination lab"
+        }
+      },
+      "expect": {
+        "text": "Multi-factor combination lab"
+      }
+    },
+    {
+      "n": 5,
+      "title": "Browse the ranked stock list",
+      "narration": "The Stocks page lists ranked companies right away. Familiar names show up immediately with current prices.",
+      "point_out": "A ranked list of real stocks with current pricing information.",
+      "journey": "J-06",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "goto",
+        "url": "/stocks"
+      },
+      "expect": {
+        "text": "TRV"
+      }
+    },
+    {
+      "n": 6,
+      "title": "Look up a past day instantly",
+      "narration": "Opening one exact day from years ago, February 15, 2018, is instant. It was already worked out when the data first came in, so nothing needs recomputing now.",
+      "point_out": "A stored snapshot from that exact day, served instantly without waiting.",
+      "journey": "J-05",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "goto",
+        "url": "/scanner-runs/1872"
+      },
+      "expect": {
+        "text": "as of 2018-02-15"
+      }
+    },
+    {
+      "n": 7,
+      "title": "See the market's forward-tested track record",
+      "narration": "The Backtest page shows how past signals actually played out afterward, built entirely from real, stored results. No computation happens on request.",
+      "point_out": "The forward-tested evidence, filled with real figures that were all precomputed at ingest time.",
+      "journey": "J-08",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "goto",
+        "url": "/backtest"
+      },
+      "expect": {
+        "text": "Viewing as-of"
+      }
+    },
+    {
+      "n": 8,
+      "title": "See background work disclosed honestly",
+      "narration": "The Data Manager page has its own section showing what work is happening right now. Background computation is never hidden from the user.",
+      "point_out": "The background-compute status badge and a clear explanation of any in-progress work.",
+      "journey": "J-09",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "goto",
+        "url": "/data"
+      },
+      "expect": {
+        "text": "Background compute"
+      }
+    }
+  ]
+}

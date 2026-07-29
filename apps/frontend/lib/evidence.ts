@@ -74,7 +74,13 @@ export interface DrawdownExpectations {
  *  PASS backs (null for a real signal-less writer entry — fail-safe). `forward_walk` is the forward-walk
  *  score-to-date (null until a certified claim is monitored). `expectations` (iter-41, J-25) is ADDITIVE
  *  and OPTIONAL — the backend omits the key entirely (never a fabricated panel) when the cohort could not
- *  be resolved; a `null`/`undefined` value must render nothing for the panel section (never an error). */
+ *  be resolved; a `null`/`undefined` value must render nothing for the panel section (never an error).
+ *  `expectations_status` (ops-hardening iter-29, AG-8) is ALSO additive and OPTIONAL — present ONLY when
+ *  this request's per-claim `expectations` compute raised an exception (`"unavailable"`, the one legal
+ *  value today); absent for a successful compute AND for every pre-existing honest-None case (an
+ *  out-of-scope horizon, an unresolvable cohort, a zero-observation cohort) — those keep rendering nothing,
+ *  byte-unchanged. `resolveDrawdownExpectationsPanelState` below is the single place that distinguishes
+ *  the three states. */
 export interface CertifiedClaim {
   signal: string | null;
   claim: Record<string, unknown>;
@@ -86,6 +92,7 @@ export interface CertifiedClaim {
   proven: boolean;
   forward_walk: unknown | null;
   expectations?: DrawdownExpectations | null;
+  expectations_status?: "unavailable";
 }
 
 /** A proven claim row, as stored in the served `proven_signals` map (keyed by signal). Same shape as a
@@ -275,6 +282,39 @@ export function formatStreak(value: number | null | undefined): string {
     return "—";
   }
   return `${Math.round(value)}`;
+}
+
+// --- drawdown-expectations PANEL state resolver (ops-hardening iter-29, AG-8 residual-failure disclosure) -
+// PURE, read-only: the SINGLE authority for which of the THREE states `DrawdownExpectationsPanel`
+// (app/evidence/page.tsx) renders for one claim. No React, no DOM types, so it is unit-testable under
+// `node`/`tsx` (mirrors `lib/background-compute-panel-branch.ts`'s extracted-decision-function pattern,
+// iter-24/25 J-09). Reads `claim.expectations` / `claim.expectations_status` VERBATIM — recomputes nothing.
+
+/** Which state the drawdown-expectations panel renders for ONE claim:
+ *   - "present"     — a resolved `expectations` payload exists; the table renders (pre-existing, unchanged).
+ *   - "unavailable" — this request's per-claim compute raised an exception (`expectations_status ===
+ *                     "unavailable"`); a calm inline note renders instead of a table (NEW, iter-29).
+ *   - "absent"      — no `expectations` and no `expectations_status` (the pre-existing honest-None cohort-
+ *                     unresolvable case); the panel renders nothing (unchanged). */
+export type DrawdownExpectationsPanelState =
+  | { kind: "present"; expectations: DrawdownExpectations }
+  | { kind: "unavailable" }
+  | { kind: "absent" };
+
+/**
+ * Resolve which state `DrawdownExpectationsPanel` should render for one claim (PURE, read-only — no
+ * client-side recompute of anything). `"unavailable"` (a genuine per-claim compute failure THIS request)
+ * is DISTINCT from `"absent"` (the pre-existing, unaffected "no expectations, no status field" case) so the
+ * panel can disclose a transient failure honestly instead of rendering it identically to "not applicable".
+ */
+export function resolveDrawdownExpectationsPanelState(claim: CertifiedClaim): DrawdownExpectationsPanelState {
+  if (claim.expectations) {
+    return { kind: "present", expectations: claim.expectations };
+  }
+  if (claim.expectations_status === "unavailable") {
+    return { kind: "unavailable" };
+  }
+  return { kind: "absent" };
 }
 
 // --- claim-row presentation (goal-mcp-loop iter-4) — regime label + honest title/linkback --------------

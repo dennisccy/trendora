@@ -174,6 +174,47 @@ def _extract_factor_value(res: ScannerResult, parsed: dict) -> Optional[float]:
     return None
 
 
+def _runs_with_fr(
+    session: Session, horizons: list[int], as_of: Optional[date_cls],
+) -> list[int]:
+    """The sorted DISTINCT `forward_returns.run_id`s carrying a return at ANY of `horizons` — the chunk axis
+    BOTH factor-observation builders walk (`_factor_observations` passes a single-horizon list;
+    `_all_factor_observations_by_horizon` passes every config horizon). A DISTINCT-projected read, so the
+    returned list is bounded by the RUN count (1,812-1,871 live) and never by the (run_id, symbol) PAIR count
+    the join accumulators used to materialize whole (AG-8).
+
+    `as_of` (J-32) scopes membership to snapshots with `ScannerRun.asof_date <= as_of`; `as_of=None` adds NO
+    clause -> byte-identical all-history. Applying the cutoff HERE, upstream of every derived structure,
+    is what keeps the per-slice reads below (which filter only on `run_id.in_(slice)`) no-lookahead-correct:
+    a run dated after D never enters `runs_with_fr`, so it can never enter a slice."""
+    stmt = select(ForwardReturn.run_id).where(ForwardReturn.horizon.in_(horizons))
+    if as_of is not None:
+        stmt = stmt.join(ScannerRun, ScannerRun.id == ForwardReturn.run_id).where(
+            ScannerRun.asof_date <= as_of
+        )
+    return sorted(session.exec(stmt.distinct()).all())
+
+
+def _fr_slice_map(
+    session: Session, horizon: int, slice_run_ids: list[int], batch: int,
+) -> dict[tuple[int, str], tuple[float, Optional[float]]]:
+    """iter-29 (AG-8): the `(run_id, symbol) -> (realized_return, max_drawdown)` join map for ONE bounded
+    SLICE of run ids — `_factor_observations`'s chunk axis. Column-projected + `yield_per`-streamed exactly
+    like the pre-chunk single-pass read; the only difference is the added `run_id.in_(slice_run_ids)`
+    scope, which is what bounds this dict's LIVE size to (len(slice_run_ids) x symbols-per-run) instead of
+    the full horizon's distinct (run_id, symbol) pair count (803,042 measured live at iter-28, one horizon,
+    as_of=None — an unbounded whole-history materialization in substance, since the prior accumulator held
+    one entry per pair across ALL of `runs_with_fr` at once). A named function (not an inlined loop body)
+    so a test can wrap/instrument it to observe the live per-slice size directly (TC-1)."""
+    fr_stmt = select(
+        ForwardReturn.run_id, ForwardReturn.symbol, ForwardReturn.realized_return, ForwardReturn.max_drawdown
+    ).where(ForwardReturn.horizon == horizon, ForwardReturn.run_id.in_(slice_run_ids))
+    ret_by_run_symbol: dict[tuple[int, str], tuple[float, Optional[float]]] = {}
+    for run_id, symbol, realized_return, max_drawdown in session.exec(fr_stmt).yield_per(batch):
+        ret_by_run_symbol[(run_id, symbol)] = (realized_return, max_drawdown)
+    return ret_by_run_symbol
+
+
 def _factor_observations(
     session: Session, factor, horizon: int, as_of: Optional[date_cls] = None,
     *, cfg: Optional[Config] = None,
@@ -189,32 +230,44 @@ def _factor_observations(
 
     `as_of` (iter-19, J-32) optionally scopes the pool to the EXPANDING WALK-FORWARD WINDOW: when set,
     ONLY snapshots with `ScannerRun.asof_date <= as_of` contribute (no run dated > D leaks). It is a
-    SINGLE membership filter on the `fr_rows` step — identical to `forward_testing.py` — so it equally
-    bounds `runs_with_fr`, `results`, `run_rows`, and the regime map (all derived from it). The cutoff is
-    the canonical `ScannerRun.asof_date` (not the denormalized `ForwardReturn.asof_date`). `as_of=None`
-    adds NO clause → byte-identical all-history."""
+    SINGLE membership filter on the `runs_with_fr` discovery step below — identical to `forward_testing.py`
+    — so it equally bounds `runs_with_fr`, every chunk's `results`, `run_rows`, and the regime map (all
+    derived from it). The cutoff is the canonical `ScannerRun.asof_date` (not the denormalized
+    `ForwardReturn.asof_date`). `as_of=None` adds NO clause → byte-identical all-history.
+
+    iter-29 (AG-8): the join accumulator used to be ONE dict holding every distinct (run_id, symbol) pair
+    across the FULL horizon's history at once (803,042 pairs measured live at iter-28, as_of=None) even
+    though the SOURCE query was already `yield_per`-streamed — an unbounded whole-history materialization
+    in substance. `runs_with_fr` is now discovered via a lightweight DISTINCT-projected query (bounded by
+    run count, never by pair count), then walked in bounded SLICES of `research.factor_join_run_chunk` run
+    ids: each slice rebuilds its own `_fr_slice_map` accumulator, streams+joins that slice's
+    `ScannerResult`s, extends `observations`, and discards the slice's dict before the next — so peak LIVE
+    accumulator size is bounded by (chunk x symbols-per-run), never by the full history. Slices walk the
+    sorted `runs_with_fr` list in non-overlapping, increasing contiguous ranges, so concatenating each
+    slice's (run_id, id)-ordered `ScannerResult` output reproduces the SAME global order the prior
+    single-pass implementation produced — byte-identical (TC-2), never re-derived.
+
+    iter-29 AUDIT: the chunk width is `research.factor_join_run_chunk` (a RUN COUNT), NOT `read_batch_size`
+    (a ROW count for `yield_per`). As first shipped this loop reused the row knob (2000) as its run width,
+    and with only 1,812-1,871 distinct runs per horizon on the live basis it produced exactly ONE chunk —
+    a bound that bound nothing (792,507-entry peak at h=20, 0% below the pre-fix figure). The two knobs are
+    now separate so the accumulator width can be sized against the RUN count it actually indexes."""
     parsed = parse_factor_source(factor.source)
     # iter-47 (J-105): column-project + stream the (possibly huge) forward-return scan so the read path is
     # bounded by config (`yield_per`) instead of materializing the whole table as ORM rows. We read only the
     # three fields the join consumes (run_id, symbol, realized_return) — projected Row values are the EXACT
     # same Python types as ORM attribute access (no coercion → byte-identical served value).
-    batch = (cfg or get_config()).research.read_batch_size
-    # iter-52 (J-109): the FR scan ALSO projects the stored `max_drawdown` (the J-86 column, read VERBATIM)
-    # so each observation carries the realized return AND its paired post-snapshot drawdown — both fed to
-    # `_deciles` (the per-decile mean-MDD beside the mean return). One added projected column; no extra read.
-    fr_stmt = select(
-        ForwardReturn.run_id, ForwardReturn.symbol, ForwardReturn.realized_return, ForwardReturn.max_drawdown
-    ).where(ForwardReturn.horizon == horizon)
-    if as_of is not None:
-        fr_stmt = fr_stmt.join(ScannerRun, ScannerRun.id == ForwardReturn.run_id).where(
-            ScannerRun.asof_date <= as_of
-        )
-    ret_by_run_symbol: dict[tuple[int, str], tuple[float, Optional[float]]] = {}
-    runs_with_fr_set: set[int] = set()
-    for run_id, symbol, realized_return, max_drawdown in session.exec(fr_stmt).yield_per(batch):
-        ret_by_run_symbol[(run_id, symbol)] = (realized_return, max_drawdown)
-        runs_with_fr_set.add(run_id)
-    runs_with_fr = sorted(runs_with_fr_set)
+    research_cfg = (cfg or get_config()).research
+    batch = research_cfg.read_batch_size
+    # iter-29 AUDIT (AG-8): the accumulator chunk width is a RUN COUNT, read from its OWN config key —
+    # `read_batch_size` counts ROWS (the `yield_per` size above) and reusing it here as a run width made the
+    # bound inert on the live basis (2000 runs/chunk vs 1,812-1,871 real runs -> one chunk, no reduction).
+    run_chunk = research_cfg.factor_join_run_chunk
+
+    # iter-29 (AG-8): the distinct run ids at this horizon, via the shared DISTINCT-projected discovery —
+    # bounded by run count, never by (run, symbol) pair count (the dimension `_fr_slice_map` below chunks
+    # over). The `as_of` cutoff lives in that ONE helper, so both builders scope membership identically.
+    runs_with_fr = _runs_with_fr(session, [horizon], as_of)
     run_rows = (
         session.exec(select(ScannerRun).where(ScannerRun.id.in_(runs_with_fr))).all()
         if runs_with_fr else []
@@ -231,29 +284,37 @@ def _factor_observations(
     # rides that SAME index (no `USE TEMP B-TREE FOR ORDER BY`), so the sort never spills a temp file to a
     # nearly-full disk; a bare `ORDER BY id` would force a full temp-B-tree sort over ~598K rows that can
     # exhaust disk. Factor Lab is UNCACHED (recomputes every request) → this is the genuine OOM site.
-    res_stmt = (
-        select(ScannerResult)
-        .where(ScannerResult.run_id.in_(runs_with_fr))
-        .order_by(ScannerResult.run_id, ScannerResult.id)
-    )
-    results = session.exec(res_stmt).yield_per(batch) if runs_with_fr else []
-
+    #
+    # iter-29 (AG-8): this scan now runs PER CHUNK (`runs_with_fr[start:start+run_chunk]`), scoped by the
+    # SAME `run_id.in_(slice_run_ids)` filter every chunk's `_fr_slice_map` join uses, so a chunk's
+    # ScannerResult rows and its accumulator cover the identical run-id set — the join lookup never misses.
     observations: list[dict] = []
-    for res in results:
-        fr = ret_by_run_symbol.get((res.run_id, res.ticker))
-        if fr is None:
-            continue  # no realized return at this horizon for this stock (n=0 contribution)
-        realized, max_drawdown = fr
-        value = _extract_factor_value(res, parsed)
-        if value is None:
-            continue  # factor-NULL observation EXCLUDED (never bucketed) — honest, not fabricated
-        observations.append({
-            "run_id": res.run_id, "ticker": res.ticker, "factor": float(value), "return": realized,
-            # iter-27/52 (J-86/J-109): the stored max_drawdown read VERBATIM — aggregated read-only into the
-            # per-decile mean-MDD beside the mean return; None on a short window (honest NA, never a 0).
-            "max_drawdown": max_drawdown,
-            "regime": regime_by_run.get(res.run_id),  # stored regime label for the run (J-27)
-        })
+    for start in range(0, len(runs_with_fr), run_chunk):
+        slice_run_ids = runs_with_fr[start:start + run_chunk]
+        ret_by_run_symbol = _fr_slice_map(session, horizon, slice_run_ids, batch)
+        res_stmt = (
+            select(ScannerResult)
+            .where(ScannerResult.run_id.in_(slice_run_ids))
+            .order_by(ScannerResult.run_id, ScannerResult.id)
+        )
+        for res in session.exec(res_stmt).yield_per(batch):
+            fr = ret_by_run_symbol.get((res.run_id, res.ticker))
+            if fr is None:
+                continue  # no realized return at this horizon for this stock (n=0 contribution)
+            realized, max_drawdown = fr
+            value = _extract_factor_value(res, parsed)
+            if value is None:
+                continue  # factor-NULL observation EXCLUDED (never bucketed) — honest, not fabricated
+            observations.append({
+                "run_id": res.run_id, "ticker": res.ticker, "factor": float(value), "return": realized,
+                # iter-27/52 (J-86/J-109): the stored max_drawdown read VERBATIM — aggregated read-only into
+                # the per-decile mean-MDD beside the mean return; None on a short window (honest NA, never a
+                # fabricated 0).
+                "max_drawdown": max_drawdown,
+                "regime": regime_by_run.get(res.run_id),  # stored regime label for the run (J-27)
+            })
+        # `ret_by_run_symbol` is rebound (not accumulated into) on the next iteration — this slice's dict is
+        # eligible for GC before the next chunk's query even starts (the bounded-memory guarantee, TC-1).
     return observations
 
 
@@ -416,14 +477,38 @@ def compute_factor_lab(
 # tuple (same `_deciles` / `_rank_ic` builders over the same per-horizon observation set). NO new served
 # value — every figure is a re-presentation of an existing `compute_factor_lab` output across all horizons.
 # --------------------------------------------------------------------------------------------------
+def _all_fr_slice_map(
+    session: Session, horizons: list[int], slice_run_ids: list[int], batch: int,
+) -> dict[int, dict[tuple[int, str], tuple[float, Optional[float]]]]:
+    """iter-29 fix-2 (AG-8): the per-horizon `(run_id, symbol) -> (realized_return, max_drawdown)` join maps
+    for ONE bounded SLICE of run ids — `_all_factor_observations_by_horizon`'s chunk axis, and the
+    all-horizons sibling of `_fr_slice_map`. Column-projected + `yield_per`-streamed exactly like the
+    pre-chunk single-pass read; the only difference is the added `run_id.in_(slice_run_ids)` scope, which
+    bounds the LIVE size of these dicts to (horizons x len(slice_run_ids) x symbols-per-run) instead of
+    (horizons x full-history distinct pairs) — ~4.0M entries across the 5 config horizons on the live basis,
+    the structure whose fill site (`research.py:497`/`:508` in the shipped tracebacks) raised the live
+    `MemoryError` that made `/research/factor-lab` return 500 on EVERY visit. A named function (not an
+    inlined loop body) so a test can wrap/instrument it to observe the live per-slice size directly."""
+    fr_stmt = select(
+        ForwardReturn.horizon, ForwardReturn.run_id, ForwardReturn.symbol,
+        ForwardReturn.realized_return, ForwardReturn.max_drawdown,
+    ).where(ForwardReturn.horizon.in_(horizons), ForwardReturn.run_id.in_(slice_run_ids))
+    fr_by_h: dict[int, dict[tuple[int, str], tuple[float, Optional[float]]]] = {h: {} for h in horizons}
+    for h, run_id, symbol, realized_return, max_drawdown in session.exec(fr_stmt).yield_per(batch):
+        fr_by_h[h][(run_id, symbol)] = (realized_return, max_drawdown)
+    return fr_by_h
+
+
 def _all_factor_observations_by_horizon(
     session: Session, factors: list, horizons: list[int], as_of: Optional[date_cls] = None,
     *, cfg: Optional[Config] = None,
 ) -> dict[int, list[dict]]:
     """The read-only SHARED per-observation pools for the all-factors view across EVERY horizon in
-    `horizons` (J-109), built from a SINGLE batched read: ONE `ForwardReturn` SELECT covering all horizons
-    (`horizon IN horizons`, column-projected to run_id/symbol/realized_return/max_drawdown), and ONE
-    `ScannerResult` stream. Returns `{horizon: [observations]}` where each observation is
+    `horizons` (J-109), built from ONE run-chunked sweep: per slice of run ids, one `ForwardReturn` SELECT
+    covering all horizons (`horizon IN horizons`, column-projected to run_id/symbol/realized_return/
+    max_drawdown) and one `ScannerResult` stream. Every ScannerResult row is still visited EXACTLY ONCE
+    across the whole call (the slices partition the run-id space), so the per-result `record_json` parse
+    count is unchanged. Returns `{horizon: [observations]}` where each observation is
     `{run_id, ticker, return, max_drawdown, values: {factor_key: float|None}}` (every catalog factor's
     stored value read VERBATIM — typed column or `record_json` component `raw`; recomputes NO factor and NO
     return). The `values` dict is read once per ScannerResult and SHARED across that result's per-horizon
@@ -447,44 +532,60 @@ def _all_factor_observations_by_horizon(
     ScannerResult side is `yield_per`-streamed in `(run_id, id)` order (rides `ix_scanner_results_run_id`,
     so no `USE TEMP B-TREE FOR ORDER BY` spills a temp file). ONE heavy read serves ALL N factors at ALL
     horizons (not N×H reads) — and there is NO unbounded `.all()` over `ForwardReturn` or `ScannerResult`.
-    The same one-sweep-for-all-horizons pattern as `_event_study_members_by_horizon`."""
-    parsed_by_key = {f.key: parse_factor_source(f.source) for f in factors}
-    batch = (cfg or get_config()).research.read_batch_size
-    fr_stmt = select(
-        ForwardReturn.horizon, ForwardReturn.run_id, ForwardReturn.symbol,
-        ForwardReturn.realized_return, ForwardReturn.max_drawdown,
-    ).where(ForwardReturn.horizon.in_(horizons))
-    if as_of is not None:
-        fr_stmt = fr_stmt.join(ScannerRun, ScannerRun.id == ForwardReturn.run_id).where(
-            ScannerRun.asof_date <= as_of
-        )
-    fr_by_h: dict[int, dict[tuple[int, str], tuple[float, Optional[float]]]] = {h: {} for h in horizons}
-    runs_with_fr_set: set[int] = set()
-    for h, run_id, symbol, realized_return, max_drawdown in session.exec(fr_stmt).yield_per(batch):
-        fr_by_h[h][(run_id, symbol)] = (realized_return, max_drawdown)
-        runs_with_fr_set.add(run_id)
-    runs_with_fr = sorted(runs_with_fr_set)
-    res_stmt = (
-        select(ScannerResult)
-        .where(ScannerResult.run_id.in_(runs_with_fr))
-        .order_by(ScannerResult.run_id, ScannerResult.id)
-    )
-    results = session.exec(res_stmt).yield_per(batch) if runs_with_fr else []
+    The same one-sweep-for-all-horizons pattern as `_event_study_members_by_horizon`.
 
+    iter-29 fix-2 (AG-8): streaming the two SOURCE queries was never enough — the JOIN ACCUMULATOR
+    (`fr_by_h`) was one map per horizon holding every distinct (run_id, symbol) pair of the FULL history at
+    once, ~4.0M entries across the 5 config horizons on the live basis. That is what raised the live
+    `MemoryError` (against `start-backend.sh`'s `ulimit -v` cap) which made `GET /research/factor-lab?all=
+    true` return 500 on EVERY visit — 4 of 4 requests in `logs/backend.log`, the page's only consumer, since
+    `FactorLabPage` requests `?all=true` on mount. `runs_with_fr` is now discovered up front via the shared
+    `_runs_with_fr` DISTINCT-projected query (bounded by RUN count, never by pair count) and walked in
+    bounded SLICES of `research.factor_join_run_chunk` run ids — the SAME chunk axis and the SAME config
+    knob `_factor_observations` uses. Each slice builds its own `_all_fr_slice_map`, streams+joins that
+    slice's `ScannerResult`s, extends the pools, and discards the slice's maps before the next.
+
+    BYTE-IDENTITY under chunking: `runs_with_fr` is sorted and the slices are non-overlapping contiguous
+    increasing ranges, each `ScannerResult` scan re-applies the SAME `ORDER BY run_id, id`, and a slice's
+    accumulator and its `ScannerResult` filter use the identical `run_id.in_(slice_run_ids)` set (so the
+    join can never miss) — concatenating the slices reproduces the prior single-pass global order exactly.
+    Per-slice last-write-wins cannot diverge from global last-write-wins because `forward_returns` carries
+    `UNIQUE (run_id, symbol, horizon)`. No-lookahead is preserved because the `as_of` cutoff moved UP into
+    `_runs_with_fr`, upstream of every derived structure.
+
+    NOT bounded here (deliberate, same call the single-factor builder makes): the returned `pools` are this
+    function's return shape — `compute_factor_lab_all` needs each horizon's pool whole to derive its
+    deciles. Only the accumulator's peak is bounded."""
+    parsed_by_key = {f.key: parse_factor_source(f.source) for f in factors}
+    research_cfg = (cfg or get_config()).research
+    batch = research_cfg.read_batch_size          # ROW count — the `yield_per` size of each stream
+    run_chunk = research_cfg.factor_join_run_chunk  # RUN count — the accumulator's slice width
+
+    runs_with_fr = _runs_with_fr(session, horizons, as_of)
     pools: dict[int, list[dict]] = {h: [] for h in horizons}
-    for res in results:
-        values: Optional[dict] = None  # parsed lazily on the first horizon that has an FR for this result
-        for h in horizons:
-            fr = fr_by_h[h].get((res.run_id, res.ticker))
-            if fr is None:
-                continue  # no realized return at this horizon (n=0) — same exclusion as per-factor
-            if values is None:
-                values = {key: _extract_factor_value(res, parsed) for key, parsed in parsed_by_key.items()}
-            realized, max_drawdown = fr
-            pools[h].append({
-                "run_id": res.run_id, "ticker": res.ticker, "return": realized,
-                "max_drawdown": max_drawdown, "values": values,
-            })
+    for start in range(0, len(runs_with_fr), run_chunk):
+        slice_run_ids = runs_with_fr[start:start + run_chunk]
+        fr_by_h = _all_fr_slice_map(session, horizons, slice_run_ids, batch)
+        res_stmt = (
+            select(ScannerResult)
+            .where(ScannerResult.run_id.in_(slice_run_ids))
+            .order_by(ScannerResult.run_id, ScannerResult.id)
+        )
+        for res in session.exec(res_stmt).yield_per(batch):
+            values: Optional[dict] = None  # parsed lazily on the first horizon that has an FR for this result
+            for h in horizons:
+                fr = fr_by_h[h].get((res.run_id, res.ticker))
+                if fr is None:
+                    continue  # no realized return at this horizon (n=0) — same exclusion as per-factor
+                if values is None:
+                    values = {key: _extract_factor_value(res, parsed) for key, parsed in parsed_by_key.items()}
+                realized, max_drawdown = fr
+                pools[h].append({
+                    "run_id": res.run_id, "ticker": res.ticker, "return": realized,
+                    "max_drawdown": max_drawdown, "values": values,
+                })
+        # `fr_by_h` is rebound (not accumulated into) on the next iteration — this slice's maps are eligible
+        # for GC before the next chunk's query even starts (the bounded-memory guarantee).
     return pools
 
 

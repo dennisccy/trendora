@@ -1,0 +1,22 @@
+{
+  "phase": "goal-ops-hardening-iter-29",
+  "status": "in_progress",
+  "current_step": "ux_regression_complete",
+  "updated_at": "2026-07-27T23:26:19.966278Z",
+  "started_at": "2026-07-27T21:00:12.820330Z",
+  "cli": "claude",
+  "blockers": [],
+  "changed_files": [
+    "apps/backend/app/engine/research.py",
+    "apps/backend/app/engine/evidence.py",
+    "apps/backend/tests/test_research_streaming.py",
+    "apps/backend/tests/test_evidence.py",
+    "apps/frontend/lib/evidence.ts",
+    "apps/frontend/lib/evidence.test.ts",
+    "apps/frontend/app/evidence/page.tsx"
+  ],
+  "tests_run": true,
+  "browser_checks_run": true,
+  "qa_verdict": "PASS",
+  "next_action": "browser_qa_agent"
+}

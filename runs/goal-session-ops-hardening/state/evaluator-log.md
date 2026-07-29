@@ -1512,3 +1512,97 @@ imports at `backtest.py:75` / `mcp/tools.py:38`. OWNER, non-blocking: the histor
 latency (this run measured 206 s and 273 s on 2018-03-15, down from iter-27's 738-1442 s but still large)
 has no written budget; backlog card B-1107 stays optional. Framework nit, 8th recurrence:
 `J-01-verify.png` and `J-04-verify.png` are byte-identical (md5 b8deb050) — J-03 was distinct this time.
+
+## Iteration 29 — goal-ops-hardening-iter-29
+
+**Date:** 2026-07-29T00:23:10Z
+**Verdict:** CONTINUE
+**Depth dispatched:** evidence (the iteration itself was specced and run at FULL depth on 2026-07-27/28;
+the 2026-07-29 re-dispatch at `evidence` depth re-ran only browser-qa + coherence + this evaluation)
+**Journey deltas:**
+- Newly passing: none — all 8 were already `passing`.
+- Re-verified `passing` with THIS-iteration evidence, so `last_verified_iter` advances iter-28 -> iter-29 for
+  six: J-01, J-03, J-04, J-05, J-08, J-09 (deterministic golden replay 6/6 PASS, zero FAIL rows, zero
+  reconciliation overturns; I opened J-04-verify.png and J-09-verify.png as the two spot-checks).
+- **Newly `partial`: J-06 and J-07** — the iteration's two TARGET journeys. Neither is failing; both are
+  incomplete against their own goal.md text. Detail below.
+- Newly failing: none. Regressed (passing -> failing): none. Unknown: none.
+- Anti-goal violations: **iter-27's AG-8 finding CLOSED (now `resolved: true`); FOUR NEW, all `minor`, all
+  `resolved: false`.** scan-report CLEAN; coherence COHERENCE-PASS; all 8 `spec_hash`es match
+  `goal_gate hash-journeys`; no `journeys-changed.md`; no `browser-infra.json`.
+
+**Reasoning:** I re-derived every load-bearing fact read-only rather than inheriting it. (1) **The headline
+fix is real and I proved it three ways.** I opened `J-06-evidence-page.png` — a genuine full-page capture of
+`/evidence` with all 7 certified-claim cards, each carrying a populated drawdown/dry-spell table of real
+figures (leadership_score Expansion -7.48% n=41820), zero `unavailable` notes. I read
+`research.py`'s new `_runs_with_fr` / `_fr_slice_map` and confirmed the chunk axis is the RUN count, not the
+pair count. And I confirmed in `logs/backend.log` that after the boot at line 129881
+(`start-backend.sh`, 2026-07-28T23:45:18Z, PID 3217236) there is **not one** MemoryError with a `research.py`
+frame, across a 136-request page sweep and a 1,109-request backfill window. The iter-27 AG-8 finding on
+`_factor_observations` is genuinely CLOSED. I also credited the audit properly: the developer's FIRST cut was
+INERT (chunk stride reused `read_batch_size`=2000 as a RUN width against 1,812-1,871 live runs/horizon = one
+chunk, 0.0% peak reduction at all five horizons); the auditor caught it, split the knob into
+`research.factor_join_run_chunk`=100, and measured 19 chunks / 55,195-entry peak at h=20. (2) **The browser-QA
+report's central negative claim is FALSE and I checked it line by line.** It states "0 MemoryError / 500 lines
+across the full 1,109-request window". There are THREE MemoryErrors inside that window, all after 129881:
+`:130004` ingest coverage refresh -> `data_manager._refresh_ingest_aggregates` -> `_compute_coverage_uncached`
+-> `prefilled_bar_cache` -> `prices.py:141` (the whole-table `daily_prices` prefill goal.md names as
+"offender #1"); `:130039` -> `compute_forward_aggregates` at `forward_testing.py:965 stock_obs.append({`;
+`:130049` -> `warmup.py:194` -> `backfill_forward_returns` -> `forward_symbols_for_run`. (3) **That third one
+has a user-visible consequence nobody scored.** Readiness is stuck at `initializing` with `warmup.status:
+"failed"`, so the top-bar pill reads "Initializing… history 89/89" indefinitely — I confirmed it in three of
+this iteration's own captures. Earlier in this SAME iteration (`UT-07-backend-unavailable.png`, 07-27 23:42
+local) the pill read "Ready". It also caused the browser-QA lane to REWRITE the J-07 golden script to drop its
+now-false `"Ready"` assertion — a golden weakened to match a degraded product, which is worth naming. (4)
+**J-06 is `partial` on one checkable fact:** `reports/perf-budgets.md` is UNMODIFIED this iteration (I ran
+`git status --porcelain -- reports/perf-budgets.md`; empty), so J-06's own step 2 and DoD item TC-8 are unmet
+for an iteration that DID touch the data path. TC-10 is also still literally unmet: browser-QA says it ran
+`J-06.json` through `demo_runner.py --mode verify` with a PASS, but the merged file carries UT-J-06 only as an
+LLM `smoke` row and `regression-replay-results.md` lists 6 journeys without J-06. (5) **J-07 is `partial`
+because its own acceptance clause was contradicted live:** "no unbounded whole-table ORM materialization
+remains on the warm or serving path" — and `compute_forward_aggregates`, J-07's OWN named canonical producer,
+raised MemoryError in this window. Its headline promise still held (service never taken down; every access
+line after 129881 is 200; the backfill completed and `data_provider_runs` 201 carries `drawdown_expectations`
+in `aggregates_refreshed`, which I read in the DB), so `partial`, not failing. Rejected REGRESSION (C.1):
+nothing moved passing -> failing, and I classified all four AG-8 findings `minor` on stated grounds — the
+service was never taken down, every failure is caught and logged non-fatal, and I OPENED
+`UT-07-backend-unavailable.png` and found a CONTAINED, calm, bordered error box inside a fully rendered page
+("No figures are shown rather than fabricated values"), so AG-8's "never a blank application-error page"
+clause is met; this follows the iter-26/27/28 precedent, which was not vetoed. Rejected STALLED (C.2): no
+human-owned blocker; all five next steps are agent work. Rejected GOAL_ACHIEVED (C.3): two Must-have journeys
+are `partial` and four anti-goal findings are unresolved. Rejected ESCALATE (C.4): the review verdict is PASS,
+no journey failed twice, and this was not a lean iteration — so the tree lands on CONTINUE, with the
+full-depth need carried in the depth recommendation. **FIVE THINGS I STATE PLAINLY RATHER THAN ROUND AWAY:**
+(i) the AUDIT verdict was **FAIL** and the ux-regression verdict was **UX-REGRESSION-FAIL**, both on the
+Factor Lab crash, and neither lane was ever re-run after the fix — the pipeline advanced to an
+`evidence`-depth re-dispatch instead, which is a fail-open in substance even though C.4's literal review-lane
+trigger did not fire; (ii) the Factor Lab fix itself is UNDOCUMENTED — `research.py` mtime 07-28 00:50 is
+AFTER the audit report's 00:43, no handoff describes it, no reviewer saw it, and its own docstring still says
+the returned `pools` (~770K dicts x 5 horizons) are deliberately NOT bounded, which is exactly the audit's
+prediction that the crash would MOVE rather than vanish; the only post-fix proof is ONE live 200 at
+`logs/backend.log:129876`; (iii) the merged `ui-test-results.md` was OVERWRITTEN by the 07-29 re-run and now
+shows 8/8 PASS with no trace of the earlier UT-07 Factor Lab FAIL — the record of that failure survives only
+in the audit, the ux-regression report, and the leftover screenshot; (iv) `J-07-backfill-complete.png` does
+NOT show the "Refreshed: … drawdown expectations" job-history panel the report cites as its proof — it shows
+the top of `/data` — so I confirmed that fact from the persisted run record instead and flagged the capture
+with `evidence_makeup`; (v) `J-03-verify.png` and `J-04-verify.png` are byte-identical (md5 `a824f418`), the
+9th recurrence, so J-03 has no independent visual capture this run.
+
+**Next-step recommendation:** FULL depth. (1) THE FIRST BLOCKING ITEM: open `/research/factor-lab` in a real
+browser and capture the decile table and rank-IC figures — the post-audit fix has never been seen working by
+anyone, and the audit predicted the crash would simply move from the lookup map to the returned pools. If it
+still fails, bound the pools too. (2) Fix the three new memory failures: the start-up warm-up
+(`warmup.py:194` -> `forward_symbols_for_run`), the background forward-aggregate job
+(`forward_testing.py:965`, inside the byte-frozen `compute_forward_aggregates` — the planner must lift that
+freeze on purpose), and the ingest coverage refresh, which still streams the whole `daily_prices` table
+(`prices.py:141`). (3) Decide what the badge should say when the warm-up fails permanently; "Initializing…"
+forever is not honest. (4) Write this run's page-load timings into `reports/perf-budgets.md` — that one edit
+closes J-06 — and run `J-06.json` through the deterministic replay lane so TC-10's literal row exists. (5)
+Require the browser-QA lane to cite the boot line number it counted from whenever it claims "zero
+MemoryError"; this run claimed zero and there were three. Carried, unchanged: audit B2's `_backfill`
+cross-call rollback residual; `test_no_magic_numbers.py` is red on unrelated files (`indicators.py`,
+`forward_testing.py`); `_combination_observations` / `_event_study_members` remain named deferred siblings;
+UT-04's fresh-install DB fixture or a written waiver; retarget
+`test_forward_testing_serving_split.py`'s four `is_latest` monkeypatches. OWNER, non-blocking: settle whether
+run 201's "coverage refreshed" disclosure is true given the same-window MemoryError in that refresh; the
+historical `/backtest` first-touch latency still has no written budget; backlog card B-1107 stays optional.

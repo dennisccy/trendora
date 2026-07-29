@@ -32,6 +32,7 @@ This module consumes `app.engine.ledger` (read) + `app.engine.referee` (the PASS
 """
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
 from typing import Optional
@@ -41,6 +42,8 @@ from sqlmodel import Session
 from app.config import REPO_ROOT, Config, get_config
 from app.engine.ledger import FORWARD_WALK_TYPE, read_entries
 from app.engine.referee import STATUS_PASS
+
+logger = logging.getLogger("trendora.evidence")
 
 # The environment-variable NAME (the NAME only — never a path VALUE literal in code) the runtime ledger
 # path may be overridden with. Forward-looking; the config default already points at the gate's ledger.
@@ -134,7 +137,18 @@ def build_evidence_payload(
     phase-conditional drawdown/dry-spell `expectations` payload from
     `app.engine.forward_testing.compute_drawdown_expectations` (an honestly-absent key when that returns
     `None` — an unresolvable cohort or a zero-observation cohort — never a crash, never a fabricated
-    panel)."""
+    panel).
+
+    ops-hardening iter-29 (AG-8): the per-claim compute call is wrapped in an isolate-and-continue guard,
+    mirroring the EXISTING per-claim `MemoryError`-then-continue convention `data_manager.py`'s
+    drawdown-expectations ingest warm loop already uses (`data_manager.py:3361`) — but, unlike that
+    BACKGROUND warm loop (which may abort its remaining claims under memory pressure), this is a LIVE
+    request path: a compute failure (`MemoryError` or any other exception) for one claim NEVER aborts the
+    rest of this response, so it always logs + continues to the next entry, never breaks. On a caught
+    failure that claim's row omits `expectations` and instead carries `expectations_status: "unavailable"`
+    — additive ONLY on the exception path; the pre-existing honest-`None` case (an unresolvable cohort or a
+    zero-observation cohort, returned without raising) is UNCHANGED — no `expectations` key, no
+    `expectations_status` key, exactly as before this iteration."""
     claims: list[dict] = []
     proven_signals: dict[str, dict] = {}
     for entry in read_entries(ledger_path):
@@ -150,9 +164,26 @@ def build_evidence_payload(
             # J-15 latency budget by the claim count (see the cache's own docstring for the measurement).
             from app.engine.forward_testing import compute_drawdown_expectations_cached
 
-            expectations = compute_drawdown_expectations_cached(session, row["claim"], config)
-            if expectations is not None:
-                row["expectations"] = expectations
+            try:
+                expectations = compute_drawdown_expectations_cached(session, row["claim"], config)
+            except MemoryError as exc:
+                # isolate-and-continue (AG-8): unlike the ingest warm loop's break-on-MemoryError, a live
+                # `/evidence` response must still render every OTHER claim — never abort the rest of the
+                # page over one claim's compute pressure.
+                logger.exception(
+                    "evidence per-claim drawdown-expectations compute aborted — memory pressure, "
+                    "continuing to the next claim: %s", exc,
+                )
+                row["expectations_status"] = "unavailable"
+            except Exception as exc:  # noqa: BLE001 — isolate-and-continue: one claim's failure must
+                # never blank the whole /evidence response for every other claim.
+                logger.exception(
+                    "evidence per-claim drawdown-expectations compute failed (non-fatal): %s", exc,
+                )
+                row["expectations_status"] = "unavailable"
+            else:
+                if expectations is not None:
+                    row["expectations"] = expectations
         claims.append(row)
         signal = row["signal"]
         if row["proven"] and signal:

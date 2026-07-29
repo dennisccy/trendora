@@ -43,9 +43,11 @@ import {
   regimeLabel,
   resolveCohortEvidence,
   resolveCombinationEvidence,
+  resolveDrawdownExpectationsPanelState,
   resolveEvidenceStatus,
   type CertifiedClaim,
   type CombinationCohort,
+  type DrawdownExpectations,
   type FactorCohort,
   type ProvenSignal,
 } from "./evidence.ts";
@@ -980,5 +982,59 @@ check("formatStreak renders a rounded integer, and an em dash for null/undefined
   assert.strictEqual(formatStreak(null), "—");
   assert.strictEqual(formatStreak(undefined), "—");
 });
+
+// --- drawdown-expectations panel state resolver (ops-hardening iter-29, AG-8 residual-failure disclosure,
+// TC-5) — the pure decision function `DrawdownExpectationsPanel` (app/evidence/page.tsx) branches on. Three
+// states: the pre-existing "present" (a table renders) and "absent" (no expectations, no status field —
+// renders nothing, unchanged honest-None cohort-unresolvable case) plus the NEW "unavailable" (a per-claim
+// compute failure this request — an inline note, no table). Mirrors the extracted-decision-function pattern
+// `lib/background-compute-panel-branch.ts` established (iter-24/25, J-09).
+const SAMPLE_EXPECTATIONS: DrawdownExpectations = {
+  horizon: 20,
+  min_sample: 5,
+  streak_min_n: 3,
+  survivorship_bias: "Current-membership seed; survivorship bias not corrected for.",
+  method_note: "Median/p90 by market phase at entry.",
+  by_phase: [],
+};
+
+check("resolveDrawdownExpectationsPanelState: expectations present => 'present', carrying it verbatim", () => {
+  const claim: CertifiedClaim = { ...provenRow("leadership_score"), expectations: SAMPLE_EXPECTATIONS };
+  const state = resolveDrawdownExpectationsPanelState(claim);
+  assert.strictEqual(state.kind, "present");
+  if (state.kind === "present") {
+    assert.strictEqual(state.expectations, SAMPLE_EXPECTATIONS); // read verbatim, never recomputed
+  }
+});
+
+check("resolveDrawdownExpectationsPanelState: expectations_status='unavailable' => 'unavailable' (TC-5)", () => {
+  const claim: CertifiedClaim = { ...provenRow("leadership_score"), expectations_status: "unavailable" };
+  const state = resolveDrawdownExpectationsPanelState(claim);
+  assert.strictEqual(state.kind, "unavailable");
+});
+
+check(
+  "resolveDrawdownExpectationsPanelState: no expectations + no status field => 'absent' (pre-existing " +
+    "honest-None case, unchanged, TC-5)",
+  () => {
+    const claim: CertifiedClaim = provenRow("leadership_score"); // no expectations, no expectations_status
+    const state = resolveDrawdownExpectationsPanelState(claim);
+    assert.strictEqual(state.kind, "absent");
+  },
+);
+
+check(
+  "resolveDrawdownExpectationsPanelState: 'unavailable' is DISTINCT from the pre-existing absent case (TC-5)",
+  () => {
+    const unavailable = resolveDrawdownExpectationsPanelState({
+      ...provenRow("leadership_score"),
+      expectations_status: "unavailable",
+    });
+    const absent = resolveDrawdownExpectationsPanelState(provenRow("leadership_score"));
+    assert.notStrictEqual(unavailable.kind, absent.kind);
+    assert.strictEqual(unavailable.kind, "unavailable");
+    assert.strictEqual(absent.kind, "absent");
+  },
+);
 
 console.log(`\n${passed} evidence-badge resolver checks passed.`);

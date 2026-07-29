@@ -1325,6 +1325,15 @@ class ResearchCfg(BaseModel):
     model_config = ConfigDict(extra="allow")
     factor_lab: FactorLabCfg
     read_batch_size: int
+    # iter-29 audit (AG-8) — the RUN-COUNT width of `_factor_observations`'s join-accumulator chunk. It is a
+    # DIFFERENT unit from `read_batch_size` (which counts ROWS for `yield_per`), and reusing the row knob as
+    # a run width is exactly how the iter-29 bound came to be inert: at 2000 runs/chunk against a live basis
+    # of 1,812-1,871 distinct runs per horizon, the loop degenerated to ONE chunk and the accumulator still
+    # held every (run_id, symbol) pair at once (792,507 measured at h=20 — 0% below the pre-fix peak). The
+    # peak accumulator is `this x symbols-per-run` (~429 today), so this must stay WELL below the live run
+    # count to bind at all. Boot-validated `>= 1`; defaulted so a config (and the inline test fixtures)
+    # predating it still loads — the SINGLE source of the width (no literal in research.py, a CALC_FILE).
+    factor_join_run_chunk: int = 100
     # iter-55 (J-112) — the rows-per-page of the Regime × Phase × Factor ranked combination table. The
     # pagination is a pure CLIENT-SIDE view transform (re-orders/pages only — recomputes/refetches nothing);
     # this is the SINGLE source of the 30-rows/page constant (goal.md), served in the lab payload so the
@@ -1348,6 +1357,8 @@ class ResearchCfg(BaseModel):
     def _validate(self) -> "ResearchCfg":
         if self.read_batch_size < 1:
             raise ValueError("research.read_batch_size must be >= 1")
+        if self.factor_join_run_chunk < 1:
+            raise ValueError("research.factor_join_run_chunk must be >= 1")
         if self.regime_phase_factor_page_size < 1:
             raise ValueError("research.regime_phase_factor_page_size must be >= 1")
         return self
