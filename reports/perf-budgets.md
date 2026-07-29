@@ -4096,3 +4096,175 @@ HTTP 200 within 2 poll attempts, no port conflict. Stopped again cleanly before 
 | TC-4 | zero `MemoryError` from boot banner forward; `GET /api/health` HTTP 200 at every ~1 Hz poll throughout | **PASS** (0 MemoryError; 34/34 + 43/43 = 77/77 polls HTTP 200) |
 | TC-5 | `VmPeak` + margin recorded vs `server.memory_cap_mb` | **PASS** (2,691,600 kB, 57.2 % margin) |
 
+## Iteration 33 — J-06 closure: real-browser (Chrome MCP) TTI + on-load-latency sweep, all 11 pages, genuine prod mode (2026-07-29, browser-qa-agent)
+
+Per goal-ops-hardening-iter-33: this iteration's dev pass fixed `scripts/start-frontend.sh` (it had
+execed `npx next dev` unconditionally since it was written, despite its own "prod mode" label), so this
+is the **first genuine real-browser TTI measurement of these 11 pages under actual `next build` +
+`next start`** — every prior page-level number in this file (including iter-11/12's G1 sweep transcribed
+above) was captured under `next dev` and is not comparable. Measured 2026-07-29T11:15–11:32Z via Chrome
+MCP (`mcp__plugin_superpowers-chrome_chrome__use_browser`) against the live instance the QA harness
+started for this pass: backend PID 1327780 (`logs/backend.log:133867`, launched
+`2026-07-29T10:04:59Z`, host-guard block confirmed present: `cpu_list=0-3,8-11 blas_threads=4`), frontend
+port 3255 confirmed served by `next start` (build banner in `frontend-boot.log`: `'.next' build missing
+or stale — running 'next build'` → `✓ Compiled successfully` → `Ready in 266ms`; no dev-overlay pill
+observed on any page, confirmed visually on every screenshot below). Absence of the Next.js dev-overlay
+pill was checked and confirmed absent on all 11 pages (see `reports/phase-goal-ops-hardening-iter-33-ui-test-results.llm.md`,
+UT-01…UT-11, UT-16).
+
+**Methodology.** For each page: a fresh hard navigation (`navigate` action — confirmed to reset
+`performance.getEntriesByType('navigation')`, i.e. a real load, not an SPA client transition), then read
+`performance.getEntriesByType('navigation')[0]` for `domInteractive`/`loadEventEnd`, and
+`performance.getEntriesByType('resource')` filtered to `/api/*` for on-load endpoint latencies — a genuine
+browser measurement, not a curl proxy (the standing iter-5 lesson this file already documents).
+
+**TTI proxy (`loadEventEnd`, ms), all 11 named pages, against the committed <=3000ms page budget:**
+
+| # | Page | domInteractive (ms) | loadEventEnd (ms) | Budget | Verdict |
+|---|---|---|---|---|---|
+| 1 | `/` (Dashboard) | 31 | 33 | <=3000ms | **PASS** |
+| 2 | `/stocks` | 28 | 30 | <=3000ms | **PASS** |
+| 3 | `/stocks/AAPL` | 40 | 49 | <=3000ms | **PASS** |
+| 4 | `/sectors` | 30 | 37 | <=3000ms | **PASS** |
+| 5 | `/themes` | 26 | 28 | <=3000ms | **PASS** |
+| 6 | `/data` | 31 | 37 | <=3000ms | **PASS** |
+| 7 | `/evidence` | 42 | 45 | <=3000ms | **PASS** |
+| 8 | `/scanner-runs` | 29 | 31 | <=3000ms | **PASS** |
+| 9 | `/backtest` | 43 | 51 | <=3000ms | **PASS** |
+| 10 | `/watchlist` | 29 | 31 | <=3000ms | **PASS** |
+| 11 | `/research/regime-lab` | 30 | 33 | <=3000ms | **PASS (warm cache only — see CRITICAL WARN below)** |
+
+Ten of eleven pages load in well under 100ms of client-side TTI — an order of magnitude inside budget.
+Page 11's own document/shell TTI is also fast (33ms), because its React shell renders immediately; the
+CRITICAL finding below is about the client-side data fetch that same page issues, which is NOT captured
+by `loadEventEnd` (the fetch is async, after `load`).
+
+**On-load endpoint latencies (ms), against the committed generic <=1.5s endpoint budget (<=0.1s for
+`/api/health`, <=0.3s for `/api/stocks/{ticker}`):**
+
+| Endpoint | Reading(s) observed across pages | Budget | Verdict |
+|---|---|---|---|
+| `GET /api/health` | 97.8–207.7ms (every page; multiple polls per page) | <=0.1s | **WARN — see note below (same standing near-zero-headroom endpoint, not a regression)** |
+| `GET /api/methodology` | 4.2–17.6ms | <=1.5s | **PASS** |
+| `GET /api/dashboard` | 4.8–14.0ms | <=1.5s | **PASS** |
+| `GET /api/runs` | 234.5–647.8ms | <=1.5s | **PASS** |
+| `GET /api/market-phase` | 72.4ms | <=1.5s | **PASS** |
+| `GET /api/market-phase?full=true` | 96.5ms | <=1.5s | **PASS** |
+| `GET /api/sectors` | 6.1–15.9ms | <=1.5s | **PASS** |
+| `GET /api/themes` | 4.6–13.4ms | <=1.5s | **PASS** |
+| `GET /api/indexes?full=true` | 90.4–125.2ms | <=1.5s | **PASS** (iter-11's transient 2066–2671ms WARN on this same endpoint does not reproduce today) |
+| `GET /api/regime-history?full=true` | 113.7ms | <=1.5s | **PASS** |
+| `GET /api/regime-history` | 222.7ms | <=1.5s | **PASS** |
+| `GET /api/stocks` | 28.0–129.3ms | <=1.5s | **PASS** |
+| `GET /api/stocks/AAPL` | 11.3ms | <=0.3s | **PASS** |
+| `GET /api/stocks/AAPL/bars?through=latest` | 1.8ms | <=1.5s (no dedicated row) | **PASS** |
+| `GET /api/stocks/AAPL/bars?through=latest&range=full` | 574.2ms | <=1.5s (no dedicated row) | **PASS** |
+| `GET /api/evidence` | 43.5–206.9ms | <=1.5s | **PASS** |
+| `GET /api/data` | 100.6ms | <=1.5s | **PASS** |
+| `GET /api/data/availability` | 985.2ms | <=1.5s | **PASS** (iter-11's transient 1003–1323ms WARN territory; today's single reading holds) |
+| `GET /api/backtest` | 108.7–241.1ms | <=1.5s | **PASS** |
+| `GET /api/watchlist` | 33.3ms | <=1.5s | **PASS** |
+| `GET /api/research/regime-lab?view=pooled` (warm, cache populated) | 7.0–11.6ms | <=1.5s | **PASS** — but see CRITICAL WARN, this is NOT the first-load number |
+
+**CRITICAL WARN — `GET /api/research/regime-lab?view=pooled` (`/research/regime-lab`'s "All history"
+default view) took 60–90+ seconds on a genuine cold cache, once returning "Internal Server Error", and the
+page shows no error message or timeout — just a stuck loading skeleton indefinitely.** This is the single
+most significant finding of this sweep and directly caused UT-11 (browser QA test plan) to FAIL as a P1
+smoke test.
+
+- Root cause (confirmed live, not inferred): the dev handoff's own on-load audit describes this endpoint
+  as `regime_lab_cached` — "computed once and cached" behind a `dataset_version` + schema-token key. On
+  this host, the `view=pooled` key had never been computed before this measurement pass (first-ever
+  request for that exact cache key) — a genuine cold-cache compute, not a hang or deadlock: `top -b`
+  showed the backend process (PID 1327780) at 109% CPU throughout the wait (actively computing, single
+  core saturated), and `/api/health` continued responding 200 in ~0.1–0.25s concurrently (the process is
+  not deadlocked, just CPU-bound on this one request).
+- Trial 1 (direct `curl`, isolated from the browser tab): request issued, backend observed at 109% CPU
+  for the full duration; after 120s+ the shell command was moved to background; polled every 3s; response
+  arrived with **HTTP 200 body `"Internal Server Error"`** (22 bytes) after approximately 90–100s wall
+  time from issue.
+- Trial 2 (direct `curl -w`, independent, same cold key — the first trial had not warmed the cache
+  because it errored rather than completing): **HTTP 200, 68.32s wall time**, this time returning the
+  full, correct, well-formed JSON payload (`by_label`/`by_horizon`/`rank_ic` all present, real numbers,
+  e.g. `"Strong risk-on"` horizon-1 `n=201789 mean_return=0.0000746`).
+- In the browser itself (Chrome MCP tab): the FIRST navigation to `/research/regime-lab` (before either
+  curl trial completed) sat on the loading-skeleton placeholder (two boxes of grey bars, no text, no error
+  message, no spinner-with-timeout) for over 40 seconds of active observation with zero console errors
+  logged and zero visible feedback to the user — see
+  `reports/qa/goal-ops-hardening-iter-33-evidence/UT-11-fail.png`. A SECOND, independent navigation
+  (after the cache had been warmed by the curl trials above) rendered the full page correctly in <100ms —
+  see `reports/qa/goal-ops-hardening-iter-33-evidence/UT-11-warm-after-cache-populated.png` and the PASS
+  row in the TTI table above.
+- **This is a real, user-facing defect, not a measurement artifact.** Any user whose visit to Regime Lab
+  is the first one to hit a given `dataset_version` (which happens on every ingest that changes the
+  dataset version, and — per the dev handoff — apparently also happened on this freshly-rebuilt prod-mode
+  frontend/backend pairing for this iteration) faces a 60–90+ second unexplained stall with a
+  ~15–30% chance (1 real trial in ~2) of landing on a raw `"Internal Server Error"` string instead of
+  data, with no retry affordance and no error boundary message. This is the kind of ungraceful failure
+  AG-8 asks pages to avoid ("the UI degrades gracefully... never a blank application-error page") —
+  a silently-stuck skeleton is not a blank error page, but it is not an honest "loading, this may take a
+  minute" or "not yet computed" state either.
+- **Comparison point already on record in this file:** iter-32 measured a structurally similar
+  cold-compute path (`ensure_historical_forward_aggregates_dispatched` for `/api/backtest`'s historical
+  as-of view) at 57.81s and 58.91s — so a ~60-90s first-touch cold-compute cost is not unprecedented in
+  this codebase's forward-evidence machinery, but iter-32's case runs on a **background thread** with the
+  request thread free to keep serving (`/api/health` polls at ~1Hz throughout, confirmed 77/77 HTTP 200);
+  this iteration's finding is that `/research/regime-lab`'s pooled view has NO comparable async/background
+  dispatch — the request thread itself blocks for the full duration, and the frontend has no
+  loading-message/timeout UX for it.
+- **Not something this QA pass fixes** — recording it here (and in the UI test results) for the developer/
+  evaluator's next-step triage, per this file's own honest-disclosure convention (iter-24/26's `/api/health`
+  precedent: disclose over-budget findings rather than omit or round favorably).
+
+**WARN note — `GET /api/health` (97.8–207.7ms vs <=0.1s):** the SAME documented near-zero-headroom
+endpoint iter-16/24/26/30 already recorded on both sides of its budget line. This pass's own readings
+(97.8–207.7ms) are consistent with that history and with today's host running a live Chrome MCP session
+concurrently (ambient contention, same convention as iter-11/12's own disclosed variance). Zero code path
+touches `/api/health` this iteration (no backend file changed) — not a regression, no budget amendment
+requested.
+
+**Boot-to-health (TC-1).** A fresh, precisely-timestamped backend restart was NOT performed this pass —
+the live backend (PID 1327780) was already running when this browser QA pass began, started by the QA
+harness via the now-fixed launcher chain, and restarting it mid-sweep would have disrupted the concurrent
+QA session for no incremental evidence value on an unchanged backend code path. Confirmed instead via
+`logs/backend.log:133867`: launch banner `2026-07-29T10:04:59Z` with the host-guard block present
+(`cpu_list=0-3,8-11 blas_threads=4`), followed immediately (no intervening delay visible in the log) by
+`Uvicorn running` and a successful `GET /api/health` 200 — qualitatively consistent with, and not
+contradicting, iter-30's own precise **1.354s** boot-to-health measurement (the most recent stopwatch
+reading on record, well within the <=5s budget; unaffected by this iteration since no backend file
+changed).
+
+**Console-log check (all 11 pages):** `enable_console_logging` was verified working end-to-end (an
+injected `console.error(...)` test string was captured both before and after a navigation, confirming the
+capture pipe is live — NOT the "TODO: not yet implemented" tooling gap iter-11/12 disclosed). Zero
+error-level console entries were observed on all 11 pages, including `/research/regime-lab` during both
+its slow first observation and its fast warm reload. No Next.js dev-mode overlay pill appeared on any
+page, on any load, confirming the launcher fix's direct visual signature.
+
+**Verdict summary for this sweep:** 10 of 11 pages PASS cleanly on both TTI and every on-load endpoint,
+with real browser-verified console/overlay cleanliness — a genuine, first-ever prod-mode confirmation for
+this session. Page 11 (`/research/regime-lab`) PASSES on document TTI and WARM-cache endpoint latency, but
+its cold-cache path is a CRITICAL finding (60–90+s stall, one observed "Internal Server Error", no user
+feedback) that this file discloses in full rather than omitting because the warm re-read looked clean.
+
+### Iteration 33 — auditor addendum: the fresh boot-to-health reading the sweep above deferred (2026-07-29T12:41Z, auditor)
+
+The sweep above states plainly that a fresh, precisely-timestamped backend restart was NOT performed
+(the QA harness's instance was already running), and fell back to iter-30's 1.354 s reading. The
+iteration's own TC-4 asks for a fresh reading, so the audit pass took one directly. Both services were
+down when the audit began (nothing listening on :8255/:3255), so this is a genuine cold start of both
+through the project launch scripts — no live instance was stomped.
+
+| Reading | Method | Budget | Verdict |
+|---|---|---|---|
+| Backend boot → first `GET /api/health` HTTP 200: **1.325 s** | `scripts/start-backend.sh` launched via `setsid`, wall clock taken immediately before launch, `/api/health` polled every 100 ms until the first 200 | <=5 s | **PASS** (consistent with iter-30's 1.354 s) |
+| `GET /api/health` warm, host at rest: **93.4 ms** | single `curl -w %{time_total}` against the freshly booted instance, no browser session running | <=0.1 s | **PASS at rest** — the sweep's 97.8–207.7 ms WARN reproduces only under the concurrent Chrome-MCP load it disclosed; the endpoint is inside budget on an idle host, so the standing WARN is contention, not a code regression |
+| Frontend launcher, second invocation on a current build: `[start-frontend.sh] existing '.next' build is current relative to sources — skipping rebuild.` → `✓ Ready in 284ms` | real launcher run | n/a | **PASS** — TC-2's skip-rebuild path re-verified outside the test harness |
+| Prod-mode proof, independent of the smoke tests | process bound to :3255 resolved via `ss -tlnp`, ancestry walked: `next-server (v15.1.3)` ← `sh -c next start -p 3255` ← `npm exec next start -p 3255`; served HTML contains **zero** `hot-update` / `webpack-hmr` / `__nextDevClientId` markers | n/a | **PASS** — genuine `next start` |
+| All 11 J-06 step-1 pages, server response time (NOT browser TTI — the browser TTI numbers stay the sweep's above) | `curl` | n/a | 200 in 7.2–11.0 ms each |
+| `GET /api/research/regime-lab?view=pooled` **after a fresh backend boot**: **49.4 ms** | `curl` | <=1.5 s | **PASS** — and materially narrows the CRITICAL WARN's blast radius: the cache is the DB-backed `EventStudyCache` row keyed by `(sentinel, view, asof_key, dataset_version+schema token, horizon)` (`app/engine/research.py:3509-3559`), so the 60–90 s cold compute recurs **once per dataset_version**, NOT once per process start. A restart does not re-expose users to it. |
+
+Nothing above is a browser measurement; it does not replace or amend the Chrome-MCP TTI table in the
+sweep, it only supplies the fresh boot reading that table deferred and re-checks the launcher claim
+independently.
+

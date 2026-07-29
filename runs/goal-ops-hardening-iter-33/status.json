@@ -1,0 +1,58 @@
+{
+  "phase": "goal-ops-hardening-iter-33",
+  "status": "in_progress",
+  "current_step": "dev_complete",
+  "updated_at": "2026-07-29T19:26:51.781171Z",
+  "started_at": "2026-07-29T08:54:44.742833Z",
+  "cli": "claude",
+  "verdict": "PASS",
+  "fix_pass": {
+    "trigger": "reports/qa/goal-ops-hardening-iter-33-qa.md (verdict FAIL)",
+    "blockers_addressed": [
+      "UT-11 (P1): /research/regime-lab showed an unlabelled loading skeleton indefinitely on a cold cache with zero user feedback. Fixed frontend-only: new pure resolver apps/frontend/lib/lab-load-panel.ts + a labelled, time-stamped 'Still computing' notice after a 3s grace window + a Retry control on the error card.",
+      "TC-01/02/03: launcher smoke tests timed out at a hard 300s under concurrent load and could not clean up after a hard kill. Fixed in the test module only: build timeout now 900s (env-overridable), separate start timeout, fail-fast when launcher exits without binding, all cleanup moved into fixtures."
+    ],
+    "tests": {
+      "apps/backend/tests/test_start_frontend_script.py": "3 passed in 130.28s",
+      "apps/frontend/lib/lab-load-panel.test.ts": "13 passed",
+      "merge_ui_test_results.py self-test": "7 passed, 0 failed",
+      "golden journey replay (J-01,J-03,J-04,J-05,J-06,J-07,J-08,J-09)": "8/8 PASS"
+    },
+    "browser_evidence": [
+      "reports/qa/goal-ops-hardening-iter-33-evidence/UT-11-fix-computing-notice.png",
+      "reports/qa/goal-ops-hardening-iter-33-evidence/UT-11-fix-error-retry.png",
+      "reports/qa/goal-ops-hardening-iter-33-evidence/UT-11-fix-warm-load.png",
+      "reports/qa/goal-ops-hardening-iter-33-evidence/TC-04-dashboard.png",
+      "reports/qa/goal-ops-hardening-iter-33-evidence/TC-04-regime-lab.png"
+    ]
+  },
+  "qa_results": {
+    "test_cases_passed": 11,
+    "test_cases_total": 11,
+    "backend_tests_passed": 3,
+    "backend_tests_total": 3,
+    "browser_checks": "PASS",
+    "functional_test_plan_executed": true,
+    "all_11_pages_verified": true,
+    "console_errors_found": 0,
+    "golden_scripts_passing": "8/8 (J-01,J-03,J-04,J-05,J-06,J-07,J-08,J-09)"
+  },
+  "changed_files": [
+    "incredible_auto_dev/scripts/start-frontend.sh",
+    "incredible_auto_dev/scripts/measure-perf.sh",
+    "incredible_auto_dev/scripts/automation/lib/merge_ui_test_results.py",
+    "apps/backend/tests/test_start_frontend_script.py",
+    "apps/frontend/lib/lab-load-panel.ts",
+    "apps/frontend/lib/lab-load-panel.test.ts",
+    "apps/frontend/app/research/_labs.tsx",
+    "docs/handoffs/goal-ops-hardening-iter-33-dev.md",
+    "docs/handoffs/goal-ops-hardening-iter-33-frontend.md",
+    "reports/perf-budgets.md"
+  ],
+  "host_guard_blocks_unchanged": true,
+  "qa_report": "reports/qa/goal-ops-hardening-iter-33-qa.md",
+  "blockers": [],
+  "tests_run": false,
+  "browser_checks_run": false,
+  "next_action": "none"
+}

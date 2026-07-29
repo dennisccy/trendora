@@ -1931,3 +1931,126 @@ fresh-install DB fixture or a written waiver; `test_forward_testing_serving_spli
 monkeypatches. (6) OWNER, non-blocking but load-bearing on two journeys: `GET /api/health` at 0.127787s
 vs its <=0.1s budget — until that line is amended, rescoped, or accepted as a recorded WARN, J-06 step 2
 and J-07 step 2 can never both read true.
+
+## Iteration 33 — goal-ops-hardening-iter-33
+
+**Date:** 2026-07-29T23:20:00Z
+**Verdict:** CONTINUE
+**Depth dispatched:** lean (`iter-33/depth-dispatched` = `lean`; the spec's own metadata says `full`, and
+full-depth artifacts from an earlier attempt of the SAME iteration are on disk — qa 13:50, audit 13:53,
+ux 13:35, closure 13:54 — followed by a checkpoint-triggered re-dispatch whose lanes wrote dev 20:26,
+review 20:35, replay 20:29, browser-qa 22:57/22:58. I read the full-mode artifacts as full-mode inputs.)
+**Journey deltas:**
+- **Newly passing: J-06 — the first journey status change in FIVE iterations** (nothing had moved since
+  J-08 crossed at iter-28). Newly failing: none. Regressed (passing -> failing): none. Unknown: none.
+- Re-verified `passing` with THIS-iteration evidence, so `last_verified_iter` advances iter-32 -> iter-33
+  for six: J-01, J-03, J-04, J-05, J-08, J-09 (deterministic golden replay 6/6 PASS, zero FAIL rows, zero
+  reconciliation overturns; I opened J-03-verify.png and J-08-verify.png as the two spot-checks).
+- **J-06 partial -> passing**, with `evidence_makeup: true` (the `[NEW]`-flagged walkthrough is still
+  missing — a capture defect under methodology A.7, not a behavior gap). **J-07 stays `partial`, CARRIED
+  and untested** — neither a target nor in the Required-still-passing set, so `last_verified_iter`
+  deliberately stays iter-32 and its `evidence_makeup` stays true.
+- Anti-goal violations: four carried `resolved: false` findings, all `minor` (iter-29/b `warmup.py:194`,
+  iter-29/d `prices.py:141`, iter-31/e Factor-Lab residual, iter-32/f `run_rows`), each given an ITER-33
+  UPDATE recording that no backend file changed. **THREE NEW, all `minor`, all `resolved: false`**:
+  iter-33/g (Regime Lab's 60-90 s request-thread-blocking cold compute + one undiagnosed HTTP 200
+  carrying the body "Internal Server Error"), iter-33/h (four sibling research labs keep the exact
+  unlabelled-skeleton shape that just failed as a P1), iter-33/i (AG-10-adjacent: `next build` now runs
+  from automated lanes and `start-frontend.sh` is not a host-guard marker file). scan-report CLEAN;
+  coherence COHERENCE-WARN (not FAIL — no veto); all 8 `spec_hash`es match `goal_gate hash-journeys`; no
+  `journeys-changed.md`; no `browser-infra.json`.
+
+**Reasoning:** I re-derived every load-bearing fact read-only instead of inheriting it. (1) **The launcher
+fix is real and I checked the shipped script, not the report.** `git diff` on
+`incredible_auto_dev/scripts/start-frontend.sh` shows lines 1-27 byte-unchanged (port detection,
+`NEXT_PUBLIC_API_URL`/`NEXT_PUBLIC_API_PORT`) and only the final `exec` replaced: a `BUILD_ID`-based
+staleness test (NOT a directory-existence test — that is the one detail that makes a `next dev` `.next`
+correctly read as stale), `exit 1` with the build's own output on failure and no `next dev` fallback, then
+`exec npx next start`. (2) **J-06's three steps are all genuinely done, the first time in 33 iterations.**
+I read `reports/perf-budgets.md:4099-4270`: 11 pages measured by `performance.getEntriesByType('navigation')`
+in Chrome MCP (`loadEventEnd` 28-51 ms vs the <=3000 ms budget), a 21-row on-load endpoint latency table, a
+fresh boot-to-health of **1.325 s** vs <=5 s taken by the auditor after both services were down (a genuine
+cold start, not a warm request re-labelled), and `/api/health` **93.4 ms at rest** — inside its <=0.1 s
+budget for the first time on record, which finally answers the owner question two evaluators kept carrying.
+Step 3's per-endpoint code audit is present and substantial (`dev.md:151-186`, 11 pages, each naming the
+persisted table/cache), and it DISCLOSES rather than hides the one wide query
+(`/api/data/availability`'s single SQL-side `GROUP BY`, explicitly distinguished from a Python-side ORM
+materialization); the auditor spot-verified two of its rows against real code. (3) **The iteration found a
+genuine P1 in its own required measurement and fixed it inside the same iteration — I verified the fix
+visually rather than from prose.** The sweep recorded a CRITICAL WARN: Regime Lab's cold `view=pooled` view
+took 60-90+ s behind an unlabelled grey skeleton with no message, and one of two curl trials returned HTTP
+200 with the 22-byte body "Internal Server Error". This is J-06's own acceptance clause ("anything slower
+than its budget shows an honest progress or initializing state, never a frozen or blank frame"). I OPENED
+`UT-11-fix-computing-notice.png` — a labelled "Still computing — 6s elapsed" card with a spinner and copy
+explaining that the first read after a data change computes it, that the table will appear by itself, and
+that nothing partial or fabricated is shown meanwhile — and `UT-11-fix-error-retry.png`, a "Backend
+unavailable ... No figures are shown rather than fabricated values" card with a working **Retry** control.
+The resolver's 13 tests were re-run independently by the auditor via a real `tsc`-compile-then-`node`
+execution (the reviewer's Node rejected the `.ts` import), and the auditor traced line-level that Retry
+re-enters the loading state (`_labs.tsx:4233`, `attempt` in the effect deps at 4240) rather than freezing
+the error card — the obvious way this fix could have gone wrong. (4) **I checked the merge lane myself
+because it is the exact mechanism that could rubber-stamp an achievement.** `_ROW_RE` is now
+`(?:UT|TC)-` with a real RED-before test (auditor re-ran the self-test: 7 passed), and this run's three
+results files AGREE: merged PASS 7/7 = 6 replay rows + 1 LLM row, `.llm.md` PASS 1/1, replay PASS 6/6,
+zero FAIL rows, zero reconciliation footers. I also checked the auditor's F2 concern (the merged file
+carried a pre-fix FAIL at 12:35) and confirmed by mtime that it was cured by a genuine browser-lane
+RE-RUN (llm 22:57, merged 22:58, per-page captures 20:43-20:45), not by an edited verdict. (5) **AG-10 got
+a first-hand check because the host reset AGAIN today.** `git diff 197fe13f..HEAD` over `scripts/dev.sh`
+and `scripts/start-backend.sh` is EMPTY (both marker files' HOST-GUARD blocks byte-unchanged), and
+`host-guard.env` moved the SAFE way (`HOST_GUARD_MEMORY_HIGH` 14G -> 10G, mask `0-3,8-11` unchanged, owner
+commit `afbd72f6` recording reset #6). Rejected REGRESSION (C.1): nothing moved `passing` -> `failing`,
+all six required journeys replayed PASS, and I classified the seven open AG-8/AG-10 findings `minor` on
+grounds I verified rather than inherited — no crash, no memory exhaustion, no fabricated value, AG-8's own
+remedy wording now MET on the measured page, and the AG-10 caps tightened rather than weakened. This
+follows the iter-26/27/28/29/30/31/32 precedent, which was not vetoed. Rejected STALLED (C.2): no
+human-owned blocker — the health-latency record, the memory-pressure drill, the sibling-lab wiring, the
+walkthroughs and the UI-artifact regeneration are all agent work; the two owner-owned items (whether to
+add `start-frontend.sh` to the host-guard marker list; how to word the `/api/health` budget) are both
+non-blocking, and the second one is now largely answered by measurement. Rejected GOAL_ACHIEVED (C.3):
+J-07 is `partial` and seven anti-goal findings are unresolved. Rejected ESCALATE (C.4): review PASS with
+zero issues, QA PASS, audit PASS_WITH_GAPS, closure CLOSURE-PASS, ux WARN, no journey failed twice, and
+the full lanes already ran.
+**FIVE THINGS I STATE PLAINLY RATHER THAN ROUND AWAY:** (i) **the genuine cold path was never re-observed
+after the fix** — browser-qa says so openly and gives a checkable reason (the cache is a persisted
+`EventStudyCache` row keyed by `dataset_version`, so reproducing it needs deliberate cache invalidation);
+the fix's browser proof is a fetch-delay-patched simulation of the same component states, which I accept
+because the states themselves are what the acceptance clause names, and I record the substitution here
+rather than letting the PASS imply a live cold reproduction; (ii) **the `[NEW]` walkthrough J-06's
+Acceptance names was not recorded** — the demo has 8 steps, none flagged `[NEW]`, and it was captured at
+12:37, BEFORE the fix, so it does not even show the new states; scored as a capture defect (A.7) that
+never blocks, but it is the third consecutive iteration where the `[NEW]` walkthrough clause went unmet;
+(iii) **two official UI-impact documents describe a tree that no longer exists** — `ui-surface-map.md` and
+`user-visible-changes.md` (both 11:08) state "No `apps/frontend/app|components|lib/**/*.tsx` file changed",
+contradicted by the final diff; the coherence auditor, the ux reviewer and the reviewer each flagged it
+independently, and I read the diff and handoffs directly instead of trusting them; (iv) **`loadEventEnd` is
+a document metric, not a with-data interactive metric** — the section says so itself and separates the
+fetch latencies into their own table, which is exactly what J-06 step 1 asks for, but "33 ms" must not be
+read as "the table was on screen in 33 ms"; (v) **the byte-identical-screenshot nit finally did not
+recur** after 13 consecutive iterations — `J-01/J-03/J-04-verify.png` now carry three distinct md5s.
+
+**Next-step recommendation:** FULL depth. (1) FIRST AND ONLY TARGET: finish J-07, which needs exactly two
+things, both from its own text. Record how long `GET /api/health` TAKES during a live heavy warm-up (last
+iteration counted 77/77 successes and wrote down no timing) and state plainly whether it is inside the
+0.1 s budget — this run supplies the missing halves: 93.4 ms at rest (inside) and 97.8-207.7 ms under a
+concurrent browser session (outside, honest WARN), so the budget should be WRITTEN DOWN that way rather
+than amended. Then run step 4's induced-memory-pressure drill, postponed since iter-14: tighten the cap in
+a throwaway process, assert the warm aborts honestly while the SAME process keeps serving `/api/health`.
+**Launch it only through `scripts/start-backend.sh` so the host caps apply** — reset #6 happened TODAY and
+the caps were tightened this morning because of it. (2) RIDE-ALONGS, capture only, never an iteration's
+goal: the `[NEW]` walkthrough steps for J-06 (budgets table vs live page loads) and J-07 (crash-free warm
++ healthy health), a J-06 frame that shows the budgets table, and a J-07 frame that shows the
+"Forward-tested evidence" tables. (3) THEN, backend-side and newly opened by this iteration's own
+measurement: iter-33/g — give Regime Lab's cold `view=pooled` compute the same background dispatch
+`/api/backtest` got at iter-32, and diagnose the HTTP 200 that carried the body "Internal Server Error".
+(4) CHEAP AND STRUCTURAL: iter-33/h — wire the already-generic, already-exported `resolveLabLoadPanel` into
+the four sibling research labs so the honest-wait/Retry behavior is not present on one lab out of five.
+(5) FRAMEWORK, outside the journey loop: make the pipeline regenerate `ui-surface-map.md`,
+`user-visible-changes.md` and the demo after any fix-mode round that lands real UI (three lanes asked for
+this); and give `J-07.json` a stable assertion or a recorded provenance line for `n=8869`. (6) Carried,
+unchanged: `warmup.py:194` and what the badge should say after a permanently failed warm-up (four
+iterations unmade); `prices.py:141`, still load-bearing on J-07's acceptance clause; iter-31/e;
+iter-32/f; `test_no_magic_numbers.py` red on `indicators.py`/`forward_testing.py`; UT-04's fresh-install
+DB fixture or a written waiver; `test_forward_testing_serving_split.py`'s four `is_latest` monkeypatches.
+(7) OWNER, non-blocking: should `scripts/start-frontend.sh` join `HOST_GUARD_MARKER_FILES` now that it
+runs a full multi-worker `next build` from inside the automated lanes (iter-33/i)? The auditor measured
+that the build inherits the affinity mask today, so this is a deliberate-decision item, not a live hazard.

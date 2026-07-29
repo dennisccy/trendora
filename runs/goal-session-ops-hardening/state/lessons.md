@@ -151,98 +151,34 @@ claim — especially perf/latency measurement passes and any goal-closing evalua
 **Applies to:** any iteration whose DoD requires "verbatim" citation of a figure that exists at two
 precisions (raw CSV vs rounded report); decomposers should name ONE canonical rendering.
 
-## iter-24 — 2026-07-26T13:52:22Z
-
-**Verdict:** CONTINUE
-**Lesson:** A goal-proposer auto-appended journey (J-09) inherited this session's standard Acceptance
-clauses verbatim — including the `demo.sh --session-live` walkthrough clause — but the iteration spec's
-IN SCOPE / DEFINITION OF DONE never mapped that clause to any task, so the journey shipped fully working and
-still could not be scored `passing`. Nothing in `run-goal.sh` writes
-`reports/goal-session-ops-hardening-demo.json`, so a walkthrough clause is only ever closed by an explicit
-task — the same gap that made the iter-22 second-key CONFIRM reject GOAL_ACHIEVED, now repeated one journey
-later.
+## iter-24 — 2026-07-26T13:52:22Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration targeting a journey whose Acceptance block was auto-appended between the
 `<!-- AUTO:journeys -->` markers, and any decomposer writing a DoD — enumerate EVERY Acceptance bullet,
 especially the walkthrough/demo-manifest one, before declaring scope.
 
-## iter-24 — 2026-07-26T13:52:22Z (second)
-
-**Verdict:** CONTINUE
-**Lesson:** On this host Chrome MCP returns a solid-colour blank frame for ANY scrolled screenshot (verified
-by the browser-QA agent across pages, scroll methods, `fullpage`, element selectors and CSS zoom), so the
-new `/data` panel — the last panel on a ~24,800px page — is unphotographable. The workable substitute is the
-auto-saved raw DOM capture (`~/.cache/superpowers/browser/<date>/session-*/NNN-*.html`) read verbatim and
-cross-checked against the live API and the SQLite rows; that chain proved AG-3 to 1.68 ms, stronger than any
-screenshot would have.
+## iter-24 — 2026-07-26T13:52:22Z (second)  [condensed: body → lessons.md.archive.md]
 **Applies to:** any future iteration whose acceptance state renders below the fold on this host, and any
 evaluator weighing "no screenshot" against the absolute no-screenshot rail.
 
-## iter-25 — 2026-07-26T16:10:00Z
-
-**Verdict:** GOAL_ACHIEVED
-**Lesson:** Two detached `pytest` runs building the `loaded_engine` fixture starved the `ulimit -v`-capped
-backend during its boot warm-up: `_run_warmup` -> `backfill_forward_returns` raised a non-fatal `MemoryError`
-(`logs/backend.log:79986`, the only such line in the whole logfile), readiness stayed permanently
-`initializing` with the badge on "Initializing... history 89/89", and the deterministic replay lane then
-FAILED J-07 purely because its golden step expects the text "Ready". The product was fine — the failure was
-host memory contention created by our own test harness. Two consequences worth carrying: never leave heavy
-pytest fixture builds running while a lane needs a healthy backend, and treat a replay FAIL whose expect is a
-readiness word as an environment question first (check `logs/backend.log` + `ps`) before treating it as a
-product regression.
+## iter-25 — 2026-07-26T16:10:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration whose lanes run alongside detached pytest/heavy jobs; any golden script whose
 `expect` is a readiness/badge string; any change to `warmup.py` / `readiness.py` badge states.
 
-## iter-25 — 2026-07-26T16:10:01Z
-
-**Verdict:** GOAL_ACHIEVED
-**Lesson:** The iter-24 lesson ("enumerate EVERY Acceptance bullet, especially the walkthrough/demo-manifest
-one") worked exactly as intended: iter-25's spec mapped the clause into IN SCOPE, the developer wrote the four
-manifest steps, and the journey closed in one lean pass with no product-code risk. A journey blocked ONLY by an
-unwritten artifact is the cheapest kind of blocker — spec it explicitly instead of carrying it as a "non-blocking
-follow-up" across iterations.
+## iter-25 — 2026-07-26T16:10:01Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any goal-proposer auto-appended journey (it inherits the session's standard Acceptance bullets
 verbatim, including the `demo.sh --session-live` walkthrough clause).
 
-## iter-26 — 2026-07-26T18:48:05Z
-
-**Verdict:** ESCALATE
-**Lesson:** A "regression-only" browser pass can silently exercise a *heavier* code path than the journey
-intends and leave the product in a worse state than it found it. This lane triggered background compute by
-opening `/backtest` on two NEVER-SCANNED dates (2001-04-17, 1999-11-02) instead of dates that merely lack
-forward aggregates: that ran a create-once `run_scan` on the request path (16.7-23.2 s, vs the ~40 ms the
-intended trigger costs), produced the logfile's first-ever unhandled `IntegrityError` -> "Exception in ASGI
-application" from `api/backtest.py:171`, and bumped `scanner_runs` to 1867 so `coverage_snapshot`'s key went
-stale and `/data` began reporting an empty dataset for a 4.9 GB database. None of it appears in
-`ui-test-results.md`; all of it is in `logs/backend.log` and the DB.
+## iter-26 — 2026-07-26T18:48:05Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration whose QA triggers a background-compute window or time-machines to a historical
 as-of date — pick a date that ALREADY has a snapshot, and always diff `logs/backend.log` (ASGI errors,
 `backtest_timing total_ms`) plus `scanner_runs`/`coverage_snapshot` after a browser lane runs, before scoring
 its narrative as evidence.
 
-## iter-27 — 2026-07-27T17:30:00Z
-
-**Verdict:** CONTINUE
-**Lesson:** A golden replay script can encode an *incidental* page string as an assertion and then fail
-forever for reasons no iteration diff can explain. `J-06.json` step 1 expects the literal "DEGRADED" on `/`,
-which comes from `compute_preflight`'s drift component reading
-`config.yaml:1152` -> `runs/goal-session-mcp-loop/state/drift-report.json` — ANOTHER goal-mode session's
-file. Worse, `J-01`'s own golden starts a Data Manager job whose `_check_drift` rewrites that same artifact
-before `J-06` asserts against it, so the replay suite can invalidate itself. When a replay FAIL cites a
-string that has nothing to do with the journey's stated subject, check the artifact the string is derived
-from before treating the row as a product signal.
+## iter-27 — 2026-07-27T17:30:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration reading a replay FAIL row; any change to `readiness.py` / `drift.py` /
 `config.yaml`'s `readiness.drift.report_path`; anyone authoring or re-recording a golden journey script.
 
-## iter-27 — 2026-07-27T17:30:00Z
-
-**Verdict:** CONTINUE
-**Lesson:** A guard that calls `session.rollback()` inside a function that never commits has a blast radius
-far wider than its own bookkeeping. The iter-27 AG-8 fix undid only the CURRENT symbol's staged keys, while
-the transaction-wide rollback also destroyed every earlier symbol's autoflushed-but-uncommitted rows — so
-`rows_inserted` reached `/data` as "N forward returns inserted" with 0 actually persisted. The developer's
-own TC-3 test could not catch it because it stages the collision on the FIRST symbol, where nothing earlier
-exists to lose. When reviewing a rollback-based tolerance guard, always ask what else was pending in that
-transaction, and check whether the test exercises a non-first element.
+## iter-27 — 2026-07-27T17:30:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any change to `apps/backend/app/engine/forward_testing.py` (`_insert_run_forward_returns`,
 `_backfill` — audit B2's cross-call residual is the same bug one level up); any new `except IntegrityError`
 / rollback-and-continue pattern anywhere in the engine.
@@ -388,3 +324,20 @@ which was nearly the entire signal.
 **Applies to:** any iteration writing or rewriting a golden journey script (prefer structural/label
 assertions over computed figures, or record the figure's provenance), and any iteration asserting a
 memory bound (measure the named term in isolation, not the whole call).
+
+## iter-33 — 2026-07-29T23:20:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** A launcher label that contradicts its own code silently invalidated every
+page-performance number for 33 iterations: `scripts/start-frontend.sh` execed `npx next dev`
+while goal.md, `measure-perf.sh`'s header and the script's own comment all called it "prod mode".
+Fixing it and then actually running the required measurement immediately surfaced a real P1 that
+no unit test, golden replay or curl proxy could see (`/research/regime-lab`'s cold view sitting
+on an unlabelled skeleton for 60-90 s, once returning HTTP 200 with the body "Internal Server
+Error") — the measurement step was the defect detector, not paperwork. Corollary worth carrying:
+when two consecutive evaluators put the SAME unblocker first, doing it as its own iteration paid
+for itself in one pass.
+**Applies to:** any iteration that measures page-load/TTI or writes to `reports/perf-budgets.md`;
+any iteration touching `scripts/start-frontend.sh` / `start-backend.sh` / `dev.sh`; and any spec
+whose acceptance names a measurement — schedule the measurement expecting it to FIND something,
+and leave fix-mode room for what it finds.

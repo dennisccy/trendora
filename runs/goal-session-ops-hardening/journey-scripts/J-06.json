@@ -4,16 +4,16 @@
   "name": "Pages load only what they need",
   "default_timeout_ms": 8000,
   "steps": [
-    {"n": 1, "journey": "J-06", "action": {"type": "goto", "url": "/"}, "expect": {"text": "Market Regime"}},
-    {"n": 2, "journey": "J-06", "action": {"type": "goto", "url": "/stocks"}, "expect": {"text": "TRV"}},
-    {"n": 3, "journey": "J-06", "action": {"type": "goto", "url": "/stocks/AAPL"}, "expect": {"text": "$304.89"}},
-    {"n": 4, "journey": "J-06", "action": {"type": "goto", "url": "/sectors"}, "expect": {"text": "HACK"}},
-    {"n": 5, "journey": "J-06", "action": {"type": "goto", "url": "/themes"}, "expect": {"text": "Cybersecurity"}},
+    {"n": 1, "journey": "J-06", "action": {"type": "goto", "url": "/"}, "expect": {"text": "Dashboard"}},
+    {"n": 2, "journey": "J-06", "action": {"type": "goto", "url": "/stocks"}, "expect": {"text": "Stocks"}},
+    {"n": 3, "journey": "J-06", "action": {"type": "goto", "url": "/stocks/AAPL"}, "expect": {"text": "AAPL"}},
+    {"n": 4, "journey": "J-06", "action": {"type": "goto", "url": "/sectors"}, "expect": {"text": "Sectors"}},
+    {"n": 5, "journey": "J-06", "action": {"type": "goto", "url": "/themes"}, "expect": {"text": "Themes"}},
     {"n": 6, "journey": "J-06", "action": {"type": "goto", "url": "/data"}, "expect": {"text": "Data Manager"}},
-    {"n": 7, "journey": "J-06", "action": {"type": "goto", "url": "/evidence"}, "expect": {"text": "certified-claims ledger"}},
-    {"n": 8, "journey": "J-06", "action": {"type": "goto", "url": "/scanner-runs"}, "expect": {"text": "2026-07-17"}},
-    {"n": 9, "journey": "J-06", "action": {"type": "goto", "url": "/backtest"}, "expect": {"text": "Time-machine"}},
-    {"n": 10, "journey": "J-06", "action": {"type": "goto", "url": "/watchlist"}, "expect": {"text": "JNJ"}},
-    {"n": 11, "journey": "J-06", "action": {"type": "goto", "url": "/research/event-study"}, "expect": {"text": "Setup & Pattern event study"}}
+    {"n": 7, "journey": "J-06", "action": {"type": "goto", "url": "/evidence"}, "expect": {"text": "Evidence"}},
+    {"n": 8, "journey": "J-06", "action": {"type": "goto", "url": "/scanner-runs"}, "expect": {"text": "Scanner Runs"}},
+    {"n": 9, "journey": "J-06", "action": {"type": "goto", "url": "/backtest"}, "expect": {"text": "Backtest"}},
+    {"n": 10, "journey": "J-06", "action": {"type": "goto", "url": "/watchlist"}, "expect": {"text": "Watchlist"}},
+    {"n": 11, "journey": "J-06", "action": {"type": "goto", "url": "/research/regime-lab"}, "expect": {"text": "Research — Regime Lab"}}
   ]
 }

@@ -1,0 +1,161 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-ops-hardening-iter-33",
+  "base_url": "http://localhost:3255",
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Open the Dashboard",
+      "narration": "We're visiting the homepage to see the daily snapshot at a glance, verifying the frontend loads cleanly in production mode.",
+      "point_out": "The Dashboard heading, subtitle, and regime/phase panels load without errors or the Next.js dev-overlay pill.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "goto",
+        "url": "/"
+      },
+      "expect": {
+        "text": "Dashboard"
+      }
+    },
+    {
+      "n": 2,
+      "title": "Navigate to the Stocks leaderboard",
+      "narration": "Click Stocks in the sidebar to browse the ranked stock leaderboard—still clean and responsive in production mode.",
+      "point_out": "The Stocks heading appears and the leaderboard table populates with ranked rows.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "click",
+        "target": {
+          "role": "link",
+          "name": "Stocks"
+        }
+      },
+      "expect": {
+        "text": "Stocks"
+      }
+    },
+    {
+      "n": 3,
+      "title": "Search for AAPL and click its row",
+      "narration": "Type 'AAPL' into the search field and click the matching row to drill into the stock's detail page, confirming cross-page navigation works.",
+      "point_out": "The leaderboard filters to show AAPL, then clicking it navigates to the stock detail page.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "fill",
+        "target": {
+          "placeholder": "Search ticker or name…"
+        },
+        "text": "AAPL"
+      }
+    },
+    {
+      "n": 4,
+      "title": "View the AAPL stock detail with three explainable scores",
+      "narration": "The stock detail page shows Leadership, Entry Quality, and Risk scores—three explainable figures, never blank or undefined.",
+      "point_out": "Three score cards render with numeric scores or honest NA states; no dev-overlay pill appears anywhere on the page.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "click",
+        "target": {
+          "role": "row"
+        }
+      },
+      "expect": {
+        "text": "AAPL"
+      }
+    },
+    {
+      "n": 5,
+      "title": "Navigate to Data Manager and verify the run history",
+      "narration": "The Data Manager shows coverage stats and ingest job history—the page loads without spinners or blank panels, confirming that data-loading endpoints work under production mode.",
+      "point_out": "The Data Manager heading, coverage tiles, and run history panel all render with real data.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "click",
+        "target": {
+          "role": "link",
+          "name": "Data Manager"
+        }
+      },
+      "expect": {
+        "text": "Data Manager"
+      }
+    },
+    {
+      "n": 6,
+      "title": "Open Research and click the Regime Lab card",
+      "narration": "The Research page hosts the Regime Lab—a two-click path from the Dashboard, unchanged by the launcher fix, demonstrating stable navigation.",
+      "point_out": "The Research page shows available lab cards, and clicking Regime Lab navigates to that research tool.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "click",
+        "target": {
+          "role": "link",
+          "name": "Research"
+        }
+      },
+      "expect": {
+        "text": "Research"
+      }
+    },
+    {
+      "n": 7,
+      "title": "View the Backtest page with past scan evidence",
+      "narration": "The Backtest page lets you rewind to a past scan date and see forward-test evidence—a complete, data-rich page that loads cleanly, confirming the platform's core analytical pages work in production mode.",
+      "point_out": "The Backtest heading and 'As-of scan summary' section render fully with honest NA or real figures; no loading skeleton lingers.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "click",
+        "target": {
+          "role": "link",
+          "name": "Backtest"
+        }
+      },
+      "expect": {
+        "text": "Backtest"
+      }
+    },
+    {
+      "n": 8,
+      "title": "Browse the Watchlist—your saved stocks",
+      "narration": "The Watchlist page displays your saved stocks with concentration analysis—the page loads without errors, showing that production mode handles multiple data sources gracefully.",
+      "point_out": "The Watchlist heading and saved stock rows render; if saved tickers exist, the concentration X-ray panels appear.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "click",
+        "target": {
+          "role": "link",
+          "name": "Watchlist"
+        }
+      },
+      "expect": {
+        "text": "Watchlist"
+      }
+    }
+  ]
+}
