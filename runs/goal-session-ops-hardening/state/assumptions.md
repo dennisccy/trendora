@@ -381,3 +381,26 @@ unchanged at four either way, so GOAL_ACHIEVED is not moved one step closer by t
 reads AG-8's "unbounded whole-table ORM loads are forbidden on the deep basis" as unmet until the
 `horizons x observations` term is removed would keep iter-29/a open and add no new record.
 **Reversible:** yes
+
+## iter-32 — goal-decomposer
+
+**Ambiguity:** J-07's acceptance requires "forward_returns / scanner_results read column-projected and/or
+chunked into bounded accumulators" but does not define what "bounded" means for a downstream consumer
+(`_attribution_slices`'s `distribution` slice) whose exact `median`/`dispersion` computation fundamentally
+requires access to the full realized-return multiset — no exact streaming median algorithm exists with O(1)
+memory, so some O(N) storage is mathematically unavoidable for that one slice.
+**We chose:** to require every OTHER consumer of `stock_obs` (`_group_means`'s six group dimensions,
+`_group_mdd`, `_control_groups`'s per-run cohorts, `_attribution_slices`'s `per_stock`/`by_sector`/
+`by_rank_band`) to be driven by streaming per-group/per-run state bounded by group/run/ticker cardinality
+(never by total observation count), while conceding that `distribution`'s median/dispersion may keep ONE
+list — sized N, but of bare `float` values only (never the current ~9-field dict), an order-of-magnitude
+size reduction at the one place a true asymptotic bound isn't mathematically achievable. Grounds: iter-30
+and iter-31's own evaluators both explicitly rejected a "constant-factor win wearing a bound's clothes" for
+this exact function family, so a fix that leaves EVERY consumer still O(N) (even at a smaller constant)
+would likely be scored the same way a third time; distinguishing "mathematically forced O(N)" (median) from
+"avoidably O(N) today" (every group-by) lets most of the accumulator genuinely stop scaling with the crash
+dimension while being honest that one piece cannot. A human who reads "bounded accumulators" as requiring
+O(N) removal everywhere, including `distribution`, would need to accept an approximate (non-exact)
+median/stdev algorithm instead — a correctness trade-off (AG-3) this session has never made and that I did
+not propose.
+**Reversible:** yes
