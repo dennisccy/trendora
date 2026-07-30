@@ -412,3 +412,26 @@ reads AG-8's "must never exhaust a service's memory" literally — and notes tha
 evaluators justified `minor` partly by "no memory is exhausted", a ground that just died — would
 call this a critical violation and halt for review.
 **Reversible:** yes
+
+## iter-36 — goal-decomposer
+
+**Ambiguity:** rule 5 says "never bundle two risky journeys ... a risky item plus a cheap
+mechanical one is exactly what this rule permits." iter-35's carried plan already bundles one
+structural fix (bound `_membership_timeline`'s whole-table prefill) with one cheap mechanical item
+(wire `resolveLabLoadPanel` into 4 siblings). The iter-35 live run then surfaced a THIRD item,
+ledger finding iter-35/k: `compute_drawdown_expectations`'s `stored_by_key` read aborted twice with
+`MemoryError` on the `/api/evidence` serving path. `docs/goal.md` does not say whether a second,
+smaller memory-bound fix in the SAME accumulator family (unbounded ORM read reached on J-07's own
+named warm/serving path) may be added to an iteration that already carries one structural fix, or
+whether rule 5 caps an iteration at exactly one risky item regardless of size/family.
+**We chose:** to fold it in as a third, explicitly small item rather than defer it to iter-37.
+Grounds: the evaluator's own next-step recommendation (iter-35 log) ranked it item 4, "NEW AND
+SMALL, same family as item 1," immediately after (not competing with) the two carried items; the
+fix mirrors an already-established idiom (chunked/streamed read replacing `.all()`, the same shape
+as the item-1 fix and the iter-29 `research.py` precedent) rather than introducing new mechanism;
+and it closes a genuine instance of J-07's own Acceptance clause ("no unbounded whole-table ORM
+materialization remains on the warm OR SERVING path") that the session has not yet closed on the
+serving-path half. A human who reads rule 5 as a strict one-fix-per-iteration cap, or who weighs the
+value of an undiluted diff for a re-dispatched full-depth iteration higher than closing a live,
+twice-reproduced serving-path failure one iteration sooner, would defer iter-35/k to iter-37 instead.
+**Reversible:** yes
