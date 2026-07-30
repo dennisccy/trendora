@@ -357,3 +357,58 @@ anyway, so the owner gets at least one more round to veto this call before it ca
 human who requires every enumerated step to be literally satisfied would keep J-07 `partial` for an eighth
 iteration and make the health-check budget the next round's only target.
 **Reversible:** yes
+
+## iter-35 — goal-evaluator
+
+**Ambiguity:** browser-qa scored UT-J-06 FAIL with an Expected column taken verbatim from the
+iteration SPEC's Definition of Done ("all 4 sibling labs render `resolveLabLoadPanel`'s labelled
+'still computing' state ... identical to Regime Lab") rather than from J-06's `docs/goal.md` text,
+which never names that component. Its stated failure ground is "the iteration's own scope ... was
+not implemented" — which was guaranteed, since the run was dispatched at `evidence` depth and no
+developer existed. `docs/goal.md` does not say whether a journey fails when a lane tests it against
+an iteration's unbuilt plan instead of the journey's own acceptance text.
+**We chose:** rejected the FAIL's stated ground (an unbuilt spec item is not a journey failure —
+scoring it as one would let any mis-dispatched iteration manufacture a regression), but scored J-06
+`partial` anyway on DIFFERENT evidence the same lane attached without relying on: all four
+screenshots show a bare unlabelled skeleton, and the backend access log for the same window contains
+zero completed `/api/research/*` requests, so those loads were genuinely slow — which engages J-06's
+own Acceptance clause ("anything slower than its budget shows an honest progress or initializing
+state, never a frozen or blank frame") and matches the shape iter-33 scored a P1 on Regime Lab.
+Grounds: methodology A.3 says the screenshot outranks every prose claim, and here it outranked the
+lane's own prose in the direction of more severity; and iter-33/h's `minor` rationale explicitly
+rested on "no such lab is measured slow today", a premise this run falsified. A human who treats a
+grey skeleton as a legitimate "initializing state" (it is not blank and not frozen-looking, and the
+global top-bar badge did honestly read "background compute running (5)") would keep J-06 `passing`
+and carry the four labs' missing elapsed-label as the already-open iter-33/h chore.
+**Reversible:** yes
+
+## iter-35 — goal-evaluator
+
+**Ambiguity:** AG-8 is *critical* and says the data basis "must never ... exhaust a service's
+memory". This iteration exhausted it for real, first-hand verified: VmPeak reached exactly the
+declared 6,291,456 kB cap (zero margin) and four memory-pressure aborts fired at two code sites, one
+of them on the user-facing `/api/evidence` serving path. A critical unresolved anti-goal violation
+maps to REGRESSION and a hard halt (tree C.1), and my own methodology says to fail closed when
+unsure. But AG-8's remedy half — "the UI degrades gracefully (contained error boundary, honest
+'—'/NA placeholder, never a blank application-error page)" — was met in full, the product tree is
+byte-identical so nothing regressed, and the scenario (a long-lived process that had already run a
+283-date backfill, then 5 concurrent as-of warms) is heavier than J-07 step 1 asks for.
+`docs/goal.md` does not say whether memory exhaustion that is caught, contained, and honestly
+disclosed counts as an AG-8 violation of critical severity.
+**We chose:** classified the new finding iter-35/k `minor`, not critical, and returned ESCALATE
+rather than REGRESSION. Grounds stated rather than assumed: (1) the methodology's own critical list
+is secrets / unapproved paid dependency / license violation / security backdoor / fabricated data —
+contained-and-disclosed memory pressure is none of these, and AG-8's *(critical)* tag marks the
+anti-goal's importance, not an automatic halt; (2) I verified every half of AG-8's remedy clause
+myself (506/506 health 200s, no restart, `evidence.py:174` sets an honest
+`expectations_status="unavailable"`, the backtest page rendered complete prior-date tables behind an
+honest banner); (3) the AG-10 host caps did exactly their job — `ulimit -v` contained every
+MemoryError inside the one process and the host, which has suffered six hardware resets, was never
+at risk; (4) REGRESSION halts for HUMAN review, and there is nothing here for a human to decide —
+every unblock path is agent work already written into an unrun spec. I did not let it pass silently:
+it is a new unresolved ledger finding, it drove J-07 to `partial`, it falsified iter-29/d's stated
+`minor` rationale (recorded in the ledger), and it is item 1 of the next-step list. A human who
+reads AG-8's "must never exhaust a service's memory" literally — and notes that six consecutive
+evaluators justified `minor` partly by "no memory is exhausted", a ground that just died — would
+call this a critical violation and halt for review.
+**Reversible:** yes

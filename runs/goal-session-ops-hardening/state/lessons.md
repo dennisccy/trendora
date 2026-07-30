@@ -372,3 +372,42 @@ would exercise the wrong handler and look like a pass.
 **Applies to:** any future drill that must induce a specific failure inside one loop of a multi-stage
 finalize hook; check which stage runs first and whether its except clause is specific enough to attribute
 the result.
+
+## iter-35 — 2026-07-30T02:05:00Z
+
+**Verdict:** ESCALATE
+**Lesson:** An `evidence`-depth dispatch paired with a spec whose Definition of Done requires code
+produces a guaranteed-FAIL iteration that looks like a regression but is not: no developer runs, so
+browser-qa measures the product against work nobody was asked to do, and it scores the target
+journeys FAIL on grounds that are the *iteration's* scope rather than the *journey's* goal text.
+Check `iter-<N>/depth-dispatched` against the spec's own `Depth:` metadata and `.steps/` contents
+BEFORE reading any verdict — if only `decomposer.done` and `browser-qa.done` exist, every "FAIL"
+row needs re-reading against `docs/goal.md`, not against the spec's DoD.
+**Applies to:** any iteration whose `.steps/` lacks `developer.done`; any evaluator reading a
+browser-qa FAIL whose Expected column quotes the iteration spec rather than the journey text.
+
+## iter-35 — 2026-07-30T02:05:00Z (second entry)
+
+**Verdict:** ESCALATE
+**Lesson:** A finding classified `minor` on a stated, checkable premise must be re-read against that
+premise every iteration, because the premise can die without the code changing. iter-33/h said in
+its own text "no such lab is measured slow today" and iter-29/d rested on "no memory is exhausted";
+one heavier live scenario (a long-lived process that had already run a backfill, then 5 concurrent
+warms) falsified both at once — four labs caught slow behind unlabelled skeletons, and VmPeak at
+exactly the 6,291,456 kB cap with 4 MemoryErrors. Reversing a journey's pass on a falsified premise
+is NOT goalpost-moving; carrying the old wording forward would have been the dishonest move.
+**Applies to:** any evaluator carrying an anti-goal finding whose severity rationale contains a
+"nothing is failing today"-style clause — re-test the clause, do not re-copy it.
+
+## iter-35 — 2026-07-30T02:05:00Z (third entry)
+
+**Verdict:** ESCALATE
+**Lesson:** browser-qa's prose and its own attached screenshots can disagree in the direction of
+*more* severity, not less. Its J-06 text said the four sibling labs "render correct data
+(functionally fine)"; all four attached PNGs show bare grey placeholders. The tie-breaker that
+settled it was the backend log: zero completed `/api/research/*` access-log lines in the whole
+process window (uvicorn logs on completion), proving those fetches were still in flight rather than
+fast. Cross-check a "page renders fine" claim against the server's own access log for the same
+minutes.
+**Applies to:** any journey scored on a "the page loaded correctly" claim where the screenshot shows
+a skeleton, spinner, or empty card.

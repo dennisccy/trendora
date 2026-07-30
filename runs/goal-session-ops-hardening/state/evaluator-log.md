@@ -2165,3 +2165,149 @@ the bounded background-compute window, or commission the agent fix of serving re
 snapshot), and the current "never amend" line in iteration-state was written by a prior evaluator from
 measurement, not sanctioned by the owner; (b) iter-33/i — should `start-frontend.sh` join
 `HOST_GUARD_MARKER_FILES` now that it runs a full `next build` inside automated lanes?
+
+## Iteration 35 — goal-ops-hardening-iter-35
+
+**Date:** 2026-07-30T02:05:00Z
+**Verdict:** ESCALATE
+**Depth dispatched:** evidence (`iter-35/depth-dispatched` = `evidence`; the spec's own metadata says
+`full` and its Definition of Done lists real backend + frontend code work. Only TWO steps ran —
+`.steps/` holds `decomposer.done` and `browser-qa.done` and nothing else. No developer, no reviewer,
+no QA, no audit, no ux-regression, no closure. The dev handoff is a 3-line stub: "Evidence-only
+iteration: no code changes were planned or made." The review is a 2-line stub: "Nothing to review."
+I scored only the artifacts that exist and credited no lane that did not run.)
+**Journey deltas:**
+- Newly passing: none. Newly failing: none. **Regressed (passing -> failing): NONE** — I want that
+  stated flatly, because the merged results file says FAIL 6/8 and a reader could mistake this for a
+  regression halt. The product tree is byte-identical; nothing got worse.
+- **J-06 "Pages load only what they need" passing -> partial** and **J-07 "Heavy aggregates never
+  take the service down" passing -> partial.** Both keep `last_passing_iter` = iter-34,
+  `evidence_makeup: true`, and both advance `last_verified_iter` to iter-35 because I DID verify
+  them against fresh first-hand evidence — just not to a pass.
+- Re-verified `passing` with THIS-iteration evidence, so `last_verified_iter` advances iter-34 ->
+  iter-35 for six: J-01, J-03, J-04, J-05, J-08, J-09 (deterministic golden replay 6/6 PASS, zero
+  FAIL rows, zero reconciliation overturns; I opened J-08-verify.png and J-09-verify.png as the two
+  spot-checks — J-08 shows the honest "Warming up — historical evidence still loading (89/89)" card
+  with "no result is shown rather than a partial or fabricated one", J-09 shows /data's coverage
+  cards rendering with provider: seed).
+- Anti-goal violations: eight carried `resolved: false`, all `minor` (iter-29/b, iter-29/d,
+  iter-31/e, iter-32/f, iter-33/g, iter-33/h, iter-33/i, iter-34/j), each given an ITER-35 UPDATE
+  recording the byte-identical tree. **ONE NEW, `minor`, `resolved: false`: iter-35/k — memory
+  exhaustion, observed live for the first time.** scan-report CLEAN; iter-diff "(no changes)";
+  coherence COHERENCE-PASS (deterministic zero-change pass, not a crash-stub); all 8 `spec_hash`es
+  match `goal_gate hash-journeys`; no `journeys-changed.md`; no `browser-infra.json`; no
+  `DEFERRED-BUDGET` row.
+
+**Reasoning:** I re-derived every load-bearing fact first-hand rather than inheriting it. (1) **I
+verified the zero-change claim before scoring anything**, because everything else depends on it:
+`git diff 8233429b..HEAD -- apps scripts project-extensions config` is EMPTY and `git status
+--porcelain` over the same paths is EMPTY. So no anti-goal could be introduced, and by methodology
+A.6 every prior journey's evidence stays valid. (2) **I opened the log, not the report, for J-07.**
+Backend PID 2351049 occupies `logs/backend.log` 138021-139328; its boot banner at 138019-138020
+proves the AG-10 caps were applied (`memory_cap_mb=6144 malloc_arena_max=2`, `host-guard:
+cpu_list=0-3,8-11 blas_threads=4`), so it was launched correctly through `start-backend.sh`. In that
+window: **506/506 `GET /api/health` returned 200, zero non-200 of any kind** (the only two non-200s
+are the harness's prefix-less `GET /health` probe, 404). The process never restarted. I opened
+`J-07-result.png` and it shows the badge "Ready · background compute running (5)", the honest
+"Refreshing — showing the last complete evidence … no partial or fabricated figures are shown"
+banner, and the complete by-group "Forward-tested evidence" tables. J-07's headline promise held,
+emphatically. (3) **But step 3's number is missed and the miss is real.** VmPeak reached exactly
+6,291,456 kB — the declared cap to the byte, zero margin — where step 3 says "assert it stays under
+the declared `server.memory_cap_mb`, with the margin recorded in `reports/perf-budgets.md`". I
+checked that file: byte-unchanged since the iteration snapshot (mtime 00:34, before the 01:37
+capture), so the number is recorded nowhere. (4) **I found two memory aborts browser-qa did not
+report.** It reported 2; there are 4. `grep` over the process window returns two background
+dispatch failures (keys 2025-11-10, 2025-08-05, `research.py:308`) AND two "evidence per-claim
+drawdown-expectations compute aborted — memory pressure" events on the `/api/evidence` SERVING path
+(`evidence.py:168` -> `forward_testing.py:2440`, one landing at `forward_testing.py:2325`, an
+unbounded `{(symbol, asof): (mdd, uw, ttr)}` dict comprehension — a second accumulator distinct from
+the research.py one). I read `evidence.py:158-180` and confirmed the handler sets
+`expectations_status = "unavailable"` — an honest NA, isolate-and-continue — so no user saw a wrong
+number. (5) **For J-06 the screenshot beat the prose, and it beat it in the direction of MORE
+severity.** browser-qa's own text says the four sibling labs "load and render correct data
+(functionally fine)" and grounds its FAIL in the unbuilt iteration scope — which is testing the
+plan, not the journey, and by itself would not fail J-06 (nothing in J-06's goal text names
+`resolveLabLoadPanel`). But I opened all four frames and every one shows a bare unlabelled grey
+skeleton — no elapsed label, no copy, no Retry — captured while the top bar read "background compute
+running (5)". I then checked the log for the same minutes: **ZERO completed `/api/research/*`
+requests in the entire process window**, and uvicorn logs on completion, so those fetches were still
+in flight. That is a genuine slow load caught in a blank-ish frame, which is J-06's own Acceptance
+clause ("anything slower than its budget shows an honest progress or initializing state, never a
+frozen or blank frame") and the exact shape iter-33 scored a P1 on Regime Lab.
+Rejected REGRESSION (C.1): nothing moved `passing` -> `failing`. `partial` is the literal, correct
+status for both — "only some assertion steps passed" — and I reached it by asking whether each
+journey's promise is broken, not by looking for a verdict that avoids a halt. J-07: 506/506 health
+200s, never wedged, honest UI, graceful degradation, caps contained the failure — the promise holds;
+one enumerated step's number does not. J-06: eleven pages load, iter-33's budget table still stands
+on unchanged code — the promise holds; one Acceptance clause does not. On the critical-anti-goal
+half of C.1: memory WAS exhausted, which is AG-8 (*critical*) territory, and I considered halting.
+I did not, on grounds I checked: AG-8's own remedy clause is met in full (no crash, no blank
+application-error page, honest NA placeholder), the code is byte-identical so nothing regressed, the
+scenario was heavier than J-07 step 1 asks for (a long-lived process that had already run a real
+283-date backfill via the single `POST /api/data/jobs` I found in that same window, then 5
+concurrent as-of warms = 25 horizon-computations in flight), and the AG-10 caps did precisely their
+job — `ulimit -v` contained every MemoryError inside the one process and the host was never at risk,
+which on a box with six hardware resets is the property that matters most. Rejected STALLED (C.2):
+no human-owned blocker — the price-table bound, the four labs' wiring, the perf-budgets record and
+the evidence-path accumulator are all agent work, and a full spec for the first two is already
+written and unrun. Rejected GOAL_ACHIEVED (C.3): two Must-have journeys are `partial` and nine
+findings are unresolved. Chose ESCALATE (C.4, third clause): this sub-lean run surfaced genuinely
+cross-cutting complexity — memory exhaustion reachable in ordinary use, across four sites in
+`prices.py` / `research.py` / `forward_testing.py` / `evidence.py`, including a user-facing serving
+path — which needs the audit, ux and closure lanes, and ESCALATE is the only verdict that makes full
+depth mandatory rather than advisory. That mechanism is the point: an advisory recommendation for
+full depth is exactly what was overridden this run.
+**FIVE THINGS I STATE PLAINLY RATHER THAN ROUND AWAY:** (i) **this iteration built nothing, and the
+cause is a process fault, not a product one** — the spec says `Depth: full` with a code-work
+Definition of Done, the prior evaluator recommended FULL, and the engine dispatched `evidence`;
+an evidence run means "re-capture things that already work", so pairing it with a build spec
+guaranteed the browser lane would measure the app against work nobody was asked to do. A whole
+iteration was spent. (ii) **I downgraded two journeys with zero code change, and that needs
+defending rather than glossing** — it is not goalpost-moving, because in each case the specific,
+written premise the earlier pass rested on was falsified by new evidence: iter-33/h says in its own
+text "no such lab is measured slow today" (four were, today, with pictures) and six evaluators
+called iter-29/d minor partly because "no memory is exhausted" (it was, today, four times). Reversing
+a pass because its stated premise turned out false is different from reversing it because I prefer a
+stricter reading, and I recorded both falsifications in the ledger rather than quietly leaving the
+old wording. (iii) **browser-qa under-reported the memory events by half** — it found 2, there are
+4, and the 2 it missed are on a page-serving path rather than a background one, which is the more
+interesting half; its VmPeak framing ("a stark regression from iter-34") is also overstated, since
+iter-34 measured a fresh isolated single warm and this measured a long-lived process that had
+already run a backfill plus 5 concurrent warms — different scenarios, not a code regression, and I
+say so in the ledger so a later reader does not inherit the word "regression". (iv) **the demo lane
+produced an empty recording** — `demo.json` has `not_yet: true` and zero steps, `reports/demo/
+goal-ops-hardening-iter-35/` is an empty directory — so the `[NEW]` walkthroughs J-06 and J-07 both
+name are unrecorded for the FIFTH consecutive iteration; scored as a capture defect (A.7) that never
+blocks, but five is no longer a coincidence. (v) **the byte-identical-screenshot nit recurred** after
+two clean iterations: `J-01-verify.png` and `J-04-verify.png` share md5 `414f9e66`; iter-32 already
+diagnosed the mechanism (both goldens end on `goto /data` and the replay lane captures the final page
+at scroll 0), so it is a terminal-page collision, not a capture bug — but J-01 and J-04 now have no
+visually distinguishing frame between them.
+
+**Next-step recommendation:** FULL depth, and **re-run the spec that already exists** —
+`docs/phases/goal-ops-hardening-iter-35.md` does not need rewriting, it needs executing. It targets
+precisely the two things today proved real. (1) FIRST AND BIGGEST, unchanged from iter-34's
+recommendation and now backed by a live failure rather than a code reading: bound the whole-table
+price load. `apps/backend/app/engine/prices.py:131-152` selects seven `DailyPrice` columns with NO
+WHERE clause and accumulates every row into `by_symbol` (~1.5 GB), reached on J-07's own warm path
+via `_refresh_ingest_aggregates` -> `refresh_coverage_snapshot` -> `_compute_coverage_uncached` ->
+`prefilled_bar_cache`. `docs/goal.md`'s Success Criteria forbid it verbatim. Prove it as the iter-35
+spec's TC-1/TC-2/TC-3 require: a `git show HEAD`-pinned byte-identity oracle, a mutation-style bound
+test that fails when reverted, and a before/after peak-memory number in `reports/perf-budgets.md`.
+(2) SECOND, cheap, structural, and now evidenced with four screenshots: wire the already-generic,
+already-exported `resolveLabLoadPanel` into `phase-severity-lab`, `regime-phase-factor`, `factor-lab`
+and `severity-velocity` (iter-33/h, open on 4 of 5 labs for three iterations). (3) THIRD: record
+J-07 step 3's margin in `reports/perf-budgets.md` — today's reading (at the cap, zero margin, under
+5 concurrent warms) exists nowhere but this log, and the step demands it be written there; re-measure
+after item 1 so the pair sits side by side. (4) NEW AND SMALL, same family as item 1:
+`forward_testing.py:2325`'s unbounded `{(symbol, asof): (mdd, uw, ttr)}` dict on the `/api/evidence`
+per-claim drawdown path — it failed twice today on a user-facing route. (5) CARRIED, unchanged:
+iter-33/g (Regime Lab cold `view=pooled` background dispatch + the undiagnosed HTTP 200 carrying
+"Internal Server Error"); `warmup.py:194` and the badge wording after a permanently failed warm-up
+(six iterations unmade); iter-31/e; iter-32/f (watch only). (6) RIDE-ALONGS, capture only, never an
+iteration's goal: the `[NEW]` walkthrough steps (five iterations unrecorded), and a provenance line
+for `J-07.json`'s literal `1873`. (7) OWNER, non-blocking, both unchanged: iter-34/j (the
+`/api/health` <= 0.1 s budget disposition) and iter-33/i (whether `start-frontend.sh` joins
+`HOST_GUARD_MARKER_FILES`). (8) FRAMEWORK, outside the journey loop and the reason this iteration was
+wasted: reconcile the depth decision with the spec's own `Depth:` metadata — an `evidence`-depth run
+should never be paired with a spec whose Definition of Done requires code.

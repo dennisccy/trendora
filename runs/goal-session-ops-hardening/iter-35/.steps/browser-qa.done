@@ -1,0 +1,1 @@
+{"v":1,"step":"browser-qa","iter":"35","iter_name":"goal-ops-hardening-iter-35","ts":"2026-07-30T00:44:55Z","tree_hash":"ee6f5823488e6be2b1fe9bd57c8537a42d22abef","artifacts":["/home/dennis-chan/Git/trendora/reports/phase-goal-ops-hardening-iter-35-ui-test-results.md"],"verdict":"FAIL","journeys":"J-06 J-07 |J-01 J-03 J-04 J-05 J-08 J-09 "}
