@@ -516,3 +516,38 @@ apply it, run in the other direction. A human who requires a fresh 11-page time-
 whenever any page's backend compute changes, or who treats the budgets-table walkthrough as a literal
 Acceptance requirement, would keep J-06 `partial` and hold `evidence_makeup` set.
 **Reversible:** yes
+
+## iter-37 — goal-decomposer
+
+**Ambiguity:** Rule 5 says "never bundle two risky journeys ... a risky item plus a cheap
+mechanical one is exactly what this rule permits" (and the iter-36 decomposer entry already
+extended this to "a second, smaller memory-bound fix in the SAME accumulator family" alongside one
+structural fix). This iteration's scope has two parts: (a) a genuine structural code change —
+sharing one `prefilled_bar_cache` across `_do_backfill` and `_persist_per_date_coverage_snapshots`
+instead of each opening its own (iter-36/l) — and (b) executing J-07's own steps 1-4 (a
+full-horizon warm, a concurrent health poll, a VmPeak recording, and an induced-memory-pressure
+drill), none of which require new product code but which DO involve heavy, host-affecting compute
+launched through `scripts/start-backend.sh`/a throwaway process (AG-10). `docs/goal.md` does not
+say whether "run a long, heavy, already-implemented verification drill" counts as a second "risky"
+item under rule 5 alongside a genuine code change, or whether rule 5 is scoped to CODE changes
+only.
+**We chose:** to bundle both into this one iteration rather than split step 1-4 execution into its
+own follow-up. Grounds stated rather than assumed: (1) rule 5's own text and every precedent in
+this session's ledger (iter-30 through iter-36) applies it to CODE changes specifically — "never
+bundle two risky journeys/changes," "this iteration's one risky change is confined to X" — never to
+a verification/measurement pass with zero new code, which is a fundamentally different failure
+mode (a bad measurement is re-runnable with no product regression risk, unlike two interacting code
+changes whose joint failure is undiagnosable, the exact harm rule 5 exists to prevent); (2) the
+iter-36 evaluator's own next-step recommendation ranked "finish J-07 — run it" as item 1 and the
+backfill-path fix as item 2, immediately after, not as competing alternatives for separate
+iterations — splitting them would mean deliberately re-dispatching a third iteration whose entire
+first half (verification) has no code dependency on the second half's fix, merely delaying
+J-07's completion by one more full-depth cycle for no diagnostic benefit; (3) the fix directly
+reduces peak memory pressure during the same class of heavy ingest that J-07's own step 4 induces
+pressure against, so running step 1-4's drill AFTER the fix (not before, not in a separate
+iteration) tests the more representative, already-hardened state rather than a state this session
+already knows is one bound short of AG-8-clean. A human who reads rule 5 as covering any
+heavy/host-affecting action regardless of whether it changes code, or who weighs an undiluted
+single-purpose diff higher than closing J-07 one iteration sooner, would split this into a
+code-only iteration followed by a verification-only iteration.
+**Reversible:** yes
