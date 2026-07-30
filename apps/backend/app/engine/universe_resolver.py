@@ -37,7 +37,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date as date_cls
-from typing import Optional
+from typing import Iterable, Optional
 
 from sqlalchemy import func
 from sqlmodel import Session, select
@@ -122,24 +122,39 @@ def resolve_with_reasons(
     config: Optional[Config] = None,
     *,
     seed_dir=None,
+    symbols: Optional[Iterable[str]] = None,
 ) -> dict:
-    """Resolve the full candidate pool at `asof` → the descriptive resolution the J-94 diagnostic /
+    """Resolve the candidate pool at `asof` → the descriptive resolution the J-94 diagnostic /
     J-96 timeline serve:
 
       {
         "asof": "YYYY-MM-DD",
-        "candidate_pool_count": <int>,         # the committed pool size (the denominator)
+        "candidate_pool_count": <int>,         # the resolved symbol set's size (the denominator)
         "admitted": [<symbol>, ...],           # the resolved members at D (alphabetical)
         "admitted_count": <int>,
         "excluded_counts": {below_history, stale_series, below_price, below_adv},
-        "resolutions": [CandidateResolution-as-dict, ...]  # one per pool candidate, alphabetical
+        "resolutions": [CandidateResolution-as-dict, ...]  # one per resolved candidate, alphabetical
       }
 
     Reads ONLY `bars_asof` (date <= D) per candidate — no lookahead. Recomputes no score/return; this
-    is descriptive membership metadata over the stored bars + config thresholds."""
+    is descriptive membership metadata over the stored bars + config thresholds.
+
+    `symbols` (ops-hardening iter-36, J-07/J-96 AG-8 memory bound): OPTIONAL — when given, restricts
+    resolution to that SUBSET of the committed pool (e.g. one batch of a symbol-batched multi-date
+    derivation — `_membership_timeline`'s memory-bounded loop). The per-symbol classification itself
+    (`resolve_candidate`) is unchanged; only which candidates get resolved this call. Every EXISTING
+    caller passes no `symbols` (`None` -> resolves the FULL committed pool exactly as before —
+    byte-identical, unchanged default behavior). Summing `excluded_counts` across a batched sequence of
+    disjoint `symbols` subsets equals resolving the whole pool at once (a per-symbol classification tally
+    has no cross-symbol interaction)."""
     cfg = config or get_config()
     pool = read_pool(seed_dir)
-    symbols = sorted({row["symbol"] for row in pool})
+    pool_symbols = sorted({row["symbol"] for row in pool})
+    if symbols is not None:
+        wanted = set(symbols)
+        resolve_symbols = [s for s in pool_symbols if s in wanted]
+    else:
+        resolve_symbols = pool_symbols
     min_history = cfg.indicators.min_history_bars
 
     # PERFORMANCE: the trailing-bar count (date <= asof) per priced symbol — only a symbol that clears
@@ -157,18 +172,18 @@ def resolve_with_reasons(
     # the original grouped-count query runs — that path is completely unchanged / byte-identical.
     cache = active_bar_cache(session)
     if cache is not None:
-        bar_count_by_symbol = {sym: cache.trailing_count(session, sym, asof) for sym in symbols}
+        bar_count_by_symbol = {sym: cache.trailing_count(session, sym, asof) for sym in resolve_symbols}
     else:
         counts_rows = session.exec(
             select(DailyPrice.symbol, func.count(DailyPrice.id))
-            .where(DailyPrice.symbol.in_(symbols))
+            .where(DailyPrice.symbol.in_(resolve_symbols))
             .where(DailyPrice.date <= asof)
             .group_by(DailyPrice.symbol)
         ).all()
         bar_count_by_symbol = {sym: int(n or 0) for sym, n in counts_rows}
 
     resolutions: list[CandidateResolution] = []
-    for symbol in symbols:
+    for symbol in resolve_symbols:
         bar_count = bar_count_by_symbol.get(symbol, 0)
         if bar_count < min_history:
             # below the history gate — the first gate; no need to materialize the full series.
@@ -187,7 +202,7 @@ def resolve_with_reasons(
 
     return {
         "asof": asof.isoformat(),
-        "candidate_pool_count": len(symbols),
+        "candidate_pool_count": len(resolve_symbols),
         "admitted": admitted,
         "admitted_count": len(admitted),
         "excluded_counts": excluded_counts,

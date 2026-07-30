@@ -4436,3 +4436,111 @@ the drill scripts (`seed_throwaway_db.py`, this section's citations) are.
 
 **Closes J-07 step 4** — first-hand, live evidence for all four of J-07's acceptance steps now exists.
 
+## Iteration 36 — J-07/J-96 candidate-pool bar-loading bound (ledger iter-29/d) + evidence-serving-path drawdown-expectations chunking (ledger iter-35/k), 2026-07-30 (developer)
+
+Re-dispatch of the unbuilt iter-35 spec (ops-hardening iter-36; `docs/phases/goal-ops-hardening-iter-36.md`).
+Two independent bounded-memory fixes, both preserving byte-identical output — full test sources:
+`apps/backend/tests/test_membership_timeline_batch_bound.py` (item 1),
+`apps/backend/tests/test_evidence_drawdown_memory_pressure.py` (item 2 live drill).
+
+### Item 1 — `_membership_timeline`'s candidate-pool bar loading (TC-1/TC-2/TC-3)
+
+**Root cause:** `_membership_timeline`'s cold-compute (`data_manager.py:497-544` pre-fix) called
+`prefilled_bar_cache(session, expected_symbols=pool_symbols)`, which loads EVERY symbol's full
+date-ordered series in ONE unbounded streamed query REGARDLESS of `expected_symbols`
+(`prices.py::_BarCache.prefill` scans the whole `daily_prices` table). `_compute_coverage_uncached` also
+opened its OWN such context around the whole coverage derivation, so the peak-memory cost was paid on
+EVERY standalone coverage compute (e.g. `refresh_coverage_snapshot`'s ingest-finalize call for the current
+date), not merely a rare cold `/data` load.
+
+**Fix:** the candidate pool is walked in `research.membership_timeline_batch_symbols`-wide batches (shipped
+value: 50), each batch's bars loaded via a NEW `_BarCache.load_only()` method that REPLACES the same
+instance's contents (never a second cache instance), resolved against every snapshot date via
+`universe_resolver.resolve_with_reasons`'s new optional `symbols=` subset param, then discarded before the
+next batch loads (`data_manager._excluded_counts_by_date`). `_compute_coverage_uncached` no longer opens
+its own eager whole-table context — an OUTER job-scoped cache (e.g. `_do_backfill`,
+`_persist_per_date_coverage_snapshots` — which legitimately want the whole pool resident across a
+multi-date job) is still reused UNCHANGED when already active (`active_bar_cache` check).
+
+**TC-1 — peak-memory measurement** (`test_peak_memory_reduced_vs_pinned_reference_on_live_seed`, live
+committed seed DB, 591 symbols, 1996-01-02 → 2026-07-22, 1,880 snapshot dates sampled every 61st date = 31
+dates, `tracemalloc` peak isolating `_membership_timeline` specifically):
+
+| Implementation | Peak tracemalloc bytes | Notes |
+|---|---|---|
+| Reference (pinned pre-fix, unbounded `prefilled_bar_cache`) | **1,125,618,771** (~1.13 GB) | whole 591-symbol × 30-year series resident at once |
+| Shipped (batched, `membership_timeline_batch_symbols=50`) | **329,751,051** (~330 MB) | one batch's series resident at a time |
+| **Reduction** | **70.7%** | peak no longer scales with the full candidate-pool × price-history product |
+
+**TC-2 — byte-identity**: `_membership_timeline`'s shipped output DEEP-EQUALS the `git show
+HEAD`-pinned pre-fix reference on the same live-DB sample dates
+(`test_membership_timeline_byte_identical_to_pinned_reference_on_live_seed`) — **PASS**.
+
+**TC-3 — mutation-style live-basis bound proof**
+(`test_shipped_batch_width_bounds_peak_resident_symbols_fails_if_reverted`): every shipped
+`_BarCache.load_only()` batch loads <= 50 symbols (11 batches observed against the live 591-symbol pool,
+proving the bound is not inert); the SAME instrumentation applied to the reference implementation's own
+`prefill()` call shows it loads the WHOLE 591-symbol pool in one call — i.e. this assertion would FAIL
+against a reverted/unbatched implementation (binding iter-31 lesson) — **PASS**.
+
+### Item 2 — `compute_drawdown_expectations`'s `stored_by_key` read (ledger iter-35/k, TC-8)
+
+**Root cause:** `compute_drawdown_expectations`'s (`forward_testing.py:2320-2327` pre-fix) `stored_by_key`
+`ForwardReturn` read materialized the WHOLE claim cohort's stored rows via ONE `session.exec(fr_stmt).all()`
+— for a broad claim (many tickers × a long snapshot history) this was the `/api/evidence` SERVING-path
+`MemoryError` source iter-35's live run hit twice under concurrent load.
+
+**Fix:** the resolved `tickers` list is partitioned into `research.drawdown_expectations_ticker_chunk`-wide
+chunks (shipped value: 50), each chunk's own query `yield_per(research.read_batch_size)`-streamed (that
+reuse of `read_batch_size` is its own designed purpose, the per-query row-stream size — NOT the chunk
+width, which is its own dedicated config key). Byte-identical result (proven across chunk widths
+`[1, 2, 3, 50]` against the 4-ticker hand-built fixture,
+`test_drawdown_expectations_chunked_byte_identical_to_pinned_reference` — **PASS**).
+
+**Honest disclosure — a MODEST reduction, not a full bound.** Unlike item 1, this is NOT an architectural
+bound: `stored_by_key`'s FINAL dict size is unchanged by chunking (the whole cohort's entries are still all
+resident once built — the same as before). Measured live (real seed DB, claim `{kind: factor, factor:
+leadership_score, slice_kind: total, horizon: 20}`, 544 distinct tickers, 771,662 cohort rows — the exact
+scale class of config.yaml's own documented live basis):
+
+| Implementation | Peak RSS (KB, `ru_maxrss`) | Notes |
+|---|---|---|
+| Reference (pinned pre-fix, unchunked `.all()`) | **1,215,052** (~1.19 GB) | |
+| Shipped (chunked, `drawdown_expectations_ticker_chunk=50`) | **1,165,092** (~1.14 GB) | |
+| **Reduction** | **~50 MB (~4%)** | `compute_samples`'s own UNCHANGED 771,662-row materialization dominates the call's total footprint |
+
+**TC-8 — live memory-pressure drill** (`apps/backend/tests/test_evidence_drawdown_memory_pressure.py`, real
+`ulimit -v`-capped subprocesses against a disposable copy of the live seed DB, calling
+`compute_drawdown_expectations_cached` — the exact `/api/evidence` entry point — under evidence.py's OWN
+unchanged isolate-and-continue guard):
+
+| Cap (KB) | Reference (pre-fix) | Shipped (post-fix) |
+|---|---|---|
+| 1,600,000 (control, generous) | completes normally | completes normally |
+| 1,210,000-1,220,000 (tight, reproducible window) | **caught `MemoryError`** → `expectations_status: "unavailable"` equivalent | **completes normally**, real panel served |
+| 1,000,000 (starved) | caught `MemoryError` | caught `MemoryError` — still degrades honestly, never a crash/wedge (a fresh same-process read still succeeds afterward) |
+
+The 1,210,000-1,220,000 KB discriminating window is **narrower and more host-sensitive** than iter-34's
+300 MB window (absolute KB values calibrated to this host/Python build, following that module's own
+established convention) — consistent with the modest ~4% measured reduction above. Per this iteration's
+NOTES section ("disclose the residual explicitly... rather than silently downgrading scope or claiming a
+full bound"): the fix measurably reduces the failure threshold/likelihood at a given pressure level: it
+does not make the read immune to arbitrarily severe pressure. The pre-existing, UNTOUCHED isolate-and-continue
+guard (`evidence.py::build_evidence_payload`) still degrades honestly in either case — HTTP 200,
+`expectations_status: "unavailable"`, never a 500 or wedge (unchanged behavior, re-verified above).
+
+### Known pre-existing test failure (not caused by this iteration, improved)
+
+`test_bar_cache.py::test_kdate_backfill_loads_each_symbol_at_most_once` FAILS on unmodified HEAD
+(confirmed via `git stash`) with every symbol loaded **3 times** across a single K-date parallel backfill
+job (main scan's shared cache + `refresh_coverage_snapshot`'s own separate prefill for the current date +
+`_persist_per_date_coverage_snapshots`'s own separate prefill for the OTHER new dates — each a SEPARATE,
+non-nested `with prefilled_bar_cache(...)` block, so each pays its own full scan). This iteration's removal
+of `_compute_coverage_uncached`'s own eager wrap eliminates ONE of those three (the `refresh_coverage_
+snapshot` call for the current date now uses the batched/lazy path, contributing zero `.prefill()` calls),
+improving the count from **3 to 2** — still short of the test's asserted invariant of 1, but a net
+reduction, not a regression. The remaining offender (`_persist_per_date_coverage_snapshots`'s own separate
+`prefilled_bar_cache` context for a K-date job's non-current new dates) is out of this iteration's scope
+(the plan named only `_membership_timeline`'s and `_compute_coverage_uncached`'s own loading) — recorded as
+a new, non-blocking follow-up.
+

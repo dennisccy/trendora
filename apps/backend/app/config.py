@@ -1368,6 +1368,26 @@ class ResearchCfg(BaseModel):
     # in `logs/backend.log`, not another opaque crash. Boot-validated `>= 1`; defaulted so a config (and the
     # inline test fixtures) predating it still loads.
     factor_pool_max_observations: int = 2_000_000
+    # ops-hardening iter-36 (J-07/J-96 AG-8 memory bound) — the SYMBOLS-axis batch width
+    # `_membership_timeline` (data_manager.py) loads the candidate pool's bars in, when no OUTER
+    # job-scoped bar cache is already active (the standalone / ingest-finalize coverage-compute entry
+    # point). A DIFFERENT axis from `read_batch_size` (a ROWS knob for `yield_per`) and from
+    # `factor_join_run_chunk` (a RUN-count width) — this counts CANDIDATE-POOL SYMBOLS, and reusing
+    # either neighbor's unit here would repeat the iter-29 unit-confusion lesson (a knob sized for one
+    # axis silently going inert on another). One batch's full price history (all ~30 years) is loaded,
+    # every snapshot date is resolved against it, then it is DISCARDED before the next batch loads — so
+    # peak resident bar data scales with this width, not with the full candidate-pool size (today ~590).
+    # Boot-validated `>= 1`; defaulted so a config (and inline test fixtures) predating it still loads.
+    membership_timeline_batch_symbols: int = 50
+    # ops-hardening iter-36 (J-07 evidence-serving-path memory bound) — the TICKER-axis chunk width
+    # `compute_drawdown_expectations` (forward_testing.py) partitions a claim's resolved cohort into
+    # before reading each chunk's `stored_by_key` `ForwardReturn` rows (each chunk's own
+    # `yield_per(read_batch_size)`-streamed query — reusing `read_batch_size` THERE is its own designed
+    # purpose, the per-query row-stream size; it is NOT reused as this chunk's own width). A DIFFERENT
+    # axis from `read_batch_size` and `factor_join_run_chunk` — this counts TICKERS in one claim's own
+    # cohort, so a broad claim's stored-return read never pays one unbounded `.all()` in one shot.
+    # Boot-validated `>= 1`; defaulted so a config (and inline test fixtures) predating it still loads.
+    drawdown_expectations_ticker_chunk: int = 50
     downtrend_opportunity: "DowntrendOpportunityCfg" = Field(
         default_factory=lambda: _default_downtrend_opportunity()
     )
@@ -1390,6 +1410,10 @@ class ResearchCfg(BaseModel):
             raise ValueError("research.regime_phase_factor_page_size must be >= 1")
         if self.factor_pool_max_observations < 1:
             raise ValueError("research.factor_pool_max_observations must be >= 1")
+        if self.membership_timeline_batch_symbols < 1:
+            raise ValueError("research.membership_timeline_batch_symbols must be >= 1")
+        if self.drawdown_expectations_ticker_chunk < 1:
+            raise ValueError("research.drawdown_expectations_ticker_chunk must be >= 1")
         return self
 
 

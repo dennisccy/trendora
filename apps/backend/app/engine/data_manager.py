@@ -57,7 +57,15 @@ from app.engine import evidence  # ops-hardening iter-7 (J-06): the finalize hoo
 from app.engine import forward_testing, scanner
 from app.engine import market_phase  # ops-hardening iter-2 (J-05): the ingest finalize hook warms this
 from app.engine.ledger import FORWARD_WALK_TYPE, read_entries
-from app.engine.prices import attach_shared_cache, bar_cache, bars_asof, latest_data_date, prefilled_bar_cache
+from app.engine.prices import (
+    _BarCache,
+    active_bar_cache,
+    attach_shared_cache,
+    bar_cache,
+    bars_asof,
+    latest_data_date,
+    prefilled_bar_cache,
+)
 from app.engine import universe_resolver
 from app.engine.universe_screen import (
     DEFAULT_SEED_DIR,
@@ -508,11 +516,14 @@ def _membership_timeline(
                             below_adv) from the resolver over the SAME candidate pool + bars <= that date.
 
     Strictly causal: each date is observed from its OWN <= D snapshot + bars <= D (no future leakage).
-    Deterministic. An empty DB / no snapshots → an empty-but-valid timeline (no fabricated dates/members)."""
+    Deterministic. An empty DB / no snapshots → an empty-but-valid timeline (no fabricated dates/members).
+
+    ops-hardening iter-36 (J-07/J-96 AG-8 memory bound): the per-date excluded-by-reason counts are now
+    sourced via `_excluded_counts_by_date` (below), which BOUNDS peak resident bar data to a config-driven
+    symbol-batch width instead of the full candidate pool's whole price history, WHEN no outer job-scoped
+    bar cache is already active (see that helper's docstring). `entries`/`exits`/`size` are unaffected —
+    they read only the persisted `members_by_date` membership, never a bar."""
     dates = sorted(snapshot_dates)
-    # the committed candidate-pool symbols the per-date resolver will ask `trailing_count` about — passed
-    # to `prefilled_bar_cache` so a no-bar candidate is recorded as an empty series up front and never
-    # lazy re-loaded per date (iter-37 load-once restored; byte-identical: empty series ⇒ 0 trailing bars).
     pool_symbols = {row["symbol"] for row in read_pool()}
     pool_count = len(pool_symbols)
     points: list[dict] = []
@@ -529,36 +540,22 @@ def _membership_timeline(
     for asof_date, ticker in rows:
         members_by_date.setdefault(asof_date, set()).add(ticker.upper())
 
-    # J-46 load-once bar cache: the per-date resolver re-reads the SAME pool symbols across every snapshot
-    # date, so caching each symbol's full series once turns each `bars_asof` into an in-memory slice (a
-    # whole-calendar rebuild's timeline stays tractable). The cache reads the committed bars (adds none)
-    # and dies with this block — never serving a stale series.
-    #
-    # iter-36 (J-96 cold-miss bound): use `prefilled_bar_cache` — it loads EVERY symbol's full series in
-    # ONE query up front, so the per-date `resolve_with_reasons` sources its trailing-bar counts from the
-    # once-loaded series (via the cache's `trailing_count`) instead of issuing one grouped-count query PER
-    # DATE. On the post-rebuild DB this turns ~1369 per-date grouped-count round-trips into a single
-    # prefill + in-memory bisects, bounding the cold (cache-miss) `GET /api/data` cost. Byte-identical to
-    # the lazy `bar_cache` path: same rows, same admission, same excluded counts — only the loading
-    # changes. (This is the cold path; a warm cache hit skips this loop entirely.)
-    with prefilled_bar_cache(session, expected_symbols=pool_symbols):
-        for d in dates:
-            members = members_by_date.get(d, set())
-            # entries = members never seen on any earlier observed date; exits = prior members now gone.
-            entries = sorted(m for m in members if m not in seen)
-            exits = sorted(m for m in prev_members if m not in members)
-            seen |= members
-            prev_members = members
-            # the per-date excluded-by-reason counts from the resolver over bars <= d (causal). This is a
-            # read-only descriptive derivation (no canonical-value recompute) over the candidate pool.
-            diag = universe_resolver.resolve_with_reasons(session, d, cfg)
-            points.append({
-                "date": d.isoformat(),
-                "size": len(members),
-                "entries": entries,
-                "exits": exits,
-                "excluded": dict(diag["excluded_counts"]),
-            })
+    excluded_by_date = _excluded_counts_by_date(session, cfg, dates, pool_symbols)
+
+    for d in dates:
+        members = members_by_date.get(d, set())
+        # entries = members never seen on any earlier observed date; exits = prior members now gone.
+        entries = sorted(m for m in members if m not in seen)
+        exits = sorted(m for m in prev_members if m not in members)
+        seen |= members
+        prev_members = members
+        points.append({
+            "date": d.isoformat(),
+            "size": len(members),
+            "entries": entries,
+            "exits": exits,
+            "excluded": excluded_by_date[d],
+        })
 
     return {
         "candidate_pool_count": pool_count,
@@ -566,6 +563,56 @@ def _membership_timeline(
         # J-95(b)/J-96: the three honest labels carried VERBATIM beside the timeline (single source).
         "labels": _membership_labels(session, cfg),
     }
+
+
+def _excluded_counts_by_date(
+    session: Session, cfg: Config, dates: list[date_cls], pool_symbols: set[str],
+) -> dict[date_cls, dict[str, int]]:
+    """ops-hardening iter-36 (J-07/J-96 AG-8 memory bound) — the per-date excluded-by-reason tally
+    `_membership_timeline`'s points read, computed one of two ways depending on whether an OUTER
+    job-scoped bar cache is already active on `session`:
+
+      - ACTIVE outer cache (e.g. `_do_backfill` / `_persist_per_date_coverage_snapshots`, which each open
+        their OWN `prefilled_bar_cache` around a whole multi-date job before ever reaching this function):
+        reuse it exactly as before — no new loading, no batching. That whole-job-scoped cost is already
+        paid/accepted by the caller's own job and amortized across every date + aggregate it computes;
+        this iteration does not touch it.
+      - NO active cache (the standalone entry point — `_compute_coverage_uncached` called directly, e.g.
+        by `refresh_coverage_snapshot`'s ingest-finalize call for the CURRENT date, or a cold `/data`-class
+        read): the committed candidate pool is walked in `research.membership_timeline_batch_symbols`-wide
+        batches. ONE `_BarCache` instance is created and its contents REPLACED per batch (`load_only`) —
+        never a second instance, never `prefill`'s whole-table scan — so peak resident bar data scales
+        with the batch width, not the full ~590-symbol pool. Each batch resolves EVERY snapshot date
+        before the next batch loads (so a batch's bars are read `len(dates)` times, then discarded).
+
+    Byte-identical either way: `resolve_with_reasons`'s excluded tally is a pure per-symbol classification
+    with no cross-symbol interaction, so summing it over disjoint symbol batches equals resolving the
+    whole pool at once (and the active-cache branch is the SAME unbatched call this function replaces)."""
+    totals: dict[date_cls, dict[str, int]] = {
+        d: {reason: 0 for reason in universe_resolver.EXCLUSION_REASONS} for d in dates
+    }
+    if active_bar_cache(session) is not None:
+        for d in dates:
+            diag = universe_resolver.resolve_with_reasons(session, d, cfg)
+            for reason, n in diag["excluded_counts"].items():
+                totals[d][reason] += n
+        return totals
+
+    batch_width = max(1, cfg.research.membership_timeline_batch_symbols)
+    ordered_pool = sorted(pool_symbols)
+    if not ordered_pool:
+        return totals
+    batch_cache = _BarCache()  # ONE instance for the whole loop below — its contents are REPLACED per
+    # batch (`load_only`), never a second cache instance and never the whole-table `prefill` scan.
+    with attach_shared_cache(session, batch_cache):
+        for i in range(0, len(ordered_pool), batch_width):
+            batch = ordered_pool[i : i + batch_width]
+            batch_cache.load_only(session, batch)  # discards the PRIOR batch's bars, loads only this one
+            for d in dates:
+                diag = universe_resolver.resolve_with_reasons(session, d, cfg, symbols=batch)
+                for reason, n in diag["excluded_counts"].items():
+                    totals[d][reason] += n
+    return totals
 
 
 def membership_timeline_cached(
@@ -799,28 +846,33 @@ def _compute_coverage_uncached(
     resolved-size step function + entries/exits + per-date excluded counts. Every figure is read-only
     descriptive metadata over the stored bars + config thresholds (recomputes no canonical score/return).
 
-    iter-42 (J-100), scope (c): the WHOLE descriptive derivation runs inside ONE shared process-level
-    `prefilled_bar_cache` (load-once) — so `_resolved_universe`'s `resolve_with_reasons` sources its
-    trailing-bar counts from a single once-loaded copy of every symbol's series (memory bounded to one
-    copy regardless of concurrency), the membership cold-compute reuses that SAME cache (the inner
-    `prefilled_bar_cache` is re-entrant for this session — it never re-loads an already-loaded series),
-    and a no-bar candidate is recorded as an empty series up front (the iter-37 J-46 load-once invariant,
-    preserved). The cache reads the committed bars (adds none) and dies with the `with` block — never a
-    stale series. Byte-identical to the pre-change per-request path: same rows, same admission, same
-    figures — only HOW bars are loaded changes (a pure performance refactor)."""
-    # the committed candidate-pool symbols the resolver + the membership derivation ask `trailing_count`
-    # about — recorded (incl. no-bar names as []) up front so the read path is load-once (iter-37 J-46).
-    pool_symbols = {row["symbol"] for row in read_pool()}
-    with prefilled_bar_cache(session, expected_symbols=pool_symbols):
-        return _compute_coverage_body(session, cfg, as_of=as_of)
+    iter-42 (J-100), scope (c): when this call is reached from WITHIN an outer job-scoped
+    `prefilled_bar_cache` context (e.g. `_do_backfill` / `_persist_per_date_coverage_snapshots`, each
+    already wrapping a whole multi-date job before calling this function per date), `_resolved_universe`'s
+    `resolve_with_reasons` and the membership cold-compute both reuse that SAME already-loaded cache
+    (`active_bar_cache`) — no new loading, one load amortized across the whole job, unchanged from before.
+
+    ops-hardening iter-36 (J-07 AG-8 memory bound): this function no longer opens its OWN whole-table
+    `prefilled_bar_cache` when called standalone (e.g. `refresh_coverage_snapshot`'s ingest-finalize call
+    for the CURRENT date, or a cold test/tooling call with no outer job context) — that unconditional
+    eager whole-candidate-pool prefill was the confirmed peak-memory driver for exactly this scenario
+    (TC-1). `_resolved_universe`'s single-date resolve now runs the resolver's own default (no active
+    context) per-symbol-bounded path in that case (already byte-identical and already the resolver's own
+    documented fallback — see `resolve_with_reasons`); the membership cold-compute bounds its OWN loading
+    via `_excluded_counts_by_date`'s config-driven symbol batching (see that helper). Byte-identical
+    figures either way: only HOW bars are loaded changes (a pure performance/memory refactor), never what
+    is computed."""
+    return _compute_coverage_body(session, cfg, as_of=as_of)
 
 
 def _compute_coverage_body(
     session: Session, cfg: Config, *, as_of: Optional[date_cls] = None
 ) -> dict:
-    """The coverage derivation body (runs inside the shared bar-cache context from
-    `_compute_coverage_uncached`). Split out so the cache context wraps EVERY read below (the resolver +
-    the membership cold-compute + the per-symbol table) with no signature change at the call sites."""
+    """The coverage derivation body. When an outer job-scoped bar cache is already active on `session`
+    (see `_compute_coverage_uncached`'s docstring), every read below (the resolver + the membership
+    cold-compute + the per-symbol table) reuses it automatically (`active_bar_cache`) — no signature
+    change at any call site. With no outer cache active, each heavy sub-derivation bounds its OWN loading
+    independently (the resolver's default per-symbol path; `_excluded_counts_by_date`'s symbol batching)."""
     price_min = session.scalar(select(func.min(DailyPrice.date)))
     price_max = session.scalar(select(func.max(DailyPrice.date)))
     symbol_count = session.scalar(select(func.count(func.distinct(DailyPrice.symbol))))

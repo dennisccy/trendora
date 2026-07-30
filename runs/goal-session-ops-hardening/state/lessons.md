@@ -411,3 +411,41 @@ fast. Cross-check a "page renders fine" claim against the server's own access lo
 minutes.
 **Applies to:** any journey scored on a "the page loaded correctly" claim where the screenshot shows
 a skeleton, spinner, or empty card.
+
+## iter-36 — 2026-07-30T08:45:00Z
+
+**Verdict:** ESCALATE
+**Lesson:** `.steps/` marker presence does NOT tell you which lanes ran, and the binding iter-35
+lesson ("check `.steps/` before trusting a verdict about the predecessor iteration") will manufacture
+a false alarm if applied literally. iter-36 ran the FULL pipeline yet carries only
+`decomposer.done` + `coherence.done` — exactly the same two markers as iter-32, which was also full —
+because `developer.done` / `review-1.done` / `browser-qa.done` are written by the LEAN executor, not
+by the full pipeline. The reliable check is `iter-<N>/depth-dispatched` plus the artifact set and its
+timestamps (dev handoff, review, replay, QA, browser-qa, demo, audit, closure).
+**Applies to:** any evaluator or decomposer reasoning about whether a predecessor iteration actually
+built something; any future edit to the iter-35 lesson's wording.
+
+## iter-36 — 2026-07-30T08:45:00Z
+
+**Verdict:** ESCALATE
+**Lesson:** A browser test plan that deliberately takes the backend DOWN must schedule those tests
+LAST. iter-36 ran its four "Backend unavailable / Retry" tests in the middle of the plan, could not
+get permission to restart the backend afterwards (three attempts denied), and thereby lost two P1
+regression tests (`UT-13` `/data`, `UT-14` `/evidence`) AND the entire J-07 journey verification —
+the iteration's own Definition-of-Done item 1 — even though every line of shipped code was sound. An
+irreversible teardown placed early converts one permission denial into a whole journey's missing
+evidence.
+**Applies to:** any `ui-test-plan` containing backend-down / service-kill steps; any iteration whose
+target journey needs a live backend after an error-state test.
+
+## iter-36 — 2026-07-30T08:45:00Z
+
+**Verdict:** ESCALATE
+**Lesson:** `closure_gate.py:71-74`'s backend-only guard is a bare regex
+(`backend-only|no user-visible|no visible changes|frontend present:\s*no`) over
+`user-visible-changes.md`, so a CORRECTLY written document that documents four changed pages and then
+labels its backend-only portion "Backend-only:" fails the gate as if it had claimed no visible
+changes. iter-36 halted at `closure_failed` on exactly that single word. The guard needs to test the
+document's CLAIM, not the presence of the phrase.
+**Applies to:** any iteration mixing frontend and backend work whose ui-impact documents scope the
+backend half explicitly; any fix to the closure gate.

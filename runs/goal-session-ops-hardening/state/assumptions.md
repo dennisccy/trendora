@@ -435,3 +435,84 @@ serving-path half. A human who reads rule 5 as a strict one-fix-per-iteration ca
 value of an undiluted diff for a re-dispatched full-depth iteration higher than closing a live,
 twice-reproduced serving-path failure one iteration sooner, would defer iter-35/k to iter-37 instead.
 **Reversible:** yes
+
+## iter-36 — goal-evaluator
+
+**Ambiguity:** J-07's browser-lane verification never ran — the merged results file has no J-07 row,
+UT-13/UT-14 are SKIPPED, and `status.json` records `browser_checks_run: false`. But the auditor
+independently booted a real backend via `scripts/start-backend.sh` and closed part of J-07 by hand:
+30/30 `GET /api/health` HTTP 200 at 1 Hz (max 132 ms), VmPeak 2,691,796 / 6,291,456 KB = 42.8% of cap,
+`/api/data` internally consistent, `/api/evidence` serving 7 claims all with real expectations panels,
+plus TC-8's real `ulimit -v` subprocess drill 3/3. The auditor's own Recommended Next Step says J-07's
+status "is `unknown`". My instructions say an un-evidenced journey is `unknown`; my schema says
+`partial` means "only some assertion steps passed". `docs/goal.md` does not say which applies when a
+journey's browser lane never ran but a different lane verified several of its enumerated steps
+first-hand.
+**We chose:** scored J-07 `partial`, not `unknown`, and stated the split explicitly (which steps carry
+this-iteration evidence, which do not). Grounds: `partial`'s definition is literally what happened —
+steps 2 and 3 have real, reproducible, this-iteration numbers from a correctly-capped live process,
+while step 1's full-horizon warm, step 2's poll DURING that warm, step 4's induced-pressure re-run
+against the bounded paths, and step 3's `perf-budgets.md` recording do not; `unknown` means "not tested
+this iteration, carry over previous status", and the previous status was `partial`, so both readings
+land on the same recorded value and neither can support GOAL_ACHIEVED; and calling it `unknown` would
+discard evidence a lane actually produced, which is the mirror image of the rubber-stamp error. I did
+NOT let the substitution pass silently: the never-run DoD item, the exact unverified steps, and the
+missing `perf-budgets.md` margin are all named in eval.md, in the evaluator log's plainly-stated list,
+and in iteration-state. A human who reads "the browser lane is J-07's evidence lane, and it produced
+nothing" as decisive — or who wants the auditor's own recommended word honoured verbatim — would score
+it `unknown`.
+**Reversible:** yes
+
+## iter-36 — goal-evaluator
+
+**Ambiguity:** decision tree C.4's first clause is "the SAME journey has now failed 2+ consecutive
+iterations -> ESCALATE". J-07 is `partial` at iter-35 and `partial` again at iter-36 — it has not
+reached `passing` for two consecutive iterations — but `partial` and `failing` are DISTINCT statuses in
+the journey-history schema, and C.4 says "failed". Meanwhile C.5 (CONTINUE) fits comfortably: a journey
+newly passed (J-06), progress was real, and the remaining work is tractable. The methodology also warns
+"use ESCALATE sparingly — escalating every iter defeats the purpose of adaptive depth", and this
+iteration was ALREADY dispatched at full depth with all three review lanes returning PASS-class
+verdicts, so nothing here is an ambiguity/complexity problem needing deeper lanes.
+**We chose:** ESCALATE, reading "failed" as "did not reach `passing`". Grounds stated rather than
+assumed: (1) the tree is applied top-down and first-match-wins, so if C.4 matches it outranks CONTINUE
+regardless of how well CONTINUE also fits; (2) ESCALATE's practical effect is the one thing this
+session provably needs — it makes full depth MANDATORY rather than advisory, and iteration 35 was lost
+in its entirety because an advisory full-depth recommendation was dispatched as `evidence` against a
+code-requiring Definition of Done; (3) the next iteration needs three things a downgraded depth would
+strand: the browser lane (to finally execute J-07), a real backend change on the ingest warm chain
+(iter-36/l), and a closure re-run after this iteration's `closure_failed`; (4) the cost of being wrong
+is one unnecessary full pipeline, versus a whole wasted iteration if I am wrong the other way. I record
+the cost honestly: ESCALATE reads as a harsher verdict than the iteration deserves, and the eval.md
+Summary says so explicitly rather than letting the verdict imply the work was poor. A human who reads
+`partial` as strictly not "failed", and who weighs "use ESCALATE sparingly" against a session that has
+now escalated twice running, would return CONTINUE with an advisory full-depth recommendation.
+**Reversible:** yes
+
+## iter-36 — goal-evaluator
+
+**Ambiguity:** J-06 was downgraded to `partial` at iter-35 on one stated premise — all four sibling
+Research labs render a bare unlabelled grey skeleton on a genuinely slow load, with no Retry on
+failure. This iteration falsifies that premise with frames I opened (a labelled "Still computing — 28s
+elapsed" card with honest copy on phase-severity-lab; a "Backend unavailable" card with a working Retry
+on factor-lab, regime-phase-factor and severity-velocity). But three clauses are not cleanly true: (a)
+J-06 step 1/2's page-load sweep was not re-run, and this iteration DID change `/data`'s and
+`/evidence`'s backend compute plus one `/research` lab's markup; (b) `UT-13` (`/data` panel unchanged)
+was SKIPPED, so no lane confirmed `/data` this iteration; (c) the `[NEW]`-flagged walkthrough finally
+recorded (demo steps 01-04, the first J-06 `[NEW]` capture in six iterations) is about the labs'
+loading states, not "the budgets table vs live page loads" that J-06's Acceptance text names.
+`docs/goal.md` does not say whether a journey returns to `passing` when the specific clause that
+downgraded it is fixed while a sibling clause's fresh measurement is missing.
+**We chose:** restored J-06 to `passing` and CLEARED `evidence_makeup`. Grounds: methodology A.6 says
+evidence expires with CHANGE, not time, and the pages' ON-LOAD request path is unchanged — `/api/data`
+still serves the persisted `coverage_snapshot` row and only the cache-MISS compute path was touched, so
+iter-33's committed budget numbers still govern; coherence.md independently confirms the frontend change
+is presentation-only wiring of one shared, unmodified resolver with no fork; the auditor's own live
+`/api/data` probe served internally-consistent figures (548 pool − 8 excluded = 540 universe), covering
+UT-13's substance by hand; and A.7's clearing rule is mechanical — any fresh capture clears
+`evidence_makeup`, "whatever the outcome" — so I cleared it and carried the narrower subject gap as a
+named capture-only ride-along instead of letting a flag persist indefinitely. Reversing iter-35's
+downgrade because its stated premise was falsified by pictures is the same standard iter-35 used to
+apply it, run in the other direction. A human who requires a fresh 11-page time-to-interactive sweep
+whenever any page's backend compute changes, or who treats the budgets-table walkthrough as a literal
+Acceptance requirement, would keep J-06 `partial` and hold `evidence_makeup` set.
+**Reversible:** yes

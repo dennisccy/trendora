@@ -267,7 +267,12 @@ export function FactorLabPage() {
   // badge reads "Not yet proven" (never a fabricated "Proven", never a 500). The badge resolves its status
   // from this list — it computes nothing.
   const [evidenceClaims, setEvidenceClaims] = useState<CertifiedClaim[]>([]);
+  // ops-hardening iter-36 (J-06): a manual re-fetch counter — the SAME `attempt` pattern Regime Lab already
+  // proved (iter-33, UT-11), so a genuine backend-unavailable condition gets a working Retry instead of a
+  // frozen error card.
+  const [attempt, setAttempt] = useState(0);
   const { mode, setMode, readiness, asofCutoff, scope } = useResearchControls();
+  const elapsedSeconds = useElapsedSeconds(state.kind === "loading");
 
   useEffect(() => {
     const controller = new AbortController();
@@ -278,7 +283,7 @@ export function FactorLabPage() {
         if (!controller.signal.aborted) setState({ kind: "error" });
       });
     return () => controller.abort();
-  }, [asofCutoff, readiness]);
+  }, [asofCutoff, readiness, attempt]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -293,6 +298,10 @@ export function FactorLabPage() {
   }, []);
 
   const data = state.kind === "ok" ? state.data : null;
+  // ops-hardening iter-36 (J-06): the SAME honest pre-data state Regime Lab already renders
+  // (lib/lab-load-panel.ts) — a brief load stays a plain skeleton; a wait past the grace window becomes an
+  // explicit, time-stamped "still computing" notice; a failure becomes a retryable error card.
+  const panel = resolveLabLoadPanel(state.kind, elapsedSeconds);
 
   return (
     <div className="space-y-4">
@@ -308,8 +317,16 @@ export function FactorLabPage() {
         <WarmingState what="The Factor Lab" />
       ) : (
         <>
-          {state.kind === "loading" ? <LabSkeleton /> : null}
-          {state.kind === "error" ? <ResearchError what="The Factor-Lab evidence" /> : null}
+          {panel.kind === "computing" ? (
+            <SlowComputeNotice what="The Factor Lab" elapsedSeconds={panel.elapsedSeconds} />
+          ) : null}
+          {panel.kind === "skeleton" || panel.kind === "computing" ? <LabSkeleton /> : null}
+          {panel.kind === "error" ? (
+            <ResearchError
+              what="The Factor-Lab evidence"
+              onRetry={() => setAttempt((previous) => previous + 1)}
+            />
+          ) : null}
           {data ? <FactorsTable data={data} scope={scope} evidenceClaims={evidenceClaims} /> : null}
         </>
       )}
@@ -4528,7 +4545,12 @@ type PhaseSeverityLabState =
  *  re-presented; the page recomputes nothing and the sort is a pure view transform. */
 export function PhaseSeverityLabPage() {
   const [state, setState] = useState<PhaseSeverityLabState>({ kind: "loading" });
+  // ops-hardening iter-36 (J-06): a manual re-fetch counter — the SAME `attempt` pattern Regime Lab already
+  // proved (iter-33, UT-11), so a genuine backend-unavailable condition gets a working Retry instead of a
+  // frozen error card.
+  const [attempt, setAttempt] = useState(0);
   const { mode, setMode, readiness, asofCutoff, scope } = useResearchControls();
+  const elapsedSeconds = useElapsedSeconds(state.kind === "loading");
 
   useEffect(() => {
     const controller = new AbortController();
@@ -4539,9 +4561,13 @@ export function PhaseSeverityLabPage() {
         if (!controller.signal.aborted) setState({ kind: "error" });
       });
     return () => controller.abort();
-  }, [asofCutoff, readiness]);
+  }, [asofCutoff, readiness, attempt]);
 
   const data = state.kind === "ok" ? state.data : null;
+  // ops-hardening iter-36 (J-06): the SAME honest pre-data state Regime Lab already renders
+  // (lib/lab-load-panel.ts) — a brief load stays a plain skeleton; a wait past the grace window becomes an
+  // explicit, time-stamped "still computing" notice; a failure becomes a retryable error card.
+  const panel = resolveLabLoadPanel(state.kind, elapsedSeconds);
 
   return (
     <div className="space-y-4">
@@ -4557,8 +4583,16 @@ export function PhaseSeverityLabPage() {
         <WarmingState what="The Market Phase & Severity Lab" />
       ) : (
         <>
-          {state.kind === "loading" ? <LabSkeleton /> : null}
-          {state.kind === "error" ? <ResearchError what="The Market Phase & Severity-Lab evidence" /> : null}
+          {panel.kind === "computing" ? (
+            <SlowComputeNotice what="The Market Phase & Severity Lab" elapsedSeconds={panel.elapsedSeconds} />
+          ) : null}
+          {panel.kind === "skeleton" || panel.kind === "computing" ? <LabSkeleton /> : null}
+          {panel.kind === "error" ? (
+            <ResearchError
+              what="The Market Phase & Severity-Lab evidence"
+              onRetry={() => setAttempt((previous) => previous + 1)}
+            />
+          ) : null}
           {data ? (
             <>
               <PhaseSeverityLabByLabelTable data={data} scope={scope} />
@@ -4863,6 +4897,11 @@ export function RegimePhaseFactorPage() {
   const [factorFilter, setFactorFilter] = useState<string>(RPF_FILTER_ALL);
   const { sortKey, sortDir, onSort } = useRpfSort("");
   const [pageIndex, setPageIndex] = useState(0);
+  // ops-hardening iter-36 (J-06): a manual re-fetch counter — the SAME `attempt` pattern Regime Lab already
+  // proved (iter-33, UT-11), so a genuine backend-unavailable condition gets a working Retry instead of a
+  // frozen error card.
+  const [attempt, setAttempt] = useState(0);
+  const elapsedSeconds = useElapsedSeconds(state.kind === "loading");
 
   useEffect(() => {
     const controller = new AbortController();
@@ -4873,9 +4912,15 @@ export function RegimePhaseFactorPage() {
         if (!controller.signal.aborted) setState({ kind: "error" });
       });
     return () => controller.abort();
-  }, [factor, asofCutoff, readiness]);
+  }, [factor, asofCutoff, readiness, attempt]);
 
   const data = state.kind === "ok" ? state.data : null;
+  // ops-hardening iter-36 (J-06): the SAME honest pre-data state Regime Lab already renders
+  // (lib/lab-load-panel.ts) — a brief load stays a plain skeleton; a wait past the grace window becomes an
+  // explicit, time-stamped "still computing" notice. This page keeps its OWN inline error card (below) and
+  // `CombinationSkeleton` shape rather than switching to `ResearchError`/`LabSkeleton` — only the
+  // computing/retry SEMANTICS are shared, not the markup.
+  const panel = resolveLabLoadPanel(state.kind, elapsedSeconds);
 
   // a pure client-side filter (the three "All"-default decile dropdowns) → sort (NA-last) → page slice. None
   // refetch or recompute a stored value (J-48/J-56 view-transform contract).
@@ -4986,18 +5031,34 @@ export function RegimePhaseFactorPage() {
             ) : null}
 
             {state.kind === "error" ? (
-              <div className="flex items-center gap-3 rounded-md border border-neg bg-surface p-4 text-sm text-neg">
-                <AlertTriangle className="h-5 w-5 shrink-0" aria-hidden />
-                <div>
+              <div className="flex items-start gap-3 rounded-md border border-neg bg-surface p-4 text-sm text-neg">
+                <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" aria-hidden />
+                <div className="space-y-2">
                   <p className="font-medium">Backend unavailable</p>
                   <p className="text-text-muted">
                     The Regime × Phase × Factor study could not load from the API. No figures are shown rather
                     than fabricated values — confirm the backend is running and retry.
                   </p>
+                  <button
+                    type="button"
+                    onClick={() => setAttempt((previous) => previous + 1)}
+                    data-testid="rpf-error-retry"
+                    className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border bg-surface-2 px-3 text-xs font-medium text-text transition-colors hover:border-border-strong hover:bg-surface focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent active:bg-border"
+                  >
+                    Retry
+                  </button>
                 </div>
               </div>
             ) : !data ? (
-              <CombinationSkeleton />
+              <>
+                {panel.kind === "computing" ? (
+                  <SlowComputeNotice
+                    what="The Regime × Phase × Factor study"
+                    elapsedSeconds={panel.elapsedSeconds}
+                  />
+                ) : null}
+                <CombinationSkeleton />
+              </>
             ) : data.rows.length === 0 ? (
               <EmptyState
                 icon={Microscope}

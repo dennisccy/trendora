@@ -328,45 +328,51 @@ def test_empty_db_caches_empty_but_valid_timeline(tmp_path):
 
 
 # ==================================================================================================
-# iter-19 — the coverage COLD PATH prefills the bar cache exactly ONCE (the OOM fix's data_manager-level
-# proof, on top of prices.py's own unit tests in test_bar_cache.py)
+# ops-hardening iter-36 (J-07/J-96 AG-8 memory bound) — supersedes the iter-19 "exactly one whole-table
+# scan" proof above: a standalone COLD `compute_coverage()` call (no outer job-scoped bar cache active)
+# no longer scans the whole table AT ALL. iter-19's underlying INTENT ("never pay the full-table scan more
+# than necessary") still holds — it is now satisfied by never doing the unbounded scan in the first place.
 # ==================================================================================================
-def test_cold_compute_coverage_prefills_bar_cache_exactly_once(tmp_path, monkeypatch):
-    """iter-19: a COLD `compute_coverage()` call (membership-timeline cache MISS) opens its OWN
-    `prefilled_bar_cache` (in `_compute_coverage_uncached`), and `_membership_timeline` — called from
-    inside `_compute_coverage_body`, via `membership_timeline_cached` on the miss — opens a NESTED
-    `prefilled_bar_cache` on the SAME session. `bar_cache`'s re-entrancy means both contexts share the SAME
-    `_BarCache` instance, but before iter-19, `_BarCache.prefill()` re-ran its expensive whole-table scan
-    UNCONDITIONALLY on every call regardless of instance state — so this ONE coverage request paid the
-    full-table scan TWICE. Invisible at ~122 symbols/5 years; a doubled contribution to the OOM at 583
-    symbols/30 years. Proven by counting how many of the (>= 2) `prefill()` calls actually reach the DB —
-    exactly one, after the fix."""
+def test_cold_compute_coverage_never_prefills_whole_table_and_batches_by_symbol(tmp_path, monkeypatch):
+    """iter-36: a COLD, standalone `compute_coverage()` call (membership-timeline cache MISS, no outer
+    job-scoped `prefilled_bar_cache` active — the SAME shape `refresh_coverage_snapshot`'s ingest-finalize
+    call for the CURRENT date reaches) must NEVER call `_BarCache.prefill()` (the whole-candidate-pool
+    scan iter-19 bounded to at-most-once but iter-36 removes altogether for this entry point). Instead the
+    membership cold-compute walks the candidate pool via `_BarCache.load_only()` in
+    `research.membership_timeline_batch_symbols`-wide batches — proven by asserting every `load_only` call
+    loads AT MOST the configured batch width, and that MULTIPLE batches ran (the real committed pool is
+    wider than the default batch width, so single-batch coverage would silently prove nothing)."""
     cfg = load_config()
     engine = _three_snapshot_engine(tmp_path)
     reset_coverage_cache()  # start cold so this call is guaranteed to be a real (uncached) compute
 
-    prefill_calls = {"total": 0, "real_scans": 0}
-    orig_prefill = prices_module._BarCache.prefill
+    def _boom_prefill(self, session, expected_symbols=None):
+        raise AssertionError(
+            "a standalone cold compute_coverage() call must never scan the whole daily_prices table "
+            "(_BarCache.prefill) — the membership cold-compute must batch by symbol instead"
+        )
 
-    def _counting_prefill(self, session, expected_symbols=None):
-        prefill_calls["total"] += 1
-        was_prefilled = self._prefilled
-        orig_prefill(self, session, expected_symbols=expected_symbols)
-        if not was_prefilled:
-            prefill_calls["real_scans"] += 1
+    monkeypatch.setattr(prices_module._BarCache, "prefill", _boom_prefill)
 
-    monkeypatch.setattr(prices_module._BarCache, "prefill", _counting_prefill)
+    load_only_calls: list[int] = []
+    orig_load_only = prices_module._BarCache.load_only
+
+    def _counting_load_only(self, session, symbols):
+        symbol_list = list(symbols)
+        load_only_calls.append(len(symbol_list))
+        return orig_load_only(self, session, symbol_list)
+
+    monkeypatch.setattr(prices_module._BarCache, "load_only", _counting_load_only)
 
     with Session(engine) as session:
         compute_coverage(session, cfg)
 
-    # both the outer coverage context AND the nested membership-timeline context call `.prefill()` on the
-    # SAME cache instance (the cache-miss path) — but only ONE of those calls may reach the DB.
-    assert prefill_calls["total"] >= 2, (
-        f"expected >= 2 prefill() calls (outer coverage + nested membership timeline), "
-        f"got {prefill_calls['total']} — the nested-call shape this test targets did not occur"
+    assert load_only_calls, "expected at least one batched load_only() call for the membership cold-compute"
+    batch_width = cfg.research.membership_timeline_batch_symbols
+    assert all(n <= batch_width for n in load_only_calls), (
+        f"a load_only() call exceeded the configured batch width {batch_width}: {load_only_calls}"
     )
-    assert prefill_calls["real_scans"] == 1, (
-        f"expected exactly ONE real bar-store scan across the nested prefill calls, "
-        f"got {prefill_calls['real_scans']}"
+    assert len(load_only_calls) > 1, (
+        "expected multiple batches (the real committed candidate pool is wider than the default batch "
+        f"width {batch_width}) — got only {load_only_calls}, so this test would not catch an un-batched load"
     )

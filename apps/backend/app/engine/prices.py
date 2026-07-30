@@ -161,6 +161,48 @@ class _BarCache:
                         self._by_symbol[symbol] = []
                         self._dates_by_symbol[symbol] = []
 
+    def load_only(self, session: Session, symbols: Iterable[str]) -> None:
+        """ops-hardening iter-36 (J-07/J-96 AG-8 memory bound): REPLACE this cache's contents with ONLY
+        the given `symbols`' full date-ordered series — a column-projected, symbol-filtered
+        (`WHERE symbol IN (...)`), `yield_per`-streamed query, the batched sibling of `prefill`'s
+        whole-table scan. Any previously-loaded symbols are DROPPED first, so a caller iterating a large
+        candidate pool in successive batches (one `load_only` call per batch, reusing the SAME `_BarCache`
+        instance rather than allocating a second one) never holds more than ONE batch's bar data resident
+        at a time — the memory-bounding mechanism `_membership_timeline` uses when no outer job-scoped
+        cache is already active.
+
+        Deliberately independent of `prefill`/`_prefilled`: that flag guards ONLY the separate
+        whole-table scan (and its own re-entrancy/no-rescan guarantee for a job-scoped cache); a cache
+        driven by `load_only` is never also driven by `prefill`, so the two mechanisms never interact.
+        A symbol with zero stored bars is recorded as an EMPTY series (mirrors `prefill`'s
+        `expected_symbols` bookkeeping) so a no-bar candidate resolves to a trailing count of 0 with no
+        crash and no further query — byte-identical to the lazy per-symbol path's result for that symbol.
+
+        Not thread-shared (unlike the `prefill`-driven job-scoped cache): a `load_only`-driven instance is
+        owned by ONE orchestrating loop iterating batches serially, so no lock is needed around the
+        replace."""
+        symbol_list = sorted(set(symbols))
+        self._by_symbol = {}
+        self._dates_by_symbol = {}
+        if not symbol_list:
+            return
+        batch = get_config().research.read_batch_size
+        stmt = (
+            select(
+                DailyPrice.symbol, DailyPrice.date, DailyPrice.open, DailyPrice.high,
+                DailyPrice.low, DailyPrice.close, DailyPrice.volume,
+            )
+            .where(DailyPrice.symbol.in_(symbol_list))
+            .order_by(DailyPrice.symbol, DailyPrice.date)
+        )
+        by_symbol: dict[str, list[Bar]] = {}
+        for symbol, d, o, h, lo, c, v in session.exec(stmt).yield_per(batch):
+            by_symbol.setdefault(symbol, []).append(Bar(d, o, h, lo, c, v))
+        for symbol in symbol_list:
+            full = by_symbol.get(symbol, [])
+            self._by_symbol[symbol] = full
+            self._dates_by_symbol[symbol] = [bar.date for bar in full]
+
     def bars_asof(self, session: Session, symbol: str, d: date_cls) -> list[Bar]:
         full = self._by_symbol.get(symbol)
         if full is None:

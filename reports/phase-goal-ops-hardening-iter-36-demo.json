@@ -1,0 +1,92 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-ops-hardening-iter-36",
+  "base_url": "http://localhost:3255",
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Open the Factor Lab research page",
+      "narration": "The Factor Lab is one of four research pages that have just gained honest feedback on slow or failed loads.",
+      "point_out": "Look for the heading 'Research — Factor Lab' and a data table of factors below it.",
+      "journey": "J-06",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/research/factor-lab" },
+      "expect": { "text": "Research — Factor Lab" }
+    },
+    {
+      "n": 2,
+      "title": "View the Phase Severity Lab",
+      "narration": "The Phase Severity Lab now shows the same honest 'still computing' feedback as Regime Lab when a slow load occurs.",
+      "point_out": "Notice the heading 'Research — Market Phase & Severity Lab' and tables showing phase and severity data.",
+      "journey": "J-06",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/research/phase-severity-lab" },
+      "expect": { "text": "Research — Market Phase & Severity Lab" }
+    },
+    {
+      "n": 3,
+      "title": "Open the Regime × Phase × Factor page",
+      "narration": "This page now displays the same computing notice and has a working Retry button if the backend becomes unavailable.",
+      "point_out": "The page heading shows 'Research — Regime × Phase × Factor' with study controls visible immediately.",
+      "journey": "J-06",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/research/regime-phase-factor" },
+      "expect": { "text": "Research — Regime × Phase × Factor" }
+    },
+    {
+      "n": 4,
+      "title": "View the Severity-velocity × Regime study",
+      "narration": "All four sibling research labs now provide identical, honest feedback during slow or failed loads — no more bare unlabelled skeletons.",
+      "point_out": "The heading reads 'Research — Severity-velocity × Regime' and the study data displays normally.",
+      "journey": "J-06",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/research/severity-velocity" },
+      "expect": { "text": "Research — Severity-velocity × Regime" }
+    },
+    {
+      "n": 5,
+      "title": "Check the Regime Lab for consistency",
+      "narration": "Regime Lab already had these features. The four sibling labs are now wired identically, so all five research pages behave the same way.",
+      "point_out": "This page continues to show the 'Still computing' card on a slow load, just as it did before.",
+      "journey": "J-06",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/research/regime-lab" },
+      "expect": { "text": "Research — Regime Lab" }
+    },
+    {
+      "n": 6,
+      "title": "Verify the Data page is unchanged",
+      "narration": "The Data page looks and behaves the same as before. The backend improvements behind it are internal memory-bounding changes, not visible to users.",
+      "point_out": "The coverage panel shows the universe count, price history date range, and a membership timeline chart — all numbers match what they were before.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/data" },
+      "expect": { "text": "Data Manager" }
+    },
+    {
+      "n": 7,
+      "title": "Check Evidence page per-claim expectations",
+      "narration": "The Evidence page still shows real computed drawdown expectations for claims, thanks to the backend's new memory-bounded loading on the evidence serving path.",
+      "point_out": "Click into a certified claim row to expand the 'drawdown & dry-spell expectations' panel and confirm it shows real figures, not an 'unavailable' placeholder.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "full_tour",
+      "action": { "type": "goto", "url": "/evidence" },
+      "expect": { "text": "Backtest Evidence" }
+    }
+  ]
+}

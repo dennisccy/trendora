@@ -2316,15 +2316,31 @@ def compute_drawdown_expectations(
     # `compute_samples`'s own row shape does not carry. `ForwardReturn.asof_date` is stored verbatim on
     # each row (no ScannerRun join needed) and is the SAME date `_run_date_map` derives `snapshot_date`
     # from, so the (symbol, asof_date-ISO) key matches every `compute_samples` row exactly.
+    #
+    # ops-hardening iter-36 (J-07 evidence-serving-path memory bound, ledger finding iter-35/k): the
+    # single `session.exec(fr_stmt).all()` read materialized the WHOLE cohort's stored rows as a Python
+    # list in one shot before building `stored_by_key` — for a broad claim (many tickers x a long
+    # snapshot history) this doubled as a live `MemoryError` source under concurrent load
+    # (`/api/evidence`'s serving path, distinct from the analogous `research.py` accumulator iter-29 fixed
+    # at a different call site). Partitioned into `research.drawdown_expectations_ticker_chunk`-wide
+    # ticker chunks (a DIFFERENT axis from `read_batch_size` — see that config key's own doc comment), each
+    # chunk's own query `yield_per(read_batch_size)`-streamed (mirroring `_BarCache.prefill`'s /
+    # `research.py`'s iter-29 `_factor_observations` fix — `read_batch_size` reused here for ITS OWN
+    # designed purpose, the per-query row-stream size, never as the chunk width). The chunks partition
+    # `tickers` disjointly, so the built dict is byte-identical to the single-query version (same keys,
+    # same values — chunking only changes how many rows are in flight from the DB at once).
     tickers = sorted({r["ticker"] for r in rows})
-    fr_stmt = select(
-        ForwardReturn.symbol, ForwardReturn.asof_date, ForwardReturn.max_drawdown,
-        ForwardReturn.underwater_days, ForwardReturn.time_to_recover_days,
-    ).where(ForwardReturn.horizon == horizon, ForwardReturn.symbol.in_(tickers))
-    stored_by_key = {
-        (symbol, asof_date.isoformat()): (mdd, uw, ttr)
-        for symbol, asof_date, mdd, uw, ttr in session.exec(fr_stmt).all()
-    }
+    chunk_width = max(1, cfg.research.drawdown_expectations_ticker_chunk)
+    read_batch = cfg.research.read_batch_size
+    stored_by_key: dict[tuple[str, str], tuple] = {}
+    for i in range(0, len(tickers), chunk_width):
+        chunk = tickers[i : i + chunk_width]
+        fr_stmt = select(
+            ForwardReturn.symbol, ForwardReturn.asof_date, ForwardReturn.max_drawdown,
+            ForwardReturn.underwater_days, ForwardReturn.time_to_recover_days,
+        ).where(ForwardReturn.horizon == horizon, ForwardReturn.symbol.in_(chunk))
+        for symbol, asof_date, mdd, uw, ttr in session.exec(fr_stmt).yield_per(read_batch):
+            stored_by_key[(symbol, asof_date.isoformat())] = (mdd, uw, ttr)
 
     # the SAME causal timeline `compute_market_phase` reads (all-history — the expectations panel is
     # descriptive over the claim's WHOLE tested cohort, not scoped to a single "today" as-of).

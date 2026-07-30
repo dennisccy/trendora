@@ -1728,3 +1728,152 @@ def test_compute_drawdown_expectations_cached_none_when_horizon_outside_scope_sk
     with Session(dd_expectations_engine) as session:
         assert compute_drawdown_expectations_cached(session, _FACTOR_CLAIM, cfg) is None
         assert session.scalar(select(func.count()).select_from(EventStudyCache)) == 0
+
+
+# ==================================================================================================
+# ops-hardening iter-36 (J-07 evidence-serving-path memory bound, ledger finding iter-35/k) —
+# `compute_drawdown_expectations`'s `stored_by_key` `ForwardReturn` read (forward_testing.py:2320-2333)
+# is now partitioned into `research.drawdown_expectations_ticker_chunk`-wide ticker chunks, each
+# `yield_per(read_batch_size)`-streamed, instead of ONE `session.exec(fr_stmt).all()` over the WHOLE
+# cohort — a live `MemoryError` source for a broad claim's cohort under concurrent load (distinct call
+# site from the `research.py` accumulator iter-29 fixed). Proven here: byte-identical to a pinned
+# pre-fix reference across several chunk widths (including widths narrower than the fixture's own
+# ticker count, forcing multiple real chunks).
+# ==================================================================================================
+def _reference_compute_drawdown_expectations(session: Session, claim: dict, config=None) -> "dict | None":
+    """Verbatim pre-fix `compute_drawdown_expectations` body (`git show HEAD:apps/backend/app/engine/
+    forward_testing.py` at the iter-36 dispatch commit, lines 2270-2376) — ONE unchunked
+    `session.exec(fr_stmt).all()` builds `stored_by_key` for the WHOLE cohort in one shot. Every helper it
+    calls (`_claim_samples_kwargs`, `_distribution_cell`, `_loss_streak_cell`, `phase_context_by_date`,
+    `compute_samples`) is UNCHANGED by this iteration (verified by diff) and reused directly from the real
+    module — never re-pinned (iter-32 lesson: reusing an unchanged helper is safe; re-pinning a CHANGED one
+    into an edited copy is not)."""
+    from collections import defaultdict
+
+    import app.engine.forward_testing as forward_testing_module
+    from app.config import get_config
+
+    cfg = config or get_config()
+    wf = cfg.walk_forward
+    horizon = claim.get("horizon")
+    if horizon not in wf.underwater_horizons:
+        return None
+    kwargs = _claim_samples_kwargs(claim)
+    if kwargs is None:
+        return None
+
+    from app.engine.market_phase import phase_context_by_date
+    from app.engine.samples import compute_samples
+
+    try:
+        samples = compute_samples(
+            session, kind=claim.get("kind"), horizon=horizon, config=cfg, as_of=None, **kwargs
+        )
+    except ValueError:
+        return None
+
+    rows = [r for r in samples["rows"] if r.get("snapshot_date") and r.get("forward_return") is not None]
+    if not rows:
+        return None
+
+    tickers = sorted({r["ticker"] for r in rows})
+    fr_stmt = select(
+        ForwardReturn.symbol, ForwardReturn.asof_date, ForwardReturn.max_drawdown,
+        ForwardReturn.underwater_days, ForwardReturn.time_to_recover_days,
+    ).where(ForwardReturn.horizon == horizon, ForwardReturn.symbol.in_(tickers))
+    stored_by_key = {
+        (symbol, asof_date.isoformat()): (mdd, uw, ttr)
+        for symbol, asof_date, mdd, uw, ttr in session.exec(fr_stmt).all()
+    }
+
+    phases = phase_context_by_date(session, as_of=None, config=cfg)
+
+    by_phase_mdd: dict = defaultdict(list)
+    by_phase_uw: dict = defaultdict(list)
+    by_phase_ttr: dict = defaultdict(list)
+    by_phase_returns: dict = defaultdict(list)
+
+    for row in rows:
+        date_iso = row["snapshot_date"]
+        ctx = phases.get(date_iso)
+        if ctx is None:
+            continue
+        phase = ctx["phase"]
+        by_phase_returns[phase].append((date_iso, row["forward_return"]))
+        stored = stored_by_key.get((row["ticker"], date_iso))
+        if stored is None:
+            continue
+        mdd, uw, ttr = stored
+        if mdd is not None:
+            by_phase_mdd[phase].append(mdd)
+        if uw is not None:
+            by_phase_uw[phase].append(uw)
+        if ttr is not None:
+            by_phase_ttr[phase].append(ttr)
+
+    by_phase = [
+        {
+            "phase": phase,
+            "n": len(by_phase_returns.get(phase, [])),
+            "max_drawdown": forward_testing_module._distribution_cell(by_phase_mdd.get(phase, []), wf.min_sample),
+            "underwater_days": forward_testing_module._distribution_cell(by_phase_uw.get(phase, []), wf.min_sample),
+            "time_to_recover_days": forward_testing_module._distribution_cell(
+                by_phase_ttr.get(phase, []), wf.min_sample
+            ),
+            "loss_streak": forward_testing_module._loss_streak_cell(by_phase_returns.get(phase, []), wf.streak_min_n),
+        }
+        for phase in cfg.market_phase.labels
+    ]
+
+    return {
+        "horizon": horizon,
+        "min_sample": wf.min_sample,
+        "streak_min_n": wf.streak_min_n,
+        "survivorship_bias": forward_testing_module.SURVIVORSHIP_BIAS_LABEL,
+        "method_note": forward_testing_module.LOSS_STREAK_METHOD_NOTE,
+        "by_phase": by_phase,
+    }
+
+
+@pytest.mark.parametrize("chunk_width", [1, 2, 3, 50])
+def test_drawdown_expectations_chunked_byte_identical_to_pinned_reference(dd_expectations_engine, chunk_width):
+    """The shipped chunked `stored_by_key` read is byte-identical to the pinned pre-fix (unchunked)
+    reference at every chunk width — including widths (1, 2, 3) narrower than this fixture's 4 distinct
+    tickers (AAA/BBB/CCC/DDD), which force MULTIPLE real chunks (not a vacuous single-chunk pass-through)."""
+    cfg = load_config()
+    research_cfg = cfg.research.model_copy(update={"drawdown_expectations_ticker_chunk": chunk_width})
+    cfg = cfg.model_copy(update={"research": research_cfg})
+    with Session(dd_expectations_engine) as session:
+        shipped = compute_drawdown_expectations(session, _FACTOR_CLAIM, cfg)
+    with Session(dd_expectations_engine) as session:
+        reference = _reference_compute_drawdown_expectations(session, _FACTOR_CLAIM, cfg)
+    assert shipped == reference
+
+
+def test_drawdown_expectations_chunk_width_one_issues_multiple_queries(dd_expectations_engine, monkeypatch):
+    """A mutation-style sanity check that the chunking is actually EXERCISED (not dead code): at
+    `drawdown_expectations_ticker_chunk=1` against this fixture's 4 distinct tickers, the chunked read
+    issues MORE THAN ONE `ForwardReturn` query — proving a reverted (unchunked) implementation would be
+    trivially distinguishable from the shipped one by query count, not just by (unchanged) final values."""
+    cfg = load_config()
+    research_cfg = cfg.research.model_copy(update={"drawdown_expectations_ticker_chunk": 1})
+    cfg = cfg.model_copy(update={"research": research_cfg})
+
+    query_count = {"n": 0}
+    with Session(dd_expectations_engine) as session:
+        orig_exec = session.exec
+
+        def _counting_exec(stmt, *a, **kw):
+            text = str(stmt)
+            if "forward_returns" in text and "max_drawdown" in text:
+                query_count["n"] += 1
+            return orig_exec(stmt, *a, **kw)
+
+        session.exec = _counting_exec  # type: ignore[assignment]
+        payload = compute_drawdown_expectations(session, _FACTOR_CLAIM, cfg)
+
+    assert payload is not None
+    assert query_count["n"] > 1, (
+        f"expected multiple chunked ForwardReturn queries at chunk_width=1 over 4 distinct tickers, "
+        f"got {query_count['n']}"
+    )

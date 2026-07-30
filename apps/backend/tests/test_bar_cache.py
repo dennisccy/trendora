@@ -253,6 +253,73 @@ def test_cache_sees_new_bars_in_a_fresh_context(tiny_engine):
             assert len(bars_asof(session, "AAA", new_day)) == len(days) + 1
 
 
+# ==================================================================================================
+# ops-hardening iter-36 (J-07/J-96 AG-8 memory bound) — `_BarCache.load_only()`, the batched-REPLACE
+# sibling of `prefill()` used by `_membership_timeline`'s memory-bounded loop (data_manager.py) when no
+# outer job-scoped cache is already active.
+# ==================================================================================================
+def test_load_only_loads_exactly_the_given_symbols_byte_identical_to_lazy_path(tiny_engine):
+    """`load_only(symbols)` loads ONLY the requested symbols, with values byte-identical to the default
+    (uncached) per-symbol query — same rows, same order, same values."""
+    engine, days = tiny_engine
+    with Session(engine) as reference_session:
+        reference = [
+            (bar.date, bar.open, bar.high, bar.low, bar.close, bar.volume)
+            for bar in reference_session.exec(
+                select(DailyPrice).where(DailyPrice.symbol == "AAA").order_by(DailyPrice.date)
+            ).all()
+        ]
+    with Session(engine) as session:
+        cache = prices._BarCache()
+        cache.load_only(session, ["AAA"])
+        assert set(cache._by_symbol) == {"AAA"}  # ONLY the requested symbol loaded — never SPY too
+        loaded = [
+            (bar.date, bar.open, bar.high, bar.low, bar.close, bar.volume)
+            for bar in cache._by_symbol["AAA"]
+        ]
+    assert loaded == reference
+    assert all(isinstance(bar, prices.Bar) for bar in cache._by_symbol["AAA"])
+
+
+def test_load_only_records_zero_bar_symbol_as_empty_series(tiny_engine):
+    """A symbol with no `daily_prices` rows at all is recorded as an EMPTY series (mirrors `prefill`'s
+    `expected_symbols` bookkeeping) — `trailing_count` reads 0 with no crash and no further query."""
+    engine, days = tiny_engine
+    with Session(engine) as session:
+        cache = prices._BarCache()
+        cache.load_only(session, ["AAA", "ZZZ_NO_BARS"])
+        assert cache._by_symbol["ZZZ_NO_BARS"] == []
+        assert cache._dates_by_symbol["ZZZ_NO_BARS"] == []
+        assert cache.trailing_count(session, "ZZZ_NO_BARS", days[-1]) == 0
+        assert cache.trailing_count(session, "AAA", days[-1]) == len(days)
+
+
+def test_load_only_replaces_prior_contents_never_accumulates_across_batches(tiny_engine):
+    """A SECOND `load_only` call on the SAME instance (a later batch of a symbol-batched loop) DROPS the
+    first batch's symbol entirely — the mechanism `_membership_timeline` relies on to bound peak resident
+    bar data to one batch at a time, reusing ONE `_BarCache` instance rather than allocating a second."""
+    engine, days = tiny_engine
+    with Session(engine) as session:
+        cache = prices._BarCache()
+        cache.load_only(session, ["AAA"])
+        assert set(cache._by_symbol) == {"AAA"}
+        cache.load_only(session, ["SPY"])
+        assert set(cache._by_symbol) == {"SPY"}, "the prior batch (AAA) must be dropped, not accumulated"
+        assert len(cache._by_symbol["SPY"]) == len(days)
+
+
+def test_load_only_does_not_touch_prefilled_flag_or_interact_with_prefill(tiny_engine):
+    """`load_only` is independent of `prefill`'s whole-table-scan guard: it never sets `_prefilled`, and a
+    cache driven by `load_only` never triggers (or is triggered by) `prefill`'s re-entrancy mechanics —
+    the two loading mechanisms coexist without interaction."""
+    engine, days = tiny_engine
+    with Session(engine) as session:
+        cache = prices._BarCache()
+        assert cache._prefilled is False
+        cache.load_only(session, ["AAA"])
+        assert cache._prefilled is False, "load_only must never mark the whole-table scan as done"
+
+
 # --- a small instrument: count per-symbol bar-store loads (the per-symbol DailyPrice SELECT) ----------
 class _SymbolLoadCounter:
     """Wraps `session.exec` and tallies the bar-store loads per symbol (a SELECT over `daily_prices`

@@ -2311,3 +2311,141 @@ for `J-07.json`'s literal `1873`. (7) OWNER, non-blocking, both unchanged: iter-
 `HOST_GUARD_MARKER_FILES`). (8) FRAMEWORK, outside the journey loop and the reason this iteration was
 wasted: reconcile the depth decision with the spec's own `Depth:` metadata — an `evidence`-depth run
 should never be paired with a spec whose Definition of Done requires code.
+
+## Iteration 36 — goal-ops-hardening-iter-36
+
+**Date:** 2026-07-30T08:45:00Z
+**Verdict:** ESCALATE
+**Depth dispatched:** full (`iter-36/depth-dispatched` = `full`, matching the spec's own metadata — the
+iter-35 mis-dispatch did NOT recur. I checked `.steps/` per the binding iter-35 lesson and found only
+`decomposer.done` + `coherence.done`; that is NOT evidence of a truncated run — iter-32 was also full
+and carries exactly the same two markers, because the developer/review/browser-qa markers are written
+by the LEAN executor, not the full pipeline. I confirmed the full pipeline really ran from the
+artifacts themselves: dev handoff 03:39, frontend handoff 03:40, implementation-summary 03:40,
+ui-impact 03:58, review 03:56, replay 04:01, QA 04:33, browser-qa 07:32, demo 07:37, audit 08:23,
+closure 08:24. `status.json` = `blocked` / `closure_failed`.)
+**Journey deltas:**
+- **Newly passing: J-06 "Pages load only what they need"** (partial -> passing; `evidence_makeup`
+  cleared). Newly failing: none. **Regressed (passing -> failing): NONE.** Unknown: none. Deferred:
+  none. Still `partial`: **J-07 "Heavy aggregates never take the service down"** (second consecutive
+  iteration; `last_passing_iter` stays iter-34; `evidence_makeup` KEPT).
+- Re-verified `passing` with THIS-iteration evidence, so `last_verified_iter` advances iter-35 ->
+  iter-36 for six: J-01, J-03, J-04, J-05, J-08, J-09 (deterministic golden replay 6/6 PASS, zero FAIL
+  rows, zero reconciliation overturns; I opened J-01-verify.png and J-05-verify.png as the two
+  spot-checks). All 8 `spec_hash`es match `goal_gate hash-journeys`; no `journeys-changed.md`; no
+  `browser-infra.json`; no `DEFERRED-BUDGET` row.
+- Anti-goal violations: **iter-33/h RESOLVED** (the 4 sibling labs' honest-wait/Retry gap, open three
+  iterations). Eight carried `resolved: false`, all `minor` (iter-29/b, iter-29/d, iter-31/e,
+  iter-32/f, iter-33/g, iter-33/i, iter-34/j, iter-35/k), each given an ITER-36 UPDATE recording what
+  I verified rather than inherited. **THREE NEW, all `minor`, all `resolved: false`: iter-36/l** (the
+  last unbounded whole-table prefill, on a multi-date backfill), **iter-36/m** (a leftover backend
+  process still alive at 4.1 GB, ~100 KB under the memory cap), **iter-36/n** (`_excluded_counts_by_date`
+  double-counts a duplicated date — unreachable in production, recorded anyway). scan-report CLEAN;
+  coherence COHERENCE-PASS (one non-blocking advisory); review PASS_WITH_NOTES; QA PASS; audit
+  PASS_WITH_GAPS; ux-regression SKIPPED (budget-shed, credited nothing); **closure CLOSURE-FAIL — a
+  false alarm I traced to the gate's own regex.**
+
+**Reasoning:** I re-derived every load-bearing fact first-hand. (1) **The diff scope, before touching
+any carried finding:** `git diff c72a396b..HEAD -- apps scripts project-extensions config.yaml` is
+EMPTY (nothing committed yet) and `git status --porcelain` over the same paths shows exactly 11
+modified + 2 new untracked test files — and `scripts/start-backend.sh`, `scripts/dev.sh`,
+`scripts/start-frontend.sh` and `project-extensions/host-guard/` are ALL byte-untouched, so AG-10's own
+REGRESSION trigger did not fire. (2) **J-06: I opened four screenshots, not the prose.**
+`UT-05-computing.png` shows `/research/phase-severity-lab` mid-cold-compute with "Still computing — 28s
+elapsed", a spinner, and the honest sentence "nothing is shown in the meantime rather than a partial or
+fabricated result" ABOVE the skeleton; `UT-03-error.png`, `UT-08-error.png` and `UT-11-error.png` each
+show a "Backend unavailable … No figures are shown rather than fabricated values" card with a working
+**Retry** on factor-lab, regime-phase-factor and severity-velocity respectively. That falsifies the
+exact premise iter-35's downgrade rested on ("every one shows a bare unlabelled grey skeleton"), so the
+restoration is evidence-driven, not a softened reading. (3) **J-07: the DoD's own item 1 was never
+executed, and I confirmed it three independent ways** — the merged results file contains no J-07 row at
+all; UT-13 and UT-14 are SKIPPED with the reason recorded verbatim (the agent stopped the backend for
+the error tests, then "three attempts denied" to restart it); and `status.json` records
+`"browser_checks_run": false`. (4) **The closure FAIL is a gate defect, and I read the gate rather than
+the verdict.** `closure_gate.py:71-74` greps
+`backend-only|no user-visible|no visible changes|frontend present:\s*no`; the document's ONLY match is
+the phrase "Backend-only" at `…-user-visible-changes.md:35`, used as a scoping label in a file that
+documents four changed pages in detail — and `ui-surface-map.md` names those same four surfaces at line
+41 with the backend work under its own heading. So the iter-33 defect (UI documents describing a tree
+that no longer existed) did NOT recur; the checker simply cannot tell "no visible changes" from "here
+is the backend-only part". (5) **The leftover process, checked live at evaluation time:**
+`ps -o pid,rss,etime,cmd -p 2944679` shows it still running after 3h46m at 4,101,316 KB RSS,
+`ss -ltn` shows NO listener on 8255, and `curl -m 3 …/api/health` returns nothing — so the lane's own
+`kill -TERM` released the socket but never reaped the process.
+Rejected REGRESSION (C.1): nothing moved `passing` -> `failing`; the required six replayed 6/6 with
+zero FAIL rows and zero overturns; and no critical anti-goal was introduced — scan-report CLEAN, no
+manifest touched, launch scripts byte-identical, and every AG-8 item is contained, disclosed, and a net
+improvement (the whole-table prefill this iteration removed was the biggest one). Rejected STALLED
+(C.2): J-06 crossed to passing, so there IS journey progress, and the J-07 blocker is NOT human-owned
+only — the auditor himself booted the backend with the ordinary `scripts/start-backend.sh` during the
+audit, proving the permission denial was session-specific rather than environmental, and he supplies an
+agent-executable workaround (order the backend-down tests LAST so a denied restart cannot strand the
+tests behind them). Rejected GOAL_ACHIEVED (C.3): J-07 is `partial` and eleven ledger findings are
+unresolved. **Chose ESCALATE (C.4, first clause):** J-07 has now gone two consecutive iterations
+without reaching `passing`, and ESCALATE is the only verdict that makes full depth MANDATORY rather
+than advisory. That distinction is not theoretical in this session — iteration 35 was lost entirely
+because an advisory full-depth recommendation was dispatched as `evidence`. The next iteration needs
+the browser lane (to finally run J-07), a real backend change on the ingest warm chain (iter-36/l), and
+a closure re-run; a downgraded depth would strand all three.
+**FIVE THINGS I STATE PLAINLY RATHER THAN ROUND AWAY:** (i) **the iteration's substance is genuinely
+strong and I do not want the ESCALATE to obscure that** — peak memory on the coverage cold-compute fell
+1,125,618,771 -> 329,751,051 bytes (70.7%) on the live seed DB, byte-identity is proven on BOTH halves
+of the served payload, and the coverage half existed only because the AUDITOR found the dev's oracle
+covered the narrower dict and wrote the missing test himself, then NEGATIVE-CONTROLLED it (a
+gate-crossing count perturbation and a bar-content perturbation both detected). That is the pipeline
+working as designed. (ii) **the ~4% figure on the second fix is the honest number and it is not a
+bound** — 1,215,052 -> 1,165,092 KB peak RSS, because `stored_by_key`'s final dict size is unchanged
+and `compute_samples`'s untouched 771,662-row materialization dominates; it is disclosed in the dev
+handoff, in `perf-budgets.md` and in the test module's own docstring, exactly as the spec's NOTES
+demanded, so iter-35/k stays open rather than being called closed. (iii) **three of the four Retry
+controls were verified by INFERENCE, not by clicking, and the computing card was directly captured on 1
+of 5 labs** — UT-02/07/10 are SKIPPED because their endpoints were already warm and the Chrome MCP tool
+has no network throttle. I accepted it because `resolveLabLoadPanel` is one shared pure function with
+13/13 tests, all four wirings were re-read in code, and UT-11 did click Retry — but the inference is
+named, not hidden. (iv) **J-07 step 3's margin is STILL not in `perf-budgets.md`** — this is the second
+iteration running. The file DID gain an "Iteration 36" section this time, but it records call-level
+`tracemalloc`/RSS figures; the process VmPeak margin (2,691,796 / 6,291,456 KB = 42.8%) exists only
+inside the audit handoff, and J-07's own text names the file. (v) **memory reached the ceiling AGAIN
+this iteration, at a third distinct call site** — UT-12's cold Regime Lab load drove VmPeak to
+~6,291,352 KB with a `MemoryError` at `research.py:3339` (`_regime_lab_members_by_horizon`), endpoint
+still HTTP 200. That site is out of both fixes' scope; the caps contained it and the host survived, but
+the family is now iter-29/a, iter-35/k and this — three accumulators, one pattern.
+
+**Next-step recommendation:** FULL depth (mandatory via ESCALATE). (0) FIRST, before anything measures
+memory: reap PID 2944679 — it holds 4.1 GB serving nothing, and every remaining J-07 step is a memory
+measurement. (1) THEN THE ONLY JOURNEY TARGET: finish J-07. It needs no new feature — it needs to be
+RUN. Two concrete unblocks, both agent/environment work: grant the browser-QA lane permission to
+restart the backend (the auditor restarted it himself via the ordinary `scripts/start-backend.sh`, so
+nothing environmental forbids it), and ORDER THE TEST PLAN so the backend-down error tests run LAST, so
+a denied restart can no longer strand UT-13/UT-14/TC-4 behind them. Then run step 1's full-horizon warm
+with step 2's 1 Hz poll DURING it, re-verify step 4's induced-pressure drill against the newly bounded
+paths, and WRITE THE VmPeak MARGIN INTO `reports/perf-budgets.md` where step 3 says it belongs. (2)
+SECOND, and the last thing standing between the current state and J-07's Acceptance clause being
+literally true: iter-36/l — `_persist_per_date_coverage_snapshots` (`data_manager.py:3183`) and
+`_do_backfill` (`data_manager.py:3085`) still each open `prefilled_bar_cache` around a multi-date
+backfill, so such a job still materializes the whole `daily_prices` table (1.13 GB). It is also what
+keeps `test_bar_cache.py::test_kdate_backfill_loads_each_symbol_at_most_once` red (max 10, typical 2;
+11/3 on unmodified HEAD per the reviewer's `git stash` check). (3) THIRD, deliberately held out of this
+iteration under rule 5 and now next in queue: iter-33/g — give Regime Lab's cold `view=pooled` compute
+the same background dispatch `/api/backtest` got at iter-32, and diagnose the HTTP 200 carrying
+"Internal Server Error". This iteration's UT-12 adds fresh evidence (VmPeak within ~100 KB of cap, a
+`MemoryError` at `research.py:3339`). (4) SMALL AND ALREADY WRITTEN DOWN: the stale
+`membership_timeline_cached` docstring (`data_manager.py:650-654`) that describes code this iteration
+deleted (audit B7); "591 symbols" -> 548 in `perf-budgets.md:4466` (audit B8); and audit B6 —
+`read_pool()` is now re-read from disk once per (batch x date), ~20,680 calls against the live pool and
+1,880 dates versus 1,880 before, a real added constant on the cold path that nobody has measured in
+wall-clock. (5) CAPTURE ONLY, never an iteration's goal: J-07's `[NEW]` walkthrough (crash-free warm +
+healthy `/api/health`) — six iterations unrecorded; and a J-06 walkthrough of the budgets table vs live
+page loads, the subject J-06's text names (a `[NEW]`-flagged J-06 walkthrough finally EXISTS this
+iteration — demo steps 01-04 — so this is now a subject gap, not an absence). Also a provenance line
+for `J-07.json`'s literal figure. (6) FRAMEWORK, outside the journey loop: fix
+`closure_gate.py:71-74`'s backend-only guard so it tests whether the document CLAIMS no visible
+changes, rather than whether the phrase "backend-only" appears anywhere — a correctly-written
+user-visible-changes file that labels its backend-only section now fails the gate, and this is the
+second time in four iterations that UI-impact bookkeeping has cost a clean finish. (7) OWNER, unchanged,
+both still waiting and both should be settled BEFORE any achievement run: (a) iter-34/j — the
+`GET /api/health` <= 0.1 s budget, missed AGAIN this iteration (30/30 HTTP 200 but max 132 ms on a
+comparatively quiet backend), with the same three dispositions; (b) iter-33/i — whether
+`start-frontend.sh` joins `HOST_GUARD_MARKER_FILES`. (8) Carried, untouched: `warmup.py:194` and the
+badge wording after a permanently failed warm-up (seven iterations unmade); iter-31/e; iter-32/f
+(watch only — I re-checked `forward_testing.py:1195` is byte-identical despite the file being edited).

@@ -1,0 +1,28 @@
+{
+  "phase": "goal-ops-hardening-iter-36",
+  "status": "blocked",
+  "current_step": "closure_failed",
+  "updated_at": "2026-07-30T07:24:39.248551Z",
+  "started_at": "2026-07-30T01:09:46.020471Z",
+  "cli": "claude",
+  "blockers": [],
+  "changed_files": [
+    "apps/backend/app/config.py",
+    "apps/backend/app/engine/data_manager.py",
+    "apps/backend/app/engine/forward_testing.py",
+    "apps/backend/app/engine/prices.py",
+    "apps/backend/app/engine/universe_resolver.py",
+    "apps/backend/tests/test_bar_cache.py",
+    "apps/backend/tests/test_data_manager_membership_cache.py",
+    "apps/backend/tests/test_evidence_drawdown_memory_pressure.py",
+    "apps/backend/tests/test_forward_testing.py",
+    "apps/backend/tests/test_membership_timeline_batch_bound.py",
+    "apps/frontend/app/research/_labs.tsx",
+    "apps/frontend/app/research/severity-velocity/page.tsx",
+    "config.yaml",
+    "reports/perf-budgets.md"
+  ],
+  "tests_run": true,
+  "browser_checks_run": false,
+  "next_action": "reviewer"
+}

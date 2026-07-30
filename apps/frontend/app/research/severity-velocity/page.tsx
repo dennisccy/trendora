@@ -22,8 +22,13 @@ import {
   ResearchCaveat,
   ResearchControls,
   ResearchError,
+  SlowComputeNotice,
+  useElapsedSeconds,
   useResearchControls,
 } from "../_labs";
+// ops-hardening iter-36 (J-06): `resolveLabLoadPanel` is not re-exported from `_labs.tsx` (it is imported
+// there, not re-exported) — sourced directly from its own module, the same way `_labs.tsx` itself does.
+import { resolveLabLoadPanel } from "@/lib/lab-load-panel";
 import { WarmingState, shouldShowWarming } from "@/components/warming-state";
 
 type State =
@@ -46,6 +51,11 @@ export default function SeverityVelocityPage() {
   const [horizon, setHorizon] = useState<number | undefined>(undefined);
   const [state, setState] = useState<State>({ kind: "loading" });
   const { mode, setMode, readiness, asofCutoff, scope } = useResearchControls();
+  // ops-hardening iter-36 (J-06): a manual re-fetch counter — the SAME `attempt` pattern Regime Lab already
+  // proved (iter-33, UT-11), so a genuine backend-unavailable condition gets a working Retry instead of a
+  // frozen error card.
+  const [attempt, setAttempt] = useState(0);
+  const elapsedSeconds = useElapsedSeconds(state.kind === "loading");
 
   useEffect(() => {
     const controller = new AbortController();
@@ -56,10 +66,14 @@ export default function SeverityVelocityPage() {
         if (!controller.signal.aborted) setState({ kind: "error" });
       });
     return () => controller.abort();
-  }, [horizon, asofCutoff, readiness]);
+  }, [horizon, asofCutoff, readiness, attempt]);
 
   const data = state.kind === "ok" ? state.data : null;
   const selectedHorizon = horizon ?? data?.horizon;
+  // ops-hardening iter-36 (J-06): the SAME honest pre-data state Regime Lab already renders
+  // (lib/lab-load-panel.ts) — a brief load stays a plain skeleton; a wait past the grace window becomes an
+  // explicit, time-stamped "still computing" notice; a failure becomes a retryable error card.
+  const panel = resolveLabLoadPanel(state.kind, elapsedSeconds);
 
   return (
     <div className="space-y-4">
@@ -87,9 +101,18 @@ export default function SeverityVelocityPage() {
         <WarmingState what="The Severity-velocity × Regime study" />
       ) : (
         <>
-          {state.kind === "loading" ? <LabSkeleton /> : null}
-          {state.kind === "error" ? (
-            <ResearchError what="The Severity-velocity × Regime study" />
+          {panel.kind === "computing" ? (
+            <SlowComputeNotice
+              what="The Severity-velocity × Regime study"
+              elapsedSeconds={panel.elapsedSeconds}
+            />
+          ) : null}
+          {panel.kind === "skeleton" || panel.kind === "computing" ? <LabSkeleton /> : null}
+          {panel.kind === "error" ? (
+            <ResearchError
+              what="The Severity-velocity × Regime study"
+              onRetry={() => setAttempt((previous) => previous + 1)}
+            />
           ) : null}
           {data ? <SeverityVelocityBody data={data} scope={scope} /> : null}
         </>

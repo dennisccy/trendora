@@ -913,6 +913,19 @@ research:
   # normal operation never trips it, but a future data-scale widening logs a WARNING (never raises, never
   # truncates a payload) instead of silently repeating this crash at a larger scale. Boot-validated >= 1.
   factor_pool_max_observations: 2000000
+  # ops-hardening iter-36 (J-07/J-96 AG-8) — the candidate-pool SYMBOLS-axis batch width
+  # `_membership_timeline` loads bars in in-memory-bounded batches (a DIFFERENT unit from
+  # `read_batch_size`/`factor_join_run_chunk` — never reuse either here). 50 symbols/batch against the
+  # live ~590-symbol pool holds ~1/12 of the full price history resident at once instead of the whole
+  # 30-year x 590-symbol product, while still keeping the per-batch query count small (~12 batches).
+  membership_timeline_batch_symbols: 50
+  # ops-hardening iter-36 (J-07 evidence-serving-path) — the TICKER-axis chunk width
+  # `compute_drawdown_expectations` partitions a claim's resolved cohort into before reading each
+  # chunk's stored ForwardReturn rows (each chunk still `yield_per(read_batch_size)`-streamed — that
+  # reuse is `read_batch_size`'s own designed purpose, not this chunk's own width). A DIFFERENT unit
+  # from its neighbors; 50 tickers/chunk bounds a broad claim's cohort read to small chunks instead of
+  # one unbounded `.all()`.
+  drawdown_expectations_ticker_chunk: 50
   factor_lab:
     deciles: 10
     factors:
