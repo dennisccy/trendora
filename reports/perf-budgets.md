@@ -4268,3 +4268,171 @@ Nothing above is a browser measurement; it does not replace or amend the Chrome-
 sweep, it only supplies the fresh boot reading that table deferred and re-checks the launcher claim
 independently.
 
+## Iteration 34 — J-07 step 2: `GET /api/health` round-trip LATENCY during the live full-deep-basis forward-aggregate warm (2026-07-29T23:16-23:18Z, developer)
+
+J-07 step 2's acceptance ("poll `GET /api/health` once per second throughout [step 1]; assert every poll
+answers HTTP 200 within its existing budget") has, since iter-32, only ever recorded a **poll-COUNT**
+(34/34 + 43/43 = 77/77 HTTP 200) against this same scenario — never the per-poll LATENCY against the
+endpoint's own committed `<=0.1 s` budget. This section closes that gap with a real measurement, using the
+SAME live scenario iter-32 already validated is safe (a historical-`as_of` `GET /api/backtest` dispatch,
+not a raw ingest job — see that section above).
+
+**Methodology.** `scripts/start-backend.sh` (prod caps: `memory_cap_mb=6144`, host-guard `cpu_list=0-3,8-11
+blas_threads=4`) launched against the real committed-seed DB (`apps/backend/data/trendora.db`,
+`dataset_version=r1879-f3971375`), PID **2140378**, boot banner `logs/backend.log`
+`=== start-backend.sh: launching at 2026-07-29T23:14:37Z ===`. Waited for boot warm-up to fully settle
+(`VmPeak` flat, `readiness: "ready"`, `warmup.status: "ok"` — reached at t=~23:14:59Z, `VmPeak` plateaued at
+**2,691,732 kB**, matching iter-32's 2,691,600 kB figure on this SAME basis almost exactly). Then, per this
+iteration's own IN SCOPE item, started a 1 Hz `GET /api/health` poll loop (`runs/goal-ops-hardening-iter-34/
+health-latency/poll_health.sh`, a real `curl -s -o /dev/null -w "%{http_code},%{time_total}"` per poll — a
+genuine client-observed round-trip, not a server-side timer) for a 100 s window starting **23:16:19Z**, and
+9 s into that window (23:16:27Z) triggered `GET /api/backtest?as_of=2026-07-16` — a date NOT yet cached
+under the current `dataset_version` (confirmed by a direct read-only query first) — which dispatched the
+SAME background full-5-horizon forward-aggregate warm iter-32 exercised (`background_compute.active`
+confirmed live: `asof_key=2026-07-16, dataset_version=r1879-f3971375, horizons_total=5`), running
+**23:16:27.574Z -> 23:17:49.785Z (82.21 s wall time)** in that SAME long-lived process (no restart).
+
+**Recomputed directly from `runs/goal-ops-hardening-iter-34/health-latency/health-latency.csv` (85 polls,
+1 Hz, epochs 23:16:19Z-23:17:59Z — covering boot-tail, the full 82.21 s warm, and post-warm serving):**
+
+| Metric | All 85 polls | Polls DURING the warm (68) |
+|---|---|---|
+| HTTP 200 | 85/85 (0 failures, 0 non-200) | 68/68 |
+| `time_total_s` min | 0.107164 s | 0.110769 s |
+| `time_total_s` median | 0.133974 s | 0.138251 s |
+| `time_total_s` mean | 0.166963 s | 0.179147 s |
+| `time_total_s` max | **1.131795 s** | **1.131795 s** |
+| Max gap between consecutive poll starts | 2.15 s (curl+loop jitter, not a stall) | — |
+
+No poll failed, no gap exceeded ~2.15 s (the 1 Hz loop's own scheduling jitter — never a multi-second
+frozen/unresponsive window), and `logs/backend.log` shows zero error/exception/traceback lines for this
+boot's entire window (`grep -ci "error\|exception\|traceback"` = 0) — the endpoint never froze or wedged
+across boot-tail + the full 82.21 s warm, confirming the poll-COUNT claim iter-32 already established.
+
+**Verdict against the committed `<=0.1 s` budget: WARN — the SAME honest-WARN convention already on
+record for this endpoint** (binding "Do not redo": never amend the budget line itself). Every single poll
+in this run exceeded 0.1 s, including the 8 PRE-warm baseline polls (0.110-0.126 s, BEFORE the warm was
+even triggered) — this WARN is **not** attributable to the warm itself. The pre-warm baseline is directly
+explained by host contention this iteration confirms live: `project-extensions/host-guard/host-guard.env`'s
+own 2026-07-29 changelog records that the co-resident `tapeology` project moved onto this SAME
+`HOST_GUARD_CPU_LIST=0-3,8-11` mask (root cause of reset #6), and at measurement time `ps`/`uptime` confirm
+`tapeology`'s uvicorn process was live and consuming ~115% CPU on that shared mask (`load average: 2.12,
+2.70, 2.66`) — the exact "PASS at rest on an idle host, WARN under concurrent load" shape this file's
+iter-24/iter-33 entries already document, just from a different (cross-project, host-level) load source
+this time rather than a same-project browser session. The warm itself adds a FURTHER, real increment on
+top of that contended baseline (during-warm median 0.138 s vs the pre-warm-baseline ~0.113 s median, max
+1.132 s vs pre-warm max 0.126 s) — both effects are real and both are disclosed; neither is fabricated or
+smoothed over. Per the binding note, the `<=0.1 s` budget line is NOT amended.
+
+**Closes J-07 step 2** (poll-count already closed by iter-32; this section adds the previously-missing
+latency figure, honestly WARN, with full attribution).
+
+## Iteration 34 — J-07 step 4: induced-memory-pressure drill — throwaway process, `forward_aggregates` abort, SAME-process recovery (2026-07-29T22:56Z, developer)
+
+J-07 step 4 ("induce memory pressure during a warm ... assert the warm aborts honestly ... while the SAME
+process keeps serving `GET /api/health` and previously cached reads ... never a deadlock, wedge, or
+restart requirement") has never run in this session's 33 prior iterations (iter-14's operator-supervised
+pass explicitly declined to induce pressure on the LIVE full-deep-basis process — "not a justified operator
+action" — and recorded only non-live-induced evidence). This section closes it with a real induction
+against a genuine throwaway backend process, launched only via `scripts/start-backend.sh` (AG-10), that
+specifically exercises the iter-8 `except MemoryError` catch inside `_refresh_ingest_aggregates`'s
+`forward_aggregates` per-horizon loop — the exact mechanism named by the binding iter-30 lesson, not a
+substituted easier-to-trigger failure mode.
+
+**Why not the real deep-basis DB.** iter-32's own live measurement (this file, above) found the full
+deep-basis 5-horizon warm adds **zero** measurable `VmPeak` growth over that process's baseline — the
+bounded/streamed rewrite is efficient enough that a real induced-pressure repro against the live
+590-symbol/30-year basis is not achievable by tightening `server.memory_cap_mb` alone (tightening far
+enough to matter fails BOOT itself, never isolates the warm specifically). Per this iteration's own NOTES
+(pre-registered exactly for this contingency), the mechanism used instead is a **throwaway, synthetic-data
+process** sized so `_refresh_ingest_aggregates`'s forward-aggregate loop specifically needs more virtual
+memory than a tightened, still-safely-bootable cap allows — launched only through the real project launch
+script, so every AG-10 host-guard cap still applies.
+
+**Setup.** `runs/goal-ops-hardening-iter-34/mem-drill/seed_throwaway_db.py` built a throwaway SQLite DB
+(schema via the real `create_db_and_tables`) with:
+  - one dummy `DailyPrice` row for a NON-benchmark symbol (`ZZZZDRILL`, never `SPY` = `etfs.index[0]`) —
+    satisfies `POST /api/data/jobs`'s `latest_data_date is not None` 503 gate while leaving `_trading_days`
+    (benchmark-bars-only) empty, so ANY backfill request is a fast 0-target no-op (`_do_backfill` returns
+    before touching the bar cache) that still runs the ingest-finalize hook afterward (unconditional on
+    `final_status in (ok, partial)`, never on `dates_total > 0`);
+  - **R1** (`asof=2020-01-02`): one `ScannerRun` with 200,000 `ScannerResult` + 1,000,000 `ForwardReturn`
+    rows (200,000 tickers x the 5 configured horizons `[1, 5, 10, 20, 60]`), `setup_status="Avoid"` on
+    every row (deliberately NOT `"Actionable"`, `subject_catalog(cfg)[0]` — Actionable rows would make
+    `research_hot_keys`'s event-study warm, a GENERIC non-`MemoryError`-specific catch, the first thing to
+    fail instead of `forward_aggregates`; confirmed live during this iteration's own calibration before
+    this fix). ALL 5 horizons pre-computed + persisted via the REAL `forward_aggregates_ingest_cached`
+    (byte-identical to a fresh compute) BEFORE R2 exists, under `dataset_version=r1-f1000000` — this is the
+    "previously cached" evidence step 4 must show survives the drill;
+  - **R2** (`asof=2020-01-03`): the SAME run shape at trivial scale (3 tickers) — bumps `dataset_version`
+    to `r2-f1000015` and becomes the new "latest" run, with NO forward-aggregate cache of its own, so the
+    ingest-finalize hook has a genuine, uncached compute to attempt (`compute_forward_aggregates`'s
+    `as_of` scoping windows over R1+R2 together — AG-5).
+  - `runs/goal-ops-hardening-iter-34/mem-drill/config.scratch.yaml`: a byte-for-byte copy of the real
+    `config.yaml` with exactly two lines changed — `database.url` (-> the throwaway DB) and
+    `server.memory_cap_mb` (tightened) — pointed at via `TRENDORA_CONFIG` (the project's existing sanctioned
+    test-seam lever, `app/config.py:572`), so `scripts/start-backend.sh` reads the SAME tightened value via
+    the SAME `app.config.get_config()` call it always uses (no new script logic, no magic number — the IN
+    SCOPE item's "config/launch-time override" requirement).
+
+**Calibration (measured live, this host, real `scripts/start-backend.sh` boots, host-guard `cpu_list=
+0-3,8-11` confirmed applied on every PID via `taskset -cp`):** the live app's own baseline `VmPeak` right
+after boot (before any trigger) measured **917,760-919,812 kB (~897-898 MB)** across every pass. At
+`memory_cap_mb=1100` (1,126,400 kB) the full finalize hook — coverage, membership_timeline,
+forward_aggregates (all 5 horizons), research_hot_keys, index_series, drawdown_expectations — completed
+with `VmPeak` peaking at exactly 1,126,400 kB (the cap). At `memory_cap_mb=970` (993,280 kB) —
+**margin ~73 MB above baseline** — `forward_aggregates` specifically aborted (see below), a clean, narrow,
+reproducible boundary between the two.
+
+### Result (throwaway process PID 2072993, `memory_cap_mb=970`, launched 2026-07-29T22:56:03Z)
+
+`POST /api/data/jobs {"kind":"backfill","start":"2020-01-02","end":"2020-01-02"}` -> job
+`ca0ed644df7a4fc0a809321c322d8bcf`, a genuine 0-target no-op (`dates_total: 0`, `calendar_days: 1,
+non_trading_days: 1`), terminal `status: "ok"` at 22:56:31Z (17.8 s wall). `logs/backend.log`
+(`runs/goal-ops-hardening-iter-34/mem-drill/pass6/drill-log-excerpt.txt`, saved verbatim) shows, for THIS
+boot's PID/session:
+
+```
+ingest forward-aggregate warm aborted at horizon 1 — memory pressure, stopping remaining horizons in this loop:
+Traceback (most recent call last):
+  File ".../data_manager.py", line 3277, in _refresh_ingest_aggregates
+    forward_testing.forward_aggregates_ingest_cached(session, h, cfg, as_of=latest_run_date)
+  File ".../forward_testing.py", line 1368, in compute_forward_aggregates
+    "attribution": _attribution_slices(attribution_acc, cfg),
+  File ".../forward_testing.py", line 949, in per_stock
+    {"ticker": ticker, "mean_return": acc.mean(), "n": acc.n, "sector": self._per_ticker_sector[ticker]}
+MemoryError
+```
+
+— the EXACT iter-8 log line/branch (`data_manager.py`'s `except MemoryError` at the per-horizon boundary),
+firing on horizon 1 (the first attempted), so `forward_aggregates_warmed` stayed `False` and the honesty
+gate correctly OMITS `"forward_aggregates"` from `aggregates_refreshed`
+(`["coverage","membership_timeline","research_hot_keys","index_series","drawdown_expectations"]` — note
+`drawdown_expectations` IS present: its own per-claim loop hit a SEPARATE, later `MemoryError` on a real
+committed-ledger claim's factor-observation stream, caught by the SAME iter-8-style per-claim catch, with
+>=1 claim already warmed before that abort — independent evidence the isolation convention holds across
+loops, not just this one). `VmPeak` stayed flat at 993,280 kB (exactly the cap) from the first sample
+onward — the process never exceeded its declared ceiling.
+
+| TC | Requirement | Result |
+|---|---|---|
+| TC-2 | throwaway process, tightened cap, warm aborts with a caught `MemoryError` (not a crash/hang) | **PASS** — clean `except MemoryError` at `forward_aggregates` horizon 1, `_refresh_ingest_aggregates` returned normally, `status: "ok"` (0-target backfill stage; the finalize hook's own non-fatal contract) |
+| TC-3 | SAME process, `GET /api/health` 200 immediately after, no restart | **PASS** — polled repeatedly post-abort, 200 every time (`"status":"ok","readiness":"ready"`), PID 2072993 unchanged throughout |
+| TC-4 | SAME process, a previously-cached read serves its stored value | **PASS** — `GET /api/backtest` (latest/no `as_of`, resolves to R2's `2025-04-04`* is_latest=True) returned `evidence_status:"refreshing"`, `evidence_asof:"2020-01-02"` (R1's date), `evidence_by_horizon` carrying **all 5 horizons** with the EXACT seeded values (`mean_return:0.01, mean_max_drawdown:-0.02, n:200000`) — a pure read (the `is_latest` branch never dispatches a compute, J-08), zero interference with the abort above |
+| TC-5 | drill outcome recorded: process alive / honest abort / no restart | **PASS** — recorded above, cross-checked against the log, not a narrative summary (iter-26/iter-28 lesson) |
+| TC-8 | `logs/backend.log` independently corroborates the abort + continued serving | **PASS** — `drill-log-excerpt.txt` (76 lines, 2 distinct `MemoryError` tracebacks, saved verbatim) is the source for every claim above |
+
+*`GET /api/backtest`'s "latest" run resolved to `2025-04-04`, not R2's seeded `2020-01-03` — this
+throwaway DB's own boot warm-up (`warmup.status:"ok", "history 4/4"`) created 4 additional cadence-anchor
+`ScannerRun` rows (2008-11-21 / 2020-03-20 / 2022-10-07 / 2025-04-04) independently of this drill's seed
+script, per the project's existing boot warm-up behavior — an honest, unplanned-but-harmless artifact of
+using the real boot path rather than a bespoke harness; it does not change any TC's outcome (the "latest"
+run still had zero forward-aggregate cache of its own, so the SAME uncached-compute-attempt +
+older-asof-key-fallback mechanics applied exactly as designed).
+
+**Cleanup:** the throwaway process was terminated (`kill -TERM`) after evidence capture; `ss -ltn` confirmed
+port 18734 free. No scratch DB, scratch config, or drill artifact is committed (never-commit: `.db` files);
+the drill scripts (`seed_throwaway_db.py`, this section's citations) are.
+
+**Closes J-07 step 4** — first-hand, live evidence for all four of J-07's acceptance steps now exists.
+

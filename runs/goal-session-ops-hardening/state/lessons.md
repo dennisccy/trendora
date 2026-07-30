@@ -341,3 +341,34 @@ for itself in one pass.
 any iteration touching `scripts/start-frontend.sh` / `start-backend.sh` / `dev.sh`; and any spec
 whose acceptance names a measurement — schedule the measurement expecting it to FIND something,
 and leave fix-mode room for what it finds.
+
+## iter-34 — 2026-07-30T01:05:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** A saved log EXCERPT is not the log. `mem-drill/pass6/drill-log-excerpt.txt` is cited by
+`reports/perf-budgets.md`'s TC-8 row as "the source for every claim above", but it contains zero
+`/api/health` lines — so it cannot corroborate TC-3 ("the SAME process kept serving health after the
+abort"), the single most important claim of the drill. The real `logs/backend.log` does corroborate it
+(14 post-abort health 200s inside the throwaway process's own boot section, 137264-137369, bounded by the
+next boot banner). Whoever saves a verbatim excerpt as drill evidence must grep it for EVERY claim it is
+going to be cited for, and whoever reads one must re-bound the same window in the source log.
+**Applies to:** any iteration that proves a liveness/recovery property from a log excerpt, and any
+evaluator scoring a drill (memory pressure, concurrency, crash recovery) whose evidence is a trimmed file
+rather than a line range in the live log.
+
+## iter-34 — 2026-07-30T01:05:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** The reason the induced-memory-pressure drill finally worked after 20 iterations of deferral
+is that it stopped trying to break the REAL basis. iter-32 measured the bounded warm as adding ZERO
+VmPeak growth at the live 590-symbol/30-year scale, so tightening `server.memory_cap_mb` far enough to
+matter kills BOOT, never the warm specifically — the drill is unreproducible there by construction. A
+throwaway synthetic DB, launched through the real `scripts/start-backend.sh` so every host-guard cap
+still applies, isolates the target frame at a cap (970 MB, ~73 MB over baseline) that leaves the rest of
+boot intact. One non-obvious detail made the difference and is worth reusing: the fixture seeds
+`setup_status="Avoid"` rather than `"Actionable"`, because Actionable rows make `research_hot_keys`'s
+warm — which has a GENERIC, non-`MemoryError`-specific except — the first thing to fail, so the drill
+would exercise the wrong handler and look like a pass.
+**Applies to:** any future drill that must induce a specific failure inside one loop of a multi-stage
+finalize hook; check which stage runs first and whether its except clause is specific enough to attribute
+the result.

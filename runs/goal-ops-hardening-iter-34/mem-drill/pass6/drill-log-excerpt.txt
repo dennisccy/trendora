@@ -1,0 +1,76 @@
+=== start-backend.sh: launching at 2026-07-29T22:56:03Z ===
+    port=18734 memory_cap_mb=970 malloc_arena_max=2
+    host-guard: cpu_list=0-3,8-11 blas_threads=4
+INFO:     Started server process [2072993]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:18734 (Press CTRL+C to quit)
+INFO:     127.0.0.1:33254 - "POST /api/data/jobs HTTP/1.1" 200 OK
+ingest forward-aggregate warm aborted at horizon 1 — memory pressure, stopping remaining horizons in this loop: 
+Traceback (most recent call last):
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/data_manager.py", line 3277, in _refresh_ingest_aggregates
+    forward_testing.forward_aggregates_ingest_cached(session, h, cfg, as_of=latest_run_date)
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/forward_testing.py", line 1504, in forward_aggregates_ingest_cached
+    payload = compute_forward_aggregates(session, horizon, cfg, as_of=as_of)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/forward_testing.py", line 1368, in compute_forward_aggregates
+    "attribution": _attribution_slices(attribution_acc, cfg),
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/forward_testing.py", line 998, in _attribution_slices
+    "per_stock": acc.per_stock(attribution.top_contributors_k),
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/forward_testing.py", line 949, in per_stock
+    {"ticker": ticker, "mean_return": acc.mean(), "n": acc.n, "sector": self._per_ticker_sector[ticker]}
+MemoryError
+ingest drawdown-expectations warm aborted — memory pressure, stopping remaining claims in this loop: 
+Traceback (most recent call last):
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/data_manager.py", line 3361, in _refresh_ingest_aggregates
+    result = forward_testing.compute_drawdown_expectations_cached(session, claim, cfg)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/forward_testing.py", line 2440, in compute_drawdown_expectations_cached
+    payload = compute_drawdown_expectations(session, claim, cfg)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/forward_testing.py", line 2304, in compute_drawdown_expectations
+    samples = compute_samples(
+              ^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/samples.py", line 923, in compute_samples
+    built = _factor_samples(
+            ^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/samples.py", line 145, in _factor_samples
+    observations = _factor_observations(session, factor, horizon, as_of)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/research.py", line 302, in _factor_observations
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/research.py", line 221, in _fr_slice_map
+    for run_id, symbol, realized_return, max_drawdown in session.exec(fr_stmt).yield_per(batch):
+                                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/.venv/lib/python3.12/site-packages/sqlalchemy/engine/result.py", line 566, in iterrows
+    for raw_row in self._fetchiter_impl():
+                   ^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/.venv/lib/python3.12/site-packages/sqlalchemy/orm/loading.py", line 215, in chunks
+    fetch = cursor.fetchmany(yield_per)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/.venv/lib/python3.12/site-packages/sqlalchemy/engine/result.py", line 1414, in fetchmany
+    return self._manyrow_getter(self, size)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/.venv/lib/python3.12/site-packages/sqlalchemy/engine/result.py", line 755, in manyrows
+    rows: List[_InterimRowType[Any]] = self._fetchmany_impl(num)
+                                       ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/.venv/lib/python3.12/site-packages/sqlalchemy/engine/cursor.py", line 2264, in _fetchmany_impl
+    return self.cursor_strategy.fetchmany(self, self.cursor, size)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/.venv/lib/python3.12/site-packages/sqlalchemy/engine/cursor.py", line 1193, in fetchmany
+    self.handle_exception(result, dbapi_cursor, e)
+  File "/home/dennis-chan/Git/trendora/apps/backend/.venv/lib/python3.12/site-packages/sqlalchemy/engine/cursor.py", line 1149, in handle_exception
+    result.connection._handle_dbapi_exception(
+  File "/home/dennis-chan/Git/trendora/apps/backend/.venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py", line 2368, in _handle_dbapi_exception
+    raise exc_info[1].with_traceback(exc_info[2])
+  File "/home/dennis-chan/Git/trendora/apps/backend/.venv/lib/python3.12/site-packages/sqlalchemy/engine/cursor.py", line 1187, in fetchmany
+    l = dbapi_cursor.fetchmany(size)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+MemoryError
+backtest_timing ts=2026-07-29T22:57:12.559702+00:00 is_latest=True total_ms=17.09 resolved_run_ms=0.97 backfill_forward_returns_ms=1.43 scorecard_ms=2.17 evidence_ms=12.30 write_taken=False
+INFO:     127.0.0.1:47460 - "GET /api/backtest HTTP/1.1" 200 OK
+backtest_timing ts=2026-07-29T22:57:59.841393+00:00 is_latest=True total_ms=4.79 resolved_run_ms=0.92 backfill_forward_returns_ms=0.58 scorecard_ms=0.69 evidence_ms=2.44 write_taken=False
+INFO:     127.0.0.1:56550 - "GET /api/backtest HTTP/1.1" 200 OK
+backtest_timing ts=2026-07-29T22:58:26.630677+00:00 is_latest=True total_ms=3.59 resolved_run_ms=0.98 backfill_forward_returns_ms=0.51 scorecard_ms=0.55 evidence_ms=1.42 write_taken=False
+INFO:     127.0.0.1:34872 - "GET /api/backtest HTTP/1.1" 200 OK

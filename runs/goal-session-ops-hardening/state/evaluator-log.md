@@ -2054,3 +2054,114 @@ DB fixture or a written waiver; `test_forward_testing_serving_split.py`'s four `
 (7) OWNER, non-blocking: should `scripts/start-frontend.sh` join `HOST_GUARD_MARKER_FILES` now that it
 runs a full multi-worker `next build` from inside the automated lanes (iter-33/i)? The auditor measured
 that the build inherits the affinity mask today, so this is a deliberate-decision item, not a live hazard.
+
+## Iteration 34 — goal-ops-hardening-iter-34
+
+**Date:** 2026-07-30T01:05:00Z
+**Verdict:** CONTINUE
+**Depth dispatched:** lean (`iter-34/depth-dispatched` = `lean`; the spec's own metadata says `full`. Only
+dev, review, browser-qa and coherence ran — no QA report, no audit handoff, no ux-regression, no closure,
+no demo. I scored the lean artifact set that exists and did not credit any lane that did not run.)
+**Journey deltas:**
+- **Newly passing: J-07 "Heavy aggregates never take the service down" — the session's last non-green
+  journey, `partial` since iter-28 (seven iterations). ALL EIGHT MUST-HAVE JOURNEYS NOW PASS.** Newly
+  failing: none. Regressed (passing -> failing): none. Unknown: none. Deferred: none.
+- Re-verified `passing` with THIS-iteration evidence, so `last_verified_iter` advances iter-33 -> iter-34
+  for all seven others: J-01, J-03, J-04, J-05, J-06, J-08, J-09 (deterministic golden replay 7/7 PASS,
+  zero FAIL rows, zero reconciliation overturns; I opened J-05-verify.png and J-06-verify.png as the two
+  spot-checks). J-06's `evidence_makeup` STAYS true; J-07 gets/keeps `evidence_makeup: true` — in both
+  cases for the missing `[NEW]` walkthrough only (no demo lane ran this lean iteration), a capture defect
+  under methodology A.7 that never downgrades a status.
+- Anti-goal violations: seven carried `resolved: false`, all `minor` (iter-29/b `warmup.py:194`, iter-29/d
+  `prices.py:141`, iter-31/e, iter-32/f, iter-33/g, iter-33/h, iter-33/i), each given an ITER-34 UPDATE
+  recording that I confirmed the product tree byte-unchanged. **ONE NEW, `minor`, `resolved: false`:
+  iter-34/j — J-07 step 2's "within its existing budget" clause, missed by 185 of 185 polls.** I filed it
+  deliberately so that scoring J-07 `passing` cannot bury the one clause that is not literally true.
+  scan-report CLEAN; coherence COHERENCE-PASS (no blocking violations, no advisory notes); review PASS with
+  `issues: []`; all 8 `spec_hash`es match `goal_gate hash-journeys`; no `journeys-changed.md`; no
+  `browser-infra.json`; no `DEFERRED-BUDGET` row.
+
+**Reasoning:** I re-derived every load-bearing fact first-hand instead of inheriting it. (1) **Step 4 —
+deferred 20 iterations — is real, and I read the live log rather than the excerpt the write-up cites.**
+The throwaway process's own section of `logs/backend.log` (137264-137369, bounded by the next boot banner
+at 137370) shows one `Started server process [2072993]`, a boot banner proving the AG-10 caps were applied
+(`start-backend.sh ... memory_cap_mb=970 malloc_arena_max=2 host-guard: cpu_list=0-3,8-11 blas_threads=4`),
+then the EXACT iter-8 branch firing — `ingest forward-aggregate warm aborted at horizon 1 — memory
+pressure`, traceback rooted at `data_manager.py:3277` -> `forward_aggregates_ingest_cached` ->
+`compute_forward_aggregates` -> `_attribution_slices` -> `per_stock` -> `MemoryError`. That is the
+mechanism the binding iter-30 lesson demands, not a substituted easier one. After the abort: 14
+`GET /api/health ... 200 OK` and 3 `GET /api/backtest ... 200 OK`, zero non-200, no second
+`Started server process`, then a deliberate `Shutting down`. (2) **I recomputed step 2's latency from both
+raw capture files rather than reading either report**, and both matched exactly: `health-latency.csv` = 85
+polls, 85/85 HTTP 200, min 0.107164 / median 0.133974 / mean 0.166963 / max 1.131795 s;
+`bqa-health-poll/health-poll.csv` = 100 polls, 100/100 HTTP 200, min 0.105149 / median 0.112528 / max
+0.877172 s. (3) **I checked both live warm windows in the log independently of the prose.** Latency boot
+(137370-137549): `grep -ci "error|exception|traceback"` = 0, 162 health 200s, zero non-200. Browser boot
+(137582-end): 0 error lines, 248 health 200s, zero non-200, one process, and exactly one 404 — a harness
+`GET /health` (no `/api` prefix) probe at boot, not a page request, so the stray-404 nit two evaluators
+carried is gone. (4) **I opened both J-07 frames.** `J-07-warming-state.png` shows the badge reading
+"Ready" plus "background compute running (1)" and the honest "Refreshing — showing the last complete
+evidence ... no partial or fabricated figures are shown in the meantime" banner over the 2026-07-14
+ledger (1859 snapshots); `J-07-result.png` shows the badge "Ready" and the full "Forward-tested evidence
+(expanding window <= 2026-07-15)" by-group tables with 1873 snapshots. The standing three-iteration
+capture ask is finally met. (5) **I verified the diff scope myself before answering any anti-goal
+category:** `git diff ff5f922e..HEAD -- apps scripts project-extensions` is EMPTY and `git status
+--porcelain` over the same paths shows only `apps/backend/tests/test_ingest_finalize_memory_pressure.py`,
+so every carried finding is byte-identical and no new production surface exists to violate an anti-goal.
+Rejected REGRESSION (C.1): nothing moved `passing` -> `failing`, all seven required journeys replayed
+PASS, and the eight open findings are all `minor` on grounds I verified rather than inherited — no crash,
+no memory exhaustion, no fabricated value, AG-10 marker files byte-identical and the drill TIGHTENED the
+cap rather than weakening it. Rejected STALLED (C.2): no human-owned-only blocker — the whole-table
+prefill, the Regime Lab dispatch, the sibling-lab wiring, the badge wording and the walkthroughs are all
+agent work, and even the health-budget item has a genuine agent path (make `/api/health` cheap enough).
+Rejected GOAL_ACHIEVED (C.3): eight anti-goal/goal-criterion findings are unresolved, and one of them
+(iter-29/d) is a verbatim contradiction of a `docs/goal.md` Success Criterion that I re-verified in the
+code this iteration — so the rail is a real gap, not bookkeeping. Rejected ESCALATE (C.4): review PASS
+with zero issues, coherence PASS, no journey failed twice, and the full-depth need is carried in the
+depth recommendation.
+**FIVE THINGS I STATE PLAINLY RATHER THAN ROUND AWAY:** (i) **J-07 step 2's budget half is missed by
+every single measurement** — 0 of 185 polls across two independent live warms were inside the committed
+<= 0.1 s budget, including the 8 pre-warm baseline polls (0.110-0.126 s); I scored the journey `passing`
+on J-07's own Acceptance block, which enumerates step 4 and "health/readiness stay truthful throughout"
+and never the budget number, and I filed the miss as iter-34/j so a confirmer meets it head-on. Worth
+adding: because the warm adds ~25 ms to the median and a ~1.0 s spike on top of a best-ever 93.4 ms
+at-rest reading, this is NOT closable by re-measuring on a quiet host. (ii) **the saved drill excerpt does
+not actually corroborate TC-3** — `mem-drill/pass6/drill-log-excerpt.txt` (76 lines) contains ZERO
+`/api/health` lines, yet the perf-budgets TC-8 row calls it "the source for every claim above"; the real
+`logs/backend.log` does corroborate it and I checked there, but the artifact the write-up points a reader
+at is incomplete for the claim it is cited for. (iii) **the broader `test_forward_testing*.py` suite was
+not re-run** — the developer disclosed this openly and gave a checkable reason (two attempts exceeded the
+turn budget, consistent with this project's own "30y test suite slow" lesson); I accepted it because I
+independently confirmed zero production diff, and I did NOT run the new 191 s memory test myself, since an
+evaluator firing a heavy pytest burst outside the launch scripts is exactly what AG-10 forbids on a host
+with six resets. (iv) **the new J-07 golden still asserts a literal computed figure** — `J-07.json` step 2
+expects "Snapshots contributing (≤ 2026-07-15): 1873"; it is better than the old `n=8869` (which tracked
+"latest" and drifted every trading day), but it still breaks the moment a backfill adds a snapshot dated
+on or before 2026-07-15, and it has now been rewritten three times with no recorded provenance. (v) **the
+byte-identical-screenshot nit did not recur for a second consecutive iteration** — all nine frames carry
+distinct md5s — and the merged results file did not launder anything: merged PASS 8/8 = 7 replay + 1 LLM,
+and I compared it against both sources, which agree.
+
+**Next-step recommendation:** FULL depth. With all eight journeys green, the only thing between this
+session and GOAL_ACHIEVED is the eight open ledger findings. (1) FIRST AND BIGGEST: stop streaming the
+whole price table into RAM. `docs/goal.md`'s Success Criteria say verbatim "no code path streams the full
+`daily_prices` table into RAM", and `apps/backend/app/engine/prices.py:131-152` does exactly that — a
+`select` over seven `DailyPrice` columns with NO WHERE clause, `.yield_per(batch)`, accumulating every row
+into `by_symbol` (~1.5 GB per `data_manager.py:3025`'s own comment) — reached on J-07's own warm path via
+`_refresh_ingest_aggregates` (`data_manager.py:3164`) -> `refresh_coverage_snapshot` ->
+`_compute_coverage_uncached` (`data_manager.py:814`) -> `prefilled_bar_cache`. I re-read the code this
+iteration rather than carrying the description. (2) SECOND: iter-33/g — give Regime Lab's cold
+`view=pooled` compute the same background dispatch `/api/backtest` got at iter-32, and diagnose the HTTP
+200 that carried the body "Internal Server Error". (3) THIRD, cheap and structural: iter-33/h — wire the
+already-generic, already-exported `resolveLabLoadPanel` into the four sibling research labs. (4) THEN the
+smaller carried items: `warmup.py:194` and what the badge should say after a permanently failed warm-up
+(five iterations unmade); iter-31/e; iter-32/f (watch only). (5) RIDE-ALONGS, capture only, never an
+iteration's goal: the `[NEW]` walkthrough steps J-06's and J-07's own Acceptance text names (crash-free
+warm + healthy health; budgets table vs live page loads) — four consecutive iterations unrecorded. Also
+give `J-07.json`'s `1873` a provenance line. (6) OWNER, and both should be settled BEFORE any achievement
+run: (a) iter-34/j — the `/api/health` <= 0.1 s budget vs 0/185 in-budget polls during a warm; three
+dispositions exist (ratify the honest-WARN convention as satisfying J-07 step 2, rescope the budget for
+the bounded background-compute window, or commission the agent fix of serving readiness from a cached
+snapshot), and the current "never amend" line in iteration-state was written by a prior evaluator from
+measurement, not sanctioned by the owner; (b) iter-33/i — should `start-frontend.sh` join
+`HOST_GUARD_MARKER_FILES` now that it runs a full `next build` inside automated lanes?

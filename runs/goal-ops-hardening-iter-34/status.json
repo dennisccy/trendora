@@ -1,0 +1,48 @@
+{
+  "phase": "goal-ops-hardening-iter-34",
+  "status": "in_progress",
+  "current_step": "dev_complete",
+  "updated_at": "2026-07-30T00:40:00Z",
+  "started_at": "2026-07-29T22:30:00Z",
+  "cli": "claude",
+  "mode": "initial_build",
+  "summary": {
+    "j07_step2_health_latency": {
+      "verdict": "WARN (honest, per existing convention -- budget line not amended)",
+      "polls": 85,
+      "http_200": 85,
+      "min_s": 0.107164,
+      "median_s": 0.133974,
+      "max_s": 1.131795,
+      "budget_s": 0.1
+    },
+    "j07_step4_memory_pressure_drill": {
+      "verdict": "PASS -- genuine MemoryError caught by the iter-8 forward_aggregates-specific except branch",
+      "throwaway_process_pid": 2072993,
+      "memory_cap_mb": 970,
+      "abort_horizon": 1,
+      "health_after_abort": "200, same PID, no restart",
+      "previously_cached_read": "GET /api/backtest served R1's pre-seeded evidence (evidence_status=refreshing, evidence_asof=2020-01-02, all 5 horizons, n=200000 each)"
+    },
+    "new_regression_test": "apps/backend/tests/test_ingest_finalize_memory_pressure.py (2 passed, 190.98s)",
+    "byte_frozen_confirmed": "git diff --stat -- apps/backend/app/engine/forward_testing.py apps/backend/app/engine/data_manager.py -> zero diff"
+  },
+  "changed_files": [
+    "reports/perf-budgets.md",
+    "apps/backend/tests/test_ingest_finalize_memory_pressure.py",
+    "runs/goal-ops-hardening-iter-34/mem-drill/seed_throwaway_db.py",
+    "runs/goal-ops-hardening-iter-34/mem-drill/seed-summary.json",
+    "runs/goal-ops-hardening-iter-34/mem-drill/pass6/drill-log-excerpt.txt",
+    "runs/goal-ops-hardening-iter-34/health-latency/poll_health.sh",
+    "runs/goal-ops-hardening-iter-34/health-latency/health-latency.csv",
+    "docs/handoffs/goal-ops-hardening-iter-34-dev.md"
+  ],
+  "host_guard_blocks_unchanged": true,
+  "tests_run": true,
+  "browser_checks_run": false,
+  "known_issues": [
+    "Broader test_forward_testing*.py regression suite not re-run this turn (exceeded turn-time budget on this host, consistent with the documented '30y test suite slow' lesson) -- git diff structurally confirms zero production code touched, so no correctness gap is implied.",
+    "Throwaway drill's GET /api/backtest 'latest' run resolved to a boot-warmup-created date (2025-04-04), not the drill's own seeded R2 -- honest, harmless, documented in the dev handoff and perf-budgets.md."
+  ],
+  "next_action": "reviewer"
+}

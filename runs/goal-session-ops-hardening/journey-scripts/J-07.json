@@ -4,7 +4,7 @@
   "name": "Heavy aggregates never take the service down",
   "default_timeout_ms": 8000,
   "steps": [
-    {"n": 1, "journey": "J-07", "action": {"type": "goto", "url": "/backtest"}, "expect": {"text": "Forward-tested evidence"}},
-    {"n": 2, "journey": "J-07", "action": {"type": "goto", "url": "/backtest"}, "expect": {"text": "n=8869"}}
+    {"n": 1, "journey": "J-07", "action": {"type": "goto", "url": "/"}, "expect": {"text": "Ready"}},
+    {"n": 2, "journey": "J-07", "action": {"type": "goto", "url": "/backtest?asof=2026-07-15"}, "expect": {"text": "Snapshots contributing (≤ 2026-07-15): 1873"}}
   ]
 }
