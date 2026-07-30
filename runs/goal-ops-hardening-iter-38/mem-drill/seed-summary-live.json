@@ -1,0 +1,1 @@
+{"db_path": "runs/goal-ops-hardening-iter-38/mem-drill/drill.db", "price_rows": 3293088, "symbols_ok": 590, "symbols_failed": 1, "seed_load_seconds": 29.25, "trading_calendar_span": ["2005-02-25", "2026-07-01"], "trading_calendar_days": 5369, "target_start": "2026-06-16", "target_end": "2026-06-18", "target_dates": ["2026-06-16", "2026-06-17", "2026-06-18"], "k": 3}

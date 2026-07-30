@@ -1,0 +1,15 @@
+== live arm  (job 2026-07-30T11:59:16.242398+00:00 -> 2026-07-30T12:01:17.596434+00:00, backfill stage 84.2691s, stage end 2026-07-30T12:00:40.511498+00:00)
+   arm-live-monitor-final.csv: 210 samples, reconstructed window 2026-07-30T11:59:22.075448+00:00 .. 2026-07-30T12:01:17.741448+00:00 (starts 5.8s after job start)
+   VmPeak at end-of-backfill-stage: 3370480 KB
+   VmPeak overall (through job completion): 3604964 KB
+   FINALIZE-TAIL-ONLY delta: 229.0 MB
+
+== fallback arm  (job 2026-07-30T12:10:57.341186+00:00 -> 2026-07-30T12:16:14.372725+00:00, backfill stage 95.09s, stage end 2026-07-30T12:12:32.431186+00:00)
+   arm-fallback-monitor-final.csv: 438 samples, reconstructed window 2026-07-30T12:11:29.146968+00:00 .. 2026-07-30T12:15:28.649968+00:00 (starts 31.8s after job start)
+   arm-fallback-monitor-final2.csv: 43 samples, reconstructed window 2026-07-30T12:15:50.661518+00:00 .. 2026-07-30T12:16:14.517518+00:00 (starts 293.3s after job start)
+   VmPeak at end-of-backfill-stage: 3565104 KB
+   VmPeak overall (through job completion): 3565104 KB
+   FINALIZE-TAIL-ONLY delta: 0.0 MB
+
+anchor-free check (fallback): VmPeak first reaches its overall peak 3565104 KB at monitor t=62.631s and never rises again through job completion -> tail delta 0.0 MB for ANY anchor at or after that sample; VmRSS collapses 3,101,404 -> 1,564,872 KB just after it (the pre-iter-37 stage-exit cache release).
+live overall peak 3604964 KB vs fallback overall peak 3565104 KB -> live is 38.9 MB (1.1%) higher.

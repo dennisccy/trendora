@@ -2604,3 +2604,141 @@ commission the agent fix (serve readiness from a cached snapshot). (b) iter-33/i
 kill -9. (8) FRAMEWORK, outside the journey loop and now LOWER priority: `closure_gate.py:71-74`'s
 backend-only regex did not bite this iteration (`Frontend Present: no` took the N/A-stub branch), so it
 is latent rather than recurring — still worth fixing to test the CLAIM rather than the phrase.
+
+## Iteration 38 — goal-ops-hardening-iter-38
+
+**Date:** 2026-07-30T16:05:00Z
+**Verdict:** ESCALATE
+**Depth dispatched:** full (`iter-38/depth-dispatched` = `full`, matching the spec's own metadata — the
+iter-35 mis-dispatch has not recurred for a third iteration. `.steps/` again holds only `decomposer.done`
++ `coherence.done`, which per the binding iter-36 lesson is NOT truncation evidence: those markers are
+written by the LEAN executor. I confirmed the full pipeline ran from artifact mtimes: dev/review/QA ->
+replay 14:09-14:10 -> LLM browser-qa 15:03-15:09 -> demo 15:13 -> audit -> closure. `status.json` =
+`complete` / `closure_passed`; note its `browser_checks_run: false` and `updated_at: 14:30` are both stale
+relative to the 15:09 browser lane — I scored from the artifacts, not that field.)
+**Journey deltas:**
+- Newly passing: none. Newly failing: none. **Regressed (passing -> failing): NONE.** Unknown: none.
+  Deferred (`DEFERRED-BUDGET`): none. Still `partial`: **J-07 "Heavy aggregates never take the service
+  down"** — FOURTH consecutive iteration; `last_passing_iter` stays iter-34; `evidence_makeup` KEPT (the
+  `[NEW]` walkthrough is unrecorded for the 8th iteration — demo lane NOT_YET, zero steps, empty
+  `reports/demo/goal-ops-hardening-iter-38/`).
+- Re-verified `passing` with THIS-iteration evidence, so `last_verified_iter` advances iter-37 -> iter-38
+  for six: J-01, J-03, J-05, J-06, J-08, J-09. I opened `UT-J-01-result.png` and `UT-J-09-result.png` as
+  the two spot-checks; both corroborate their rows (an immutable 2026-05-29 leaderboard; "Ready" AND
+  "background compute running (1)" in the same frame).
+- **J-04 "Non-blocking boot with visible status" was NOT re-verified and I did not advance its
+  `last_verified_iter`** (left at iter-37). It is carried `passing` on evidence durability (A.6), not on
+  fresh verification — see the assumptions entry. All 8 `spec_hash`es match `goal_gate hash-journeys`;
+  no `journeys-changed.md`; no `browser-infra.json`.
+- Anti-goal violations: **THREE NEW — iter-38/r** (minor, RESOLVED in-iteration: the headline two-arm
+  measurement was published backwards; the audit found, corrected and made it re-runnable), **iter-38/s**
+  (minor, open: J-07 step 4 has no this-iteration evidence — the pressure drill was re-calibrated away
+  from pressure), **iter-38/t** (minor, open: the deterministic replay lane ran against a DOWN backend and
+  supplied no regression signal; QA asserted "no regressions" on unit tests). Eleven carried
+  `resolved: false`, all `minor`, each given an ITER-38 UPDATE recording what I verified rather than
+  inherited. Ledger now: **32 total, 13 unresolved, 0 critical.** scan-report CLEAN; coherence
+  COHERENCE-PASS (one non-blocking advisory on the test-only env toggle); review PASS_WITH_NOTES; QA PASS;
+  audit PASS_WITH_GAPS; ux-regression SKIPPED (budget-shed, credited nothing); closure CLOSURE-PASS.
+
+**Reasoning:** I re-derived every load-bearing number first-hand rather than reading it off a report.
+(1) **Diff scope before touching any carried finding:** `git diff 8b1092fb..HEAD --stat -- apps scripts
+project-extensions config.yaml` shows exactly two files (`data_manager.py` +39/-9, `test_data_manager.py`
++90), `git status --porcelain` over the same paths shows the same two, and
+`scripts/start-backend.sh` / `scripts/dev.sh` / `scripts/start-frontend.sh` / `project-extensions/
+host-guard/` return ZERO lines — so AG-10's own REGRESSION trigger did not fire. (2) **The liveness claim
+is real, and I checked the LIVE log, not the excerpt** (binding iter-34 lesson): `grep` on
+`logs/backend.log` returns 11 `J-07 finalize-tail cache_ctx liveness` lines, including job
+`9df9b63e…`=`attach_shared_cache` at :142444 (the live arm), job `df428d6d…`=`nullcontext` at :143130 (the
+fallback arm) and job `6c135718…`=`attach_shared_cache` at :143652 (the live-basis step-1 job) — the exact
+job ids in `two-arm-summary.json` and `j07-warm/final-job-status.json`. With `dates_total: 3` in both arms,
+TC-1 is genuinely met and iter-37/o's measurement gap is genuinely closed. (3) **The headline number was
+backwards, and I reproduced the correction rather than accepting it.** From the raw CSVs myself:
+`arm-live-monitor-final.csv` runs 1,833,040 -> 3,604,964 KB; `arm-fallback-monitor-final.csv`'s FIRST
+captured sample is already 3,565,104 KB, which is also its overall peak, and `…-final2.csv` is flat at
+exactly 3,565,104 for its whole 23.9 s window. So the fallback arm's finalize-tail delta is 0.0 MB, not the
+published 238.5 MB, against the live arm's +229.0 MB — the conclusion "the resident-cache hypothesis is NOT
+corroborated" was the opposite of the data. Overall peaks differ by 38.9 MB (1.1%); both are far under the
+4608 MB drill cap. (4) **Step 1 really did run through its own named path:** `pre-warm` vs `post-warm`
+`backtest-2026-07-22.json` show `evidence_generated_at` moving 2026-07-30T03:04:33Z -> 12:22:41Z with all 5
+horizons at `evidence_status: "ready"` — a genuine cold recompute driven by a real backfill of 2025-05-23
+(`final-job-status.json`: `snapshots_created: 1`, `forward_returns_inserted: 2720`), not by
+`GET /api/backtest`. (5) **Step 2 is real but incomplete, and the miss is bigger than the handoff said:** I
+recomputed `health-latency.csv` — 233 polls, 233/233 HTTP 200, max in-segment gap 2.355 s, VmPeak max
+3,688,916 KB = 58.6% of the 6,291,456 KB cap — but the last sample is at elapsed 299.254 s of a 338 s job,
+so ~39 s went unpolled (~31 s of it mid-tail). Latency min/mean/max 0.1087 / 0.2829 / 1.3172 s and **0 of
+233 inside the committed <= 0.1 s budget**. (6) **Step 4 was not run, and I read the reason in the drill's
+own config:** `mem-drill/config.scratch.yaml:1363` raises the cap 3072 -> 4608 MB with the stated reason
+"widened so BOTH arms complete gracefully". Both arms then finished `ok`, no `MemoryError`, so the per-item
+isolation handler never fired. The single 3072 MB trial failed with `RuntimeError: can't start new thread`
+at VmPeak 3,145,728 KB (exactly the `ulimit -v`) inside `_do_backfill`'s prefill — `dates_done: 0`,
+`aggregates_refreshed: []` — a compute-stage thread-spawn failure, not the caught mid-warm `MemoryError`
+step 4 asserts, and with no health poll and no cached read alongside it. (7) **The screenshots outranked the
+prose in the most consequential place this iteration.** The deterministic replay reported 6 FAILs; I opened
+`J-01-verify.png` and `J-04-verify.png` and both show a "Backend unavailable" page — the replay ran while
+the backend was down. So the FAILs are an environment artifact, and the merged file's five overturns are
+right; but the same fact means the deterministic safety net produced NOTHING this iteration.
+Rejected REGRESSION (C.1): nothing moved `passing` -> `failing`; the replay FAILs are backend-down
+artifacts confirmed by picture; scan-report CLEAN; launch scripts byte-identical; all 13 open ledger items
+are `minor`. Rejected STALLED (C.2): the blocker is agent work with a recipe already written down (one
+bounded throwaway drill at a cap tight enough to raise `MemoryError` inside the warm); the two owner items
+are real but neither is the only path. Rejected GOAL_ACHIEVED (C.3): J-07 is `partial`. **Chose ESCALATE
+(C.4, first clause)** under this session's twice-recorded reading that "failed" = "did not reach
+`passing`" — J-07 has now missed four consecutive iterations — reinforced by an independent trigger: the
+review lane AND the QA lane both passed an iteration whose single headline conclusion was backwards, and
+QA additionally asserted "No regressions (J-01 … J-09) PASS" citing unit tests while the replay lane was
+1/7 and QA had no journey evidence at all. Only the audit lane caught either. A lean iteration has no
+auditor, and the next iteration deliberately pushes a live process out of memory.
+**FIVE THINGS I STATE PLAINLY RATHER THAN ROUND AWAY:** (i) **the work was good and largely
+self-correcting, and I do not want a fourth ESCALATE to imply otherwise** — the drill's shared cache was
+genuinely live for the first time in the session, the warm finally ran through the ingest-finalize hook the
+journey names, both new tests are load-bearing rather than vacuous (the TC-6 fault fires strictly after the
+real stash; TC-7 monkeypatches the module-global the caller actually uses), and the one wrong number was
+found and fixed inside the same iteration with a script that validates itself by reproducing the live arm's
+anchor exactly. (ii) **J-04 has no live verification this iteration and I did not paper over it** — I kept
+it `passing` on durability because the boot path is not in the diff and because three independent partials
+corroborate it (the "Ready / provider: seed" frame; the accidental but perfect capture of the
+"Backend unavailable / Nothing is fabricated" unreachable-state presentation in the replay's own failure
+screenshot; ~6 clean boots at ~1 s in the dev/audit records) — but its `last_verified_iter` deliberately
+stays at iter-37, and its restart/crash/mid-flight-job steps must be run live before any achievement run.
+(iii) **the deterministic replay lane is effectively off** — 1/7 PASS, six FAILs against a downed backend,
+and a reconciliation footer that under-reports its own overturns (it names J-01/J-03/J-08/J-09 and omits
+J-05, which was also overturned, and J-04, which became SKIPPED). Every iteration is now paying an LLM
+re-run to undo a lane that is supposed to be the cheap safety net. (iv) **the <= 0.1 s health budget is now
+missed a FIFTH time, and this time 0 of 233 polls met it** — three evaluators before me called it an owner
+decision; it is still the single item in J-07 that no agent can settle and the most likely place a
+fresh-context second-key CONFIRM rejects a GOAL_ACHIEVED. (v) **the pressure drill was tuned until it
+stopped hurting** — raising the cap 3072 -> 4608 MB "so BOTH arms complete gracefully" is a defensible
+choice for the two-arm COMPARISON, but it is the exact opposite of what step 4 asks for, and the iteration
+shipped without anyone noticing that the induced-pressure drill induced no pressure until the auditor said
+so. Also worth recording: the demo lane emitted `not_yet` with zero steps again, and `J-01-verify.png` /
+`J-03-verify.png` / `J-05-verify.png` now share one md5 (`97c5433b`) — the terminal-page collision iter-32
+diagnosed, now three-way because they all captured the same backend-down page.
+
+**Next-step recommendation:** FULL depth (mandatory via ESCALATE). Same single target — finish J-07 — but
+this time run the step that was never run. (1) FIRST, and it is the whole point: one throwaway-DB drill via
+`scripts/start-backend.sh` at a cap tight enough to raise `MemoryError` INSIDE the aggregate warm (not at
+`_do_backfill`'s prefill, which is where the 3072 MB attempt died), with a concurrent 1 Hz `/api/health`
+poll AND one previously-cached read (`GET /api/backtest?as_of=<warm date>`) asserted 200 during and after
+the abort. Those two assertions are literally all step 4 asks for. (2) SECOND, cheap and in the same drill:
+remove the polling script's `MAX_SECONDS` bound so the poll runs to job termination — a fixed limit that
+expires before the job does is what created this iteration's ~39 s hole (audit B2). (3) THIRD, repair the
+deterministic replay lane (iter-38/t): refresh the stale golden selectors and make the lane refuse to
+report FAIL when the backend is not answering, so a downed service can never again masquerade as six
+regressions. (4) FOURTH, and it must happen before any achievement run: give J-04 a real live test.
+Resolve up front who may restart the backend, and schedule that test LAST (the binding iter-36 lesson) so
+nothing else is stranded behind it. Fold in J-05's step 3 (cold-boot coverage-from-storage), which was
+skipped for exactly the same reason. (5) SMALL AND ALREADY WRITTEN DOWN: re-measure `read_pool()` in situ
+during a real multi-date backfill instead of the micro-benchmark-plus-projection currently in
+`perf-budgets.md` (audit B3, TC-10 not really met); guard the env toggle with `in ("1","true","yes")` or
+delete it now that the drill is done (audit B5 — `TRENDORA_FORCE_LEGACY_BAR_CACHE=0` currently ENABLES
+legacy mode); add the two-line test for the toggle (audit T3); fix the root-logger gap so routine liveness
+logging need not masquerade as `WARNING` (reviewer NOTE). (6) THIRD IN QUEUE, deferred three times now:
+iter-33/g — give Regime Lab's cold `view=pooled` compute the same background dispatch `/api/backtest` got
+at iter-32, and diagnose the HTTP 200 carrying an "Internal Server Error" body. (7) CAPTURE ONLY, never an
+iteration's goal: J-07's `[NEW]` walkthrough (eighth iteration unrecorded) and the now three-way
+J-01/J-03/J-05 identical-screenshot collision. (8) OWNER, unchanged, both should be settled BEFORE any
+achievement run: (a) iter-34/j — the `GET /api/health` <= 0.1 s budget, now missed five times and this time
+0 of 233 polls during step 2's own scenario; three dispositions, all his (ratify the honest-WARN
+convention, rescope the budget for the bounded background-compute window, or commission the agent fix that
+serves readiness from a cached snapshot); (b) iter-33/i — whether `start-frontend.sh` joins
+`HOST_GUARD_MARKER_FILES`.

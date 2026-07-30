@@ -607,3 +607,32 @@ human who reads `partial` as strictly not "failed", or who weighs "escalate spar
 session that has now escalated three times, would return CONTINUE with an advisory full-depth
 recommendation.
 **Reversible:** yes
+
+## iter-38 — goal-evaluator
+
+**Ambiguity:** J-04 "Non-blocking boot with visible status" is in this iteration's Required-still-passing
+set, and BOTH lanes that owed it evidence failed to supply any. The deterministic replay returned FAIL
+("provider: seed" did not appear), but I opened `J-04-verify.png` and it shows a "Backend unavailable"
+page — the replay ran while the backend was down, so the FAIL measures the environment, not the product.
+The LLM browser-qa lane then declined J-04 outright ("Do NOT restart services yourself"), and the
+authoritative merged file records SKIPPED, not FAIL. My instructions say an un-evidenced journey is
+`unknown`; methodology A.6 says evidence expires with CHANGE, not time, and this iteration's product diff
+(2 files: a docstring, a test-only env toggle, one log line) touches no boot, readiness, health or crash
+path. `docs/goal.md` does not say which rule wins when a required journey's evidence lane produces a FAIL
+that is provably an artifact and its fallback lane declines by instruction.
+**We chose:** kept J-04 `passing` on durability, but deliberately did NOT advance its `last_verified_iter`
+(left at iter-37), did not advance `last_evidence_path`, and named every uncovered step. Grounds stated
+rather than assumed: (1) downgrading on the replay FAIL would be scoring the product for a service that was
+switched off — the picture is unambiguous; (2) the merged file is authoritative by my own methodology and
+it says SKIPPED, so no FAIL stands anywhere; (3) three independent partials from THIS iteration corroborate
+the journey without covering it — `UT-J-04-result.png` shows "Ready / provider: seed / seed 2026-07-22",
+`J-04-verify.png` accidentally captures J-04's own unreachable-state presentation working correctly ("NO-GO
+— do not rely on today's board", "Nothing is fabricated — confirm the backend is running and reload"), and
+the dev/audit records show ~6 clean boots at ~1 s against a <= 5 s budget; (4) `unknown` would have the same
+practical effect (it cannot support GOAL_ACHIEVED either) while discarding evidence that does exist, which
+is the mirror image of rubber-stamping. NOT covered and named in three places: the pre-ready boot-phase
+polls, a deliberately simulated crash with an abrupt logfile ending, and the mid-flight-job interrupted
+state. A human who treats a required-set journey with zero live verification as `unknown` regardless of
+code stability, or who reads the unreconciled replay FAIL as decisive, would score it `unknown` and block
+the achievement gate on it now rather than at the next attempt.
+**Reversible:** yes

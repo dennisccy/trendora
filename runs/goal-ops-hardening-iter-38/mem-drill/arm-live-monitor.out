@@ -1,0 +1,206 @@
+t=  0.00s vmpeak=2072648 vmhwm=1678660 vmrss=1678660 status=running
+t=  0.54s vmpeak=2076776 vmhwm=1682496 vmrss=1682496 status=running
+t=  1.07s vmpeak=2079864 vmhwm=1685368 vmrss=1685368 status=running
+t=  1.62s vmpeak=2081912 vmhwm=1687872 vmrss=1687872 status=running
+t=  2.16s vmpeak=2084984 vmhwm=1690948 vmrss=1690948 status=running
+t=  2.67s vmpeak=2087032 vmhwm=1693148 vmrss=1693148 status=running
+t=  3.22s vmpeak=2090104 vmhwm=1696332 vmrss=1696332 status=running
+t=  3.76s vmpeak=2093208 vmhwm=1698812 vmrss=1698812 status=running
+t=  4.28s vmpeak=2094232 vmhwm=1700044 vmrss=1700044 status=running
+t=  5.05s vmpeak=2097304 vmhwm=1702988 vmrss=1702988 status=running
+t=  5.60s vmpeak=2099352 vmhwm=1705296 vmrss=1705300 status=running
+t=  6.10s vmpeak=2103448 vmhwm=1708620 vmrss=1708620 status=running
+t=  6.66s vmpeak=2106520 vmhwm=1712020 vmrss=1712020 status=running
+t=  7.20s vmpeak=2107576 vmhwm=1713400 vmrss=1713400 status=running
+t=  7.74s vmpeak=2111672 vmhwm=1717308 vmrss=1717308 status=running
+t=  8.26s vmpeak=2113720 vmhwm=1718744 vmrss=1718744 status=running
+t=  8.78s vmpeak=2115768 vmhwm=1720632 vmrss=1720632 status=running
+t=  9.31s vmpeak=2117816 vmhwm=1723088 vmrss=1723092 status=running
+t=  9.84s vmpeak=2121912 vmhwm=1727256 vmrss=1727256 status=running
+t= 10.37s vmpeak=2123960 vmhwm=1729500 vmrss=1729500 status=running
+t= 10.90s vmpeak=2126040 vmhwm=1731120 vmrss=1731120 status=running
+t= 11.45s vmpeak=2128088 vmhwm=1733720 vmrss=1733720 status=running
+t= 11.98s vmpeak=2130136 vmhwm=1735552 vmrss=1735556 status=running
+t= 12.49s vmpeak=2134232 vmhwm=1738808 vmrss=1738812 status=running
+t= 12.99s vmpeak=2135256 vmhwm=1740512 vmrss=1740512 status=running
+t= 13.54s vmpeak=2138328 vmhwm=1743164 vmrss=1743164 status=running
+t= 14.08s vmpeak=2140408 vmhwm=1745832 vmrss=1745832 status=running
+t= 14.62s vmpeak=2142456 vmhwm=1747860 vmrss=1747860 status=running
+t= 15.16s vmpeak=2145528 vmhwm=1749920 vmrss=1749920 status=running
+t= 15.68s vmpeak=2146552 vmhwm=1751888 vmrss=1751888 status=running
+t= 16.21s vmpeak=2149624 vmhwm=1754900 vmrss=1754900 status=running
+t= 16.81s vmpeak=2152696 vmhwm=1757412 vmrss=1757412 status=running
+t= 17.39s vmpeak=2154744 vmhwm=1759444 vmrss=1759444 status=running
+t= 17.92s vmpeak=2156824 vmhwm=1761416 vmrss=1761416 status=running
+t= 18.55s vmpeak=2159896 vmhwm=1766336 vmrss=1766336 status=running
+t= 19.08s vmpeak=2161944 vmhwm=1769376 vmrss=1769376 status=running
+t= 19.64s vmpeak=2165016 vmhwm=1772444 vmrss=1772444 status=running
+t= 20.17s vmpeak=2168088 vmhwm=1774880 vmrss=1774880 status=running
+t= 20.69s vmpeak=2170136 vmhwm=1778984 vmrss=1779000 status=running
+t= 21.19s vmpeak=2170136 vmhwm=1780692 vmrss=1780692 status=running
+t= 21.71s vmpeak=2172216 vmhwm=1784084 vmrss=1784084 status=running
+t= 22.23s vmpeak=2175288 vmhwm=1787044 vmrss=1787044 status=running
+t= 22.82s vmpeak=2178360 vmhwm=1789260 vmrss=1789260 status=running
+t= 23.34s vmpeak=2181432 vmhwm=1795792 vmrss=1795792 status=running
+t= 24.10s vmpeak=2181432 vmhwm=1796620 vmrss=1796620 status=running
+t= 24.65s vmpeak=2184504 vmhwm=1799632 vmrss=1799632 status=running
+t= 25.22s vmpeak=2187576 vmhwm=1802416 vmrss=1802416 status=running
+t= 25.81s vmpeak=2190680 vmhwm=1810000 vmrss=1810000 status=running
+t= 26.35s vmpeak=2193752 vmhwm=1813088 vmrss=1813088 status=running
+t= 26.86s vmpeak=2193752 vmhwm=1813316 vmrss=1813316 status=running
+t= 27.41s vmpeak=2196824 vmhwm=1815916 vmrss=1815916 status=running
+t= 28.00s vmpeak=2198872 vmhwm=1818408 vmrss=1818408 status=running
+t= 28.55s vmpeak=2201944 vmhwm=1824996 vmrss=1824996 status=running
+t= 29.15s vmpeak=2205016 vmhwm=1827692 vmrss=1827692 status=running
+t= 29.66s vmpeak=2205016 vmhwm=1828176 vmrss=1828180 status=running
+t= 30.20s vmpeak=2208120 vmhwm=1830484 vmrss=1830484 status=running
+t= 30.77s vmpeak=2211192 vmhwm=1834776 vmrss=1834776 status=running
+t= 31.31s vmpeak=2214264 vmhwm=1842252 vmrss=1842252 status=running
+t= 31.90s vmpeak=2217336 vmhwm=1845308 vmrss=1845308 status=running
+t= 32.46s vmpeak=2217336 vmhwm=1845340 vmrss=1845340 status=running
+t= 33.00s vmpeak=2221432 vmhwm=1848396 vmrss=1848396 status=running
+t= 33.59s vmpeak=2225560 vmhwm=1856984 vmrss=1856984 status=running
+t= 34.22s vmpeak=2228632 vmhwm=1859916 vmrss=1859916 status=running
+t= 34.73s vmpeak=2228632 vmhwm=1860124 vmrss=1860128 status=running
+t= 35.30s vmpeak=2230680 vmhwm=1862144 vmrss=1862144 status=running
+t= 35.86s vmpeak=2233752 vmhwm=1869772 vmrss=1869772 status=running
+t= 36.40s vmpeak=2237848 vmhwm=1872892 vmrss=1872892 status=running
+t= 36.98s vmpeak=2237848 vmhwm=1872904 vmrss=1872904 status=running
+t= 37.54s vmpeak=2239896 vmhwm=1875872 vmrss=1875872 status=running
+t= 38.23s vmpeak=2245048 vmhwm=1885168 vmrss=1885168 status=running
+t= 38.80s vmpeak=2248120 vmhwm=1887860 vmrss=1887860 status=running
+t= 39.35s vmpeak=2248120 vmhwm=1888236 vmrss=1888236 status=running
+t= 39.94s vmpeak=2250168 vmhwm=1890240 vmrss=1890240 status=running
+t= 40.47s vmpeak=2254264 vmhwm=1897396 vmrss=1897396 status=running
+t= 41.00s vmpeak=2254264 vmhwm=1897616 vmrss=1897616 status=running
+t= 41.55s vmpeak=2261432 vmhwm=1904616 vmrss=1904616 status=running
+t= 42.11s vmpeak=2271672 vmhwm=1914848 vmrss=1914848 status=running
+t= 43.05s vmpeak=2283960 vmhwm=1932880 vmrss=1932880 status=running
+t= 43.59s vmpeak=2418104 vmhwm=1949644 vmrss=1949644 status=running
+t= 44.10s vmpeak=2418104 vmhwm=1967208 vmrss=1967208 status=running
+t= 44.61s vmpeak=2418104 vmhwm=1983024 vmrss=1983024 status=running
+t= 45.13s vmpeak=2418104 vmhwm=2000276 vmrss=2000276 status=running
+t= 45.64s vmpeak=2418104 vmhwm=2015236 vmrss=2015236 status=running
+t= 46.16s vmpeak=2418104 vmhwm=2031536 vmrss=2031536 status=running
+t= 46.69s vmpeak=2426300 vmhwm=2048696 vmrss=2048700 status=running
+t= 47.19s vmpeak=2435516 vmhwm=2061868 vmrss=2061868 status=running
+t= 48.07s vmpeak=2447804 vmhwm=2081072 vmrss=2081072 status=running
+t= 48.60s vmpeak=2460092 vmhwm=2100104 vmrss=2100104 status=running
+t= 49.13s vmpeak=2470332 vmhwm=2115428 vmrss=2115432 status=running
+t= 49.63s vmpeak=2609596 vmhwm=2136388 vmrss=2136388 status=running
+t= 50.17s vmpeak=2609596 vmhwm=2152976 vmrss=2152976 status=running
+t= 50.70s vmpeak=2609596 vmhwm=2173864 vmrss=2173864 status=running
+t= 51.21s vmpeak=2609596 vmhwm=2193936 vmrss=2193936 status=running
+t= 51.71s vmpeak=2609596 vmhwm=2212624 vmrss=2212624 status=running
+t= 52.21s vmpeak=2609596 vmhwm=2225944 vmrss=2225944 status=running
+t= 53.18s vmpeak=2621884 vmhwm=2244080 vmrss=2244080 status=running
+t= 53.68s vmpeak=2633148 vmhwm=2261228 vmrss=2261228 status=running
+t= 54.18s vmpeak=2645436 vmhwm=2279560 vmrss=2279560 status=running
+t= 54.72s vmpeak=2658748 vmhwm=2299940 vmrss=2299940 status=running
+t= 55.26s vmpeak=2672060 vmhwm=2320016 vmrss=2320016 status=running
+t= 55.79s vmpeak=2806204 vmhwm=2340460 vmrss=2340460 status=running
+t= 56.33s vmpeak=2806204 vmhwm=2360116 vmrss=2360116 status=running
+t= 56.90s vmpeak=2806204 vmhwm=2379924 vmrss=2379924 status=running
+t= 57.44s vmpeak=2806204 vmhwm=2399036 vmrss=2399036 status=running
+t= 58.53s vmpeak=2806204 vmhwm=2420216 vmrss=2420216 status=running
+t= 59.17s vmpeak=2816444 vmhwm=2439576 vmrss=2439576 status=running
+t= 59.72s vmpeak=2829756 vmhwm=2460072 vmrss=2460072 status=running
+t= 60.34s vmpeak=2846140 vmhwm=2483180 vmrss=2483180 status=running
+t= 60.89s vmpeak=2861500 vmhwm=2506244 vmrss=2506244 status=running
+t= 61.45s vmpeak=3001788 vmhwm=2526404 vmrss=2526404 status=running
+t= 61.96s vmpeak=3001788 vmhwm=2526292 vmrss=2003596 status=running
+t= 62.46s vmpeak=3001788 vmhwm=2526292 vmrss=2029076 status=running
+t= 62.98s vmpeak=3001788 vmhwm=2526292 vmrss=2034152 status=running
+t= 63.49s vmpeak=3001788 vmhwm=2526292 vmrss=2047872 status=running
+t= 63.99s vmpeak=3001788 vmhwm=2526292 vmrss=2062828 status=running
+t= 64.49s vmpeak=3001788 vmhwm=2526292 vmrss=2072920 status=running
+t= 65.22s vmpeak=3001788 vmhwm=2526292 vmrss=2085048 status=running
+t= 65.72s vmpeak=3001788 vmhwm=2526292 vmrss=2088128 status=running
+t= 66.22s vmpeak=3001788 vmhwm=2526292 vmrss=2093076 status=running
+t= 66.73s vmpeak=3001788 vmhwm=2526292 vmrss=2099104 status=running
+t= 67.53s vmpeak=3001788 vmhwm=2526292 vmrss=2106168 status=running
+t= 68.03s vmpeak=3001788 vmhwm=2526292 vmrss=2112844 status=running
+t= 68.53s vmpeak=3001788 vmhwm=2526292 vmrss=2119556 status=running
+t= 69.03s vmpeak=3001788 vmhwm=2526292 vmrss=2123716 status=running
+t= 69.53s vmpeak=3001788 vmhwm=2526292 vmrss=2123740 status=running
+t= 70.05s vmpeak=3001788 vmhwm=2526292 vmrss=2151276 status=running
+t= 70.63s vmpeak=3001788 vmhwm=2526292 vmrss=2151840 status=running
+t= 71.30s vmpeak=3001788 vmhwm=2526292 vmrss=2152504 status=running
+t= 71.90s vmpeak=3001788 vmhwm=2526292 vmrss=2152512 status=running
+t= 72.49s vmpeak=3001788 vmhwm=2526292 vmrss=2153876 status=running
+t= 73.03s vmpeak=3001788 vmhwm=2526292 vmrss=2168392 status=running
+t= 73.53s vmpeak=3001788 vmhwm=2526292 vmrss=2168424 status=running
+t= 74.05s vmpeak=3001788 vmhwm=2526292 vmrss=2297448 status=running
+t= 74.57s vmpeak=3001788 vmhwm=2526292 vmrss=2297448 status=running
+t= 75.44s vmpeak=3001788 vmhwm=2526292 vmrss=2297448 status=running
+t= 75.98s vmpeak=3001788 vmhwm=2526292 vmrss=2297448 status=running
+t= 76.48s vmpeak=3001788 vmhwm=2526292 vmrss=2297448 status=running
+t= 77.00s vmpeak=3001788 vmhwm=2526292 vmrss=2297448 status=running
+t= 77.59s vmpeak=3001788 vmhwm=2526292 vmrss=2297448 status=running
+t= 78.09s vmpeak=3001788 vmhwm=2526292 vmrss=2299456 status=running
+t= 78.59s vmpeak=3001788 vmhwm=2526292 vmrss=2388824 status=running
+t= 79.58s vmpeak=3001788 vmhwm=2526292 vmrss=2329912 status=running
+t= 80.08s vmpeak=3001788 vmhwm=2526292 vmrss=2329884 status=running
+t= 80.64s vmpeak=3001788 vmhwm=2526292 vmrss=2329884 status=running
+t= 81.15s vmpeak=3001788 vmhwm=2526292 vmrss=2329884 status=running
+t= 81.67s vmpeak=3001788 vmhwm=2526292 vmrss=2329884 status=running
+t= 82.21s vmpeak=3001788 vmhwm=2526292 vmrss=2328868 status=running
+t= 82.74s vmpeak=3001788 vmhwm=2526292 vmrss=2306484 status=running
+t= 83.24s vmpeak=3001788 vmhwm=2526292 vmrss=2306484 status=running
+t= 83.75s vmpeak=3001788 vmhwm=2526292 vmrss=2306484 status=running
+t= 84.66s vmpeak=3001788 vmhwm=2526292 vmrss=2306484 status=running
+t= 85.17s vmpeak=3001788 vmhwm=2526292 vmrss=2306484 status=running
+t= 85.68s vmpeak=3001788 vmhwm=2526292 vmrss=2306484 status=running
+t= 86.18s vmpeak=3001788 vmhwm=2526292 vmrss=2306484 status=running
+t= 86.69s vmpeak=3001788 vmhwm=2526292 vmrss=2345056 status=running
+t= 87.42s vmpeak=3001788 vmhwm=2526292 vmrss=2341128 status=running
+t= 87.93s vmpeak=3001788 vmhwm=2526292 vmrss=2320868 status=running
+t= 88.43s vmpeak=3001788 vmhwm=2526292 vmrss=2317812 status=running
+t= 88.94s vmpeak=3001788 vmhwm=2526292 vmrss=2317812 status=running
+t= 89.86s vmpeak=3001788 vmhwm=2526292 vmrss=2312580 status=running
+t= 90.37s vmpeak=3001788 vmhwm=2526292 vmrss=2312584 status=running
+t= 90.87s vmpeak=3001788 vmhwm=2526292 vmrss=2312584 status=running
+t= 91.38s vmpeak=3001788 vmhwm=2526292 vmrss=2312584 status=running
+t= 91.88s vmpeak=3001788 vmhwm=2526292 vmrss=2312596 status=running
+t= 92.38s vmpeak=3001788 vmhwm=2526292 vmrss=2327604 status=running
+t= 93.10s vmpeak=3001788 vmhwm=2526292 vmrss=2375988 status=running
+t= 93.61s vmpeak=3001788 vmhwm=2526292 vmrss=2319988 status=running
+t= 94.14s vmpeak=3001788 vmhwm=2526292 vmrss=2319988 status=running
+t= 94.66s vmpeak=3001788 vmhwm=2526292 vmrss=2319988 status=running
+t= 95.17s vmpeak=3001788 vmhwm=2526292 vmrss=2319988 status=running
+t= 95.68s vmpeak=3001788 vmhwm=2526292 vmrss=2319988 status=running
+t= 96.19s vmpeak=3001788 vmhwm=2526292 vmrss=2319988 status=running
+t= 96.69s vmpeak=3001788 vmhwm=2526292 vmrss=2319988 status=running
+t= 97.19s vmpeak=3001788 vmhwm=2526292 vmrss=2319988 status=running
+t= 97.69s vmpeak=3001788 vmhwm=2526292 vmrss=2315908 status=running
+t= 98.20s vmpeak=3001788 vmhwm=2526292 vmrss=2313876 status=running
+t= 98.70s vmpeak=3001788 vmhwm=2526292 vmrss=2355116 status=running
+t= 99.72s vmpeak=3001788 vmhwm=2526292 vmrss=2314772 status=running
+t=100.22s vmpeak=3001788 vmhwm=2526292 vmrss=2312740 status=running
+t=100.73s vmpeak=3001788 vmhwm=2526292 vmrss=2312740 status=running
+t=101.25s vmpeak=3001788 vmhwm=2526292 vmrss=2312740 status=running
+t=101.76s vmpeak=3001788 vmhwm=2526292 vmrss=2312740 status=running
+t=102.27s vmpeak=3001788 vmhwm=2526292 vmrss=2312740 status=running
+t=102.79s vmpeak=3001788 vmhwm=2526292 vmrss=2311736 status=running
+t=103.33s vmpeak=3001788 vmhwm=2526292 vmrss=2311736 status=running
+t=104.04s vmpeak=3001788 vmhwm=2526292 vmrss=2311720 status=running
+t=104.54s vmpeak=3001788 vmhwm=2526292 vmrss=2311720 status=running
+t=105.05s vmpeak=3001788 vmhwm=2526292 vmrss=2311720 status=running
+t=105.59s vmpeak=3001788 vmhwm=2526292 vmrss=2311724 status=running
+t=106.10s vmpeak=3001788 vmhwm=2526292 vmrss=2311740 status=running
+t=106.61s vmpeak=3001788 vmhwm=2526292 vmrss=2311740 status=running
+t=107.20s vmpeak=3001788 vmhwm=2526292 vmrss=2311740 status=running
+t=107.70s vmpeak=3001788 vmhwm=2526292 vmrss=2468412 status=running
+t=108.20s vmpeak=3001788 vmhwm=2526292 vmrss=2502720 status=running
+t=108.75s vmpeak=3001788 vmhwm=2526292 vmrss=2502724 status=running
+t=109.31s vmpeak=3001788 vmhwm=2526292 vmrss=2502724 status=running
+t=109.85s vmpeak=3001788 vmhwm=2526292 vmrss=2502724 status=running
+t=110.38s vmpeak=3001788 vmhwm=2526292 vmrss=2502724 status=running
+t=110.95s vmpeak=3001788 vmhwm=2526292 vmrss=2504528 status=running
+t=111.45s vmpeak=3001788 vmhwm=2547840 vmrss=2547840 status=running
+t=111.99s vmpeak=3046904 vmhwm=2612828 vmrss=2612828 status=running
+t=112.53s vmpeak=3046904 vmhwm=2677232 vmrss=2677232 status=running
+t=113.07s vmpeak=3046904 vmhwm=2679344 vmrss=2679344 status=running
+t=113.79s vmpeak=3046904 vmhwm=2678792 vmrss=1627648 status=ok
+TOTAL_SAMPLES=204
+FINAL_JOB_STATUS_JSON={"job_id": "235bcfec49a4461e8b0416e50c649af0", "kind": "backfill", "start": "2026-06-16", "end": "2026-06-18", "source": null, "status": "ok", "symbols_total": 0, "symbols_ok": 0, "symbols_failed": 0, "bars_fetched": 0, "dates_total": 3, "dates_done": 3, "snapshots_created": 3, "forward_returns_inserted": 3881, "calendar_days": 3, "non_trading_days": 0, "already_snapshotted": 0, "error_other": 0, "aggregates_refreshed": ["latest_snapshot", "coverage", "membership_timeline", "market_phase", "forward_aggregates", "research_hot_keys", "index_series", "drawdown_expectations"], "chunk_index": 1, "chunk_total": 1, "passers": 0, "omitted_total": 0, "omitted": [], "stages": {"backfill": {"elapsed_seconds": 79.7712, "items_processed": 3, "concurrency": 3, "per_date_seconds_sum": 6.6732, "speedup_factor": 0.0837}}, "current_activity": "scanning 2026-06-18 (3/3)", "last_progress_at": "2026-07-30T11:51:19.375154+00:00", "completed_stages": ["backfill"], "date_failures": [], "message": "backfill: 3 snapshots over 3 dates, 3881 forward returns", "errors": [], "started_at": "2026-07-30T11:49:22.159901+00:00", "finished_at": "2026-07-30T11:51:21.936011+00:00"}

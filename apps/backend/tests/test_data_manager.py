@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import socket
 import time
+from contextlib import contextmanager
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -2164,18 +2165,78 @@ def test_do_backfill_new_snapshot_dates_tracks_genuinely_new_dates_only(backfill
     assert prog2.already_snapshotted == 1
 
 
-def test_run_data_job_backfill_wires_finalize_hook_end_to_end(backfilled_job):
-    """ops-hardening iter-2 (J-05) end-to-end: a real backfill job dispatched through `run_data_job` (the
-    SAME path the API uses) reaches the finalize hook, persists a `coverage_snapshot` row, and the job's
-    final summary (the SAME dict `GET /api/data/jobs/{id}` serves) carries a non-empty
-    `aggregates_refreshed`. Searches from the LATEST end of the trading calendar (the other new-date test
-    above searches from the earliest) so the two never contend for the same fresh date."""
+def test_do_backfill_whole_stage_exception_releases_shared_cache_and_reraises(backfilled_job, monkeypatch):
+    """TC-6 (reviewer MINOR, iter-37) — a whole-stage exception inside `_do_backfill`'s
+    `with prefilled_bar_cache(...)` block, occurring AFTER `prog._shared_bar_cache` has genuinely been
+    stashed (every per-date compute/persist failure below that point is already isolated inside
+    `_run_targets`/`_persist_isolated`, never raised out of the `with` block — see their own docstrings),
+    must set `prog._shared_bar_cache` back to `None`, call `_release_process_memory()`, and re-raise the
+    ORIGINAL exception (never swallowed) — `data_manager.py`'s `except Exception:` branch around line 3162.
+
+    Load-bearing (not vacuous): faults `_checkpoint_run_record` ONLY once `prog._shared_bar_cache` is
+    already non-None (i.e. strictly after the real stash — the real `prefilled_bar_cache`/`_compute_one_
+    backfill_date`/`_persist` calls all run for real first), so the post-fault `is None` assertion actually
+    proves the except branch's reset ran — a cache that was NEVER stashed in the first place would make
+    that assertion pass trivially even if the reset line were deleted."""
     engine = backfilled_job["engine"]
     cfg = backfilled_job["cfg"]
     with Session(engine) as session:
         trading = _trading_days(session, cfg)
         snapshotted = set(session.exec(select(ScannerRun.asof_date)).all())
-    fresh_date = next(d for d in reversed(trading) if d not in snapshotted)
+    fresh_date = next(d for d in trading if d not in snapshotted)
+
+    real_checkpoint = data_manager._checkpoint_run_record
+
+    def _fault_after_stash(engine_arg, prog_arg):
+        if prog_arg._shared_bar_cache is not None:
+            raise RuntimeError("simulated whole-stage fault after cache stash")
+        return real_checkpoint(engine_arg, prog_arg)
+
+    monkeypatch.setattr(data_manager, "_checkpoint_run_record", _fault_after_stash)
+
+    release_calls: list[bool] = []
+    real_release = data_manager._release_process_memory
+
+    def _spy_release() -> None:
+        release_calls.append(True)
+        real_release()
+
+    monkeypatch.setattr(data_manager, "_release_process_memory", _spy_release)
+
+    prog = JobProgress(job_id="whole-stage-exc-probe", kind="backfill", start=fresh_date, end=fresh_date)
+    with Session(engine) as session:
+        with pytest.raises(RuntimeError, match="simulated whole-stage fault after cache stash"):
+            data_manager._do_backfill(session, cfg, prog, eng=engine)
+
+    assert prog._shared_bar_cache is None, (
+        "a whole-stage exception must clear the stashed shared-cache reference, not leave it stale"
+    )
+    assert release_calls, "a whole-stage exception must call _release_process_memory() before re-raising"
+
+
+def test_run_data_job_backfill_wires_finalize_hook_end_to_end(backfilled_job, monkeypatch):
+    """ops-hardening iter-2 (J-05) end-to-end: a real backfill job dispatched through `run_data_job` (the
+    SAME path the API uses) reaches the finalize hook, persists a `coverage_snapshot` row, and the job's
+    final summary (the SAME dict `GET /api/data/jobs/{id}` serves) carries a non-empty
+    `aggregates_refreshed`. Searches from the LATEST end of the trading calendar (the other new-date test
+    above searches from the earliest) so the two never contend for the same fresh date.
+
+    ops-hardening iter-38 (audit T2, iter-37 — full-comparison strengthening): the per-category warm loops
+    inside `_refresh_ingest_aggregates` each swallow non-`MemoryError` exceptions (log + continue), so a
+    break in the live-cache attach path shows up ONLY as a silently shorter `aggregates_refreshed` list —
+    the pre-existing `>=` subset assertions above would not catch that. This test also runs a SECOND job of
+    the identical shape (a different fresh date) with the shared-cache attach FORCED off
+    (`prog._shared_bar_cache` nulled right before the finalize hook runs, mirroring pre-iter-37 behavior —
+    every downstream `cache_ctx` resolves to its own independent `prefilled_bar_cache`/`nullcontext()`
+    fallback, unchanged), then asserts the two runs' `aggregates_refreshed` sets are IDENTICAL: the shared-
+    cache attach is a pure performance optimization, so it must never change which categories succeed."""
+    engine = backfilled_job["engine"]
+    cfg = backfilled_job["cfg"]
+    with Session(engine) as session:
+        trading = _trading_days(session, cfg)
+        snapshotted = set(session.exec(select(ScannerRun.asof_date)).all())
+    fresh_dates = (d for d in reversed(trading) if d not in snapshotted)
+    fresh_date = next(fresh_dates)
 
     job = create_job("backfill", fresh_date, fresh_date)
     summary = run_data_job(job.job_id, config=cfg, engine=engine)
@@ -2199,6 +2260,29 @@ def test_run_data_job_backfill_wires_finalize_hook_end_to_end(backfilled_job):
         persisted = recent_runs(session, cfg)
     this_run = next(r for r in persisted if r["kind"] == "backfill" and r["start"] == fresh_date.isoformat())
     assert set(this_run["aggregates_refreshed"]) >= {"latest_snapshot", "coverage", "membership_timeline"}
+
+    # TC-7 (audit T2) — forced-fallback comparison, same job shape, a different fresh date.
+    fallback_fresh_date = next(fresh_dates)
+    real_refresh = data_manager._refresh_ingest_aggregates
+
+    def _forced_fallback_refresh(session_arg, cfg_arg, prog_arg):
+        # force every downstream consumer's `prog._shared_bar_cache is not None` check to miss, mirroring
+        # pre-iter-37 behavior (each warm call opens its own independent cache / no cache) — the live-cache
+        # run above already completed and returned its summary, untouched by this patch.
+        prog_arg._shared_bar_cache = None
+        return real_refresh(session_arg, cfg_arg, prog_arg)
+
+    monkeypatch.setattr(data_manager, "_refresh_ingest_aggregates", _forced_fallback_refresh)
+    fallback_job = create_job("backfill", fallback_fresh_date, fallback_fresh_date)
+    fallback_summary = run_data_job(fallback_job.job_id, config=cfg, engine=engine)
+    assert fallback_summary["status"] == "ok"
+
+    assert set(fallback_summary["aggregates_refreshed"]) == set(summary["aggregates_refreshed"]), (
+        "the forced-fallback run's aggregates_refreshed category list diverged from the live-cache run's "
+        "for the SAME job shape — the shared-cache attach must be a pure performance optimization; any "
+        "category that silently drops out under only one path (a swallowed exception in a per-category "
+        "warm loop) is exactly the regression audit finding T2 (iter-37) warned this assertion must catch"
+    )
 
 
 def test_fetch_kind_run_never_carries_aggregates_refreshed(tmp_path):

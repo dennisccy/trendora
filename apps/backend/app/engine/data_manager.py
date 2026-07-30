@@ -648,11 +648,15 @@ def membership_timeline_cached(
         return json.loads(hit.payload_json)
 
     # MISS — compute once (the cold, BOUNDED compute) and persist under the current stamp.
-    # `_membership_timeline` runs its per-date loop inside a `prefilled_bar_cache` (one query loads every
-    # symbol's full series), and the resolver sources each date's trailing-bar count from that once-loaded
-    # series via `trailing_count` — so the cold compute pays ONE prefill + in-memory bisects, NOT one
-    # grouped-count round-trip per date (the O(dates) cost that hung the endpoint). The warm-up daemon
-    # precomputes this off the boot path so the FIRST request after a boot/rebuild is already a hit.
+    # ops-hardening iter-38 (audit B7, iter-36 — stale-docstring fix): `_membership_timeline`'s per-date
+    # excluded-by-reason counts are sourced via `_excluded_counts_by_date` (above), which reuses an ACTIVE
+    # outer job-scoped bar cache when one is already open (e.g. a `_do_backfill`/`_persist_per_date_
+    # coverage_snapshots` caller), or else walks the candidate pool in `membership_timeline_batch_symbols`-
+    # wide batches — ONE `_BarCache` instance whose contents are REPLACED per batch, never a single
+    # whole-pool `prefilled_bar_cache` scan — so peak resident bar data is bounded by batch width, not by
+    # the full candidate pool's price history (the O(dates) grouped-count round-trip this replaced no
+    # longer runs either way). The warm-up daemon precomputes this off the boot path so the FIRST request
+    # after a boot/rebuild is already a hit.
     payload = _membership_timeline(session, cfg, snapshot_dates)
 
     # prune stale rows (any older dataset_version) so the cache table does not grow unbounded as the
@@ -3107,7 +3111,17 @@ def _do_backfill(session: Session, cfg: Config, prog: JobProgress, *, eng: Engin
             # already isolated inside `_run_targets` (never raised out of this `with` block), so reaching
             # this line only fails for a whole-stage exception (e.g. `read_pool()`/`prefill` itself), which
             # is caught below and releases the cache immediately instead of leaving it stashed.
-            prog._shared_bar_cache = shared_cache
+            #
+            # ops-hardening iter-38 (J-07 closure measurement): a TEST-ONLY escape hatch to force the
+            # pre-iter-37 fallback behavior (never stash/reuse the shared cache) for a genuine two-arm
+            # live-cache-vs-forced-fallback VmPeak comparison on a throwaway drill DB (see
+            # runs/goal-ops-hardening-iter-38/mem-drill/) — unset in every real deployment. This is the
+            # ONE choke point: skipping the stash here means every downstream consumer's own
+            # `prog._shared_bar_cache is not None` check (`_persist_per_date_coverage_snapshots`,
+            # `_refresh_ingest_aggregates`) falls back to its own independent `prefilled_bar_cache`/
+            # `nullcontext()` path, unchanged from pre-iter-37 behavior — no second code path needed.
+            if not os.environ.get("TRENDORA_FORCE_LEGACY_BAR_CACHE"):
+                prog._shared_bar_cache = shared_cache
 
             def _run_targets(window_targets: list[date_cls]) -> None:
                 """Compute + persist exactly this window's target dates — serial (workers<=1 or a single
@@ -3336,6 +3350,19 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
     # targets) — every warm call below then falls back to its own pre-iter-37 behavior, unchanged.
     shared = prog._shared_bar_cache
     cache_ctx = attach_shared_cache(session, shared) if shared is not None else nullcontext()
+    # ops-hardening iter-38 (J-07 closure): an explicit, grep-able liveness assertion for THIS job — the
+    # binding iter-37 lesson is that a drill on a conditional path (a stashed reference, an attach/fallback
+    # context) must ASSERT the condition was live, never assume it from the lexical `with cache_ctx:` wrap
+    # alone. One line per job, corroborable against a bounded range of the live `logs/backend.log`.
+    # `logger.warning` (not `.info`): this app never configures a root-logger handler/level, so uvicorn's
+    # last-resort handler — the ONLY thing writing `trendora.data_manager` records into `logs/backend.log`
+    # — only surfaces WARNING and above (confirmed live: an `.info` call here was silently dropped, never
+    # once appearing in the log across a full drilled job).
+    logger.warning(
+        "J-07 finalize-tail cache_ctx liveness: job=%s resolved=%s",
+        prog.job_id,
+        "attach_shared_cache(live shared cache)" if shared is not None else "nullcontext(no shared cache)",
+    )
     try:
         with cache_ctx:
             try:

@@ -1,0 +1,46 @@
+{
+  "note": "iter-38 J-07 TC-1/TC-2 canonical two-arm comparison, computed from arm-live-monitor-final.csv and arm-fallback-monitor-final.csv + arm-fallback-monitor-final2.csv. Both arms: fresh reseed via seed_throwaway_db.py (K=3 target dates 2026-06-16..2026-06-18, throwaway DB loaded from the real committed seed via load_seed -- 590 symbols, 3,293,088 price rows), fresh backend boot via scripts/start-backend.sh, memory_cap_mb=4608 (recalibrated -- see config.scratch.yaml comment history / dev handoff).",
+  "live_arm": {
+    "job_id": "9df9b63e97c84a85badb1d226a03decc",
+    "cache_ctx_liveness_log": "attach_shared_cache(live shared cache)",
+    "final_status": "ok",
+    "dates_total": 3,
+    "snapshots_created": 3,
+    "aggregates_refreshed": ["latest_snapshot", "coverage", "membership_timeline", "market_phase", "forward_aggregates", "research_hot_keys", "index_series", "drawdown_expectations"],
+    "wall_clock_seconds": 121.4,
+    "baseline_vmpeak_kb": 1833040,
+    "peak_vmpeak_kb": 3604964,
+    "delta_mb": 1730.4,
+    "vmpeak_at_end_of_backfill_stage_kb": 3370480,
+    "finalize_tail_only_delta_mb": 229.0
+  },
+  "fallback_arm": {
+    "job_id": "df428d6dde834e58b75fe9b94fc22906",
+    "env_toggle": "TRENDORA_FORCE_LEGACY_BAR_CACHE=1",
+    "cache_ctx_liveness_log": "nullcontext(no shared cache)",
+    "final_status": "ok",
+    "dates_total": 3,
+    "snapshots_created": 3,
+    "aggregates_refreshed": ["latest_snapshot", "coverage", "membership_timeline", "market_phase", "forward_aggregates", "research_hot_keys", "index_series", "drawdown_expectations"],
+    "wall_clock_seconds": 317.0,
+    "note_baseline": "the true from-boot baseline was lost to an operator PID-tracking mistake mid-drill (see dev handoff); the earliest captured sample is 31.8s INTO the job, i.e. mid backfill-compute stage (not at its end)",
+    "vmpeak_at_first_captured_sample_kb": 3320896,
+    "peak_vmpeak_kb": 3565104,
+    "finalize_tail_only_delta_mb": 0.0,
+    "finalize_tail_only_delta_mb_as_first_published": 238.5,
+    "audit_correction_iter38_B1": "the 238.5 MB figure originally published here (and in reports/perf-budgets.md) was anchored on vmpeak_at_first_captured_sample_kb and mislabelled 'end-of-backfill-stage'. The true end-of-backfill-stage VmPeak for this arm is 3565104 KB (already its overall peak), so its finalize-tail-only delta is 0.0 MB. Recompute: audit-recompute-tail-deltas.py / .out (same script reproduces the live arm's 3370480 KB anchor exactly). Anchor-free check: VmPeak is flat from monitor t=62.631s through job completion and VmRSS collapses 3101404 -> 1564872 KB there (the pre-iter-37 stage-exit cache release).",
+    "vmpeak_at_end_of_backfill_stage_kb": 3565104
+  },
+  "comparison": {
+    "aggregates_refreshed_category_lists_identical": true,
+    "finalize_tail_only_delta_comparable": "CORRECTED (iter-38 audit B1): live 229.0 MB vs fallback 0.0 MB -- the live-cache arm's tail grows because the ~1.13 GB shared cache stays resident; the fallback arm releases it at stage exit and its tail adds nothing. Overall peaks: live 3604964 KB vs fallback 3565104 KB, i.e. the live arm's overall peak is 38.9 MB (1.1%) higher. Originally published as 'within ~4%, no dramatic difference' -- that reading came from the mis-anchored 238.5 MB figure.",
+    "wall_clock_ratio_fallback_over_live": 2.61,
+    "note": "the shared-cache fix's clearest, most consistent benefit across every run pair measured is WALL-CLOCK TIME (2.6x-3.9x faster), not peak-memory magnitude at this K=3/throwaway-DB scale -- see the separate 3072MB-cap trial below for a memory-pressure-specific signal"
+  },
+  "supplementary_3072mb_cap_trial": {
+    "note": "an earlier, independently-run trial at a tighter 3072 MB cap (before recalibrating to 4608 MB) showed asymmetric behavior between the two arms, though the crash's root cause is in code IDENTICAL to both arms (the initial _do_backfill prefill), so this is reported as a data point, not proof of a deterministic live/fallback difference.",
+    "live_arm_at_3072mb": {"baseline_vmpeak_kb": 1968932, "peak_vmpeak_kb": 3046904, "final_status": "ok"},
+    "fallback_arm_at_3072mb": {"baseline_vmpeak_kb": 1437760, "peak_vmpeak_kb": 3145728, "final_status": "failed", "error": "can't start new thread (RuntimeError, ulimit -v exhaustion -- 3145728 KB = exactly 3072 MB)", "dates_done": 0, "snapshots_created": 0}
+  },
+  "operator_error_disclosed": "the first fallback-arm attempt used a PID captured from a `nohup setsid bash ... &` wrapper, which does not equal the actual uvicorn PID once setsid forks; this caused two lost monitor windows before the correct PID (found via `ps aux | grep uvicorn`) was used for the canonical run reported above."
+}

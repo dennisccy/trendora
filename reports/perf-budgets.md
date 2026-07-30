@@ -4463,7 +4463,7 @@ its own eager whole-table context — an OUTER job-scoped cache (e.g. `_do_backf
 multi-date job) is still reused UNCHANGED when already active (`active_bar_cache` check).
 
 **TC-1 — peak-memory measurement** (`test_peak_memory_reduced_vs_pinned_reference_on_live_seed`, live
-committed seed DB, 591 symbols, 1996-01-02 → 2026-07-22, 1,880 snapshot dates sampled every 61st date = 31
+committed seed DB, 548 symbols, 1996-01-02 → 2026-07-22, 1,880 snapshot dates sampled every 61st date = 31
 dates, `tracemalloc` peak isolating `_membership_timeline` specifically):
 
 | Implementation | Peak tracemalloc bytes | Notes |
@@ -4767,4 +4767,206 @@ backfill finalize path: the shared-cache fix closes the last unbounded double-lo
 all PASS), and steps 1-4 all ran fresh, this iteration, against the current tree, concurrently where the spec
 requires it (TC-1/TC-2/TC-3 above) and honestly (TC-2/TC-3/TC-4/TC-5 in the step-4 table above), with every
 finding — expected and unexpected — disclosed rather than smoothed over.
+
+---
+
+## Iteration 38 — J-07 closure gap: making the induced-pressure drill's shared cache genuinely live, and
+## running step 1 through its own named ingest-finalize path (2026-07-30, developer)
+
+**The gap this iteration closes (iter-37/o, stated by the iter-37 evaluator).** Iteration 37 shipped a real
+fix (share one `prefilled_bar_cache` across `_do_backfill` and the ingest-finalize tail) and then ran J-07's
+four steps live for the first time — but BOTH live drills exercised paths where the new behavior was inert:
+step 1/3's warm was triggered via `GET /api/backtest` (a daemon-thread dispatch with no `JobProgress`, so
+`prog._shared_bar_cache` was never set), and step 4's induced-pressure drill submitted a backfill with
+`dates_total: 0` (a deliberate 0-target no-op, by design, from the iter-34 seed script), so `cache_ctx`
+always resolved to `nullcontext()` — the new `with cache_ctx:` wrap was lexically present but semantically a
+no-op both times. This iteration measures the ONE state iteration 37's own change creates — the shared bar
+cache held resident across the WHOLE finalize tail, not just the compute stage — for the first time, via a
+genuine two-arm comparison, plus re-runs step 1 through the path its own text names.
+
+### TC-1/TC-2 — throwaway-DB drill: real K=3 backfill, genuine shared-cache liveness, two-arm VmPeak comparison
+
+**Fixture widened** (`runs/goal-ops-hardening-iter-38/mem-drill/seed_throwaway_db.py`, iter-34/37 lineage):
+unlike the prior fixture's deliberate 1-row 0-target no-op, this one loads the REAL committed seed
+(`load_seed` — 590 symbols, 3,293,088 price rows, 2005-02-25 → 2026-07-01 trading calendar) into a fresh,
+disposable sqlite file (never the live `apps/backend/data/trendora.db`), then targets a K=3-trading-day
+window (2026-06-16 → 2026-06-18) comfortably before the seed's own latest date, guaranteeing all 3 target
+dates are genuinely unsnapshotted AND non-"current" (so the coverage sub-loop's own per-date warm covers all
+3, not 2). Launched only via `scripts/start-backend.sh` (AG-10), `TRENDORA_CONFIG` pointed at a scratch
+config copy with `database.url` repointed at the throwaway file.
+
+**Liveness assertion added** (`data_manager.py`, `_refresh_ingest_aggregates`, ~line 3337-3349): a
+`logger.warning` line fires on every job recording whether `cache_ctx` resolved to `attach_shared_cache`
+(live) or `nullcontext` (no shared cache), tagged with the job id — corroborable against a bounded
+`logs/backend.log` line range, not assumed from the lexical wrap. **Correction discovered live**: an
+`.info`-level version of this line was silently dropped — this app never configures a root-logger
+handler/level, so uvicorn's last-resort handler (the only thing writing `trendora.data_manager` records into
+`logs/backend.log`) only surfaces WARNING and above. Confirmed by a full drilled job producing zero matching
+log lines at `.info`; fixed to `.warning` and re-verified live (see log excerpts below).
+
+**Forced-fallback env toggle added** (`data_manager.py`, `_do_backfill`, ~line 3110): `TRENDORA_FORCE_LEGACY_
+BAR_CACHE=1` skips the `prog._shared_bar_cache = shared_cache` stash — the ONE choke point; every downstream
+consumer's own `is not None` check then falls back to its pre-iter-37 own-prefill/`nullcontext` path
+unchanged, with zero second code path. TEST-ONLY, unset in every real deployment.
+
+**Memory cap recalibration (disclosed).** The iter-34/37 970 MB boundary was calibrated for their own
+near-empty synthetic fixture and proved too tight for this iteration's realistic full-seed-scale throwaway
+DB: the boot warm-up daemon hit `RuntimeError: can't start new thread` (a `ulimit -v` exhaustion symptom, not
+a clean `MemoryError`) under 970 MB before the drill's own backfill was even submitted. Recalibrated to
+3072 MB, then to 4608 MB (see the supplementary 3072 MB trial below — the fallback arm hit that exact
+ceiling mid-drill, a genuine but crash-truncated reading) for the canonical two-arm comparison. Both arms
+measured under the SAME 4608 MB cap.
+
+**Canonical two-arm results** (fresh reseed + fresh boot per arm; full data in
+`runs/goal-ops-hardening-iter-38/mem-drill/two-arm-summary.json`):
+
+| | Live-cache (shipped) | Forced-fallback (pre-iter-37 behavior) |
+|---|---|---|
+| Job id | `9df9b63e97c84a85badb1d226a03decc` | `df428d6dde834e58b75fe9b94fc22906` |
+| `cache_ctx` liveness log | `attach_shared_cache(live shared cache)` | `nullcontext(no shared cache)` |
+| Final status | `ok`, `dates_total: 3`, `snapshots_created: 3` | `ok`, `dates_total: 3`, `snapshots_created: 3` |
+| `aggregates_refreshed` | all 8 categories | all 8 categories — **identical set** (TC-7's own comparison, confirmed both by this live drill and the strengthened unit test) |
+| Wall-clock (whole job) | 121.4 s | 317.0 s (**2.61x slower**) |
+| VmPeak: fresh-boot baseline → overall peak | 1,833,040 KB → 3,604,964 KB (Δ 1,730.4 MB) | baseline lost to an operator PID-tracking mistake (disclosed below); first captured sample 3,320,896 KB → peak 3,565,104 KB |
+| VmPeak at end-of-backfill-stage → tail-only peak | 3,370,480 KB → 3,604,964 KB (**tail-only Δ 229.0 MB**) | 3,565,104 KB → 3,565,104 KB (**tail-only Δ 0.0 MB**) — corrected by the iter-38 audit (see below) |
+
+> **iter-38 AUDIT CORRECTION (2026-07-30, finding B1 — supersedes the row above as first published).** The
+> fallback arm's tail-only figure was originally published as **238.5 MB**, anchored on that arm's FIRST
+> CAPTURED SAMPLE (3,320,896 KB) under the label "VmPeak at end-of-backfill-stage". It is not that: the
+> fallback monitor started **31.8 s after** its job was submitted — mid backfill-compute stage — so the
+> published delta silently included the rest of that arm's compute stage, while the live arm's anchor was a
+> genuine end-of-stage reading. Recomputed from the raw CSVs
+> (`runs/goal-ops-hardening-iter-38/mem-drill/audit-recompute-tail-deltas.py` / `.out`; the same script
+> reproduces the live arm's published 3,370,480 KB anchor exactly, validating the method), the fallback
+> arm's true end-of-backfill-stage VmPeak is **3,565,104 KB — already its overall peak — so its
+> finalize-tail-only delta is 0.0 MB.** Anchor-free corroboration: the fallback arm's VmPeak is flat from
+> monitor t=62.6 s through job completion (~263 s), and its VmRSS collapses 3,101,404 → 1,564,872 KB right
+> at that point (the pre-iter-37 stage-exit cache release), so the 0.0 MB tail delta holds under ANY anchor
+> at or after that sample — no timestamp arithmetic required.
+
+**Reading the result honestly (as corrected).** The two arms' `aggregates_refreshed` category lists are
+byte-identical (directly answering TC-7). On the **finalize-tail-only** VmPeak delta the two arms are NOT
+close: the live-cache arm grows **+229.0 MB during the tail** (the ~1.13 GB shared cache stays resident and
+the tail's own work allocates on top of it), while the forced-fallback arm grows **+0.0 MB during the tail**
+(it releases the cache at `_do_backfill`'s stage exit — the VmRSS collapse above — and its tail's own
+re-loads fit inside address space the process had already reserved). Directionally, therefore, the iter-37
+auditor's "a resident cache could raise peak" hypothesis **is corroborated** for the tail stage — the
+opposite of this section's original reading. In **overall** process peak the effect is small, because the
+fallback arm front-loads its growth into the compute stage instead: live 3,604,964 KB vs fallback
+3,565,104 KB — the live arm's overall peak is **38.9 MB (1.1%) higher**, both far under the 4608 MB cap.
+The clearest, most consistent signal across every run pair this iteration measured remains **wall-clock
+time**: the fallback arm was 2.6x-3.9x slower across three separate trials. Net: at this K=3/throwaway-DB
+scale the shipped shared-cache behavior buys ~2.6x wall-clock for ~1.1% more peak VSZ, with the growth
+shifted from the compute stage into the finalize tail.
+
+**Supplementary 3072 MB-cap trial (disclosed as a data point, not proof).** An earlier trial at the
+originally-recalibrated 3072 MB cap showed a starker asymmetry: the live arm completed (baseline
+1,968,932 KB → peak 3,046,904 KB — **96.9% of the 3,145,728 KB ceiling, a ~96 MB margin**, not a comfortable
+one; corrected by the iter-38 audit, which found the original "well under the cap" wording unsupported by
+its own figures); the fallback arm **crashed** — `status: "failed"`,
+`dates_done: 0`, `snapshots_created: 0`, error `"can't start new thread"` — with VmPeak pinned at exactly
+3,145,728 KB (= 3072 × 1024, the exact `ulimit -v` ceiling). The crash fired inside `_do_backfill`'s own
+initial prefill — code IDENTICAL in both arms — so this is reported as a genuine, honest data point (under
+tight memory pressure, the fallback arm was the one that failed, not the live one) rather than overclaimed as
+a deterministic consequence of the live/fallback toggle; run-to-run variance (this box also runs an unrelated
+project's backend concurrently — confirmed live via `ps aux` — plus ASLR/heap-layout differences between
+process instances) is a plausible confound. Recorded exactly as measured; not scored as a J-07 regression
+(this iteration changed no computation, only added a comparison harness and a TEST-ONLY env toggle).
+
+**Operator error disclosed (transparency, not swept under the rug).** The first fallback-arm attempt used
+`nohup setsid bash scripts/start-backend.sh &` and captured `$!` as the launch PID — but `setsid` forks
+internally, so `$!` was the wrapper's PID, not uvicorn's. Two monitor windows were lost to `FileNotFoundError`
+on `/proc/<wrong-pid>/status` before the real PID was found via `ps aux | grep uvicorn` and monitoring
+resumed correctly. The canonical run reported above used plain `nohup ... &` (no `setsid`), which tracked
+correctly throughout, matching the pattern used successfully in every other run this iteration and in
+iter-34/37's own drills.
+
+**Log corroboration** (binding iter-34 lesson — a saved excerpt must be a bounded range of the LIVE file, not
+a hand-picked quote): `runs/goal-ops-hardening-iter-38/mem-drill/arm-live-log-excerpt.txt` (51 lines
+surrounding `job=9df9b63e97c84a85badb1d226a03decc`) and `arm-fallback-log-excerpt.txt` (51 lines surrounding
+`job=df428d6dde834e58b75fe9b94fc22906`), both `sed`-extracted directly from `logs/backend.log` by line number.
+
+### TC-3/TC-4 — live full-deep-basis warm, triggered through its own named ingest-finalize path
+
+J-07 step 1's own text says "with the full deep basis loaded, trigger the forward-aggregate warm... the
+ingest finalize path" — iteration 37 triggered it via `GET /api/backtest` instead (a different, inert path
+for this session's own shared-cache change). This iteration triggers it for real: a fresh backend on the
+LIVE committed-seed DB (`apps/backend/data/trendora.db`, no scratch config — real `server.memory_cap_mb:
+6144`), launched only via `scripts/start-backend.sh`, booted in **~1 second** (J-04's ≤5s budget, confirmed —
+`ensure_latest_snapshot` is a no-op on this warm DB). A single-day backfill for **2025-05-23** (a confirmed
+gap date — one of 3,508 unsnapshotted trading days in the 5,383-day calendar) was submitted: this creates
+exactly one new snapshot, bumps the GLOBAL `dataset_version` (`r1880-f3974105` → `r1881-f3976825`), and —
+because the stamp is global — invalidates the LATEST run date's (2026-07-22) already-cached
+`ForwardAggregateCache` rows for all 5 configured horizons, confirmed by direct query BEFORE triggering
+(all 5 matched the OLD stamp) and AFTER (all 5 match the NEW stamp) — a genuine, real cold-recompute, not a
+cache hit.
+
+- **Job**: `6c13571817ea4c49859f0f2f23df77d6`, `kind: backfill`, `start=end=2025-05-23`. Backfill-compute
+  stage: 11.0 s (`snapshots_created: 1, forward_returns_inserted: 2720`). **Total wall-clock: 338 s (5.6
+  min)** — the finalize tail (dominated by the membership-timeline cache's own invalidation-by-any-new-
+  snapshot recompute, an O(dates) cost over now ~1,881 stored snapshot dates) is the majority of that time,
+  slightly over the iter-37 precedent's "well under 5 minutes" — disclosed honestly, not rounded down.
+- **`cache_ctx` liveness**: confirmed live — `logs/backend.log:143652`, `resolved=attach_shared_cache(live
+  shared cache)` for this exact job id (`log-excerpt.txt` in `runs/goal-ops-hardening-iter-38/j07-warm/`).
+- **TC-3 (evidence reaches `ready`)**: `GET /api/backtest?as_of=2026-07-22` — `evidence_status: "ready"` for
+  all 5 configured horizons (`1, 5, 10, 20, 60`), both pre- and post-warm (pre-warm served the OLD stamp's
+  cached values; post-warm serves the NEW stamp's freshly-computed values — NOT byte-identical to the
+  pre-warm payload, exactly as expected: the dataset genuinely changed).
+- **TC-3 (peak memory)**: VmPeak baseline 2,917,024 KB → peak 3,688,916 KB (**Δ 753.8 MB**), landing at
+  **58.6% of the declared 6,291,456 KB (6144 MB) `server.memory_cap_mb` ceiling** — comfortable margin.
+- **TC-4 (1Hz health poll)**: 234 total polls across the drill's two monitor segments
+  (a bounded max-duration cap required resuming the poll once mid-drill — both segments' polls are
+  concatenated in `runs/goal-ops-hardening-iter-38/j07-warm/health-latency.csv` /
+  `health-latency-part2.csv`), **0 non-200 responses**, single-poll latency min/max/mean = 109 ms / 1,317 ms
+  / 282 ms. Max gap between consecutive poll starts *within* the longer (300 s) segment: **2.355 s** — a
+  small, disclosed overshoot of the ~2.15 s reference figure, attributable to the monitor script's own
+  sequential per-cycle pattern (health check + job-status check + 1.0 s sleep, so an occasional slow request
+  pushes the total cycle period past budget) rather than genuine backend unresponsiveness. The standing
+  ≤0.1 s steady-state latency budget stays the separately-tracked owner item (iter-34/j) — not re-litigated
+  here.
+  > **iter-38 AUDIT CORRECTION (2026-07-30, finding B2).** "Full duration" overstated the coverage. Segment 1
+  > polled from job start +~2 s to **t≈299 s** of a **338 s** job; segment 2 contributed a single poll taken
+  > **after** the job had already reached `ok`. Reconstructed from the artifacts' own timestamps (job
+  > `started_at` 12:20:42.67Z / `finished_at` 12:26:20.68Z; `monitor.out` written 12:25:49.82Z,
+  > `monitor-part2.out` written 12:26:26.69Z), the last in-flight poll was at ~12:25:49.5Z and the next poll
+  > at ~12:26:26.5Z — a **~37 s window with no health poll, ~31 s of it while the finalize tail was still
+  > running**. So the true max inter-poll gap in this evidence is ~37 s, not 2.355 s, and "no frozen window"
+  > is established for ~88% of the warm (through the forward-aggregate horizons, which finished at
+  > 12:22:41Z per `evidence_generated_at`), NOT for its final membership-timeline stretch. Nothing here
+  > suggests the backend was unresponsive in that window — it simply was not sampled. J-07 step 2's
+  > "every poll answers 200, no unresponsive window" therefore holds only over the sampled interval.
+
+| TC | Requirement | Result |
+|---|---|---|
+| TC-1 | throwaway drill, real K≥3 target, `cache_ctx` liveness asserted from the live log | **PASS** — `dates_total: 3`, log line confirmed live for both the throwaway drill and a second live-cache confirmation run |
+| TC-2 | two-arm live-cache-vs-forced-fallback VmPeak comparison, whole finalize tail | **PASS (measured; corrected by the iter-38 audit)** — tail-only Δ **229.0 MB live vs 0.0 MB fallback** (the originally-published 238.5 MB fallback figure was mis-anchored — see the AUDIT CORRECTION above); overall peak live 1.1% higher; wall-clock 2.61x faster live; supplementary 3072 MB trial shows the fallback arm as the one that failed under tight pressure |
+| TC-3 | real backfill/rebuild ingest-finalize hook triggers the forward-aggregate warm, all horizons reach `ready`, VmPeak under cap | **PASS** — all 5 horizons `ready` under the new dataset_version; VmPeak 58.6% of the 6144 MB cap |
+| TC-4 | 1Hz health poll throughout, every poll 200, no frozen window | **PARTIAL (corrected by the iter-38 audit)** — 234/234 sampled polls HTTP 200, but the polling covered ~299 s of the 338 s warm: a ~37 s unpolled window (~31 s of it mid-tail) sits between the two monitor segments, so the max inter-poll gap in this evidence is ~37 s, not 2.355 s. "No unresponsive window" holds over the sampled ~88%, not the whole warm — see the AUDIT CORRECTION above |
+| TC-6 | new unit test for `_do_backfill`'s whole-stage exception branch | **PASS** — `test_do_backfill_whole_stage_exception_releases_shared_cache_and_reraises`, load-bearing (faults strictly after the real stash) |
+| TC-7 | strengthened end-to-end test, full category-list comparison vs forced fallback | **PASS** — `test_run_data_job_backfill_wires_finalize_hook_end_to_end`, both the unit test and this iteration's live drill confirm identical category lists |
+
+### `read_pool()`'s per-(batch × date) re-read wall-clock cost (audit B6, iter-36)
+
+Micro-benchmark (warm OS file-cache, 2,000 repeated `read_pool()` calls against the live committed pool —
+548 symbols): **0.5628 ms per call**. *(iter-38 AUDIT NOTE, finding B3: this figure is prose-only — no
+benchmark script or raw output was committed with it, and the call-count below is arithmetic
+(1,880 × 11 = 20,680), not an instrumented count from a live backfill. Treat both as order-of-magnitude
+estimates until a committed, re-runnable measurement replaces them; TC-10's "measured during a
+representative multi-date backfill" was answered by a standalone micro-benchmark plus a projection.)*
+Projected against the derived call pattern
+(`_excluded_counts_by_date`'s per-(batch × date) fallback loop, ~20,680 calls over 1,880 snapshot dates × 11
+batches, vs 1,880 calls in the pre-iter-36 one-call-per-date-only shape): **~11.6 s total** (batched) vs
+**~1.1 s** (pre-batching baseline) — an added constant of **~10.6 s** on the cold membership-timeline compute
+path. Small next to the dominant per-(symbol, date) `bars_asof` work this same cold path pays (unchanged,
+seconds-to-tens-of-seconds per the TC-1 measurement in the Iteration 36 section above) — confirms the
+iter-36 audit's own framing ("a real added constant... small next to the dominant work"), now with an actual
+measured figure instead of an unmeasured observation.
+
+### Correction: "591 symbols" → "548 symbols" (audit B8/iter-37, TC-1 in the Iteration 36 section above)
+
+The iter-36 section's TC-1 peak-memory measurement paragraph described the live basis as "591 symbols" —
+591 is `symbol_count` (every distinct priced symbol, including ETFs and `^VIX`); the figure that actually
+bounds `_excluded_counts_by_date`'s batch-width cost is `read_pool()`'s candidate pool, **548** symbols
+(confirmed live: `/api/data` serves `candidate_pool_count: 548`, `symbol_count: 591` — both real, distinct
+figures; the batching cost scales with the 548-symbol pool). Corrected in place at that paragraph.
 

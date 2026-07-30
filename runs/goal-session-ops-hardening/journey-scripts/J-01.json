@@ -9,6 +9,10 @@
     {"n": 3, "journey": "J-01", "action": {"type": "fill", "target": {"testid": "job-end-date"}, "text": "2026-05-03"}},
     {"n": 4, "journey": "J-01", "action": {"type": "click", "target": {"role": "button", "name": "Start"}}},
     {"n": 5, "journey": "J-01", "action": {"type": "goto", "url": "/data"}, "expect": {"text": "2 non-trading"}},
-    {"n": 6, "journey": "J-01", "action": {"type": "goto", "url": "/data"}, "expect": {"text": "no new snapshots"}}
+    {"n": 6, "journey": "J-01", "action": {"type": "fill", "target": {"testid": "job-start-date"}, "text": "2026-05-02"}},
+    {"n": 7, "journey": "J-01", "action": {"type": "fill", "target": {"testid": "job-end-date"}, "text": "2026-05-29"}},
+    {"n": 8, "journey": "J-01", "action": {"type": "click", "target": {"role": "button", "name": "Start"}}},
+    {"n": 9, "journey": "J-01", "action": {"type": "goto", "url": "/data"}, "expect": {"text": "19 already snapshotted"}},
+    {"n": 10, "journey": "J-01", "action": {"type": "goto", "url": "/scanner-runs/748"}, "expect": {"text": "as of 2026-05-29"}}
   ]
 }

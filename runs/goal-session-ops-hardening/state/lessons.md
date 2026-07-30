@@ -470,3 +470,28 @@ QA passed it).
 **Applies to:** any iteration measuring memory/performance on a path guarded by a stashed
 reference, an attach/fallback context, or an early return; and any change that moves a resource
 release from one stage's `finally` to a later stage's.
+
+## iter-38 — 2026-07-30T16:05:00Z
+
+**Verdict:** ESCALATE
+**Lesson:** A drill that must PROVE a failure mode and a drill that must COMPARE two arms are different
+experiments, and merging them silently kills the first. `mem-drill/config.scratch.yaml:1363` raised the cap
+3072 -> 4608 MB with the honest reason "widened so BOTH arms complete gracefully" — correct for the
+comparison, fatal for J-07 step 4, because both arms then finished `ok` and the per-item `MemoryError`
+isolation handler never ran. Nobody noticed until the audit: the iteration shipped an "induced-pressure
+drill" that induced no pressure.
+**Applies to:** any iteration whose spec asks one run to both measure a delta AND assert a failure-handling
+path — split them into two runs, and state the cap/threshold each one needs before touching either.
+
+## iter-38 — 2026-07-30T16:05:00Z
+
+**Verdict:** ESCALATE
+**Lesson:** The deterministic replay lane cannot tell "product broken" from "backend not running", so it
+emitted 6 FAILs out of 7 that were pure noise — I only caught it by opening `J-01-verify.png` and
+`J-04-verify.png` and seeing the "Backend unavailable" page in both. The lane then costs more than it
+saves: an LLM re-run has to overturn it every iteration, its reconciliation footer under-reported its own
+overturns (omitting J-05 and J-04), and the one journey the LLM lane could not cover (J-04) silently went
+unverified behind the noise.
+**Applies to:** any iteration reading `regression-replay-results.md` — check the failure screenshot for a
+service-down page BEFORE treating a replay FAIL as a regression signal; and any work on
+`demo_runner.py --mode verify` should make it probe `/api/health` first and report BLOCKED, not FAIL.
