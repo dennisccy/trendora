@@ -449,3 +449,24 @@ changes. iter-36 halted at `closure_failed` on exactly that single word. The gua
 document's CLAIM, not the presence of the phrase.
 **Applies to:** any iteration mixing frontend and backend work whose ui-impact documents scope the
 backend half explicitly; any fix to the closure gate.
+
+## iter-37 — 2026-07-30T12:05:00Z
+
+**Verdict:** ESCALATE
+**Lesson:** A drill can execute every named step and still measure nothing, because the changed
+code is *conditional on runtime state*. Both of this iteration's live drills missed it: the
+step-1/3 warm was triggered from `GET /api/backtest` (a daemon-thread path with no `JobProgress`,
+so `prog._shared_bar_cache` was never set), and the step-4 pressure drill used a `dates_total: 0`
+backfill, so `_do_backfill` returned before its prefill and `cache_ctx` resolved to
+`nullcontext()` — the new `with cache_ctx:` wrap was lexically present and semantically a no-op,
+which the handoff then cited as proof the wrap works. Any perf/memory drill on a conditional code
+path must ASSERT the condition was live (log the cache identity, assert `cache_ctx is not
+nullcontext`, or assert a non-zero target count) or its evidence is vacuous. Second, smaller
+lesson from the same diff: moving a `finally:` release to a later stage requires enumerating every
+path between the two stages — `_do_backfill` -> `_refresh_ingest_aggregates` has three
+intermediate writes plus a `Session(eng)`, any of which skips the hook, and `_JOBS` never evicts,
+so the ~1.13 GB would have been pinned for the process lifetime (audit B1; both the reviewer and
+QA passed it).
+**Applies to:** any iteration measuring memory/performance on a path guarded by a stashed
+reference, an attach/fallback context, or an early return; and any change that moves a resource
+release from one stage's `finally` to a later stage's.

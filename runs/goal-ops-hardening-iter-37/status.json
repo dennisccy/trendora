@@ -1,0 +1,20 @@
+{
+  "phase": "goal-ops-hardening-iter-37",
+  "status": "complete",
+  "current_step": "closure_passed",
+  "updated_at": "2026-07-30T10:42:24.767439Z",
+  "started_at": "2026-07-30T07:57:47.794410Z",
+  "cli": "claude",
+  "blockers": [],
+  "changed_files": [
+    "apps/backend/app/engine/data_manager.py",
+    "apps/backend/tests/test_backfill_coverage_shared_cache.py",
+    "reports/perf-budgets.md",
+    "docs/handoffs/goal-ops-hardening-iter-37-dev.md",
+    "reports/phase-goal-ops-hardening-iter-37-implementation-summary.md"
+  ],
+  "tests_run": true,
+  "browser_checks_run": false,
+  "qa_passed": true,
+  "next_action": "auditor"
+}

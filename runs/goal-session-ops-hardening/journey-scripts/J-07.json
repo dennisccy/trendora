@@ -5,6 +5,7 @@
   "default_timeout_ms": 8000,
   "steps": [
     {"n": 1, "journey": "J-07", "action": {"type": "goto", "url": "/"}, "expect": {"text": "Ready"}},
-    {"n": 2, "journey": "J-07", "action": {"type": "goto", "url": "/backtest?asof=2026-07-15"}, "expect": {"text": "Snapshots contributing (≤ 2026-07-15): 1873"}}
+    {"n": 2, "journey": "J-07", "action": {"type": "goto", "url": "/backtest"}, "expect": {"text": "n=8878"}},
+    {"n": 3, "journey": "J-07", "action": {"type": "goto", "url": "/data"}, "expect": {"text": "3508"}}
   ]
 }

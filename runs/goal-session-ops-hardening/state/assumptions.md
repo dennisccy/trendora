@@ -551,3 +551,59 @@ heavy/host-affecting action regardless of whether it changes code, or who weighs
 single-purpose diff higher than closing J-07 one iteration sooner, would split this into a
 code-only iteration followed by a verification-only iteration.
 **Reversible:** yes
+
+## iter-37 — goal-evaluator
+
+**Ambiguity:** J-07's four steps ALL executed live this iteration with real, first-hand-verifiable
+evidence (130/130 health 200s during a real 5-horizon warm, VmPeak margin finally written into
+`reports/perf-budgets.md`, an honest caught-MemoryError abort with the same process still serving).
+But two of them ran through paths where this iteration's own change is inert: step 1's warm was
+dispatched by `GET /api/backtest` rather than "the ingest finalize path" the step's own parenthetical
+names, and step 4's drill job had `dates_total: 0`, so the new shared-cache wrap was a
+`nullcontext()`. `docs/goal.md` does not say whether a journey step counts as satisfied when its
+substance is demonstrated but through a different trigger path than the step names — nor whether a
+journey may cross to `passing` while the specific state the iteration created (~1.13 GB held resident
+across the whole finalize tail) has never been measured.
+**We chose:** scored J-07 `partial` for a third consecutive iteration, not `passing`, and stated the
+step-by-step split explicitly in eval.md. Grounds stated rather than assumed: (1) `partial`'s schema
+definition is literally what happened — steps 2 (HTTP-200/no-freeze half) and 3 have complete
+this-iteration evidence, steps 1 and 4 have substance but not on the named/changed path, one acceptance
+clause ("no unbounded whole-table ORM materialization remains on the warm or serving path") is still
+not literally true because `data_manager.py:3098` -> `prices.py:131-152` still streams the whole
+`daily_prices` table once per job, and one (the `[NEW]` walkthrough) is unrecorded for the 7th
+iteration; (2) the ground is NEW rather than shifted — iter-36's ground (the browser lane never ran) is
+genuinely closed, and this ground did not exist before, because the code only started holding the cache
+across the tail this iteration; (3) AG-8 is *critical* and this session touched the memory ceiling in
+each of the two preceding iterations, so certifying "heavy aggregates never take the service down" for
+a path whose peak nobody measured — while an independent auditor says the direction may be reversed
+there — is the rubber-stamp the methodology forbids, and the DoD's own words were "this-iteration
+evidence, not inference". I record the cost honestly: this is the third `partial` in a row for a
+journey whose headline promise the auditor himself calls "honestly demonstrated", and there is a real
+risk of the vague-acceptance-criteria loop the framework warns about — which is why the next-step
+recommendation names ONE cheap, bounded measurement that closes it rather than open-ended work. A human
+who reads step 1's parenthetical as descriptive rather than binding, and who treats "the service stayed
+up under a real 5-horizon warm with 57% memory headroom" as the whole of J-07, would score it `passing`
+and carry the unmeasured finalize-tail peak as the already-open ledger finding iter-37/o.
+**Reversible:** yes
+
+## iter-37 — goal-evaluator
+
+**Ambiguity:** decision tree C.4's first clause ("the SAME journey has now failed 2+ consecutive
+iterations") matches under the reading this session recorded at iter-36 (`partial` = "did not reach
+`passing`"), which makes ESCALATE first-match-wins over CONTINUE. But this would be the THIRD
+consecutive ESCALATE, and the methodology says to use it sparingly; this iteration was ALREADY
+dispatched at full depth with review PASS_WITH_NOTES, QA PASS, audit PASS_WITH_GAPS and closure
+CLOSURE-PASS, so nothing here is an ambiguity/complexity problem that deeper lanes would resolve.
+**We chose:** ESCALATE again. Grounds: (1) the tree is applied top-down, first match wins, so C.4
+outranks CONTINUE regardless of how well CONTINUE also fits; (2) ESCALATE's only practical effect is
+to make full depth MANDATORY rather than advisory, and this session provably lost iteration 35 in its
+entirety to exactly that downgrade; (3) an independent, iteration-specific reason exists this time —
+the review and QA lanes BOTH passed a real AG-8 regression (audit B1) and an unmeasured-claim gap
+(B2), and only the audit lane caught them; a lean iteration has no auditor and the next iteration
+works on the same memory-critical path; (4) the cost of being wrong is one unnecessary full pipeline,
+versus a lost iteration the other way. I record the cost honestly: three ESCALATEs running reads as a
+harsher judgement than this iteration's work deserves, and eval.md's Summary says so explicitly. A
+human who reads `partial` as strictly not "failed", or who weighs "escalate sparingly" against a
+session that has now escalated three times, would return CONTINUE with an advisory full-depth
+recommendation.
+**Reversible:** yes

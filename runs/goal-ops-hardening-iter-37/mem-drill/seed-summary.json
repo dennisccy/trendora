@@ -1,0 +1,1 @@
+{"db_path": "/home/dennis-chan/Git/trendora/runs/goal-ops-hardening-iter-37/mem-drill/drill.db", "r1_id": 1, "r1_asof": "2020-01-02", "r1_n_tickers": 200000, "r1_dataset_version": "r1-f1000000", "r2_id": 2, "r2_asof": "2020-01-03", "r2_n_tickers": 3, "current_dataset_version": "r2-f1000015", "horizons": [1, 5, 10, 20, 60]}

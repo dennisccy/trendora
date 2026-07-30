@@ -2449,3 +2449,158 @@ comparatively quiet backend), with the same three dispositions; (b) iter-33/i �
 `start-frontend.sh` joins `HOST_GUARD_MARKER_FILES`. (8) Carried, untouched: `warmup.py:194` and the
 badge wording after a permanently failed warm-up (seven iterations unmade); iter-31/e; iter-32/f
 (watch only — I re-checked `forward_testing.py:1195` is byte-identical despite the file being edited).
+
+## Iteration 37 — goal-ops-hardening-iter-37
+
+**Date:** 2026-07-30T12:05:00Z
+**Verdict:** ESCALATE
+**Depth dispatched:** full (`iter-37/depth-dispatched` = `full`, matching the spec's own metadata — the
+iter-35 mis-dispatch did not recur for a second iteration. `.steps/` again holds only `decomposer.done`
++ `coherence.done`, which per the binding iter-36 lesson is NOT evidence of truncation: those markers
+are written by the LEAN executor. I confirmed the full pipeline really ran from artifact mtimes: dev
+10:46, implementation-summary 10:44, review 11:00, ui-surface-map/user-visible-changes 11:02,
+ui-test-plan 11:03, what-to-click 11:04, QA 11:12, replay 11:13, browser-qa 11:19, demo 11:20-11:21,
+ux-regression 11:21, audit 11:41, closure 11:42. `status.json` = `complete` / `closure_passed` — note
+its `updated_at` is 10:42 and `browser_checks_run: false`, both stale relative to the 11:19 browser
+lane; I scored from the artifacts, not from that field.)
+**Journey deltas:**
+- Newly passing: none. Newly failing: none. **Regressed (passing -> failing): NONE.** Unknown: none.
+  Deferred: none. Still `partial`: **J-07 "Heavy aggregates never take the service down"** — third
+  consecutive iteration; `last_passing_iter` stays iter-34; `evidence_makeup` KEPT (walkthrough
+  unrecorded for the 7th iteration running).
+- Re-verified `passing` with THIS-iteration evidence, so `last_verified_iter` advances iter-36 ->
+  iter-37 for seven: J-01, J-03, J-04, J-05, J-06, J-08, J-09 (deterministic golden replay 7/7 PASS,
+  zero FAIL rows, zero reconciliation overturns; I opened J-06-verify.png and J-09-verify.png as the
+  two spot-checks). All 8 `spec_hash`es match `goal_gate hash-journeys`; no `journeys-changed.md`; no
+  `browser-infra.json`; no `DEFERRED-BUDGET` row.
+- Anti-goal violations: **TWO RESOLVED — iter-36/l** (the double whole-table `daily_prices` load on a
+  multi-date backfill: `test_kdate_backfill_loads_each_symbol_at_most_once` now PASSES at max 1 load
+  per symbol, was max 10) and **iter-36/m** (the 4.1 GB leftover process — PID 2944679 is gone and I
+  verified live that no uvicorn/next process and no listener on 8255/8256/3255 exists at all).
+  **THREE NEW: iter-37/o** (minor, open — this iteration's ONE behavioural change was never measured;
+  both drills ran paths where the new code is inert), **iter-37/p** (minor, RESOLVED in-iteration — the
+  audit found, fixed and mutation-proved a real ~1.13 GB permanent-pin regression this iteration
+  introduced), **iter-37/q** (minor, open — three uncaught HTTP 500s in the 970 MB drill process, the
+  first one BEFORE any abort, which falsifies the handoff's own explanation for it). Nine carried
+  `resolved: false`, all `minor`, each given an ITER-37 UPDATE recording what I verified rather than
+  inherited. Ledger now: 29 total, **11 unresolved, 0 critical**. scan-report CLEAN; coherence
+  COHERENCE-PASS (one non-blocking advisory); review PASS_WITH_NOTES; QA PASS; audit PASS_WITH_GAPS;
+  ux-regression SKIPPED (budget-shed, credited nothing); closure CLOSURE-PASS (the iter-36 gate false
+  alarm did NOT recur — `Frontend Present: no`, so the N/A-stub branch applied).
+
+**Reasoning:** I re-derived every load-bearing number first-hand. (1) **Diff scope before touching any
+carried finding:** `git diff a1201637..HEAD -- apps scripts project-extensions config.yaml` is EMPTY
+(nothing committed) and `git status --porcelain` over the same paths shows exactly ONE modified file
+(`apps/backend/app/engine/data_manager.py`) plus ONE new untracked test file — and all four
+launch/host-guard files are byte-untouched, so AG-10's own REGRESSION trigger did not fire.
+(2) **J-07's raw measurements, recomputed from the capture files rather than read off a report:**
+`j07-warm/health-latency.csv` = 130 polls, **130/130 HTTP 200**, max inter-poll gap **1.9996 s**,
+latency min 0.1056 / mean 0.1350 / **max 0.9800 s**, and **0 of 130 inside the committed <= 0.1 s
+budget**; `j07-warm/monitor.csv` = VmPeak flat at **2,693,672 kB** across all 11 during-warm samples
+(42.81% of the 6,291,456 kB cap, **57.19% margin**) with `baseline_matches` = 1 on every sample.
+(3) **I opened the LIVE log, not the excerpt** (binding iter-34 lesson): the step-1/3 process window
+`logs/backend.log:140405-140634` contains **192 responses, ALL 200, zero non-200 of any kind, zero
+MemoryError, zero error/exception/traceback**, and its boot banner confirms `port=8255
+memory_cap_mb=6144 malloc_arena_max=2` + `host-guard: cpu_list=0-3,8-11 blas_threads=4`. The drill
+window `:140635-141305` has 354x 200, 3x 404 and **3x 500** with 5 MemoryError lines, and its own
+host-guard banner at `port=8256 memory_cap_mb=970`. (4) **Step 3's perf-budgets recording — the gap two
+consecutive evaluators named — is genuinely CLOSED**: `reports/perf-budgets.md:4660-4684` records the
+VmPeak, the cap and the margin for exactly this concurrent scenario, in a new dated section, and my own
+arithmetic reproduces 57.19%. (5) **But both live drills avoided the code this iteration changed, and I
+confirmed that from primary artifacts, not from the auditor's prose:** `perf-budgets.md:4632-4636` says
+in the developer's own words that the warm was triggered by `GET /api/backtest?as_of=2026-07-17` ->
+`ensure_historical_forward_aggregates_dispatched` in a daemon thread — a path with no `JobProgress`, so
+`prog._shared_bar_cache` was never in play, and NOT "the ingest finalize path" J-07 step 1's own text
+names; and `mem-drill/final-job-status.json` shows `"dates_total": 0` with
+`stages.backfill.elapsed_seconds: 0.0052`, so `_do_backfill` returned before its prefill and
+`cache_ctx` resolved to `nullcontext()`. (6) **I read the code for the carried whole-table finding
+rather than carrying its description:** `data_manager.py:3098` still opens `with
+prefilled_bar_cache(session, expected_symbols=pool_symbols)` and `prices.py:131-152` still selects
+seven `DailyPrice` columns with NO WHERE clause into `by_symbol`, so one path still streams the whole
+table into RAM — once per job now, not twice. (7) **The screenshots outranked the prose in one place:**
+`UT-J-07a-backtest-readiness.png`'s visible frame shows the readiness badge "Ready / provider: seed /
+seed 2026-07-22 / 591 symbols" and an HONEST "No elapsed forward window for this date yet … No numbers
+are fabricated to fill the gap" scorecard for the latest as-of — NOT the pooled "+10.70% n=8878" figures
+the lane's Actual column cites, which sit below the fold and are corroborated instead by the rewritten
+golden's own `n=8878` assertion passing.
+Rejected REGRESSION (C.1): nothing moved `passing` -> `failing`; the required seven replayed 7/7 with
+zero FAIL rows; and no critical anti-goal is unresolved — scan-report CLEAN, no manifest touched, launch
+scripts byte-identical, zero MemoryError at the production cap, and the one real regression this
+iteration created (iter-37/p) was found, fixed and mutation-proved inside the same iteration. Rejected
+STALLED (C.2): the current blocker is a MEASUREMENT the agent can take cheaply — re-run the same
+throwaway-DB drill with a non-zero K>=3-date target set so `cache_ctx` is real — and iter-33/g plus four
+small carried items are all agent work; the owner items (iter-34/j, iter-33/i) are real but neither is
+the sole unblock path for J-07 (iter-34/j's own disposition (c), serving readiness from a cached
+snapshot, is agent work). Rejected GOAL_ACHIEVED (C.3): J-07 is `partial` and eleven ledger findings are
+unresolved. **Chose ESCALATE (C.4, first clause):** J-07 has now gone three consecutive iterations
+without reaching `passing`, and ESCALATE is the only verdict that makes full depth MANDATORY rather than
+advisory — a distinction this session paid for once already (iteration 35 was lost entirely when an
+advisory full-depth recommendation was dispatched as `evidence` against a code-requiring DoD). It is
+independently reinforced this run: the review lane and the QA lane BOTH passed an iteration containing a
+real AG-8 regression and an unmeasured-claim gap, and ONLY the audit lane caught them — a lean iteration
+has no auditor, and the next iteration touches the same memory-critical path.
+**FIVE THINGS I STATE PLAINLY RATHER THAN ROUND AWAY:** (i) **the substance of this iteration is good
+and I do not want ESCALATE to imply otherwise** — the target test went from max 10 loads per symbol to
+exactly 1, the byte-identity oracle is pinned to the real `git show HEAD` body (the auditor re-verified
+that himself) and is proven load-bearing by a paired mutation test, J-07's steps 1-4 finally ran live
+after two lost attempts, and step 3's perf-budgets line item is written where the journey says it
+belongs for the first time in the session. (ii) **I did NOT score J-07 `passing`, and the ground is new
+rather than shifted** — iter-36 kept it `partial` because its browser lane never ran; that ground is now
+closed, and this iteration's ground is different and specific: the two heaviest measurements ran through
+code paths where this iteration's change is inert, so the one state the change creates (~1.13 GB held
+resident across the entire finalize tail, where it used to be freed before the two heaviest warms) has
+never been measured, and the auditor's reading is that the direction may be REVERSED there. The DoD's own
+words were "this-iteration evidence, not inference". (iii) **the audit lane carried this iteration, and
+the review and QA lanes both missed a real defect** — B1 (a successful backfill could pin ~1.13 GB on a
+`JobProgress` that `_JOBS` never evicts, reachable through any of three writes between the backfill and
+the finalize hook) was structurally impossible before this iteration moved the release out of
+`_do_backfill`'s `finally`. It was fixed at `data_manager.py:4327-4341` — I read the shipped hunk — and
+mutation-proved by deleting the fix (1 failed) and restoring it (3 passed). Nothing worse shipped, but
+two review lanes passed it. (iv) **the health-check budget is now missed for the fourth time, and this
+time in exactly the scenario J-07 step 2 describes** — 0 of 130 polls inside <= 0.1 s during a live
+5-horizon warm, max 0.980 s. Three evaluators have called this an owner decision; it is now the single
+item in J-07 that no agent can settle, and it is the most likely place a fresh-context second-key
+CONFIRM would reject a GOAL_ACHIEVED. (v) **the handoff's explanation for one disclosed finding is wrong
+and I checked rather than accepted it** — it attributes all three drill 500s to "VmPeak already pinned
+at the cap from the forward_aggregates abort onward", but the first `GET /api/backtest?as_of=2020-01-02`
+500 is at drill-window relative line 9, before the `POST /api/data/jobs` at line 179 and before the
+abort at line 180. The disclosure itself was honest and voluntary; only its causal story does not hold.
+Also worth recording: the demo lane emitted `not_yet` with zero steps and an empty
+`reports/demo/goal-ops-hardening-iter-37/` — J-07's own `[NEW]` walkthrough is now SEVEN iterations
+unrecorded — and `J-01-verify.png` / `J-03-verify.png` share md5 `7d2e5029` again (the terminal-page
+collision iter-32 diagnosed).
+
+**Next-step recommendation:** FULL depth (mandatory via ESCALATE). Same single target — finish J-07 —
+but measure the path that changed. (1) FIRST, and it is the whole point: re-run the induced-pressure
+drill on a throwaway DB with a REAL K>=3-date backfill instead of a 0-target no-op, so
+`prog._shared_bar_cache` is actually stashed and `cache_ctx` is a real `attach_shared_cache`, and sample
+VmPeak across the entire finalize tail — then compare against a run forced onto the fallback. Do NOT
+inherit the auditor's framing that this needs hours of all-core compute on the 4.97 GB live basis; the
+question ("does holding the cache across the tail raise the peak?") is answerable on a small throwaway
+basis, safely, inside AG-10, launched only via `scripts/start-backend.sh`. (2) SECOND: run J-07 step 1
+through the path its own text names — trigger the warm from a real backfill's ingest-finalize hook, not
+from `GET /api/backtest`, with the 1 Hz health poll during it. (3) THIRD, queued twice and still unrun:
+iter-33/g — give Regime Lab's cold `view=pooled` compute the same background dispatch `/api/backtest`
+got at iter-32, and diagnose the bare "Internal Server Error" body (this iteration's iter-37/q adds two
+more instances of that exact shape). (4) SMALL AND ALREADY WRITTEN DOWN: a test for `_do_backfill`'s new
+`except Exception` branch (reviewer MINOR); strengthen
+`test_run_data_job_backfill_wires_finalize_hook_end_to_end` to compare the `aggregates_refreshed`
+category list against a forced-fallback run (audit T2 — every one of those warms swallows non-MemoryError
+exceptions, so a break there shows up only as a silently shorter list, which is a J-05/J-06 regression);
+the stale docstring at `data_manager.py:650-654`; "591 symbols" -> 548 at `perf-budgets.md:4466`; audit
+B6's unmeasured `read_pool()` re-read cost. (5) CARRIED, untouched: iter-29/b + `warmup.py:194` and the
+badge wording after a permanently failed warm-up (EIGHT iterations unmade); iter-31/e; iter-32/f (watch
+only — I re-confirmed `forward_testing.py` is not in this diff at all); iter-36/n. (6) CAPTURE ONLY,
+never an iteration's goal: J-07's `[NEW]` walkthrough (seven iterations unrecorded); the J-01/J-03
+identical-screenshot collision; and the rewritten `J-07.json` golden now asserts live-basis-dependent
+literals (`n=8878`, `3508`) — the same brittleness class as the `1873` it replaced, so it will need
+maintenance again as the dev DB grows. (7) OWNER, unchanged, both should be settled BEFORE any
+achievement run: (a) iter-34/j — the `GET /api/health` <= 0.1 s budget, now missed four times and this
+time in step 2's own scenario (0/130, max 0.980 s); three dispositions, all his: ratify the honest-WARN
+convention as satisfying step 2, rescope the budget for the bounded background-compute window, or
+commission the agent fix (serve readiness from a cached snapshot). (b) iter-33/i — whether
+`start-frontend.sh` joins `HOST_GUARD_MARKER_FILES`, with fresh input: the dev handoff records that
+`scripts/dev.sh`'s SIGTERM trap orphaned the grandchild `next-server` and held port 3255 until a direct
+kill -9. (8) FRAMEWORK, outside the journey loop and now LOWER priority: `closure_gate.py:71-74`'s
+backend-only regex did not bite this iteration (`Frontend Present: no` took the N/A-stub branch), so it
+is latent rather than recurring — still worth fixing to test the CLAIM rather than the phrase.
