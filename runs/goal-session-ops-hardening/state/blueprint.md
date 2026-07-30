@@ -303,6 +303,34 @@ REVIEW CHECKLIST:
      iterations completing them must not invent a second source.
 -->
 
+iter-38 update (J-07 closure attempt — real-cache drill fix + step-1 real-trigger re-run; no new Data
+Contract value, no Information Architecture change): closes two measurement gaps ledger finding
+iter-37/o identified. (1) The throwaway-DB induced-pressure drill's backfill target moves from a
+0-date no-op to a real K>=3-trading-day range, so `_do_backfill` genuinely stashes
+`prog._shared_bar_cache` and the finalize tail's `cache_ctx` resolves to a real `attach_shared_cache`
+(not `nullcontext()`) — instrumented with an explicit liveness assertion per the binding iter-37
+lesson (a drill on a conditional code path must assert the condition was live, or its evidence is
+vacuous). VmPeak is sampled across the WHOLE finalize tail (not only the per-item aggregate-warm
+sub-loops) and compared against a forced-fallback arm, to resolve whether holding the ~1.13 GB shared
+cache resident across the tail raises or lowers the peak — the open question the iter-37 audit flagged
+as possibly REVERSED. (2) J-07 step 1 is re-run on the real full-deep-basis live seed DB, triggered
+through a genuine backfill/rebuild job's ingest-finalize hook (not `GET /api/backtest`'s daemon-thread
+dispatch, which iter-37 used and which has no `JobProgress`/`prog._shared_bar_cache`), with the 1Hz
+`GET /api/health` poll running concurrently for the full duration — matching J-07 step 1's own literal
+wording ("the ingest finalize path"). Both measurements land as new dated sections in the SAME
+`reports/perf-budgets.md` artifact — no second file, no code change to any already-registered row's
+computing module or serving endpoint (`compute_forward_aggregates`, `resolved_forward_aggregate_evidence`,
+`ensure_historical_forward_aggregates_dispatched` stay byte-frozen). Also lands three small carried
+items against already-registered rows, all mechanical: a dedicated test for `_do_backfill`'s
+whole-stage `except Exception:` branch (`data_manager.py:3162`, reviewer MINOR iter-37); strengthens
+`test_run_data_job_backfill_wires_finalize_hook_end_to_end` to compare `aggregates_refreshed` against
+a forced-fallback run (audit T2); and two documentation corrections (the stale
+`membership_timeline_cached` docstring at `data_manager.py:650-654`, and `perf-budgets.md:4466`'s
+stale "591 symbols" -> "548"). Deliberately deferred (rule 5, one risky item per iteration): iter-33/g
+(Regime Lab's cold `view=pooled` background dispatch) — next in queue, not this iteration's scope.
+No Information Architecture change (no new page/nav/route; J-07's existing global-badge + `/backtest`
+home, and `/data`'s Coverage payload / Job history homes below, are unchanged).
+
 ## Information Architecture
 
 **Layout shell:** persistent left sidebar (nav) + main content area; a global top-bar readiness
