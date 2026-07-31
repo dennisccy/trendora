@@ -48,12 +48,19 @@ if detect_frontend_in_plan "$PLAN_FILE"; then
   FRONTEND_PRESENT="yes"
 fi
 
-# Skip for backend-only phases
-if [[ "$FRONTEND_PRESENT" == "no" ]]; then
+# Skip for backend-only phases -- UNLESS this is a goal-mode iteration naming
+# required-still-passing journeys (ops-hardening iter-41, A1 companion fix): those
+# journeys still need fresh browser-QA evidence every iteration (the GOAL-MODE
+# REGRESSION LANES logic below already handles them — it was simply unreachable
+# behind this early exit). See lib/common.sh::phase_spec_has_required_regression.
+if [[ "$FRONTEND_PRESENT" == "no" ]] && ! phase_spec_has_required_regression "$SPEC"; then
   echo "[browser-qa] Backend-only phase — writing N/A stubs."
   write_na_ui_artifacts "$PHASE" "ui-test-results"
   echo "[browser-qa] Done (backend-only, N/A stubs written)."
   exit 0
+fi
+if [[ "$FRONTEND_PRESENT" == "no" ]]; then
+  echo "[browser-qa] Backend-only phase, but required-still-passing journeys are named — running browser QA for regression re-verification only."
 fi
 
 # Verify test plan exists
@@ -159,7 +166,10 @@ fi
 # Derive URLs from the resolved port env vars
 _BACKEND_PORT="${CHAIN_BACKEND_PORT}"
 _FRONTEND_PORT="${CHAIN_FRONTEND_PORT}"
-BACKEND_HEALTH_URL="${CHAIN_BACKEND_HEALTH_URL:-http://localhost:${_BACKEND_PORT}/health}"
+# ops-hardening iter-41 (A1): resolve the project-specific health path (Trendora's
+# `/api/health`, not the framework's generic `/health`) via the shared helper — see
+# `lib/common.sh::resolve_backend_health_url`.
+BACKEND_HEALTH_URL="$(resolve_backend_health_url "$_BACKEND_PORT")"
 FRONTEND_URL="${CHAIN_FRONTEND_URL:-http://localhost:${_FRONTEND_PORT}}"
 echo "[browser-qa] Resolved ports: frontend=${FRONTEND_URL} backend=${BACKEND_HEALTH_URL}"
 

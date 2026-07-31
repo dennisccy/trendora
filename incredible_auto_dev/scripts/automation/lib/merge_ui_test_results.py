@@ -156,10 +156,73 @@ def _cell(row: dict, i: int) -> str:
     return cells[i] if i < len(cells) else ""
 
 
-def merge(texts: "list[str]") -> str:
+def missing_required_journeys(rows: "list[dict]", required_journeys: "list[str] | None") -> "list[str]":
+    """Which of `required_journeys` (bare IDs like `J-01`) have ZERO executed test cases in `rows`
+    — i.e. no row at all, not even a BLOCKED/SKIP one. Distinct from BLOCKED (a row exists,
+    recording that the journey's assertions were never checked) and from SKIP (a row exists,
+    recording why it was skipped): "missing" means no lane produced ANY row for this required
+    journey, so nothing about it was even recorded, let alone checked."""
+    if not required_journeys:
+        return []
+    present_ids = {r["test_id"] for r in rows}
+    missing = []
+    for jid in required_journeys:
+        tid = jid if jid.startswith("UT-") else f"UT-{jid}"
+        if tid not in present_ids:
+            missing.append(jid)
+    return missing
+
+
+def skipped_required_journeys(rows: "list[dict]", required_journeys: "list[str] | None") -> "list[str]":
+    """Which of `required_journeys` have a row whose ONLY recorded outcome is `SKIP` — the journey
+    was named, a row exists, and it says "not executed." The companion to
+    `missing_required_journeys` above: iter-40's actual artifact
+    (`reports/phase-goal-ops-hardening-iter-40-ui-test-results.md`) has a row for EVERY required
+    journey, all of them `SKIP` ("Not executed — dispatch instructions state frontend is not
+    available"), so the missing-row check alone still merged it into a clean `SKIPPED` headline —
+    exactly the outcome iter-41's DoD ("an all-SKIP/zero-executed regression run can no longer merge
+    into a clean SKIPPED/PASS headline") forbids, and exactly the shape the spec's own wording
+    requires ("fresh, NON-`SKIP` mechanical verification"). Only a literal `SKIP` counts: a
+    `DEFERRED-BUDGET` row (SPEED-15 rung 2, an explicit "keeps prior status" record) parses to an
+    empty verdict and is deliberately NOT treated as a skip here — `goal_gate.py`'s
+    `_DEFERRED_CELL_RE` already blocks achievement on those."""
+    if not required_journeys:
+        return []
+    by_id = {r["test_id"]: r for r in rows}
+    skipped = []
+    for jid in required_journeys:
+        tid = jid if jid.startswith("UT-") else f"UT-{jid}"
+        row = by_id.get(tid)
+        if row is not None and row["verdict"] == "SKIP":
+            skipped.append(jid)
+    return skipped
+
+
+def merge(texts: "list[str]", required_journeys: "list[str] | None" = None) -> str:
     """Merge in order; later inputs win per Test ID. Returns the merged markdown
     with a single authoritative headline verdict and detail rebuilt from the
-    surviving rows (no verbatim per-lane embedding → exactly one verdict line)."""
+    surviving rows (no verbatim per-lane embedding → exactly one verdict line).
+
+    `required_journeys` (ops-hardening iter-41, A3 — TC-3): the iteration spec's own
+    "Required-still-passing journeys:" list (bare IDs, e.g. `["J-01", "J-03"]`). iter-40 shipped
+    ALL seven required-still-passing journeys with ZERO executed test cases while every gate
+    (including this merger) reported a clean headline, because a journey with NO row at all was
+    invisible to `compute_overall` — it only ever reasons about rows that exist. When at least one
+    required journey has zero executed test cases (see `missing_required_journeys` above) AND the
+    rows-derived headline would otherwise be a CLEAN "PASS" or "SKIPPED", the headline is forced to
+    "BLOCKED" instead — reusing the existing BLOCKED semantics ("never checked at all") rather than
+    inventing a second gate; `goal_gate.py` already blocks achievement on any BLOCKED verdict. A
+    headline that was already FAIL or BLOCKED is left alone (already non-clean; the gap is still
+    surfaced in the new "Missing Required Journeys" section below, but doesn't need to change an
+    already-blocking headline).
+
+    iter-41 audit (B1 fix): the same forcing applies to a required journey whose row exists but
+    reads `SKIP` (`skipped_required_journeys` above). The zero-row check alone did NOT close
+    iter-40's own failure mode — that run's merged file carries a `SKIP` row for all seven required
+    journeys, so it still merged to a clean `SKIPPED` headline under the first implementation of
+    this guard (reproduced directly against the committed iter-40 artifact). Both shapes mean the
+    same thing to a reader of the headline — "this journey was not verified this iteration" — so
+    both force `BLOCKED`."""
     by_id: "dict[str, dict]" = {}
     order: "list[str]" = []
     file_verdicts: "list[str]" = []
@@ -172,6 +235,10 @@ def merge(texts: "list[str]") -> str:
             by_id[tid] = row  # later wins
     rows = [by_id[t] for t in order]
     overall = compute_overall(rows, file_verdicts)
+    missing_required = missing_required_journeys(rows, required_journeys)
+    skipped_required = skipped_required_journeys(rows, required_journeys)
+    if (missing_required or skipped_required) and overall in ("PASS", "SKIPPED"):
+        overall = "BLOCKED"
     n_pass = sum(1 for r in rows if r["verdict"] == "PASS")
     n_skip = sum(1 for r in rows if r["verdict"] == "SKIP")
     n_blocked = sum(1 for r in rows if r["verdict"] == "BLOCKED")
@@ -179,6 +246,8 @@ def merge(texts: "list[str]") -> str:
 
     overall_line = f"**Overall:** {n_pass}/{total} journeys passed ({n_skip} skipped"
     overall_line += f", {n_blocked} blocked" if n_blocked else ""
+    overall_line += f", {len(missing_required)} required-missing" if missing_required else ""
+    overall_line += f", {len(skipped_required)} required-unverified" if skipped_required else ""
     overall_line += ")"
     out = ["# UI Test Results (merged)", "",
            f"**Date:** {_today()}",
@@ -196,6 +265,19 @@ def merge(texts: "list[str]") -> str:
     failed = [r for r in rows if r["verdict"] == "FAIL"]
     skipped = [r for r in rows if r["verdict"] == "SKIP"]
     blocked = [r for r in rows if r["verdict"] == "BLOCKED"]
+    if missing_required or skipped_required:
+        out += ["## Missing Required Journeys", "",
+                "_Required-still-passing journeys named in the iteration spec that were NOT "
+                "verified this iteration — either no lane (deterministic replay or LLM browser-qa) "
+                "produced a row for them at all, or the only row they have reads SKIP (not "
+                "executed). Never a clean PASS/SKIPPED headline while any of these are present "
+                "(ops-hardening iter-40 lesson: this is exactly how required journeys shipped with "
+                "zero evidence while every gate reported clean)._", ""]
+        for jid in missing_required:
+            out.append(f"- `UT-{jid}` — no test case executed for {jid} by any lane")
+        for jid in skipped_required:
+            out.append(f"- `UT-{jid}` — only a SKIP row for {jid}: named but never executed")
+        out.append("")
     if failed:
         out += ["## Failed Tests", ""]
         for r in failed:
@@ -318,8 +400,31 @@ def main(argv: "list[str]") -> int:
             sys.stderr.write("usage: merge_ui_test_results.py verdict-of <results.md> <test-id>\n")
             return 2
         return cmd_verdict_of(argv[1], argv[2])
+    # ops-hardening iter-41 (A3): an optional `--required J-01,J-03,...` flag (space- or
+    # comma-separated; may appear anywhere in argv) names this iteration's required-still-passing
+    # journeys, so `merge` can detect any with ZERO executed test cases. Absent (the pre-iter-41
+    # call shape every existing caller still uses until its bash wiring passes this) => no change
+    # in behavior, matching every pre-existing test in this file's self-test suite.
+    required: list[str] = []
+    rest: list[str] = []
+    i = 0
+    while i < len(argv):
+        a = argv[i]
+        if a == "--required" and i + 1 < len(argv):
+            required = [j for j in argv[i + 1].replace(",", " ").split() if j]
+            i += 2
+            continue
+        if a.startswith("--required="):
+            required = [j for j in a.split("=", 1)[1].replace(",", " ").split() if j]
+            i += 1
+            continue
+        rest.append(a)
+        i += 1
+    argv = rest
     if len(argv) < 2:
-        sys.stderr.write("usage: merge_ui_test_results.py <out.md> <in1.md> [<in2.md> ...]\n")
+        sys.stderr.write(
+            "usage: merge_ui_test_results.py [--required J-01,J-03,...] <out.md> <in1.md> [<in2.md> ...]\n"
+        )
         return 2
     out_path = Path(argv[0])
     texts: list[str] = []
@@ -331,7 +436,7 @@ def main(argv: "list[str]") -> int:
         sys.stderr.write("[merge_ui_test_results] no readable input files\n")
         return 2
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(merge(texts), encoding="utf-8")
+    out_path.write_text(merge(texts, required_journeys=required), encoding="utf-8")
     print(f"[merge_ui_test_results] merged {len(texts)} file(s) → {out_path}")
     return 0
 
@@ -550,6 +655,110 @@ def _self_test() -> int:
         assert len(re.split(r"(?<!\\)\|", row)) == len(re.split(r"(?<!\\)\|",
             "| UT-J-07 | Filter \\| sort table | regression | P1 | e | step 2 failed | FAIL | b.png |")), row
 
+    # ==============================================================================================
+    # ops-hardening iter-41 (A3, TC-3) — a required-still-passing journey with ZERO executed test
+    # cases must never merge into a clean PASS/SKIPPED headline.
+    # ==============================================================================================
+    clean_pair = (
+        "**Browser QA Verdict:** PASS\n\n## Results Table\n"
+        "| Test ID | Name | Type | Priority | Expected | Actual | Verdict | Evidence |\n"
+        "|---|---|---|---|---|---|---|---|\n"
+        "| UT-J-01 | Backfill honors range | regression | P1 | e | ok | PASS | a.png |\n")
+
+    def t_missing_required_journey_blocks_clean_pass():
+        # iter-40's own failure mode reproduced: J-03 is required-still-passing but NO lane ever
+        # produced a row for it (unlike BLOCKED, where a row exists recording "never checked") --
+        # the merge must not headline a clean PASS while that gap is invisible.
+        md = merge([clean_pair], required_journeys=["J-01", "J-03"])
+        assert file_top_verdict(md) == "BLOCKED", file_top_verdict(md)
+        assert "## Missing Required Journeys" in md and "UT-J-03" in md
+        # the journey that DID execute keeps its own row/verdict untouched.
+        assert verdict_for(md, "UT-J-01") == "PASS", verdict_for(md, "UT-J-01")
+
+    def t_missing_required_journey_blocks_clean_skipped():
+        skip_only = (
+            "**Browser QA Verdict:** SKIPPED\n## Results Table\n"
+            "| Test ID | Name | Type | Priority | Expected | Actual | Verdict | Evidence |\n"
+            "|---|---|---|---|---|---|---|---|\n"
+            "| UT-J-09 | Export | regression | P1 | e | no script | SKIP | none |\n")
+        md = merge([skip_only], required_journeys=["J-01"])
+        assert file_top_verdict(md) == "BLOCKED", file_top_verdict(md)
+        assert "## Missing Required Journeys" in md and "UT-J-01" in md
+
+    def t_all_skip_required_journeys_block_clean_skipped():
+        # iter-41 audit (B1): iter-40's ACTUAL artifact shape — a row EXISTS for every required
+        # journey, and every one of them reads SKIP ("not executed"). The zero-row check alone
+        # left this merging into a clean SKIPPED headline, which is precisely the DoD line
+        # "an all-SKIP/zero-executed regression run can no longer merge into a clean
+        # SKIPPED/PASS headline".
+        all_skip = (
+            "**Browser QA Verdict:** SKIPPED\n\n## Results Table\n"
+            "| Test ID | Name | Type | Priority | Expected | Actual | Verdict | Evidence |\n"
+            "|---|---|---|---|---|---|---|---|\n"
+            "| UT-J-01 | Backfill honors range | regression | P1 | e | Not executed — frontend down | SKIP | none |\n"
+            "| UT-J-03 | No per-run range cap | regression | P1 | e | Not executed — frontend down | SKIP | none |\n")
+        md = merge([all_skip], required_journeys=["J-01", "J-03"])
+        assert file_top_verdict(md) == "BLOCKED", file_top_verdict(md)
+        assert "## Missing Required Journeys" in md
+        assert "only a SKIP row for J-01" in md and "only a SKIP row for J-03" in md
+
+    def t_mixed_skip_and_pass_blocks_only_on_the_skip():
+        # A required journey that really was executed keeps its PASS; the one that only has a
+        # SKIP row still forces the headline off clean.
+        mixed = (
+            "**Browser QA Verdict:** PASS\n\n## Results Table\n"
+            "| Test ID | Name | Type | Priority | Expected | Actual | Verdict | Evidence |\n"
+            "|---|---|---|---|---|---|---|---|\n"
+            "| UT-J-01 | Backfill honors range | regression | P1 | e | ok | PASS | a.png |\n"
+            "| UT-J-03 | No per-run range cap | regression | P1 | e | Not executed | SKIP | none |\n")
+        md = merge([mixed], required_journeys=["J-01", "J-03"])
+        assert file_top_verdict(md) == "BLOCKED", file_top_verdict(md)
+        assert verdict_for(md, "UT-J-01") == "PASS", verdict_for(md, "UT-J-01")
+        assert "only a SKIP row for J-03" in md
+        # a NON-required journey's SKIP row must NOT trip the guard
+        md2 = merge([mixed], required_journeys=["J-01"])
+        assert file_top_verdict(md2) == "PASS", file_top_verdict(md2)
+        assert "## Missing Required Journeys" not in md2
+
+    def t_all_required_present_stays_clean():
+        # No missing required journey -> headline and rendering are UNCHANGED (no regression on the
+        # common case, and no "Missing Required Journeys" section when there is nothing missing).
+        md = merge([clean_pair], required_journeys=["J-01"])
+        assert file_top_verdict(md) == "PASS", file_top_verdict(md)
+        assert "## Missing Required Journeys" not in md
+
+    def t_no_required_journeys_arg_unchanged():
+        # The default (no `required_journeys` argument at all) is BYTE-IDENTICAL to before this
+        # iteration -- every pre-existing caller of merge() until its bash wiring passes `--required`.
+        assert merge([clean_pair]) == merge([clean_pair], required_journeys=None)
+        assert merge([clean_pair], required_journeys=[]) == merge([clean_pair])
+
+    def t_missing_required_never_downgrades_fail_or_blocked():
+        # A real FAIL (or an existing BLOCKED) elsewhere must stay exactly that -- the missing-
+        # required check only ever prevents a CLEAN PASS/SKIPPED, never overrides a worse verdict.
+        fail_pair = (
+            "**Browser QA Verdict:** FAIL\n\n## Results Table\n"
+            "| Test ID | Name | Type | Priority | Expected | Actual | Verdict | Evidence |\n"
+            "|---|---|---|---|---|---|---|---|\n"
+            "| UT-J-01 | Backfill honors range | regression | P1 | e | step 2 failed | FAIL | a.png |\n")
+        md = merge([fail_pair], required_journeys=["J-01", "J-99"])
+        assert file_top_verdict(md) == "FAIL", file_top_verdict(md)
+        assert "## Missing Required Journeys" in md and "UT-J-99" in md
+
+    def t_missing_required_via_cli_required_flag():
+        # main()'s `--required` parsing (anywhere in argv, comma- or space-separated) reaches merge()
+        # exactly like the direct kwarg above -- the bash wiring in lib/replay-lane.sh depends on this.
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            out = f"{td}/out.md"
+            in1 = f"{td}/in1.md"
+            Path(in1).write_text(clean_pair, encoding="utf-8")
+            rc = main(["--required", "J-01,J-03", out, in1])
+            assert rc == 0, rc
+            merged = Path(out).read_text(encoding="utf-8")
+            assert file_top_verdict(merged) == "BLOCKED", file_top_verdict(merged)
+            assert "UT-J-03" in merged
+
     # Self-counting list (local form) rather than a hardcoded total — upstream's void
     # tests and the local verdict-normalization tests both live here, so a literal
     # count goes stale on the next pull.
@@ -566,7 +775,15 @@ def _self_test() -> int:
               ("void_rewrites_and_recomputes", t_void_rewrites_and_recomputes),
               ("void_keeps_unlisted_fail", t_void_keeps_unlisted_fail),
               ("void_no_match_is_noop", t_void_no_match_is_noop),
-              ("void_respects_escaped_pipes", t_void_respects_escaped_pipes)]
+              ("void_respects_escaped_pipes", t_void_respects_escaped_pipes),
+              ("missing_required_journey_blocks_clean_pass", t_missing_required_journey_blocks_clean_pass),
+              ("missing_required_journey_blocks_clean_skipped", t_missing_required_journey_blocks_clean_skipped),
+              ("all_skip_required_journeys_block_clean_skipped", t_all_skip_required_journeys_block_clean_skipped),
+              ("mixed_skip_and_pass_blocks_only_on_the_skip", t_mixed_skip_and_pass_blocks_only_on_the_skip),
+              ("all_required_present_stays_clean", t_all_required_present_stays_clean),
+              ("no_required_journeys_arg_unchanged", t_no_required_journeys_arg_unchanged),
+              ("missing_required_never_downgrades_fail_or_blocked", t_missing_required_never_downgrades_fail_or_blocked),
+              ("missing_required_via_cli_required_flag", t_missing_required_via_cli_required_flag)]
     for name, fn in checks:
         check(name, fn)
 

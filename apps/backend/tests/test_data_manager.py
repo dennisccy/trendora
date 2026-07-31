@@ -4548,6 +4548,123 @@ def test_checkpoint_cadence_density_and_throttle_control(tmp_path, monkeypatch):
 
 
 # ==================================================================================================
+# ops-hardening iter-41 (D9, TC-8) -- the count-based floor on top of the time-based throttle
+# ==================================================================================================
+def test_checkpoint_count_based_floor_forces_write_within_one_interval(tmp_path, monkeypatch):
+    """TC-8 -- dev Known Issue #2 from iter-40's own handoff: the time-based throttle alone
+    (`_RUN_RECORD_CHECKPOINT_INTERVAL_S`) never forces a write if the mocked clock NEVER crosses the
+    interval threshold, no matter how many dates complete. This proves the ADDED count-based floor
+    (`_RUN_RECORD_CHECKPOINT_DATE_FLOOR`) closes that gap on its own -- a checkpoint write lands on
+    the Kth call even when elapsed wall-clock time is (deliberately) always 0."""
+    engine = make_engine(f"sqlite:///{tmp_path / 'floor.db'}")
+    create_db_and_tables(engine)
+    cfg = load_config()
+
+    # A clock that NEVER advances -- isolates the count-based floor from the time-based throttle
+    # entirely: if only the interval throttle existed, this would produce exactly ONE write (the
+    # unconditional first call) and never another, regardless of how many dates complete.
+    frozen_now = [1_000_000.0]
+    monkeypatch.setattr(data_manager.time, "monotonic", lambda: frozen_now[0])
+
+    floor = data_manager._RUN_RECORD_CHECKPOINT_DATE_FLOOR
+    assert floor > 1, "the floor must be a real multi-date cadence, not a de-facto every-call throttle"
+
+    prog = JobProgress(job_id="floor-probe", kind="backfill", start=date(2024, 1, 1), end=date(2024, 1, 30))
+    prog.dates_total = floor * 3
+    data_manager._create_run_record(engine, cfg, prog)
+
+    def _persisted_dates_done() -> int:
+        with Session(engine) as session:
+            row = session.exec(select(DataProviderRun).where(DataProviderRun.job_id == "floor-probe")).one()
+        return json.loads(row.message)["dates_done"]
+
+    # Call 1 (priming): the unconditional first write (time-based -- `_last_checkpoint_monotonic`
+    # starts at 0.0, so `now - 0.0` always clears the interval on the very first call regardless of
+    # the frozen clock's value). This ALSO resets `_dates_since_checkpoint` to 0 -- the same as any
+    # other write -- so it establishes the baseline the count-based floor counts FROM, exactly like a
+    # job's real first per-date checkpoint would.
+    prog.dates_done = 1
+    data_manager._checkpoint_run_record(engine, prog)
+    assert _persisted_dates_done() == 1, "the first checkpoint call must always write"
+    assert prog._dates_since_checkpoint == 0, "the counter resets on every write, including the first"
+
+    # Calls 2..floor+1 (floor MORE calls after the priming reset): the frozen clock means `time_due`
+    # is False for every one of these -- ONLY the count-based floor can force a write, and it must do
+    # so on EXACTLY the (floor+1)th ABSOLUTE call (the `floor`th call SINCE the last write), not
+    # before and not after -- i.e. at most `floor` dates may complete between checkpoint writes.
+    for i in range(2, floor + 2):
+        prog.dates_done = i
+        data_manager._checkpoint_run_record(engine, prog)
+        persisted = _persisted_dates_done()
+        if i < floor + 1:
+            assert persisted == 1, (
+                f"call {i} ({i - 1} dates since the last write, < floor={floor}) must NOT force a "
+                f"write under a frozen clock -- persisted dates_done unexpectedly advanced to {persisted}"
+            )
+        else:
+            assert persisted == i, (
+                f"call {i} ({i - 1} dates since the last write, == floor={floor}) must force a write "
+                f"under a frozen clock -- persisted dates_done is {persisted}, expected {i}"
+            )
+            assert prog._dates_since_checkpoint == 0, "the floor-triggered write resets the counter"
+
+    # The cycle repeats: another `floor` calls under the still-frozen clock forces exactly one more
+    # write, `floor` calls after the previous forced write (not sooner) -- proves this is a
+    # recurring cadence, not a one-shot fluke of the first cycle.
+    second_write_call = floor + 1
+    for i in range(second_write_call + 1, second_write_call + floor):
+        prog.dates_done = i
+        data_manager._checkpoint_run_record(engine, prog)
+        assert _persisted_dates_done() == second_write_call, (
+            f"call {i} (mid-second-cycle) must not write again before the counter reaches the floor a "
+            f"second time"
+        )
+    third_write_call = second_write_call + floor
+    prog.dates_done = third_write_call
+    data_manager._checkpoint_run_record(engine, prog)
+    assert _persisted_dates_done() == third_write_call, (
+        "the second full cycle must also force a write exactly `floor` calls after the previous one"
+    )
+
+
+def test_checkpoint_time_based_throttle_still_wins_when_faster(tmp_path, monkeypatch):
+    """TC-8 companion -- the count-based floor is additive, never a REGRESSION of the existing
+    time-based density: when the mocked clock crosses the interval before the count reaches the
+    floor (the normal ~1-2.5s/date rate iter-40 measured), the time-based path still fires first and
+    the counter still resets (no double-write, no drift between the two mechanisms)."""
+    engine = make_engine(f"sqlite:///{tmp_path / 'floor2.db'}")
+    create_db_and_tables(engine)
+    cfg = load_config()
+
+    fake_now = [1_000_000.0]
+    monkeypatch.setattr(data_manager.time, "monotonic", lambda: fake_now[0])
+    interval = data_manager._RUN_RECORD_CHECKPOINT_INTERVAL_S
+    floor = data_manager._RUN_RECORD_CHECKPOINT_DATE_FLOOR
+
+    prog = JobProgress(job_id="floor-vs-time", kind="backfill", start=date(2024, 1, 1), end=date(2024, 1, 10))
+    prog.dates_total = floor
+    data_manager._create_run_record(engine, cfg, prog)
+
+    def _persisted_dates_done() -> int:
+        with Session(engine) as session:
+            row = session.exec(select(DataProviderRun).where(DataProviderRun.job_id == "floor-vs-time")).one()
+        return json.loads(row.message)["dates_done"]
+
+    prog.dates_done = 1
+    data_manager._checkpoint_run_record(engine, prog)  # call 1: always writes
+    assert _persisted_dates_done() == 1
+
+    # call 2: advance the clock past the interval but stay WELL under the count floor -- the
+    # time-based path must fire (this is a REAL date completing at the throttle's own configured
+    # cadence, not the pathologically-fast case TC-8's first test isolates).
+    fake_now[0] += interval + 0.01
+    prog.dates_done = 2
+    data_manager._checkpoint_run_record(engine, prog)
+    assert _persisted_dates_done() == 2, "a time-due call must still write even with the count floor added"
+    assert prog._dates_since_checkpoint == 0, "a time-triggered write must also reset the count floor"
+
+
+# ==================================================================================================
 # J-37 — Pull-missing job constructor (gap-exact, dispatched through the EXISTING J-34 chunked engine)
 # ==================================================================================================
 class _RecordingProvider(PriceProvider):

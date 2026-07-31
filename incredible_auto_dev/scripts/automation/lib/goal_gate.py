@@ -87,6 +87,14 @@ _DEFERRED_CELL_RE = re.compile(r"\|\s*DEFERRED-BUDGET\s*\|")
 # audit). BLOCKED means NOT VERIFIED — exactly the DEFERRED-BUDGET case above — so it must block
 # GOAL_ACHIEVED identically until a later iteration actually replays the journey.
 _BLOCKED_CELL_RE = re.compile(r"\|\s*BLOCKED\s*\|")
+# ops-hardening iter-41 (A3, TC-3): a required-still-passing journey with ZERO executed test cases
+# has no row at all (distinct from an explicit BLOCKED row, which the cell-scan above already
+# catches) -- merge_ui_test_results.merge() forces the file's HEADLINE to BLOCKED in that case
+# without necessarily adding any `| BLOCKED |` table cell (nothing to render a row for -- the whole
+# point is that no lane ever produced one). The cell-scan above cannot see a headline-only BLOCKED,
+# so check the headline too. Same tolerant-of-markdown-emphasis pattern as
+# merge_ui_test_results._VERDICT_RE.
+_UI_HEADLINE_RE = re.compile(r"\*\*Browser QA Verdict:\*\*\s*[*_`~\s]*([A-Z_]+)")
 
 
 def _load_history(path: str) -> dict | None:
@@ -147,8 +155,10 @@ def cmd_results(path: str) -> int:
         text = Path(path).read_text(encoding="utf-8")
     except OSError:
         return 2
-    return 1 if (_FAIL_CELL_RE.search(text) or _DEFERRED_CELL_RE.search(text)
-                 or _BLOCKED_CELL_RE.search(text)) else 0
+    if _FAIL_CELL_RE.search(text) or _DEFERRED_CELL_RE.search(text) or _BLOCKED_CELL_RE.search(text):
+        return 1
+    m = _UI_HEADLINE_RE.search(text)
+    return 1 if (m and m.group(1) == "BLOCKED") else 0
 
 
 def cmd_regressions(pre_path: str, post_path: str) -> int:
@@ -480,6 +490,21 @@ def _self_test() -> int:
             "| T1 | the run was never BLOCKED at any point | ui | P1 | e | a | PASS | x.png |\n",
             encoding="utf-8")
         assert cmd_results(str(res_blocked_prose)) == 0, "BLOCKED must match a whole cell only"
+        # ops-hardening iter-41 (A3, TC-3): a required-still-passing journey with ZERO executed test
+        # cases has no ROW at all, so merge_ui_test_results.merge() forces the HEADLINE to BLOCKED
+        # with no `| BLOCKED |` cell anywhere -- the cell-scan above alone would miss this and let a
+        # run with one entirely-unattempted required journey read as achievable. Every OTHER row here
+        # is a clean PASS -- only the headline (which merge() forces) signals the gap.
+        res_missing_required = d / "r7.md"; res_missing_required.write_text(
+            "**Browser QA Verdict:** BLOCKED\n\n## Results Table\n"
+            "| Test ID | Name | Type | Priority | Expected | Actual | Verdict | Evidence |\n"
+            "|---|---|---|---|---|---|---|---|\n"
+            "| UT-J-01 | Backfill honors range | regression | P1 | e | ok | PASS | a.png |\n"
+            "\n## Missing Required Journeys\n\n- `UT-J-03` — no test case executed for J-03 by any lane\n",
+            encoding="utf-8")
+        assert cmd_results(str(res_missing_required)) == 1, (
+            "a headline-only BLOCKED (missing-required journey, no BLOCKED cell) must block GOAL_ACHIEVED"
+        )
 
         # regressions: J-01 passing→failing is caught; missing pre → 0
         post = d / "post.json"

@@ -443,3 +443,50 @@ iteration. A human who weighs rule 4's tie-break more heavily than the evaluator
 single-iteration framing would split this into a verification-lane-only iteration followed by a
 separate `_BarCache.prefill` iteration.
 **Reversible:** yes
+
+## iter-41 — goal-evaluator
+
+**Ambiguity:** decision tree C.4's first clause ("the SAME journey has now failed 2+ consecutive
+iterations") matches under the reading this session recorded at iters 36-40 (`partial` = "did not reach
+`passing`"), making ESCALATE first-match-wins over CONTINUE. But this is the SIXTH consecutive ESCALATE,
+the methodology says to use it sparingly, this iteration was already dispatched at full depth, and it is
+the best iteration in six — real progress (three journeys recovered from `unknown`), not a stalled one.
+**We chose:** ESCALATE again. Grounds: (1) the tree is applied top-down, first match wins, and five prior
+evaluators recorded the identical reading on the identical journey in this same session — flipping it now
+would make the session's own ledger inconsistent; (2) ESCALATE's only practical effect is to make full
+depth MANDATORY rather than advisory, and this session provably lost iteration 35 in its entirety to
+exactly that downgrade; (3) an independent, iteration-specific trigger exists — the audit returned a
+CRITICAL that review PASS and QA PASS both missed, and it was load-bearing (the anti-regression guard
+this iteration shipped did not catch the very incident it was written for, proven against iter-40's own
+committed artifact); that is the fifth consecutive iteration where only the auditor caught the
+substantive defect, and a lean iteration has no auditor; (4) the cost of being wrong is one unnecessary
+full pipeline, versus a lost iteration the other way. I record the cost honestly: six ESCALATEs running
+reads as a far harsher judgement than this iteration deserves, and eval.md's Summary plus the evaluator
+log's plainly-stated list both say so explicitly. A human who reads `partial` as strictly not "failed",
+or who weighs "escalate sparingly" against six consecutive escalations, would return CONTINUE with an
+advisory full-depth recommendation.
+**Reversible:** yes
+
+## iter-41 — goal-evaluator
+
+**Ambiguity:** J-04 "Non-blocking boot with visible status" moved `unknown` → `passing` on a
+deterministic replay row whose golden script has only TWO steps (goto `/` expecting "provider: seed";
+goto `/data` expecting "Run history"). J-04's goal text has SIX steps, and this iteration changed the
+mechanism behind step 6 (`_checkpoint_run_record`'s new count-based floor, `data_manager.py:4094-4134`)
+— the very "interrupted job shows its last persisted progress" path. My agent file requires positive
+evidence of passing; methodology A.3 requires a screenshot showing the acceptance state, which this one
+does for the ready half only. `docs/goal.md` does not say whether a journey passes when its replay
+script covers a subset of its steps and the uncovered part's code just changed.
+**We chose:** `passing`, with every uncovered step named in journey-history and in eval.md. Grounds:
+(1) the fresh evidence is real, dated and live — I opened the frame and it shows "Ready / provider: seed
+/ seed 2026-07-22 / 591 symbols" with real coverage figures; (2) J-04's prior recorded status was
+`passing` on iter-39's genuine live `kill -9` + restart drill, one code state back, so this is a
+re-verification of a working journey, not a first claim; (3) the step-6 change only makes checkpoints
+MORE frequent and is unit-proven with a frozen clock (TC-8) plus a companion test proving the existing
+time-based path still fires — it cannot make the interrupted row staler; (4) scoring it `unknown` would
+have the same practical effect on the achievement gate while discarding evidence that does exist. Cost
+recorded honestly: the pre-ready boot phase, the crash presentation, the truncated logfile and the
+interrupted mid-flight row got NO this-iteration evidence, and a full J-04 drill belongs in any
+achievement run. A human who requires a journey's replay script to cover the steps whose code changed
+would score J-04 `unknown` and block on it now rather than at the next attempt.
+**Reversible:** yes

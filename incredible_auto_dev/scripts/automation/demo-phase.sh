@@ -188,7 +188,10 @@ ensure_phase_ports
 
 _BACKEND_PORT="${CHAIN_BACKEND_PORT:-8000}"
 _FRONTEND_PORT="${CHAIN_FRONTEND_PORT:-3000}"
-BACKEND_HEALTH_URL="${CHAIN_BACKEND_HEALTH_URL:-http://localhost:${_BACKEND_PORT}/health}"
+# ops-hardening iter-41 (A1): resolve the project-specific health path (Trendora's
+# `/api/health`, not the framework's generic `/health`) via the shared helper — see
+# `lib/common.sh::resolve_backend_health_url`.
+BACKEND_HEALTH_URL="$(resolve_backend_health_url "$_BACKEND_PORT")"
 FRONTEND_URL="${CHAIN_FRONTEND_URL:-http://localhost:${_FRONTEND_PORT}}"
 
 if [[ "${CHAIN_SHARED_SERVICES:-false}" != "true" ]]; then

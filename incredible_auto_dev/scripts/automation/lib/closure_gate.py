@@ -424,6 +424,22 @@ def _crossref_frontend(
                     "validation was not required for this phase.",
                 ))
                 r.crossref.append("ui-test-results: all SKIPPED, NO reason (blocking).")
+        elif file_top_verdict(results) == "BLOCKED":
+            # ops-hardening iter-41 (A3, TC-3): a required-still-passing journey with ZERO executed
+            # test cases has no row at all, so it survives `all_skipped` (other rows DO show real
+            # PASS/FAIL execution) while merge_ui_test_results.merge() still forces the headline to
+            # BLOCKED for exactly this gap. Without this branch closure would read "execution
+            # evidence present" and pass a phase where a required journey was silently never
+            # attempted -- iter-40's own failure mode.
+            r.blocking.append((
+                f"`phase-{phase}-ui-test-results.md` headline is BLOCKED — at least one "
+                "required-still-passing journey has zero executed test cases (see its "
+                '"Missing Required Journeys" section) or another journey\'s own assertions '
+                "were never checked",
+                "Run browser QA / the deterministic replay lane so every required-still-passing "
+                "journey gets a real row, then re-run closure.",
+            ))
+            r.crossref.append("ui-test-results: headline BLOCKED (unmet DoD item, blocking).")
         else:
             r.crossref.append("ui-test-results: execution evidence present (PASS/FAIL rows).")
 
@@ -708,6 +724,27 @@ def _self_test() -> int:
             assert r.verdict == "CLOSURE-FAIL"
             assert any("no documented reason" in b[0] for b in r.blocking), r.blocking
 
+    def t_missing_required_journey_headline_blocked():
+        # ops-hardening iter-41 (A3, TC-3): merge_ui_test_results.merge() forces the headline to
+        # BLOCKED when a required-still-passing journey has ZERO executed test cases -- even though
+        # every OTHER row is a clean PASS (so `all_skipped` alone would miss it and this file would
+        # otherwise read "execution evidence present"). Must be CLOSURE-FAIL, not CLOSURE-PASS.
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            _write_fixture(root, "p1")
+            rp = root / "reports" / "phase-p1-ui-test-results.md"
+            rp.write_text(
+                "# r\n\n**Browser QA Verdict:** BLOCKED\n\n"
+                "| Test ID | Name | Type | Priority | Expected | Actual | Verdict | Evidence |\n"
+                "|---|---|---|---|---|---|---|---|\n"
+                "| UT-J-01 | Backfill honors range | regression | P1 | e | ok | PASS | a.png |\n\n"
+                "## Missing Required Journeys\n\n"
+                "- `UT-J-03` — no test case executed for J-03 by any lane\n\n"
+                + _RICH + "\n", encoding="utf-8")
+            r = run_gate("p1", root)
+            assert r.verdict == "CLOSURE-FAIL", r.blocking
+            assert any("headline is BLOCKED" in b[0] for b in r.blocking), r.blocking
+
     def t_backend_only_stubs_pass():
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
@@ -746,6 +783,7 @@ def _self_test() -> int:
         ("missing_artifact", t_missing_artifact),
         ("failed_gate_verdict", t_failed_gate_verdict),
         ("all_skipped_reason_nuance", t_all_skipped_reason_nuance),
+        ("missing_required_journey_headline_blocked", t_missing_required_journey_headline_blocked),
         ("backend_only_stubs_pass", t_backend_only_stubs_pass),
         ("vague_what_to_click", t_vague_what_to_click),
         ("na_stub_on_frontend_phase", t_na_stub_on_frontend_phase),

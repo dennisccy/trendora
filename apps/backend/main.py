@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import os
+import signal
 import time
 from contextlib import asynccontextmanager
 
@@ -49,6 +50,21 @@ from app.seed_loader import load_seed
 configure_app_logging()
 
 logger = logging.getLogger("trendora.lifespan")
+
+# ops-hardening iter-41 (C7) — DIAGNOSTIC ONLY, opt-in via env var, never on by default: arms
+# `faulthandler.register(SIGUSR1, all_threads=True)` so a throwaway-DB wedge-drill can send
+# `kill -USR1 <pid>` to a suspected-frozen process and get an ALL-THREAD stack dump on stderr
+# WITHOUT killing it — the exact tool iter-40's run 1 needed but didn't have (`gdb` attach was
+# denied by this host's `yama.ptrace_scope` policy; no `py-spy` was installed). Deliberately NOT a
+# launch-script change (AG-10's byte-frozen `scripts/start-backend.sh` stays untouched) — the drill
+# sets `TRENDORA_DIAG_FAULTHANDLER_SIGUSR1=1` in its own environment before invoking that SAME
+# unmodified script, which inherits it like any other env var. Every real deployment leaves this
+# unset, so `signal.SIGUSR1` is never touched outside an explicit diagnostic drill.
+if os.environ.get("TRENDORA_DIAG_FAULTHANDLER_SIGUSR1") == "1":
+    import faulthandler
+
+    faulthandler.register(signal.SIGUSR1, all_threads=True)
+    logger.info("diagnostic: faulthandler armed on SIGUSR1 (TRENDORA_DIAG_FAULTHANDLER_SIGUSR1=1)")
 
 
 @asynccontextmanager

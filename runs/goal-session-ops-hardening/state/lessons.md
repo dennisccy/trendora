@@ -453,3 +453,22 @@ fixed call at `:951` — so "no traceback names the fixed site" was true because
 which is much weaker than "the fix held under pressure".
 **Applies to:** any review of a "bounded read" claim in `apps/backend/app/engine/`; any
 memory-pressure drill whose success criterion is the ABSENCE of a name in a traceback.
+
+## iter-41 — 2026-07-31T06:20:00Z
+
+**Verdict:** ESCALATE
+**Lesson:** Promoting a journey to an iteration's **target** silently REMOVES its verification. Every
+coverage gate in the chain — `ui-test-designer`'s backend-only carve-out, `merge_ui_test_results.py`'s
+`missing_required_journeys`/`skipped_required_journeys`, `goal_gate.py`, `closure_gate.py` — is driven
+by the spec's `Required-still-passing journeys:` line and has no notion of `Target journeys:`. So
+iter-41's merged results headlined `PASS 6/6` while J-05 and J-07 had no row anywhere, and J-05 ended
+up with LESS evidence than in iters 38/39 despite golden scripts `J-05.json`/`J-07.json` sitting unused
+on disk. Second, related lesson from the same iteration (auditor's B1, worth keeping verbatim): when a
+fix is written to prevent a specific past incident, that incident's own committed artifact IS the
+regression fixture — feeding
+`reports/phase-goal-ops-hardening-iter-40-ui-test-results.md` through the new guard took thirty seconds
+and showed it still merged to a clean `SKIPPED`, because the guard caught a MISSING row while iter-40's
+real shape was a PRESENT row reading `SKIP`.
+**Applies to:** any iteration adding or trusting a journey-coverage gate; any iteration whose spec names
+`Target journeys:` on a backend-only (`Frontend Present: no`) spec; any fix written to prevent a named
+past incident.

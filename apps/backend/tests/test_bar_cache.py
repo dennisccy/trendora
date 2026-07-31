@@ -96,6 +96,54 @@ def test_prefill_returns_bar_records_matching_plain_query_row_level(tiny_engine)
     assert prefilled == reference
 
 
+def _old_prefill_by_symbol(session) -> dict:
+    """ops-hardening iter-41 (B5, TC-6) -- a faithful reimplementation of the PRE-iter-41
+    `_BarCache.prefill` accumulation body (the exact code this iteration's B5 fix replaced): one `Bar`
+    NamedTuple per row, appended into a plain `list[Bar]` per symbol. Kept here ONLY as a benchmark/
+    test reference -- never imported by the shipped app (mirrors
+    `runs/goal-ops-hardening-iter-41/bar-cache-prefill-bench/measure_prefill_peak.py`'s own `_old_
+    prefill_peak`, the live-DB peak-memory measurement's OLD arm)."""
+    from app.config import get_config
+
+    batch = get_config().research.read_batch_size
+    stmt = (
+        select(
+            DailyPrice.symbol, DailyPrice.date, DailyPrice.open, DailyPrice.high,
+            DailyPrice.low, DailyPrice.close, DailyPrice.volume,
+        )
+        .order_by(DailyPrice.symbol, DailyPrice.date)
+    )
+    by_symbol: dict = {}
+    for symbol, d, o, h, lo, c, v in session.exec(stmt).yield_per(batch):
+        by_symbol.setdefault(symbol, []).append(prices.Bar(d, o, h, lo, c, v))
+    return by_symbol
+
+
+def test_prefill_old_vs_new_implementation_byte_identical(tiny_engine):
+    """TC-6 -- the OLD (pre-iter-41, `list[Bar]`) and NEW (iter-41 B5, columnar `_SymbolColumns`)
+    `_BarCache.prefill` implementations, run through the SAME fixture inputs, return byte-identical
+    `Bar` values for every symbol/date -- the fixture-backed old-vs-new equality proof the B5 memory
+    bound requires (byte-identical output, only the resident storage shape changed)."""
+    engine, days = tiny_engine
+    with Session(engine) as old_session:
+        old_by_symbol = _old_prefill_by_symbol(old_session)
+    with Session(engine) as new_session:
+        cache = prices._BarCache()
+        cache.prefill(new_session)
+        new_by_symbol = cache._by_symbol
+
+    assert set(old_by_symbol) == set(new_by_symbol) == {"SPY", "AAA"}
+    for symbol in old_by_symbol:
+        old_bars = [(b.date, b.open, b.high, b.low, b.close, b.volume) for b in old_by_symbol[symbol]]
+        new_bars = [(b.date, b.open, b.high, b.low, b.close, b.volume) for b in new_by_symbol[symbol]]
+        assert new_bars == old_bars, f"symbol {symbol}: NEW prefill output diverges from OLD"
+        # every synthesized element is still a REAL `Bar` NamedTuple (supports `.date`/`._replace()`/
+        # structural equality with the OLD implementation's own Bar instances) -- not merely
+        # value-equal tuples of a different type.
+        assert all(isinstance(b, prices.Bar) for b in new_by_symbol[symbol])
+        assert list(new_by_symbol[symbol]) == list(old_by_symbol[symbol])
+
+
 def test_lazy_load_returns_bar_records_matching_plain_query_row_level(tiny_engine):
     """The lazy per-symbol fallback inside `bars_asof` (already per-symbol-bounded — iter-19 only changes
     its record type, never its bounding) also returns `Bar` records whose values match a plain reference

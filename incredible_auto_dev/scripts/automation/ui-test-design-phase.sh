@@ -38,12 +38,21 @@ if detect_frontend_in_plan "$PLAN_FILE"; then
   FRONTEND_PRESENT="yes"
 fi
 
-# Skip for backend-only phases
-if [[ "$FRONTEND_PRESENT" == "no" ]]; then
+# Skip for backend-only phases -- UNLESS this is a goal-mode iteration naming
+# required-still-passing journeys (ops-hardening iter-41, A1 companion fix): those
+# journeys still need one UT-J-XX regression test case each every iteration, and
+# regression re-verification of an EXISTING page needs no NEW UI surface. See
+# lib/common.sh::phase_spec_has_required_regression and the ui-test-designer
+# agent's own "Backend-only phase handling" section, which stubs NEW-surface
+# generation only and still emits the required-still-passing rows.
+if [[ "$FRONTEND_PRESENT" == "no" ]] && ! phase_spec_has_required_regression "$SPEC"; then
   echo "[ui-test-design] Backend-only phase — writing N/A stubs."
   write_na_ui_artifacts "$PHASE" "ui-test-plan" "what-to-click"
   echo "[ui-test-design] Done (backend-only, N/A stubs written)."
   exit 0
+fi
+if [[ "$FRONTEND_PRESENT" == "no" ]]; then
+  echo "[ui-test-design] Backend-only phase, but required-still-passing journeys are named — running the agent for regression-only test-case generation (no NEW-surface cases)."
 fi
 
 # Verify dependencies
@@ -62,6 +71,16 @@ fi
 EXISTING_TEST_PLAN_NOTE=""
 if [[ -f "$EXISTING_TEST_PLAN" ]]; then
   EXISTING_TEST_PLAN_NOTE="Existing functional test plan: $EXISTING_TEST_PLAN  <-- read for context, do not duplicate API tests"
+fi
+
+BACKEND_ONLY_REGRESSION_NOTE=""
+if [[ "$FRONTEND_PRESENT" == "no" ]]; then
+  BACKEND_ONLY_REGRESSION_NOTE="
+NOTE: This phase spec's metadata says \`Frontend Present: no\` (no NEW UI surface this iteration) —
+follow your agent instructions' \"Backend-only phase handling\" section EXACTLY: stub out NEW-surface
+test-case generation only. You MUST still emit one UT-J-XX regression test case for EVERY journey
+named on the Phase spec file's own \"Required-still-passing journeys:\" metadata line (see the Phase
+spec path above) — do not write a bare N/A stub if that line names any journey."
 fi
 
 _FRONTEND_PORT="${CHAIN_FRONTEND_PORT:-3000}"
@@ -85,6 +104,7 @@ Execution plan: $PLAN_FILE
 User-visible changes: $USER_VISIBLE  <-- read this first
 UI surface map: $UI_SURFACE_MAP  <-- read this for surfaces to test
 $EXISTING_TEST_PLAN_NOTE
+$BACKEND_ONLY_REGRESSION_NOTE
 
 Frontend URL: $FRONTEND_URL
 

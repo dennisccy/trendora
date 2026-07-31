@@ -3054,3 +3054,157 @@ FIFTH time: iter-33/g — give Regime Lab's cold `view=pooled` compute the same 
 step 2's own scenario; three dispositions, all his (ratify the honest-WARN convention, rescope the budget
 for the bounded background-compute window, or commission the cached-readiness-snapshot fix);
 (b) iter-33/i — whether `start-frontend.sh` joins `HOST_GUARD_MARKER_FILES`.
+
+## Iteration 41 — goal-ops-hardening-iter-41
+
+**Date:** 2026-07-31T06:20:00Z
+**Verdict:** ESCALATE
+**Depth dispatched:** full (`iter-41/depth-dispatched` = `full`, matching the spec — the iter-35
+mis-dispatch has not recurred for a sixth iteration. `status.json` = `complete` / `closure_passed`,
+`browser_checks_run: true`, `fix_attempt: 2` after a review FAIL. I confirmed the full pipeline ran
+from artifact mtimes: ui-surface-map/user-visible-changes 05:31 → test-plan 05:32 → replay 05:33-05:34
+→ browser-qa/merge 05:43 → demo 05:45-05:46 → ux-regression 05:46 (SKIPPED, budget-shed) → closure
+05:59 → coherence 06:01.)
+**Journey deltas:**
+- **Newly passing: J-01 "Backfill honors the requested range and explains zero-work", J-04
+  "Non-blocking boot with visible status", J-06 "Pages load only what they need"** — all three
+  `unknown` → `passing` on fresh, dated, this-iteration replay rows plus screenshots I opened.
+  Newly failing: none. **Regressed (passing -> failing): NONE.** Deferred (`DEFERRED-BUDGET`): none.
+- Re-verified `passing` with this-iteration evidence: **J-03, J-08, J-09** (`last_verified_iter`
+  advances iter-39 → iter-41 for all six replayed journeys).
+- **Still `unknown`: J-05 "Aggregates are precomputed at ingest"** — and it is now LESS verified than
+  in iters 38/39. Still `partial`: **J-07 "Heavy aggregates never take the service down"** — SEVENTH
+  consecutive iteration; `last_passing_iter` stays iter-34; `last_verified_iter` DOES advance to
+  iter-41 (the wedge drill is real this-iteration evidence); `evidence_makeup` KEPT (the `[NEW]`
+  walkthrough is unrecorded for an 11th iteration — the demo lane DID record 8 steps this time,
+  RECORDED_WITH_NOTES, but none is `[NEW]` and none covers J-07).
+- All 8 `spec_hash`es match `goal_gate hash-journeys`; no `journeys-changed.md`; no
+  `browser-infra.json`.
+- Anti-goal violations: **ONE RESOLVED — iter-40/y** (the required-still-passing verification lane is
+  genuinely repaired AND demonstrated, not merely claimed). **THREE NEW: iter-41/z** (minor, open —
+  the identical hole is still open for TARGET journeys, proven by this iteration's own artifacts),
+  **iter-41/aa** (minor, resolved in-audit — the shipped guard did not catch iter-40's actual
+  all-SKIP shape), **iter-41/ab** (minor, open — the QA report records AG-8 as "✓ PASS / no
+  whole-table loads", which its evidence does not support). Thirteen carried `resolved: false`, each
+  given an ITER-41 UPDATE recording what I verified rather than inherited. Ledger now: **40 total,
+  14 unresolved, 0 critical.** scan-report CLEAN; coherence COHERENCE-PASS (zero advisories); review
+  PASS (after a first-attempt FAIL on 1 CRITICAL); QA PASS; audit PASS_WITH_GAPS (1 CRITICAL found
+  and fixed in-audit); ux-regression UX-REGRESSION-SKIPPED (budget-shed, credited nothing); closure
+  CLOSURE-PASS.
+
+**Reasoning:** I re-derived every load-bearing fact first-hand rather than reading it off a report.
+(1) **Diff scope before touching any carried finding:** `git diff 40495085..HEAD --stat` over
+`apps scripts project-extensions config.yaml` is EMPTY — nothing committed — and
+`git status --porcelain` over the same paths shows exactly five modified plus one untracked, all
+under `apps/backend`. The four launch/host-guard files return ZERO lines, so AG-10's own REGRESSION
+trigger did not fire, and `config.yaml` is byte-unchanged so `memory_cap_mb: 6144` is still the
+committed cap. (2) **The verification lane really did come back, and I checked the artifacts rather
+than the claim:** `reports/phase-goal-ops-hardening-iter-41-ui-test-plan.md` is a real 6-case plan
+(not iter-40's bare N/A stub), `reports/qa/goal-ops-hardening-iter-41-evidence/` exists with six
+PNGs, and the merged file carries six PASS rows. (3) **I checked the golden scripts, not just the
+rows** — this matters because a replay row is only worth its assertions: J-01's script submits the
+weekend-only span and asserts the literal text "2 non-trading", then the full May range asserting
+"19 already snapshotted", then opens `/scanner-runs/748` asserting "as of 2026-05-29" — that is
+J-01's zero-work-honesty steps 5, 6 and 4, not a smoke test. J-03 asserts "412 calendar days".
+J-06 walks all 11 routes with a per-route expectation. **J-04's script is THIN** (two steps:
+"provider: seed", "Run history"), so I say plainly which J-04 steps this iteration does NOT cover:
+the ≤5 s first-200, the pre-ready phase+progress, the crash presentation, the truncated logfile, and
+the interrupted mid-flight row. (4) **I opened five of the six screenshots myself.** `J-01-verify.png`
+is the run-748 immutable-snapshot frame; I re-added its regime components (35.00+17.21+14.75+8.24+0.00
+= 75.20) and they match the headline exactly, so AG-3 holds on that frame by my own arithmetic.
+`J-09-verify.png` shows the green "background compute running (1)" chip — J-09's own assertion — and
+the LLM lane's independent live `curl` of `/api/health` at 05:43 corroborates it (`elapsed_ms 352101`,
+`horizons_done 0/5`). `J-06-verify.png` shows Regime Lab in an honest "Still computing — 16s elapsed"
+state, which is what J-06's acceptance sanctions AND live proof that iter-33/g is still open.
+(5) **I checked the screenshots for collision and report the result honestly rather than the
+convenient half:** three of six (`J-04`, `J-06`, `J-08`) are byte-identical to iter-39's captures.
+The mtimes (05:33:22, :26, :30, 05:34:22, :25, :33 — 71 s, in journey order) prove a live sequential
+run wrote them, not a copy, and the auditor independently confirms the run in `engine.log`
+05:33:16→05:34:33. For `J-04`/`J-08` the frames hold no clock value so identity on an unchanged DB is
+expected; **for `J-06` the frame contains a live "16s elapsed" counter and I cannot explain its exact
+reproduction two days apart** — I record it unresolved rather than wave it away or over-read it.
+(6) **The headline finding is one I found before reading the audit, and the audit then confirmed it
+independently:** the merged results file headlines `PASS` / `6/6 journeys passed (0 skipped)` while
+**J-05 and J-07 — the iteration's own two TARGET journeys — have no row anywhere.** I traced the
+mechanism in code: `merge_ui_test_results.py:159-173`/`176-198` are both driven by `required_journeys`,
+which `lib/replay-lane.sh` populates from the spec's "Required-still-passing journeys:" line; there is
+no target-journey notion in the merger, in `goal_gate.py`, or in `closure_gate.py`. Upstream, the
+repaired `ui-test-designer` keys off the same line, so on a backend-only iteration a target journey
+structurally cannot get a test case — the test plan says exactly that in its own words at lines 24-29.
+Golden scripts `J-05.json` and `J-07.json` both exist and were replayed in iters 38/39. **Promoting a
+journey to "target" removes its evidence.** (7) **I did not read iter-29/d as closed.** The B5 memory
+work is real and measured (VmPeak 1,371,032 → 664,580 kB, 51.5%, separate subprocess per arm, identical
+`N_ROWS=3,301,686` in both) and byte-identity is proven by a test that replays the OLD body as its
+oracle. But it is a COMPRESSION, not a BOUND: the whole table is still resident, memory still strictly
+O(row count) at ~165 bytes/row instead of ~380. goal.md's "no code path streams the full `daily_prices`
+table into RAM" remains not literally true. The developer disclosed this himself, unprompted, in
+`perf-budgets.md` — which is why it is a GAP and not a dishonesty finding. (8) **AG hygiene checked,
+not assumed:** scan-report CLEAN; the drill's `config.scratch.yaml` carries env-var NAMES only; the
+570 MB `drill.db` is gitignored (`git check-ignore -v` → `.gitignore:66`); no manifest changed and
+every new import is stdlib; no network call added to any changed backend file.
+Rejected REGRESSION (C.1): nothing moved `passing` → `failing`; scan-report CLEAN; all four
+launch/host-guard files byte-identical; all 14 open ledger items are `minor`. I weighed calling
+iter-41/z critical and decided against it on stated grounds — it is a verification-COVERAGE gap, not a
+product defect, no artifact shows any journey broken, and it is the same family this session has
+carried as minor since iter-38/t. I also weighed AG-8: the exposure is pre-existing, this iteration
+materially improved it, and nothing new was introduced. Rejected STALLED (C.2): every blocker has an
+agent path with a recipe already written down (the target-journey gate needs a `UT-J-XX` case for
+targets on backend-only specs PLUS the merge guard extension — the auditor explained why extending the
+guard alone would false-positive, and I agree with that restraint); the two owner items are real but
+neither is the only path. Rejected GOAL_ACHIEVED (C.3): J-05 is `unknown` and J-07 is `partial`.
+**Chose ESCALATE (C.4, first clause)** under this session's five-times-recorded reading that "failed"
+= "did not reach `passing`" — J-07 has now missed seven consecutive iterations — reinforced by an
+independent, iteration-specific trigger: the audit lane returned a **CRITICAL** finding that the
+review lane (PASS) and the QA lane (PASS) had both passed, and it was the load-bearing one — the guard
+this whole iteration shipped to prevent a repeat of iter-40 **did not catch iter-40**, as proven by
+feeding iter-40's own committed artifact through it (it still merged to a clean `SKIPPED`). That is
+the **fifth consecutive iteration where only the auditor caught the substantive defect.** A lean
+iteration has no auditor.
+**FIVE THINGS I STATE PLAINLY RATHER THAN ROUND AWAY:** (i) **this is the best iteration in six and a
+sixth ESCALATE must not be read as saying otherwise.** The verification lane is genuinely back — real
+test plan, real replay run, six dated screenshots, three journeys recovered from `unknown` — after
+five iterations where journeys rotted unverified. The dev found and disclosed a plan gap (three
+shell-level gates the plan never named) instead of letting the DoD quietly fail. The memory work is
+measured, byte-identity-proven twice over, and its scope limit was volunteered in `perf-budgets.md`
+before any lane asked. The C7 diagnostic reported the outcome that actually happened (no recurrence,
+signal never sent) rather than the one that would have looked better. (ii) **the target-journey hole
+is the story of this iteration.** An iteration that existed to make an unverified journey impossible
+to report as clean shipped a clean `PASS 6/6` over its own two unverified targets. It is not a repeat
+of iter-40 — it is the residual — but the shape is identical and it deserves to be named that way.
+(iii) **the auditor's own lesson is the most valuable line in the whole run and I am repeating it
+rather than paraphrasing:** when a fix is written to prevent a specific past incident, that incident's
+own artifact IS the regression fixture — it was sitting committed in `reports/`, and running it would
+have taken thirty seconds. The dev's process note (a test file shipped never having been executed
+while twenty other commands were listed under "Tests Run") is the same disease in a second organ, in
+the very diff meant to cure it. (iv) **`_BarCache.prefill` is 51.5% cheaper and still not a bound.**
+Anyone reading "the last unbounded whole-table load is closed" is reading more than the data carries;
+the next planner must either write the real bound or amend the goal text, because twelve iterations of
+ambiguity here is itself the cost. (v) **the ≤ 0.1 s health budget is now missed an EIGHTH time**
+(58 polls, max 1.73 s). Six consecutive evaluators have called it an owner decision. It remains the
+single item in J-07 no agent can settle and the most likely place a fresh-context second-key CONFIRM
+rejects a GOAL_ACHIEVED.
+
+**Next-step recommendation:** FULL depth (mandatory via ESCALATE). The first target is the same class
+of problem as last time, one level up: **make the journeys we are actively working on get checked too.**
+Today a journey is tested because it sits on the "must keep working" list; the moment we choose it for
+improvement it leaves that list and nothing tests it — which is why J-05 "Aggregates are precomputed at
+ingest" has less proof now than three rounds ago, with a ready-made replay script already on disk. Both
+halves are needed: emit a test case for target journeys on backend-only rounds, AND teach the merger to
+refuse a clean PASS when a target journey has no row (the second alone would wrongly flag normal rounds,
+where a target rides a different row name). Then, in order: (2) re-check J-05 and J-07 in the browser
+using the existing `J-05.json` / `J-07.json` scripts; (3) settle what "no whole-table load" means —
+either write the real per-symbol bound or amend goal.md to a per-row budget the current design meets —
+and correct the QA report's AG-8 row either way; (4) SMALL AND ALREADY WRITTEN DOWN: one line of
+tolerance for missing numbers in the new columnar store (audit B6 — it would now crash rather than
+degrade), a before/after page-speed figure for it (audit T2 — nothing measured the CPU it trades for
+the memory), and the frontend-readiness race that actually voided iter-40 (audit B4 — still
+unaddressed; the new guard now makes it fail loudly instead of silently, which is the right failure
+mode but not a fix); (5) CARRIED, untouched: iter-29/b + the badge wording after a permanently failed
+warm-up (ELEVEN iterations unmade); iter-31/e; iter-32/f (watch only); iter-35/k; iter-36/n; iter-37/o;
+iter-37/q; iter-39/u (freeze did not recur, still undiagnosed — the tool is now in place for the next
+one); (6) THIRD IN QUEUE, deferred a SIXTH time: iter-33/g — Regime Lab's cold `view=pooled` compute,
+visible in this iteration's own `J-06-verify.png` as "Still computing — 16s elapsed"; (7) CAPTURE ONLY,
+never an iteration's goal: J-07's `[NEW]` walkthrough (eleventh iteration unrecorded); (8) OWNER,
+unchanged, both to be settled BEFORE any achievement run: (a) iter-34/j — the `GET /api/health` ≤ 0.1 s
+budget, now missed eight times, this time max 1.73 s across 58 polls; three dispositions, all his;
+(b) iter-33/i — whether `start-frontend.sh` joins `HOST_GUARD_MARKER_FILES`.

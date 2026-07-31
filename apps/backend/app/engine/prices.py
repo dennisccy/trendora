@@ -15,8 +15,10 @@ Also provides the tiny ascending-series extractors the indicator functions consu
 """
 from __future__ import annotations
 
+import array
 import bisect
 import threading
+from collections.abc import Sequence
 from contextlib import contextmanager
 from datetime import date as date_cls
 from typing import Iterable, Iterator, NamedTuple, Optional
@@ -53,6 +55,70 @@ def latest_data_date(session: Session) -> Optional[date_cls]:
     return session.scalar(select(func.max(DailyPrice.date)))
 
 
+# ops-hardening iter-41 (B5) — the columnar per-symbol accumulator `_BarCache.prefill` publishes,
+# replacing a plain `list[Bar]`. `prefill`'s query is already `.yield_per(batch)`-streamed on the DB
+# cursor side, but every row still ended up as ONE resident `Bar` NamedTuple per row (a tuple holding
+# 5 individually-boxed Python `float` objects, ~24 bytes each, plus the tuple's own ~56 bytes) inside
+# ONE Python list per symbol — ~1.1 GB at the live basis (3.3M rows), open since iter-29/d and
+# EXPLICITLY left untouched by iter-35/36/37's narrower fix (which bounded only
+# `membership_timeline_cached`'s cache-miss sub-call via the separate, unrelated `load_only` batching
+# below — that mechanism is UNCHANGED by this class). `array.array('d')` stores each numeric column as
+# raw 8-byte C doubles with NO per-element Python object overhead — the same values, a fraction of the
+# resident bytes. A full `collections.abc.Sequence`: indexing/slicing synthesize real `Bar` NamedTuples
+# on demand, so `_BarCache.bars_asof`/`bars_asof_window`/`bars_after`/`close_on` (below) read it via the
+# EXACT SAME `full[:cut]` / `full[cut-1]` / `len(full)` code they already used for a plain `list[Bar]`
+# — NOT ONE LINE of those methods changes. `dates` aliases the SAME list `_BarCache._dates_by_symbol`
+# already owns (no duplication) — the bisect boundary and the served Bar values share one source, so
+# they can never drift apart. Also duck-types cleanly against a plain `list[Bar]` (equality, iteration
+# yielding real `Bar` objects that support `._replace()`) so code that later REPLACES one symbol's
+# entry with an ordinary list (e.g. a test simulating a poisoned/mutated series) keeps working
+# unchanged — `_by_symbol`'s per-symbol value only needs to support the Sequence protocol, never a
+# specific concrete type.
+class _SymbolColumns(Sequence):
+    """Columnar per-symbol OHLCV storage — see the module-level comment block above for the full
+    rationale (memory bound + duck-typing contract)."""
+    __slots__ = ("dates", "opens", "highs", "lows", "closes", "volumes")
+
+    def __init__(
+        self,
+        dates: list[date_cls],
+        opens: "array.array",
+        highs: "array.array",
+        lows: "array.array",
+        closes: "array.array",
+        volumes: "array.array",
+    ) -> None:
+        self.dates = dates
+        self.opens = opens
+        self.highs = highs
+        self.lows = lows
+        self.closes = closes
+        self.volumes = volumes
+
+    def __len__(self) -> int:
+        return len(self.dates)
+
+    def __getitem__(self, item):
+        if isinstance(item, slice):
+            idxs = range(*item.indices(len(self.dates)))
+            return [
+                Bar(self.dates[i], self.opens[i], self.highs[i], self.lows[i], self.closes[i], self.volumes[i])
+                for i in idxs
+            ]
+        return Bar(
+            self.dates[item], self.opens[item], self.highs[item], self.lows[item],
+            self.closes[item], self.volumes[item],
+        )
+
+    def __eq__(self, other) -> bool:
+        if isinstance(other, (list, _SymbolColumns)):
+            return list(self) == list(other)
+        return NotImplemented
+
+    def __repr__(self) -> str:  # pragma: no cover -- debugging aid only
+        return f"_SymbolColumns({len(self)} bars)"
+
+
 # --------------------------------------------------------------------------------------------------
 # J-46 — load-once bar cache (Capability 33): an OPT-IN, per-session optimization at the single
 # `bars_asof` seam. A multi-date backfill calls `bars_asof(symbol, D)` once PER DATE today, so each
@@ -79,7 +145,11 @@ class _BarCache:
     has loaded every symbol up front, the hot path is a pure lock-free read of immutable lists."""
 
     def __init__(self) -> None:
-        self._by_symbol: dict[str, list[Bar]] = {}
+        # iter-41 (B5): a symbol's value here is EITHER a plain `list[Bar]` (the lazy per-symbol path,
+        # `load_only`, or a caller-replaced series) OR a `_SymbolColumns` (`prefill`'s eager whole-table
+        # scan) — every read site below uses only the shared Sequence operations (`full[:cut]`, indexing,
+        # `len`) both shapes support identically, so callers never need to know which one they hold.
+        self._by_symbol: dict[str, "list[Bar] | _SymbolColumns"] = {}
         self._dates_by_symbol: dict[str, list[date_cls]] = {}
         self._load_lock = threading.Lock()
         # iter-19: whether the ONE expensive whole-table scan has already run on this cache instance. A
@@ -125,7 +195,17 @@ class _BarCache:
         series has 0 trailing bars, exactly the grouped-count path's result (`below_history`). Recording an
         absent symbol as `[]` is descriptive, not fabricated: it means "this name has no bars at/through D".
         This cheap bookkeeping still runs on EVERY call (even when the whole-table scan is skipped), so a
-        later call passing a WIDER `expected_symbols` set still records any newly-named no-bar candidate."""
+        later call passing a WIDER `expected_symbols` set still records any newly-named no-bar candidate.
+
+        iter-41 (B5, AG-8 memory bound): the resident accumulator built by this scan is now `_SymbolColumns`
+        (module-level, above) — `array.array('d')` per numeric field instead of a `list[Bar]` of
+        individually-boxed-float NamedTuples — cutting the ~1.1 GB this scan holds resident for the whole
+        cache's lifetime (3.3M rows at the live basis) without changing a single served value: every
+        consumer (`bars_asof`/`bars_asof_window`/`bars_after`/`close_on` below) reads `self._by_symbol[symbol]`
+        through the exact same `full[:cut]` / `full[cut-1]` / `len(full)` operations it already used, and
+        `_SymbolColumns` implements the full `Sequence` protocol those operations need — so none of those
+        methods change. The `.yield_per(batch)` cursor streaming above is unchanged (already bounded since
+        before iter-35); this closes the OTHER half — the destination the streamed rows accumulate into."""
         with self._load_lock:
             need_scan = not self._prefilled
         if need_scan:
@@ -137,19 +217,31 @@ class _BarCache:
                 )
                 .order_by(DailyPrice.symbol, DailyPrice.date)
             )
-            by_symbol: dict[str, list[Bar]] = {}
+            by_symbol: dict[str, _SymbolColumns] = {}
             for symbol, d, o, h, lo, c, v in session.exec(stmt).yield_per(batch):
-                by_symbol.setdefault(symbol, []).append(Bar(d, o, h, lo, c, v))
+                cols = by_symbol.get(symbol)
+                if cols is None:
+                    cols = _SymbolColumns(
+                        [], array.array("d"), array.array("d"), array.array("d"),
+                        array.array("d"), array.array("d"),
+                    )
+                    by_symbol[symbol] = cols
+                cols.dates.append(d)
+                cols.opens.append(o)
+                cols.highs.append(h)
+                cols.lows.append(lo)
+                cols.closes.append(c)
+                cols.volumes.append(v)
             # publish atomically under the lock so a concurrent reader sees a fully-built map, not a
             # partial one; re-check `_prefilled` in case another thread raced us to the scan (rare —
             # `_BarCache` is normally driven by one orchestrating thread — but the merge below is
             # idempotent either way, so a lost race just discards redundant work, never corrupts state).
             with self._load_lock:
                 if not self._prefilled:
-                    for symbol, full in by_symbol.items():
+                    for symbol, cols in by_symbol.items():
                         if symbol not in self._by_symbol:  # never overwrite a series already loaded
-                            self._by_symbol[symbol] = full
-                            self._dates_by_symbol[symbol] = [bar.date for bar in full]
+                            self._by_symbol[symbol] = cols
+                            self._dates_by_symbol[symbol] = cols.dates  # SAME list object — no duplication
                     self._prefilled = True
         # record an EMPTY series for every expected (candidate-pool) symbol with no bars, so it is never
         # lazy-loaded per-date later — load-once-per-job holds for no-bar names too. Cheap (no query), so

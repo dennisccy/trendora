@@ -1,0 +1,102 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-ops-hardening-iter-41",
+  "base_url": "http://localhost:3255",
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Dashboard loads with ready status",
+      "narration": "The app boots and shows the main dashboard. The top-right badge displays a green Ready indicator, confirming the backend is available and listening.",
+      "point_out": "The badge in the top-right reads 'Ready' with a green dot; the dashboard is fully rendered.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/" },
+      "expect": { "text": "Ready" }
+    },
+    {
+      "n": 2,
+      "title": "Data page opens with the backfill job panel",
+      "narration": "Navigate to the Data section, where operators can start fetch and backfill jobs. The form shows date-range inputs and a job-kind dropdown.",
+      "point_out": "The 'Start a fetch / backfill job' panel is visible with Start date and End date fields; the Job kind dropdown reads 'Backfill snapshots'.",
+      "journey": "J-01",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/data" },
+      "expect": { "text": "Start a fetch / backfill job" }
+    },
+    {
+      "n": 3,
+      "title": "Submit a backfill job for May 2026",
+      "narration": "Fill in the date range from May 2 to May 29, 2026, and start the job. The system will backfill historical snapshots for those trading days.",
+      "point_out": "After clicking Start, the Job progress panel shows the job moving toward completion; the summary will report how many trading days were processed.",
+      "journey": "J-01",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "fill", "target": { "data-testid": "job-start-date" }, "text": "2026-05-02" }
+    },
+    {
+      "n": 4,
+      "title": "Backfill job finishes and reports results",
+      "narration": "The job completes and shows its final status. If this is a fresh range, it will report 19 trading days snapshotted. If the range was already backfilled, a distinct 'no new snapshots' badge explains the zero-work run.",
+      "point_out": "The Job progress panel shows a terminal status (not 'running'); the summary mentions either '19' trading days or a 'no new snapshots' badge.",
+      "journey": "J-01",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "fill", "target": { "data-testid": "job-end-date" }, "text": "2026-05-29" }
+    },
+    {
+      "n": 5,
+      "title": "Click Start to launch the backfill",
+      "narration": "The Start button submits the backfill request. Watch the Job progress panel update as the system processes the date range.",
+      "point_out": "The Job progress panel becomes active and shows the job running; then it moves to a finished state.",
+      "journey": "J-01",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "button", "name": "Start" } },
+      "expect": { "text": "Job progress" }
+    },
+    {
+      "n": 6,
+      "title": "Scanner Runs detail page shows the stored leaderboard",
+      "narration": "Navigate to Scanner Runs and open the row for May 29, 2026. The page loads the immutable leaderboard that was computed and stored during the backfill.",
+      "point_out": "A populated leaderboard table is visible with stock symbols and rankings; never an empty 'No stored stock rows' message.",
+      "journey": "J-08",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/scanner-runs" },
+      "expect": { "text": "Scanner Runs" }
+    },
+    {
+      "n": 7,
+      "title": "Backtest page loads evidence from storage, never recomputing",
+      "narration": "Open the Backtest page, which displays precomputed evidence. If a background aggregation is in flight, an honest 'Refreshing' banner appears. Once complete, the banner disappears and fresh values display.",
+      "point_out": "The evidence panel loads with either normal values or a 'Refreshing — showing the last complete evidence' banner; the page never shows a blank or spinning state.",
+      "journey": "J-08",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/backtest" },
+      "expect": { "text": "Backtest" }
+    },
+    {
+      "n": 8,
+      "title": "Ready badge discloses background compute in flight",
+      "narration": "If a background aggregation is still running, the top-right badge shows 'Ready' plus an extra chip reading 'background compute running (N)', disclosing the in-flight compute. Once complete, the chip disappears.",
+      "point_out": "The top-right badge either shows just 'Ready' (if no compute is in flight), or 'Ready' with an additional 'background compute running' chip showing the count.",
+      "journey": "J-09",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/data" },
+      "expect": { "text": "Ready" }
+    }
+  ]
+}

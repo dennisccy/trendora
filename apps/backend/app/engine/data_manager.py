@@ -2079,6 +2079,13 @@ class JobProgress:
     # written onto this job's OPEN run-history row (NOT serialized — internal throttle scratch, like the
     # two accumulators above). 0.0 means "never checkpointed", so the first advance always writes.
     _last_checkpoint_monotonic: float = 0.0
+    # ops-hardening iter-41 (D9, dev Known Issue #2 from iter-40's own handoff) — dates completed since
+    # the last durable checkpoint write (NOT serialized — internal throttle scratch, like
+    # `_last_checkpoint_monotonic` above). The time-based throttle alone (`_RUN_RECORD_CHECKPOINT_INTERVAL_S`)
+    # lets an extremely fast per-date compute (iter-40's live drill observed ~120-140 ms/date bursts) run
+    # several dates between checkpoints; this count-based floor (see `_RUN_RECORD_CHECKPOINT_DATE_FLOOR`)
+    # forces a write on every Kth date regardless of elapsed time, bounding the OTHER axis of staleness.
+    _dates_since_checkpoint: int = 0
 
     def tick(self, activity: Optional[str] = None) -> None:
         """J-66 — stamp the last-progress HEARTBEAT (and optionally the current-activity line) on a
@@ -4084,6 +4091,17 @@ def _has_open_run_record(engine: Engine, job_id: Optional[str]) -> bool:
 # would buy nothing); write amplification stays bounded to at most one UPDATE per second per running job.
 _RUN_RECORD_CHECKPOINT_INTERVAL_S = 1.0
 
+# ops-hardening iter-41 (D9, dev Known Issue #2 from iter-40's own handoff) — a COUNT-based floor added
+# to the time-based throttle above: even an EXTREMELY fast per-date compute (iter-40's own live drill
+# observed a burst rate of ~120-140 ms/date, well under the 1.0s interval) forces a durable checkpoint
+# write at least once every this-many completed dates, regardless of how little wall-clock time has
+# elapsed. Same throttled writer, same `message` field, same `_run_detail()` serializer — this only
+# widens WHEN a write is forced, never what gets written. 5 mirrors the density iter-40's own tightened
+# 1.0s interval already achieves at a typical ~1-2.5s/date rate (roughly one checkpoint every 1-2 dates
+# there); at a pathologically fast sub-200ms/date rate this floor caps the worst-case staleness at 5
+# dates instead of the ~5-8 dates the time-only throttle would otherwise allow (1.0s / 0.14s ~= 7).
+_RUN_RECORD_CHECKPOINT_DATE_FLOOR = 5
+
 
 def _checkpoint_run_record(engine: Engine, prog: JobProgress) -> None:
     """ops-hardening iter-9 (F1 — J-04 step 6): freeze the job's CURRENT progress onto its OPEN
@@ -4100,13 +4118,20 @@ def _checkpoint_run_record(engine: Engine, prog: JobProgress) -> None:
     already serialize — one representation, no second derivation). It never sets `status`/`finished_at`,
     so the row stays OPEN and the boot sweep can still claim it, and it never INSERTs — a job with no open
     row (already terminal) is a silent no-op. Throttled to one write per
-    `_RUN_RECORD_CHECKPOINT_INTERVAL_S`. Best-effort telemetry: a write failure is logged and swallowed,
-    never propagated into the backfill loop (the job's own outcome must not depend on its progress
+    `_RUN_RECORD_CHECKPOINT_INTERVAL_S` — OR forced on every `_RUN_RECORD_CHECKPOINT_DATE_FLOOR`th call
+    regardless of elapsed time (ops-hardening iter-41, D9: the time-based throttle alone lets an
+    extremely fast per-date compute run several dates between writes; this count-based floor bounds that
+    OTHER axis of staleness). Best-effort telemetry: a write failure is logged and swallowed, never
+    propagated into the backfill loop (the job's own outcome must not depend on its progress
     bookkeeping)."""
     now = time.monotonic()
-    if (now - prog._last_checkpoint_monotonic) < _RUN_RECORD_CHECKPOINT_INTERVAL_S:
+    prog._dates_since_checkpoint += 1
+    time_due = (now - prog._last_checkpoint_monotonic) >= _RUN_RECORD_CHECKPOINT_INTERVAL_S
+    count_due = prog._dates_since_checkpoint >= _RUN_RECORD_CHECKPOINT_DATE_FLOOR
+    if not time_due and not count_due:
         return
     prog._last_checkpoint_monotonic = now
+    prog._dates_since_checkpoint = 0
     # Keep the breakdown internally consistent at the checkpoint instant: `error_other` is derived from
     # the SAME uncapped `date_failures_total` the end of `_do_backfill` uses (one derivation, applied
     # earlier), so a checkpointed row never shows failures in its summary and 0 in its breakdown.

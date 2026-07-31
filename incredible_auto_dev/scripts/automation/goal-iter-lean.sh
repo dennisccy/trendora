@@ -262,7 +262,10 @@ fi
 
 _BACKEND_PORT="${CHAIN_BACKEND_PORT:-8000}"
 _FRONTEND_PORT="${CHAIN_FRONTEND_PORT:-3000}"
-BACKEND_HEALTH_URL="${CHAIN_BACKEND_HEALTH_URL:-http://localhost:${_BACKEND_PORT}/health}"
+# ops-hardening iter-41 (A1): resolve the project-specific health path (Trendora's
+# `/api/health`, not the framework's generic `/health`) via the shared helper — see
+# `lib/common.sh::resolve_backend_health_url`.
+BACKEND_HEALTH_URL="$(resolve_backend_health_url "$_BACKEND_PORT")"
 FRONTEND_URL="${CHAIN_FRONTEND_URL:-http://localhost:${_FRONTEND_PORT}}"
 
 kill_stale_next_dev_server 2>/dev/null || true
@@ -481,7 +484,7 @@ _bqa_full_fork_consume() {
   replay_lane_paths "$ITER_NAME"
   cd "$REPO_ROOT"
   # Checkpoint mark — verbatim the section's own tail, which the fork skipped.
-  _bq_verdict="$(grep -m1 -E '^\*\*Browser QA Verdict:\*\*' "$UI_TEST_RESULTS" 2>/dev/null | grep -oE 'PASS|FAIL|SKIPPED' | head -1)"
+  _bq_verdict="$(grep -m1 -E '^\*\*Browser QA Verdict:\*\*' "$UI_TEST_RESULTS" 2>/dev/null | grep -oE 'PASS|FAIL|SKIPPED|BLOCKED' | head -1)"
   if [[ "$_bq_verdict" == "PASS" || "$_bq_verdict" == "FAIL" ]]; then
     step_mark_done browser-qa --dir "$ITER_DIR" --verdict "$_bq_verdict" --journeys "$_bq_sig" "$UI_TEST_RESULTS"
   fi
@@ -528,7 +531,7 @@ _bqa_checkpoint_reusable() {
   step_done_valid browser-qa --verify-tree --dir "$ITER_DIR" "$UI_TEST_RESULTS" || return 1
   [[ "$(step_field browser-qa journeys "$ITER_DIR")" == "$_bq_sig" ]] || return 1
   local _v
-  _v="$(grep -m1 -E '^\*\*Browser QA Verdict:\*\*' "$UI_TEST_RESULTS" 2>/dev/null | grep -oE 'PASS|FAIL|SKIPPED' | head -1 || true)"
+  _v="$(grep -m1 -E '^\*\*Browser QA Verdict:\*\*' "$UI_TEST_RESULTS" 2>/dev/null | grep -oE 'PASS|FAIL|SKIPPED|BLOCKED' | head -1 || true)"
   [[ "$_v" == "PASS" || "$_v" == "FAIL" ]]
 }
 
@@ -887,7 +890,7 @@ replay_lane_golden_coverage "$UI_TEST_RESULTS" "$ITER_NAME"
 # SPEED-3: inside the full fork the mark is DEFERRED to the join
 # (_bqa_full_fork_consume) — a marker written from the fork could race the
 # review loop's invalidation cascade in the parent shell.
-_bq_verdict="$(grep -m1 -E '^\*\*Browser QA Verdict:\*\*' "$UI_TEST_RESULTS" 2>/dev/null | grep -oE 'PASS|FAIL|SKIPPED' | head -1)"
+_bq_verdict="$(grep -m1 -E '^\*\*Browser QA Verdict:\*\*' "$UI_TEST_RESULTS" 2>/dev/null | grep -oE 'PASS|FAIL|SKIPPED|BLOCKED' | head -1)"
 if [[ ( "$_bq_verdict" == "PASS" || "$_bq_verdict" == "FAIL" ) && -z "${_BQA_IN_FULL_FORK:-}" ]]; then
   step_mark_done browser-qa --dir "$ITER_DIR" --verdict "$_bq_verdict" --journeys "$_bq_sig" "$UI_TEST_RESULTS"
 fi
@@ -1218,7 +1221,7 @@ if declare -F iter_budget_check >/dev/null 2>&1; then iter_budget_check "browser
 _bq_skip="no"
 if step_done_valid browser-qa --verify-tree --dir "$ITER_DIR" "$UI_TEST_RESULTS" \
    && [[ "$(step_field browser-qa journeys "$ITER_DIR")" == "$_bq_sig" ]]; then
-  _prior_bq_verdict="$(grep -m1 -E '^\*\*Browser QA Verdict:\*\*' "$UI_TEST_RESULTS" 2>/dev/null | grep -oE 'PASS|FAIL|SKIPPED' | head -1)"
+  _prior_bq_verdict="$(grep -m1 -E '^\*\*Browser QA Verdict:\*\*' "$UI_TEST_RESULTS" 2>/dev/null | grep -oE 'PASS|FAIL|SKIPPED|BLOCKED' | head -1)"
   if [[ "$_prior_bq_verdict" == "PASS" || "$_prior_bq_verdict" == "FAIL" ]]; then
     _bq_skip="yes"
     _step_skipped_event "browser-qa"

@@ -54,10 +54,19 @@ class UXRegressionVerdict(str, Enum):
 
 
 class BrowserQAVerdict(str, Enum):
-    """Browser QA verdicts (reports/phase-{N}-ui-test-results.md)."""
+    """Browser QA verdicts (reports/phase-{N}-ui-test-results.md).
+
+    BLOCKED (ops-hardening iter-40/41, A4): a DISTINCT class from FAIL — a journey's own
+    assertions were never checked at all (e.g. the backend was unreachable, or a required-still-
+    passing journey had zero executed test cases), not that they were checked and failed. Already
+    shipped in `merge_ui_test_results.py`/`demo_runner.py`/`goal_gate.py` since iter-39/40; this
+    enum (the single source of truth every report agent's verdict line is validated against) had
+    not caught up — a bare `**Browser QA Verdict:** BLOCKED` line failed `validate-verdict`-style
+    checks against this enum even though every consumer downstream already understood it."""
     PASS = "PASS"
     FAIL = "FAIL"
     SKIPPED = "SKIPPED"
+    BLOCKED = "BLOCKED"
 
 
 class GoalEvalVerdict(str, Enum):

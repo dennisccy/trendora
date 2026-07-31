@@ -22,6 +22,10 @@ CLAUDE.md is auto-loaded into your system prompt — do not Read it again.
 5. `reports/qa/<phase>-test-plan.md` — existing functional test plan (for context)
 6. `.claude/skills/manual-ui-test-plan-generator.md` — methodology for test case design
 7. `.claude/skills/what-to-click-writer.md` — how to write the operator guide
+8. `docs/goal.md`'s "Must-have user journeys" section (or a token-lean goal-slice file, when the
+   dispatch prompt points at one) — ONLY when the phase spec is backend-only AND names
+   required-still-passing journeys (see "Backend-only phase handling" below); read ONLY the named
+   journeys' own Steps/Acceptance text, not the whole file. Skip entirely otherwise.
 
 ## Process
 
@@ -77,9 +81,31 @@ Each step must have:
 
 ## Backend-only phase handling
 
-If `Frontend Present: no` or if user-visible-changes report says N/A:
+If `Frontend Present: no` or if user-visible-changes report says N/A, `Frontend Present: no`
+suppresses NEW-surface UI test-case generation ONLY (Step 1's smoke/happy-path/validation/
+error/UX cases for a UI surface map row) — it never suppresses regression coverage for a
+required-still-passing journey (ops-hardening iter-40/41 lesson, binding: a required-still-passing
+journey shipping with ZERO evidence — this exact stub, applied blindly — was the root cause of a
+5-consecutive-ESCALATE session where every gate reported clean while journeys silently rotted
+unverified).
 
-Write minimal N/A stubs:
+1. Read the phase spec (`docs/phases/<phase>.md`) for a `**Required-still-passing journeys:**`
+   metadata line (goal mode only; a plain phase-mode spec, or a goal-mode spec with no such line
+   or whose line reads `none`, has nothing to regress here).
+2. If that line names one or more journey IDs (e.g. `J-01, J-03, J-04`): for EACH one, write
+   exactly one regression test case using **Test ID `UT-<journey-id>`** (e.g. `UT-J-01`, not the
+   sequential `UT-01` scheme) into the UI test plan, `Type: regression`, `Priority: P1`. Steps and
+   Expected Result come from that journey's own "Steps:"/"Acceptance:" text in `docs/goal.md`'s
+   "Must-have user journeys" section (or the token-lean goal slice this phase's inputs point at,
+   when one is supplied) — read the journey's numbered steps and acceptance criteria and translate
+   them into the SAME exact-URL/exact-click/exact-expected format Step 2 above requires; do not
+   invent a generic "re-check journey X" placeholder. Do NOT emit a NEW-surface case for anything
+   else (there is no UI surface map row to derive one from on a backend-only phase).
+3. Still write the What-to-Click operator guide, scoped to the same required-still-passing
+   journeys (skip the "New capability" prioritization — there is none this phase).
+4. If that metadata line is absent, empty, or reads `none`: write the minimal N/A stubs below and
+   STOP — there is genuinely nothing to test.
+
 ```
 # Phase {N} — UI Test Plan
 **Status:** N/A — Backend-only phase. No UI tests required.
@@ -89,8 +115,6 @@ Write minimal N/A stubs:
 # Phase {N} — What to Click
 **Status:** N/A — Backend-only phase. No UI verification steps.
 ```
-
-Then STOP.
 
 ## Rules
 

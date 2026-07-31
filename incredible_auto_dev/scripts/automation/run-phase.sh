@@ -215,7 +215,10 @@ _render_summary_html() {
 _boot_shared_services() {
   local _be_port="${CHAIN_BACKEND_PORT:-8000}"
   local _fe_port="${CHAIN_FRONTEND_PORT:-3000}"
-  local _be_health="${CHAIN_BACKEND_HEALTH_URL:-http://localhost:${_be_port}/health}"
+  # ops-hardening iter-41 (A1): resolve the project-specific health path (Trendora's
+  # `/api/health`, not the framework's generic `/health`) via the shared helper — see
+  # `lib/common.sh::resolve_backend_health_url`.
+  local _be_health; _be_health="$(resolve_backend_health_url "$_be_port")"
   local _fe_url="${CHAIN_FRONTEND_URL:-http://localhost:${_fe_port}}"
   local _be_cmd="${CHAIN_START_BACKEND_CMD:-}"
   local _fe_cmd="${CHAIN_START_FRONTEND_CMD:-}"
@@ -867,7 +870,10 @@ echo ""
 
 # ── Step 5/11: UI Test Design ─────────────────────────────────────────────────
 if [[ "$SKIP_UI_TEST_DESIGN" == "false" ]]; then
-  if [[ "$FRONTEND_PRESENT" == "yes" ]]; then
+  # ops-hardening iter-41 (A1 companion fix): a backend-only goal-mode iteration with
+  # required-still-passing journeys still needs this step -- regression re-verification of an
+  # EXISTING page needs no NEW UI surface. See lib/common.sh::phase_spec_has_required_regression.
+  if [[ "$FRONTEND_PRESENT" == "yes" ]] || phase_spec_has_required_regression "$SPEC"; then
     log "Step 5/11 -- UI Test Design..."
     utd_q=0
     while true; do
@@ -892,7 +898,9 @@ echo ""
 
 # ── Step 6/11: Browser QA ─────────────────────────────────────────────────────
 if [[ "$SKIP_BROWSER_QA" == "false" ]]; then
-  if [[ "$FRONTEND_PRESENT" == "yes" ]]; then
+  # ops-hardening iter-41 (A1 companion fix): same carve-out as Step 5 above -- required-still-
+  # passing journeys need fresh browser-QA evidence even on a backend-only iteration.
+  if [[ "$FRONTEND_PRESENT" == "yes" ]] || phase_spec_has_required_regression "$SPEC"; then
     log "Step 6/11 -- Browser QA..."
     # Clear stale results so a script crash before write doesn't leave
     # an old run's results pretending to be this run's.

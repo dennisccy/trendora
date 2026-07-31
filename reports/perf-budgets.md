@@ -5325,3 +5325,96 @@ alone no longer gets the withdrawn story (iter-39 evaluator's fifth stated-plain
 - **Walkthrough:** the `[NEW]` crash-free-warm + healthy-health-poll steps for `demo.sh --session-live`
   remain unrecorded — a capture-only ride-along per this iteration's own OUT OF SCOPE list (rule 7), not
   independently re-attempted this iteration.
+
+## Iteration 41 — bound `_BarCache.prefill`'s resident accumulator (B5/B6, the session's last unbounded
+## whole-table load), verification-lane repair, and a faulthandler-armed wedge re-check (C7/C8)
+## (2026-07-31, developer)
+
+### B5/B6 — `_BarCache.prefill` memory bound: measured before/after on the live basis
+
+`prices.py::_BarCache.prefill` already streamed its query via `.yield_per(cfg.research.read_batch_size)`
+(bounded since before iter-35), but every row still accumulated into ONE resident `Bar` NamedTuple
+(5 individually-boxed Python `float` objects + the tuple's own overhead) per row, inside a plain
+`list[Bar]` per symbol — open since iter-29/d, and explicitly left untouched by iter-35/36/37's earlier,
+narrower fix (which bounded only `membership_timeline_cached`'s cache-miss sub-call via the separate,
+unrelated `load_only` batching mechanism).
+
+**The fix:** a new columnar `_SymbolColumns` (module-level class beside `_BarCache` in `prices.py`) stores
+each numeric field as `array.array('d')` (raw 8-byte C doubles, no per-element Python object overhead)
+instead of a list of boxed-float NamedTuples. It implements the full `collections.abc.Sequence` protocol
+(`__len__`, `__getitem__` for both int and slice indexing, `__eq__`), synthesizing real `Bar` NamedTuples
+on demand — so `_BarCache.bars_asof` / `bars_asof_window` / `bars_after` / `close_on` (the only consumers)
+read it through the EXACT SAME `full[:cut]` / `full[cut-1]` / `len(full)` code they already used for a
+plain `list[Bar]`; none of those methods' code changed. Only `prefill`'s OWN accumulation loop changed.
+
+**Measured, live basis (`apps/backend/data/trendora.db`, 591 symbols, 3,301,686 rows), each mode run in
+its own subprocess for isolated `/proc/<pid>/status` sampling**
+(`runs/goal-ops-hardening-iter-41/bar-cache-prefill-bench/measure_prefill_peak.py`):
+
+| Mode | VmPeak (kB) | VmHWM / peak RSS (kB) |
+|------|------------:|----------------------:|
+| OLD (pre-iter-41, `list[Bar]`) | 1,371,032 | 1,328,676 |
+| NEW (iter-41, `_SymbolColumns`) | 664,580 | 636,172 |
+| **Reduction** | **706,452 kB (51.5%)** | **692,504 kB (52.1%)** |
+
+Both modes report identical `N_SYMBOLS=591` / `N_ROWS=3,301,686` — same data loaded, ~52% less resident
+memory to hold it. Honest scope note: this bounds the PER-ROW memory cost of the accumulator, not the
+fact that the whole table is loaded — `prefill` is still a deliberate load-once-per-job cache serving
+multiple downstream consumers (coverage, membership timeline, `_do_backfill`'s own forward-return reads)
+across a whole multi-date job, and those consumers' own byte-identical-output tests
+(`test_backfill_coverage_shared_cache.py`, `test_membership_timeline_batch_bound.py`,
+`test_bar_cache.py`) all pass unchanged against the new storage.
+
+### TC-6 — byte-identity, OLD vs NEW implementation
+
+`test_bar_cache.py::test_prefill_old_vs_new_implementation_byte_identical` runs the SAME fixture inputs
+through a faithful reimplementation of the pre-iter-41 accumulation body (kept as a test-only reference,
+never imported by the shipped app) and the shipped `_BarCache.prefill`: every returned `Bar` for every
+symbol/date is byte-identical, and the new implementation's elements are still real `Bar` NamedTuples
+(`isinstance` holds). Broader regression coverage (all pre-existing `test_bar_cache.py` tests, the
+`test_backfill_coverage_shared_cache.py` cache-poisoning/mutation test, the `test_membership_timeline_
+batch_bound.py` live-DB reference-vs-shipped suite, and the analogous `test_warmup.py` load-once proof)
+all pass unmodified against the new storage — see the dev handoff for the full list and run evidence.
+
+### C7/C8 — faulthandler-armed wedge-recurrence re-check + post-terminal polling window
+
+Full detail: `runs/goal-ops-hardening-iter-41/wedge-drill/README.md`. Summary:
+
+- **C7 (`faulthandler.register(SIGUSR1, all_threads=True)`):** armed via a new opt-in, default-off env var
+  (`TRENDORA_DIAG_FAULTHANDLER_SIGUSR1=1`, checked in `main.py`, never touching the byte-frozen launch
+  scripts) so a wedged process can be sent `kill -USR1 <pid>` for a live all-thread stack dump without
+  killing it. **The freeze did NOT recur this run, so `SIGUSR1` was never sent and the diagnostic tool
+  was never exercised for its intended purpose** — an honest, TC-5-compliant outcome (never claims "the
+  freeze is fixed"). iter-39/u's original freeze remains unreproduced and undiagnosed.
+- **C8 (post-terminal polling window, audit finding B2):** `wedge-drill/monitor.py` extended to keep
+  polling at the same 1 Hz interval for a fixed window (30 s) PAST the job's first terminal `job_status`
+  reading, instead of stopping the instant it appears — the exact window iter-39's trial-3 wedge appeared
+  in and iter-40's own monitor never covered. This run: **28 additional post-terminal polls, all
+  `health=200`, `job_status` staying `ok` throughout** — full evidence of that previously-uncovered window.
+- **Same 2650 MB cap (never widened), same throwaway-DB / offline setup, same single-job trigger shape**
+  as iter-39 trial 3 / iter-40 run 2. This run's job (backfill 2026-06-16..18) finished `status: ok` with
+  **all eight** `aggregates_refreshed` (including `coverage` — the ONE item iter-40's run 2 could not get,
+  MemoryError'ing at `_compute_coverage_body`'s COUNT-DISTINCT line). Zero MemoryError/exception/traceback
+  anywhere in this run's own log window. `GET /api/health` answered 200 on all 58 polls (0 non-200, max
+  latency 1.73 s). **VmPeak peaked at 2,446,836 kB — 266,764 kB (~9.8%) BELOW the 2,713,600 kB (2650 MB)
+  cap**, more margin than iter-40's run 2 (which hit the cap exactly, 0 margin) while completing MORE work
+  (8 aggregates vs. 7). Consistent with (not proof of) B5's memory-footprint reduction giving the finalize
+  sequence more headroom under the same tightened cap; wall-clock is NOT compared across runs since they
+  completed a different amount of work.
+
+### Verification-lane repair (A1-A4) — no perf-budgets entry
+
+Items A1-A4 (health-check URL resolution, `ui-test-designer` backend-only handling, `merge_ui_test_
+results.py` missing-required-journey detection, `BLOCKED` verdict enum) are pipeline/QA-tooling fixes —
+no served/displayed value, no Data Contract row, no performance measurement (per iter-18/23/33
+precedent, restated in this iteration's own spec). See the dev handoff for their test evidence.
+
+### D9 — count-based checkpoint floor — no perf-budgets entry
+
+A count-based floor (`_RUN_RECORD_CHECKPOINT_DATE_FLOOR = 5`) added to `_checkpoint_run_record`'s
+existing 1.0 s time-based throttle so a pathologically fast per-date compute still forces a checkpoint at
+least once every 5 dates. Unit-proven with a frozen mocked clock (TC-8): see
+`test_checkpoint_count_based_floor_forces_write_within_one_interval` /
+`test_checkpoint_time_based_throttle_still_wins_when_faster`, `apps/backend/tests/test_data_manager.py`.
+Write-amplification/performance characteristics are unchanged in the common case (the density iter-40's
+own 1.0 s interval already achieves at the observed ~1-2.5 s/date rate) — no new perf-budgets entry.

@@ -451,7 +451,15 @@ replay_lane_merge_results() {
   local _rl_out="$1" _rl_llm="$2"
   local _rl_mid=()
   [[ -n "${CANARY_RESULTS:-}" && -f "${CANARY_RESULTS:-}" ]] && _rl_mid=("$CANARY_RESULTS")
-  if ! python3 "$MERGE_RESULTS" "$_rl_out" "$REGRESSION_RESULTS" ${_rl_mid[@]+"${_rl_mid[@]}"} "$_rl_llm"; then
+  # ops-hardening iter-41 (A3): pass this iteration's required-still-passing journeys (set as a
+  # global by the caller before partition_and_verify -- browser-qa-phase.sh/goal-iter-lean.sh both
+  # compute REQUIRED_JOURNEYS via replay_lane_spec_journeys before calling in) through to the
+  # merger so a required journey with ZERO executed test cases can never merge into a clean
+  # PASS/SKIPPED headline (TC-3). Empty when this is plain phase mode (REQUIRED_JOURNEYS unset) --
+  # merge()'s new check is then a no-op, unchanged behavior.
+  local _rl_required_args=()
+  [[ -n "${REQUIRED_JOURNEYS:-}" && -n "${REQUIRED_JOURNEYS// /}" ]] && _rl_required_args=(--required "$REQUIRED_JOURNEYS")
+  if ! python3 "$MERGE_RESULTS" "${_rl_required_args[@]}" "$_rl_out" "$REGRESSION_RESULTS" ${_rl_mid[@]+"${_rl_mid[@]}"} "$_rl_llm"; then
     _replay_lane_warn "results merge failed — falling back to a lane output."
     if [[ -f "$_rl_llm" ]]; then cp "$_rl_llm" "$_rl_out" 2>/dev/null || true
     elif [[ -f "$REGRESSION_RESULTS" ]]; then cp "$REGRESSION_RESULTS" "$_rl_out" 2>/dev/null || true; fi

@@ -359,6 +359,60 @@ ensure_phase_ports() {
   fi
 }
 
+# ops-hardening iter-41 (A1) — the backend health-check URL surfaced BOTH to
+# `ensure_services_running`'s liveness probe AND (critically) to the browser-qa /
+# QA LLM dispatch prompt (the "Note:"/SERVICES_NOTE text each `*-phase.sh` caller
+# embeds for the agent). The framework's own generic default (a bare `/health`)
+# 404s on this project — Trendora namespaces EVERY route under `/api`
+# (`apps/backend/main.py` mounts `health.router` with `prefix="/api"`) — so an
+# agent told to poll the wrong path reads a live, healthy backend's 404 as "down"
+# and reports a false regression. `ensure_services_running`'s own probe is already
+# permissive (any 1xx-5xx counts as "up" — see its docstring above), so THAT half
+# was never broken; the break was this URL being handed to the LLM verbatim as
+# "the health endpoint," which the agent (reasonably) treats as authoritative and
+# checks literally. Root cause #1 of iter-40's ESCALATE (4th consecutive
+# audit-only catch of all required-still-passing journeys shipping unverified).
+#
+# Mirrors `lib/demo_runner.py`'s already-fixed (iter-39) `resolve_backend_health_url`
+# — same project-specific override, same reasoning — factored into ONE shared
+# helper so the five `*-phase.sh` callers (browser-qa-phase.sh, goal-iter-lean.sh,
+# qa-phase.sh, demo-phase.sh, run-phase.sh) can never drift from each other again
+# (which is exactly how this bug happened: demo_runner.py was fixed at iter-39,
+# the shell scripts were not, because each duplicated its own inline default).
+#
+# An explicit `CHAIN_BACKEND_HEALTH_URL` always wins (unchanged override contract
+# — a caller/test that needs a different URL still can).
+#
+# Usage: BACKEND_HEALTH_URL="$(resolve_backend_health_url "$_BACKEND_PORT")"
+resolve_backend_health_url() {
+  local port="$1"
+  if [[ -n "${CHAIN_BACKEND_HEALTH_URL:-}" ]]; then
+    echo "$CHAIN_BACKEND_HEALTH_URL"
+    return 0
+  fi
+  echo "http://localhost:${port}/api/health"
+}
+
+# ops-hardening iter-41 (A1 companion fix) — true iff phase-spec file $1 names at least one journey
+# on its "Required-still-passing journeys:" metadata line (goal mode). Steps 5 (ui-test-design) and
+# 6 (browser-qa) in run-phase.sh, plus their own standalone scripts' redundant early exits, used to
+# gate ENTIRELY on `Frontend Present: yes` — so a backend-only goal-mode iteration (this session's
+# steady state for ops-only work) skipped UI test design AND browser QA unconditionally, writing
+# bare N/A stubs, even when the iteration spec named required-still-passing journeys that need
+# fresh regression evidence every iteration. Regression re-verification of an EXISTING page needs
+# no NEW UI surface, so `Frontend Present: no` must not suppress it. This was iter-40's actual
+# mechanism for shipping all seven required-still-passing journeys with ZERO evidence (screenshots,
+# replay artifacts, demo steps) while every gate reported clean — the ui-test-designer agent's own
+# "Backend-only phase handling" section (fixed separately this iteration) was never even reached,
+# because these shell-level gates returned before the agent was ever dispatched.
+#
+# Mirrors `lib/replay-lane.sh::replay_lane_spec_journeys`'s extraction (kept dependency-free here —
+# not every caller of this helper also sources replay-lane.sh).
+phase_spec_has_required_regression() {
+  local spec="$1"
+  [[ -n "$(grep -iE 'Required-still-passing' "$spec" 2>/dev/null | head -1 | grep -oE 'J-[0-9]+' | head -1)" ]]
+}
+
 # Pin the QA browser's identity for this project (and lane). The Chrome MCP
 # server reads CHROME_WS_PROFILE/CHROME_WS_PORT from its environment; without
 # them it invents profile names (superpowers-chrome, -2, -3 …) as locks contend,
