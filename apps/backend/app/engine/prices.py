@@ -30,6 +30,17 @@ from app.config import get_config
 from app.models import DailyPrice
 
 
+# ops-hardening iter-42 (B6, AG-8): the honest NA sentinel `_BarCache.prefill`'s row loop substitutes
+# for a NULL numeric column instead of letting `array.array('d').append(None)` raise `TypeError`.
+# `app/models.py`'s five `DailyPrice` numeric columns are all currently declared NOT NULL (this
+# cannot fire against today's schema), but AG-8 explicitly names "new nulls" as a data-shape widening
+# every existing consumer must survive without crashing — this is that defensive fix, ahead of the
+# widening actually landing. `float("nan")` degrades every downstream float computation honestly (NaN
+# propagates through arithmetic/comparisons instead of raising) rather than dropping the bar entirely,
+# which would silently shift a symbol's bar count out from under its date-aligned columns.
+_NULL_NUMERIC_SENTINEL = float("nan")
+
+
 class Bar(NamedTuple):
     """A lightweight, immutable row-slice used by the load-once bar cache (J-46) instead of a full
     `DailyPrice` ORM instance (iter-19 — the OOM fix). Exposes EXACTLY the attributes every downstream
@@ -205,33 +216,64 @@ class _BarCache:
         through the exact same `full[:cut]` / `full[cut-1]` / `len(full)` operations it already used, and
         `_SymbolColumns` implements the full `Sequence` protocol those operations need — so none of those
         methods change. The `.yield_per(batch)` cursor streaming above is unchanged (already bounded since
-        before iter-35); this closes the OTHER half — the destination the streamed rows accumulate into."""
+        before iter-35); this closes the OTHER half — the destination the streamed rows accumulate into.
+
+        iter-42 (bound attempt #5, AG-8): when `expected_symbols` is given, the SELECT is now filtered
+        `WHERE symbol IN (expected_symbols)` — the same shape `load_only` (below) already proves — instead
+        of an unconditional whole-table scan. Every real caller (`_do_backfill`, `_persist_per_date_
+        coverage_snapshots`'s fallback) already passes `expected_symbols=pool_symbols` (the candidate-pool
+        listing), so this is not a theoretical lever: measured against the live basis, `daily_prices` (591
+        symbols) is a STRICT superset of the candidate pool (548 symbols) — 43 symbols with bars (index/
+        sector/thematic ETFs: SPY, QQQ, ^VIX, the XL* sector ETFs, etc. — never candidate-pool members,
+        only read for regime/market-phase inputs) are NOT in `expected_symbols`, accounting for 195,457 of
+        3,301,686 rows (~5.9%) — see `reports/perf-budgets.md`'s iteration-42 section for the live
+        measurement and the row/symbol counts this docstring's numbers are drawn from. Those excluded
+        symbols are NOT dropped from the cache: any consumer that reads one (`bars_asof`/`bars_asof_window`
+        via the module-level functions, which route through THIS cache when a `bar_cache` context is
+        active — confirmed by inspection: `regime.py`'s MA-stack/VIX-gate reads and `market_phase.py`'s
+        benchmark/^VIX reads both go through `bars_asof`/`bars_asof_window`) falls into the EXISTING lazy
+        per-symbol load path below (`if full is None: ... one per-symbol query`), which loads and memoizes
+        that ONE symbol's full series exactly once for the life of the cache — the SAME load-once-per-job
+        guarantee, served byte-identically, just via the lazy branch instead of the eager scan for the
+        handful of non-pool names actually touched. `expected_symbols is None` (every test-only direct
+        `.prefill(session)` call with no argument) keeps the prior unconditional whole-table scan,
+        byte-identical to before this change. An empty (but non-None) `expected_symbols` short-circuits to
+        zero rows without issuing a malformed `WHERE symbol IN ()` — mirrors `load_only`'s own empty-list
+        guard."""
         with self._load_lock:
             need_scan = not self._prefilled
         if need_scan:
             batch = get_config().research.read_batch_size
-            stmt = (
-                select(
-                    DailyPrice.symbol, DailyPrice.date, DailyPrice.open, DailyPrice.high,
-                    DailyPrice.low, DailyPrice.close, DailyPrice.volume,
-                )
-                .order_by(DailyPrice.symbol, DailyPrice.date)
-            )
+            symbol_filter = sorted(set(expected_symbols)) if expected_symbols is not None else None
             by_symbol: dict[str, _SymbolColumns] = {}
-            for symbol, d, o, h, lo, c, v in session.exec(stmt).yield_per(batch):
-                cols = by_symbol.get(symbol)
-                if cols is None:
-                    cols = _SymbolColumns(
-                        [], array.array("d"), array.array("d"), array.array("d"),
-                        array.array("d"), array.array("d"),
+            if symbol_filter is None or symbol_filter:
+                stmt = (
+                    select(
+                        DailyPrice.symbol, DailyPrice.date, DailyPrice.open, DailyPrice.high,
+                        DailyPrice.low, DailyPrice.close, DailyPrice.volume,
                     )
-                    by_symbol[symbol] = cols
-                cols.dates.append(d)
-                cols.opens.append(o)
-                cols.highs.append(h)
-                cols.lows.append(lo)
-                cols.closes.append(c)
-                cols.volumes.append(v)
+                    .order_by(DailyPrice.symbol, DailyPrice.date)
+                )
+                if symbol_filter is not None:
+                    stmt = stmt.where(DailyPrice.symbol.in_(symbol_filter))
+                for symbol, d, o, h, lo, c, v in session.exec(stmt).yield_per(batch):
+                    cols = by_symbol.get(symbol)
+                    if cols is None:
+                        cols = _SymbolColumns(
+                            [], array.array("d"), array.array("d"), array.array("d"),
+                            array.array("d"), array.array("d"),
+                        )
+                        by_symbol[symbol] = cols
+                    cols.dates.append(d)
+                    # iter-42 (B6, AG-8): substitute the honest NA sentinel for a NULL numeric field
+                    # instead of letting `array.array('d').append(None)` raise `TypeError` — see the
+                    # module-level `_NULL_NUMERIC_SENTINEL` comment. Unreachable on the current NOT
+                    # NULL schema; a defensive degrade for a future widening, not a live bug fix.
+                    cols.opens.append(o if o is not None else _NULL_NUMERIC_SENTINEL)
+                    cols.highs.append(h if h is not None else _NULL_NUMERIC_SENTINEL)
+                    cols.lows.append(lo if lo is not None else _NULL_NUMERIC_SENTINEL)
+                    cols.closes.append(c if c is not None else _NULL_NUMERIC_SENTINEL)
+                    cols.volumes.append(v if v is not None else _NULL_NUMERIC_SENTINEL)
             # publish atomically under the lock so a concurrent reader sees a fully-built map, not a
             # partial one; re-check `_prefilled` in case another thread raced us to the scan (rare —
             # `_BarCache` is normally driven by one orchestrating thread — but the merge below is
@@ -319,9 +361,24 @@ class _BarCache:
                     full = [Bar(*row) for row in session.exec(stmt).all()]
                     self._by_symbol[symbol] = full
                     self._dates_by_symbol[symbol] = [bar.date for bar in full]
+        # iter-42 audit (B1): EVERY writer publishes `_by_symbol[symbol]` BEFORE `_dates_by_symbol
+        # [symbol]` (here, in `bars_asof_window`, and in `prefill`'s two publish loops), and the
+        # gap between the two is a whole `[bar.date for bar in full]` comprehension — thousands of
+        # elements at the live basis, so the GIL is released inside it. The fast path above is
+        # deliberately lock-free, so a SECOND thread can observe `_by_symbol[symbol]` already set
+        # while `_dates_by_symbol[symbol]` is not yet — indexing it blind raised `KeyError`. Every
+        # writer holds `_load_lock` across BOTH publishes, so re-reading under that lock (only when
+        # the fast read misses) is exactly the barrier needed. Unreachable before iter-42 (prefill
+        # eagerly loaded every symbol on one thread before any worker fan-out); reachable now for
+        # the 43 non-pool symbols the new `WHERE symbol IN (...)` filter leaves to this lazy path,
+        # which regime/market-phase/sector/theme reads hit from the parallel backfill's workers.
+        dates = self._dates_by_symbol.get(symbol)
+        if dates is None:
+            with self._load_lock:
+                dates = self._dates_by_symbol[symbol]
         # slice `date <= d` from the ascending series: bisect_right gives the count of dates <= d, so the
         # returned list equals `[bar for bar in full if bar.date <= d]` exactly (same rows, same order).
-        cut = bisect.bisect_right(self._dates_by_symbol[symbol], d)
+        cut = bisect.bisect_right(dates, d)
         return full[:cut]
 
     def bars_asof_window(
@@ -362,7 +419,12 @@ class _BarCache:
                     full = [Bar(*row) for row in session.exec(stmt).all()]
                     self._by_symbol[symbol] = full
                     self._dates_by_symbol[symbol] = [bar.date for bar in full]
-        dates = self._dates_by_symbol[symbol]
+        # iter-42 audit (B1): same half-published-load barrier `bars_asof` documents above — the
+        # lock-free fast path can see `_by_symbol[symbol]` before its `_dates_by_symbol` sibling.
+        dates = self._dates_by_symbol.get(symbol)
+        if dates is None:
+            with self._load_lock:
+                dates = self._dates_by_symbol[symbol]
         cut = bisect.bisect_right(dates, d)
         return full[max(0, cut - lookback):cut]
 

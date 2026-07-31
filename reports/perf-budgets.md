@@ -5418,3 +5418,186 @@ least once every 5 dates. Unit-proven with a frozen mocked clock (TC-8): see
 `test_checkpoint_time_based_throttle_still_wins_when_faster`, `apps/backend/tests/test_data_manager.py`.
 Write-amplification/performance characteristics are unchanged in the common case (the density iter-40's
 own 1.0 s interval already achieves at the observed ~1-2.5 s/date rate) — no new perf-budgets entry.
+
+## Iteration 42 — `_BarCache.prefill` bound attempt #5 (symbol-filtered SELECT), NULL-tolerance (B6),
+## and the T2 `bars_asof`/`bars_asof_window` before/after latency figure iter-41 never measured
+## (2026-07-31, developer)
+
+### Bound attempt #5 — `WHERE symbol IN (...)` filter when `expected_symbols` is given
+
+Four prior iterations (35, 36, 37, 41) each attempted a narrower fix at `_BarCache.prefill` and each
+fell short of a genuine bound — iter-41's own columnar rewrite (`_SymbolColumns`, see Iteration 41
+above) is a compression of the per-row cost, not a bound on row COUNT: the whole table was still
+resident. This iteration's lever (not tried before): `prefill`'s SELECT had no `WHERE symbol IN
+(...)` filter at all, unlike its own sibling `load_only` (same file, same query shape), which already
+streams a symbol-filtered read. When `expected_symbols` is given (every real caller —
+`_do_backfill`, `_persist_per_date_coverage_snapshots`'s fallback — already passes
+`expected_symbols=pool_symbols`), `prefill` now filters the query to that set instead of scanning the
+whole table unconditionally. `expected_symbols=None` (test-only direct calls) keeps the prior
+unconditional full scan, byte-identical to before.
+
+**Live-condition assertion (iter-37 lesson — "assert the condition was actually live before claiming
+a reduction"):** measured directly against `apps/backend/data/trendora.db` (591 distinct
+`daily_prices` symbols, 3,301,686 rows):
+
+| | Symbols | Rows |
+|---|---:|---:|
+| Candidate pool (`universe_pool.csv`, `expected_symbols` every real caller passes) | 548 | 3,106,229 |
+| Full `daily_prices` population | 591 | 3,301,686 |
+| Excluded by the filter | **43** | **195,457 (5.9%)** |
+
+`daily_prices` IS a strict superset of the candidate pool — every pool symbol has bars (`pool - db =
+0`), and 43 additional symbols with bars are never candidate-pool members: index/sector/thematic ETFs
+(`^SPX`, `^NDX`, `^DJI`, `^VIX`, `QQQ`, `SOXX`, the `XL*` sector SPDRs, etc.) read only by
+`regime.py`'s MA-stack/VIX-gate inputs and `market_phase.py`'s benchmark/`^VIX` reads — never scored,
+resolved, or ranked as universe candidates. This is a genuine, live-verified, if MODEST reduction,
+not a theoretical lever: the filter really does exclude rows that were previously scanned.
+
+Excluded symbols are not dropped from service: any consumer that reads one of the 43 (both callers
+above route regime/market-phase reads through the SAME shared cache — confirmed by inspection, not
+merely assumed) falls into the EXISTING lazy per-symbol load path in `bars_asof`/`bars_asof_window`,
+which loads and memoizes that one symbol's full series exactly once for the life of the cache — the
+same load-once-per-job guarantee, served byte-identically, just via the lazy branch instead of the
+eager scan.
+
+**Peak-memory measurement (TC-6/TC-7)** — `_BarCache.prefill`'s SUBSET (`expected_symbols=pool_symbols`,
+the shipped call shape every real caller uses) vs an equivalent FULL-UNIVERSE run
+(`expected_symbols=None`, the unconditional whole-table scan every caller effectively got before this
+change) — both arms run the SAME shipped function (a genuine A/B, not a synthetic reimplementation),
+each in its own subprocess for isolated `/proc/<pid>/status` sampling
+(`runs/goal-ops-hardening-iter-42/bar-cache-prefill-bench/measure_prefill_subset_vs_full.py`):
+
+| Mode | N_SYMBOLS | N_ROWS | VmPeak (kB) | VmHWM / peak RSS (kB) |
+|------|----------:|-------:|------------:|----------------------:|
+| SUBSET (shipped, `expected_symbols=pool_symbols`) | 548 | 3,106,229 | 648,696 | 620,280 |
+| FULL (`expected_symbols=None`) | 591 | 3,301,686 | 665,400 | 635,752 |
+| **Reduction** | **43 (7.3%)** | **195,457 (5.9%)** | **16,704 kB (2.5%)** | **15,472 kB (2.4%)** |
+
+**Honest disposition (per the DoD's explicit fallback — a partial result is an acceptable, expected
+outcome here, the fifth attempt at this exact code):** the bound is REAL and live-verified, but
+MODEST — VmPeak fell 2.5%, proportionally smaller than the 5.9% row reduction because a large,
+data-size-independent baseline (Python interpreter, SQLAlchemy, ORM/ORM-adjacent machinery) does not
+shrink with the filtered row count. `_BarCache.prefill` still loads 548 of 591 distinct symbols
+(92.7%) and 94.1% of all `daily_prices` rows into RAM for every real caller — this is **not** a
+fundamentally different order-of-magnitude bound; it remains, for practical purposes, effectively a
+near-full-table load. AG-8's "no unbounded whole-table loads" is **partially addressed, not
+resolved**: the SELECT is no longer literally unconditional (a genuine code-level improvement, and a
+real, measured, if small, memory reduction), but the resident footprint is still O(candidate-pool
+size) ≈ O(full table) at the current pool/table ratio. Every real caller (`_do_backfill`,
+`_persist_per_date_coverage_snapshots`'s fallback) genuinely needs the (near-)full candidate
+universe's full history for its per-date resolver loop — narrowing further would require a
+caller-semantics redesign (e.g. windowing each caller's OWN per-date resolver to a bounded trailing
+history instead of a whole-history prefill), which is explicitly out of this iteration's scope and is
+recorded here for evaluator/owner disposition rather than re-claimed as resolved.
+
+### AUDIT CORRECTION (2026-07-31, iter-42 auditor, finding B2) — the reduction above does not survive
+### the change's own compensating lazy loads: measured, this is a **+5.1% peak-memory REGRESSION**
+
+The TC-6 comparison above measures `prefill` **in isolation** (`prefill(pool)` vs `prefill(None)`) and
+stops there. But the shipped change does not DROP the 43 excluded symbols — it defers them to
+`bars_asof`/`bars_asof_window`'s lazy per-symbol path, which builds `list[Bar]`, the exact
+representation iter-41 replaced with `_SymbolColumns` **because it costs ~3.3× more per row**
+(measured here: 264.6 B/row vs 81.0 B/row). Those symbols are not hypothetical readers: 36 of the 43
+(162,885 of 195,457 rows, 83%) are the very ETFs `config.etfs` names — `SPY`, `QQQ`, `IWM`, `RSP`,
+the 11 XL* sector SPDRs, the 20 industry ETFs, `^VIX` — which `sectors.py`, `themes.py`, `regime.py`
+and `market_phase.py` read on EVERY snapshot date, and the cache holds them for the life of the job.
+
+Re-measured with the arm the original script omitted
+(`bar-cache-prefill-bench/audit_measure_prefill_plus_lazy.py`, same `/proc/<pid>/status` methodology,
+one process per arm, run under the host-guard caps `scripts/start-backend.sh` applies — `taskset -c
+0-15`, BLAS threads 8, `ulimit -v` at `memory_cap_mb` 6144, `MALLOC_ARENA_MAX=2`):
+
+| Arm | Symbols | Rows resident | Lazily loaded | VmPeak (kB) | VmHWM (kB) |
+|---|---:|---:|---:|---:|---:|
+| iter-41 baseline — `prefill(None)`, whole-table columnar | 591 | 3,301,686 | 0 | 664,328 | 635,612 |
+| iter-42 as shipped — `prefill(pool)` **+ the 36 ETF reads a real job makes** | 584 | 3,269,114 | 36 | **698,400** | **668,964** |
+| **Delta (shipped − baseline)** | | | | **+34,072 (+5.1%)** | **+33,352 (+5.2%)** |
+
+Live-condition assertion (iter-37 lesson): `LAZY_LOADED_SYMBOLS=36` proves the lazy path genuinely
+engaged, and 584/591 symbols + 3,269,114/3,301,686 rows confirm only the 7 genuinely-unreferenced
+names (`DIA`, `^DJI`, `^DXY`, `^NDX`, `^SPX`, `^TNX`, `^VXN`, 32,572 rows) stay out of the cache.
+
+**Corrected disposition:** the `WHERE symbol IN (...)` filter is a real code-level improvement (the
+SELECT is no longer unconditional) and served values remain byte-identical, but on the axis AG-8 and
+J-07 actually govern — resident memory of a real backfill job — **it is a net regression of ~33 MB,
+not a 16.7 MB saving.** The 2.5% figure in the table above is achievable only in a job that never
+reads a benchmark, sector or theme ETF, which no real snapshot job is. Whether to keep the filter
+(and pay ~33 MB for the cleaner query), revert it, or extend `_SymbolColumns` to the lazy path (which
+would import the T2 ~70-80× read-latency cost onto the hottest symbols) is an evaluator/owner
+disposition, not something the audit decided.
+
+### `_compute_coverage_uncached` / `_membership_timeline` resolver loops — re-confirmed still bounded
+
+Per the spec's own instruction to confirm (not re-claim) this: `_excluded_counts_by_date`
+(`data_manager.py:584-631`) still does NOT call `prefill`'s scan when standalone — it walks the
+candidate pool in `research.membership_timeline_batch_symbols`-wide batches via `load_only`
+(REPLACING one shared `_BarCache` instance's contents per batch), or reuses an ACTIVE outer
+job-scoped cache when one is already open. This was closed in iter-36 and is UNCHANGED by this
+iteration's `prefill` edit (a completely separate code path) — re-verified by inspection and by
+`test_membership_timeline_batch_bound.py`'s unmodified pass this iteration (see Tests Run in the dev
+handoff).
+
+### B6 — NULL-tolerance in `_SymbolColumns`/`prefill`'s row loop
+
+`array.array('d')` raises `TypeError` on a NULL numeric column, where the `list[Bar]` it replaced
+(iter-41) would have accepted `None`. `app/models.py:98-102` currently declares all five `DailyPrice`
+numeric columns NOT NULL, so this cannot fire against the current schema — a defensive fix ahead of a
+future data-shape widening, not a live bug fix. `prefill`'s row loop now substitutes an honest NA
+sentinel (`float("nan")`, module-level `_NULL_NUMERIC_SENTINEL`) for any NULL numeric field instead of
+letting the `array.array.append(None)` call raise — the row (and every OTHER field on it) is preserved,
+only the NULL field degrades. Proven by
+`test_bar_cache.py::test_prefill_null_numeric_column_degrades_without_crashing` (TC-8): a real query
+result stream tampered to null one row's `close` value produces a `Bar` with `math.isnan(bar.close)`
+True, every other field/row/symbol unaffected, no `TypeError`.
+
+### T2 — `bars_asof`/`bars_asof_window` latency over `_SymbolColumns`, before/after (never measured
+### until now — iter-41 audit observation)
+
+iter-41 shipped the `_SymbolColumns` columnar rewrite with a VmPeak comparison only; the READ path it
+changes (`bars_asof`/`bars_asof_window`, the hottest accessor in the engine — called at minimum once
+per ticker per scored date in `scoring.py`, `themes.py`, `sectors.py`, `market_phase.py`,
+`universe_resolver.py`) was never timed before vs after. This iteration measures it, per the T2 gap
+named in the iter-41 audit.
+
+**Methodology:** both arms built from the SAME live seed rows (`apps/backend/data/trendora.db`) —
+OLD: a faithful pre-iter-41 reimplementation (`list[Bar]` per symbol, the exact shape
+`test_bar_cache.py::_old_prefill_by_symbol` uses) wired directly into a `_BarCache` instance; NEW: the
+shipped `_BarCache.prefill(expected_symbols=pool_symbols)`, unmodified product code. 50 representative
+pool symbols with substantial history, each read at its OWN latest bar date (the common late-as-of hot
+path — a 30-year deep basis carries ~5,300 bars in a symbol's full `<= d` prefix by that point), timed
+over 200 repetitions each (10,000 calls per accessor per arm) —
+`runs/goal-ops-hardening-iter-42/bar-cache-latency-bench/measure_bars_asof_latency.py`. Reproduced
+twice independently (consistent within ~7%):
+
+| Accessor | OLD (`list[Bar]`) µs/call | NEW (`_SymbolColumns`) µs/call | Slowdown |
+|---|---:|---:|---:|
+| `bars_asof` (full `<= d` prefix, ~5,300 bars at a late as-of) | 35.0–36.8 | 2,589.9–2,636.9 | **~72–75×** |
+| `bars_asof_window` (bounded, lookback=200) | 0.69–0.71 | 53.6–54.8 | **~76–79×** |
+
+**Honest finding — this is a genuine, previously-unmeasured regression, not a wash:** `_SymbolColumns
+.__getitem__`'s slice path rebuilds every returned `Bar` element-by-element from five separate
+`array.array` index reads plus a NamedTuple construction, inside a Python-level list comprehension —
+far more expensive per element than a plain `list[Bar]`'s native, C-level slice (a pointer memcpy).
+The RELATIVE slowdown (~70-80×) is consistent between the bounded and unbounded accessor (same
+per-element mechanism), but the ABSOLUTE cost differs hugely with `cut` size: `bars_asof_window`'s
+bounded 200-element window stays fast in absolute terms (~55 µs), while `bars_asof`'s unbounded
+`<= d` prefix at a late, deep-history as-of (~5,300 elements) costs ~2.6 ms PER CALL — and `bars_asof`
+is called at least once per ticker per scored date across `scoring.py`/`themes.py`/`sectors.py`/
+`market_phase.py`/`universe_resolver.py`, i.e. potentially hundreds of times per scan date. This was
+never caught because iter-41 shipped no latency test, only the VmPeak comparison and a byte-identity
+proof (which is value-correct, not speed-neutral). **Not fixed in this iteration** — the plan's own
+scope for iter-42 is the `prefill` symbol-filter bound + NULL-tolerance + this measurement, not a
+redesign of `_SymbolColumns.__getitem__`'s slice construction (a `bars_asof`-specific optimization,
+e.g. building an `array.array`-backed view instead of eagerly materializing `Bar` objects for the
+whole prefix, is a distinct, non-trivial change out of this iteration's authorized scope). Recorded
+here, and in the dev handoff's Known Issues, for evaluator/owner disposition — this is the honest
+finding T2 exists to surface, not a result to omit because it complicates the AG-8 story.
+
+### QA report AG-8 disposition — corrected wording for this iteration
+
+The QA report's AG-8 row for iteration 42 must state: **partially bounded** — `_BarCache.prefill`'s
+`WHERE symbol IN (...)` filter is live and measured (2.5% VmPeak / 5.9% row-count reduction), NULL
+numeric columns degrade honestly instead of crashing, but the resident footprint is still ~93% of the
+full-table case (no fundamental order-of-magnitude bound), AND the `_SymbolColumns` read path
+introduced in iteration 41 is measurably ~70-80× slower per call than the `list[Bar]` it replaced
+(T2, above) — never an unqualified "✓ PASS / no whole-table loads" claim for either finding.

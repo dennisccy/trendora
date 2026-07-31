@@ -472,3 +472,29 @@ real shape was a PRESENT row reading `SKIP`.
 **Applies to:** any iteration adding or trusting a journey-coverage gate; any iteration whose spec names
 `Target journeys:` on a backend-only (`Frontend Present: no`) spec; any fix written to prevent a named
 past incident.
+
+## iter-42 — 2026-07-31T09:05:00Z
+
+**Verdict:** REGRESSION
+**Lesson:** Closing a verification hole is not a cost — it is a discovery. Two rounds of "unknown"
+on J-05 read as neutral bookkeeping; the first time the check actually ran, the journey was broken,
+and had been since at least iter-40. `unknown` is not a mild status: it is an unpaid debt that
+compounds, and a session should treat two consecutive `unknown`s on the same journey as urgent, not
+as deferred. The corollary bit this round too: `regressed` is defined as "was passing in a PRIOR
+iteration, now failing" — not the immediately prior one — so an `unknown` interlude does not launder
+a regression into a mere `failing`.
+**Applies to:** any iteration that scores a journey `unknown`, and any evaluator choosing between
+`failing` and `regressed` after a gap in verification.
+
+## iter-42 — 2026-07-31T09:05:00Z (second)
+
+**Verdict:** REGRESSION
+**Lesson:** A memory measurement that only measures the work you REMOVED is not a measurement. The
+`_BarCache.prefill` bench compared `prefill(pool)` vs `prefill(None)` and reported a 2.5% win; the
+43 symbols the filter stops prefilling are not dropped, they fall onto the lazy `list[Bar]` path at
+264.6 B/row instead of `_SymbolColumns`' 81.0 B/row, and 36 of them are `config.etfs` names read
+every snapshot date. With that arm included the change is +5.1%, the wrong sign. Same shape as this
+session's own `.yield_per()` lesson one file over: bounding one side of a transfer proves nothing
+about the total. Any future memory claim in this codebase must measure a whole job, not a function.
+**Applies to:** `apps/backend/app/engine/prices.py`, any `perf-budgets.md` memory claim, and any
+iteration whose DoD contains a before/after resource measurement.

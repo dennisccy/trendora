@@ -279,6 +279,11 @@ if [[ "$PHASE" =~ ^goal-(.+)-iter-[0-9]+$ ]]; then
   # the post-merge writer below appends the DEFERRED-BUDGET rows. Targets are
   # excluded from deferral — they are dispatched regardless.
   _bqa_targets="$(replay_lane_spec_journeys 'Target journeys:' "$SPEC")"
+  # ops-hardening iter-42: mirror into the shared TARGET_JOURNEYS global name goal-iter-lean.sh
+  # already uses -- replay_lane_merge_results (lib/replay-lane.sh) reads this ONE name from both
+  # callers to thread `--target` into the merger, mirroring REQUIRED_JOURNEYS -> --required exactly.
+  # shellcheck disable=SC2034
+  TARGET_JOURNEYS="$_bqa_targets"
   REPLAY_DEFERRED_BUDGET="$(replay_lane_deferred_budget_set "$_bqa_targets")"
   if [[ -n "${REPLAY_DEFERRED_BUDGET// /}" ]]; then
     echo "[browser-qa] iter-budget trim (rung 2): deferring no-golden regression journey(s) this iteration: ${REPLAY_DEFERRED_BUDGET% }— targets + replay-FAIL re-confirms are never deferred."

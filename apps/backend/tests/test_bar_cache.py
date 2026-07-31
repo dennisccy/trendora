@@ -16,6 +16,7 @@ These run on a SINGLE module-scoped seed load (the real engines), so the equalit
 """
 from __future__ import annotations
 
+import math
 from datetime import date
 
 import pytest
@@ -142,6 +143,203 @@ def test_prefill_old_vs_new_implementation_byte_identical(tiny_engine):
         # value-equal tuples of a different type.
         assert all(isinstance(b, prices.Bar) for b in new_by_symbol[symbol])
         assert list(new_by_symbol[symbol]) == list(old_by_symbol[symbol])
+
+
+def test_prefill_symbol_filtered_query_when_expected_symbols_given(tiny_engine):
+    """iter-42 (bound attempt #5, AG-8): `prefill(expected_symbols=...)` issues a `WHERE symbol IN
+    (...)`-filtered query -- mirroring `load_only`'s already-proven shape -- instead of the
+    unconditional whole-table scan `expected_symbols=None` still uses. Proves the filtered path is
+    GENUINELY engaged (the iter-37 lesson: assert the condition was actually live, not merely present
+    in the code): SPY has real bars in this fixture but is NOT named in `expected_symbols`, so it must
+    be entirely ABSENT from the cache immediately after `prefill` -- the eager scan really did skip
+    it, this isn't a no-op filter. SPY then falls back to the EXISTING lazy per-symbol load on first
+    access (unchanged by this iteration), loading with exactly ONE additional query and serving a
+    value byte-identical to a full-scan prefill's own result for that symbol."""
+    engine, days = tiny_engine
+    with Session(engine) as reference_session:
+        reference_spy = [
+            (bar.date, bar.open, bar.high, bar.low, bar.close, bar.volume)
+            for bar in reference_session.exec(
+                select(DailyPrice).where(DailyPrice.symbol == "SPY").order_by(DailyPrice.date)
+            ).all()
+        ]
+        reference_aaa = [
+            (bar.date, bar.open, bar.high, bar.low, bar.close, bar.volume)
+            for bar in reference_session.exec(
+                select(DailyPrice).where(DailyPrice.symbol == "AAA").order_by(DailyPrice.date)
+            ).all()
+        ]
+    with Session(engine) as session:
+        cache = prices._BarCache()
+        cache.prefill(session, expected_symbols=["AAA"])
+        # LIVE proof the filter genuinely engaged: SPY has real bars in this fixture but was excluded
+        # from expected_symbols, so it must be ABSENT from the eager scan's result set.
+        assert set(cache._by_symbol) == {"AAA"}, (
+            f"SPY should be excluded from the filtered eager scan, got {set(cache._by_symbol)}"
+        )
+        aaa_bars = [(b.date, b.open, b.high, b.low, b.close, b.volume) for b in cache._by_symbol["AAA"]]
+        assert aaa_bars == reference_aaa
+        assert all(isinstance(b, prices.Bar) for b in cache._by_symbol["AAA"])
+
+        # SPY was never in expected_symbols -> the unchanged lazy per-symbol path loads it on first
+        # access: exactly ONE additional query, byte-identical result.
+        calls = {"n": 0}
+        orig_exec = session.exec
+
+        def _counting_exec(stmt, *a, **kw):
+            calls["n"] += 1
+            return orig_exec(stmt, *a, **kw)
+
+        session.exec = _counting_exec  # type: ignore[assignment]
+        spy_via_cache = [
+            (b.date, b.open, b.high, b.low, b.close, b.volume)
+            for b in cache.bars_asof(session, "SPY", days[-1])
+        ]
+        assert calls["n"] == 1, "SPY must lazy-load with exactly one query (the eager scan skipped it)"
+        assert spy_via_cache == reference_spy
+        cache.bars_asof(session, "SPY", days[-1])  # second access: load-once holds, no re-query
+        assert calls["n"] == 1
+
+
+def test_prefill_empty_expected_symbols_loads_nothing_no_malformed_query(tiny_engine):
+    """`expected_symbols=[]` (a genuinely empty, but non-None, candidate set) must short-circuit to
+    zero eagerly-loaded rows without ever issuing a malformed `WHERE symbol IN ()` -- mirrors
+    `load_only`'s own empty-list guard. Distinct from `expected_symbols=None` (unconditional full scan,
+    proven by other tests in this file)."""
+    engine, days = tiny_engine
+    with Session(engine) as session:
+        cache = prices._BarCache()
+        cache.prefill(session, expected_symbols=[])
+        assert cache._by_symbol == {}
+        assert cache._prefilled is True  # the (empty) scan still ran/completed once
+
+
+def test_prefill_null_numeric_column_degrades_without_crashing(tiny_engine):
+    """B6 (AG-8): a NULL numeric column in a `daily_prices` row -- a data-shape widening not
+    reachable against the current schema's NOT NULL columns, but one AG-8 requires surviving --
+    must not crash `_BarCache.prefill` with `array.array('d').append(None)`'s `TypeError`. Simulates
+    the NULL by tampering with ONE row's `close` value as it streams out of the REAL query (the exact
+    boundary this fix hardens) instead of fighting the DB's own NOT NULL constraint, which would
+    reject the insert before `prefill` ever runs."""
+    engine, days = tiny_engine
+
+    class _NullInjectingResult:
+        """Proxies every attribute to the real SQLAlchemy result except `yield_per`, whose stream it
+        taps to null out exactly one row's `close` value -- an honest simulation of a NULL numeric
+        column arriving from the DB, without needing to defeat the model's NOT NULL constraint."""
+
+        def __init__(self, real):
+            self._real = real
+
+        def yield_per(self, n):
+            tampered = False
+            for row in self._real.yield_per(n):
+                row = list(row)
+                # prefill's own column-projected query yields 7-tuples (symbol, date, open, high,
+                # low, close, volume); a per-symbol lazy load yields 6 (no symbol) -- so this only
+                # ever tampers with prefill's accumulation loop, never the lazy fallback.
+                if not tampered and len(row) == 7 and row[0] == "AAA" and row[1] == days[0]:
+                    row[5] = None  # close
+                    tampered = True
+                yield tuple(row)
+
+        def __getattr__(self, name):
+            return getattr(self._real, name)
+
+    with Session(engine) as session:
+        orig_exec = session.exec
+
+        def _exec_with_one_null_close(stmt, *a, **kw):
+            return _NullInjectingResult(orig_exec(stmt, *a, **kw))
+
+        session.exec = _exec_with_one_null_close  # type: ignore[assignment]
+        cache = prices._BarCache()
+        cache.prefill(session)  # must NOT raise TypeError
+
+    bars = list(cache._by_symbol["AAA"])
+    assert math.isnan(bars[0].close), f"a NULL close should degrade to the NA sentinel, got {bars[0].close!r}"
+    # every OTHER field on that same row is unaffected.
+    assert bars[0].date == days[0] and bars[0].open == 10.0 and bars[0].high == 11.0 and bars[0].low == 9.0
+    # every other row/symbol is unaffected.
+    assert not math.isnan(bars[1].close)
+    assert all(not math.isnan(b.close) for b in cache._by_symbol["SPY"])
+
+
+@pytest.mark.parametrize("accessor", ["bars_asof", "bars_asof_window"])
+def test_lazy_load_is_published_atomically_to_a_concurrent_reader(tiny_engine, accessor):
+    """iter-42 audit (B1): the lazy per-symbol load publishes into TWO dicts in sequence —
+    `self._by_symbol[symbol] = full` and THEN `self._dates_by_symbol[symbol] = [...]` (a list
+    comprehension over the whole series, thousands of elements at the live basis, so the GIL is
+    released between them). `bars_asof`/`bars_asof_window` take their FAST path — no lock — as soon
+    as `self._by_symbol.get(symbol)` is non-None, and then index `self._dates_by_symbol[symbol]`. A
+    second thread that reads in that window therefore sees a half-published symbol and raises
+    `KeyError`.
+
+    Before iter-42 this was unreachable in production: `prefill` eagerly loaded EVERY symbol in
+    `daily_prices` on the single orchestrating thread before any worker fan-out, so no worker ever
+    entered the lazy branch. iter-42's `WHERE symbol IN (expected_symbols)` filter deliberately
+    leaves the 43 non-pool symbols (SPY, QQQ, ^VIX, the XL* sector SPDRs, the theme ETFs) OUT of
+    that eager scan, and those are read per snapshot date by `regime.py`/`market_phase.py`/
+    `sectors.py`/`themes.py` — from the parallel backfill's worker threads. The dev handoff's own
+    root-cause note for its test-instrumentation fix records the same new concurrency ("two threads
+    can both observe 'not yet loaded'"; `max(load_counts.values()) == 3` observed), i.e. concurrent
+    first-access of these symbols genuinely happens in a real job.
+
+    This test forces the interleaving deterministically: the writer is held between its two
+    publishes while a second thread (its OWN session — sessions are never shared) reads the same
+    symbol, and asserts the reader gets the correct series instead of an exception."""
+    import threading
+    import time
+
+    engine, days = tiny_engine
+    with Session(engine) as reference_session:
+        reference = [
+            (bar.date, bar.close)
+            for bar in reference_session.exec(
+                select(DailyPrice).where(DailyPrice.symbol == "SPY").order_by(DailyPrice.date)
+            ).all()
+        ]
+
+    cache = prices._BarCache()
+    published = threading.Event()
+
+    class _HeldPublish(dict):
+        """Holds the writer between `_by_symbol[symbol] = ...` and the `_dates_by_symbol` publish
+        that follows it — the exact window a real worker thread can land in."""
+
+        def __setitem__(self, key, value):
+            super().__setitem__(key, value)
+            if key == "SPY":
+                published.set()
+                time.sleep(0.5)
+
+    cache._by_symbol = _HeldPublish()
+
+    reader_error: "list[BaseException]" = []
+    reader_result: "list[list]" = []
+
+    def _reader():
+        published.wait(5)
+        try:
+            with Session(engine) as reader_session:
+                if accessor == "bars_asof":
+                    bars = cache.bars_asof(reader_session, "SPY", days[-1])
+                else:
+                    bars = cache.bars_asof_window(reader_session, "SPY", days[-1], len(days))
+                reader_result.append([(b.date, b.close) for b in bars])
+        except BaseException as exc:  # noqa: BLE001 — the point of the test is to surface it
+            reader_error.append(exc)
+
+    thread = threading.Thread(target=_reader, name="concurrent-reader")
+    thread.start()
+    with Session(engine) as writer_session:
+        cache.bars_asof(writer_session, "SPY", days[-1])
+    thread.join(15)
+
+    assert not reader_error, (
+        f"a concurrent reader saw a half-published lazy load: {reader_error[0]!r}"
+    )
+    assert reader_result == [reference], reader_result
 
 
 def test_lazy_load_returns_bar_records_matching_plain_query_row_level(tiny_engine):
@@ -423,7 +621,21 @@ def test_kdate_backfill_loads_each_symbol_at_most_once(seed_engine, monkeypatch)
     every full-series bar-store load (the orchestrator's `prefill` up front + any lazy load) and
     asserting no symbol is loaded twice, while >= K dates are scanned (without the cache each symbol
     would be loaded >= K times). The shared pre-filled cache is what preserves load-once under the
-    parallel build (workers READ the orchestrator's pre-loaded immutable series)."""
+    parallel build (workers READ the orchestrator's pre-loaded immutable series).
+
+    iter-42 (bound attempt #5) instrumentation note: `prefill` now eager-loads only the candidate-pool
+    subset (`expected_symbols`); a handful of non-pool symbols (SPY, QQQ, ^VIX, sector/thematic ETFs —
+    read by regime/market-phase inputs) fall into the EXISTING lazy per-symbol path in `bars_asof`
+    instead, and — for the FIRST time — that lazy path is now genuinely reachable from MULTIPLE
+    parallel worker threads racing to read the SAME not-yet-loaded symbol during this job. A
+    check-then-count wrapper around `bars_asof` (`if symbol not in self._by_symbol: count()`, called
+    BEFORE the real load) races against that same concurrency: two threads can both observe "not yet
+    loaded" before either has stored it, over-counting a symbol whose real, `_load_lock`-guarded
+    assignment only ever happens once. Instrumenting the ACTUAL write to `_by_symbol` instead (a
+    dict-subclass `__setitem__` hook — a single GIL-atomic operation, so it cannot double-fire even
+    under concurrent access) removes that false-positive risk while proving the identical, real
+    invariant: every entry in `_by_symbol` is written exactly once for the whole job, whichever of
+    `prefill`'s eager scan, `prefill`'s no-bar bookkeeping, or `bars_asof`'s lazy fallback wrote it."""
     engine, cfg, trading = seed_engine
     # three CONSECUTIVE gap dates (no snapshot yet) → K = 3. iter-18: the snapshot cadence bounds the
     # DEEP region to monthly, so pick the K dates inside the config daily-density region (>= daily_start)
@@ -437,31 +649,34 @@ def test_kdate_backfill_loads_each_symbol_at_most_once(seed_engine, monkeypatch)
     # ensure the parallel path is actually exercised (workers > 1 over a >1-date range).
     assert cfg.data_manager.import_chunking.backfill_workers > 1
 
-    # instrument EVERY full-series bar-store load — both the eager `prefill` and the lazy `bars_asof`
-    # fallback push rows into `_by_symbol`, so a per-symbol DB query is exactly an entry appearing there.
+    # instrument the ACTUAL write to `_by_symbol` — race-free (see the docstring above) — rather than a
+    # racy check-then-call wrapper around the read side.
     load_counts: dict[str, int] = {}
     lock = __import__("threading").Lock()
-    orig_bars_asof = prices._BarCache.bars_asof
-    orig_prefill = prices._BarCache.prefill
 
     def _count(symbol):
         with lock:
             load_counts[symbol] = load_counts.get(symbol, 0) + 1
 
-    def _counting_bars_asof(self, session, symbol, d):
-        if symbol not in self._by_symbol:  # a real lazy bar-store load is about to happen
-            _count(symbol)
-        return orig_bars_asof(self, session, symbol, d)
+    class _CountingBySymbol(dict):
+        """A `_by_symbol` dict subclass that counts each key's FIRST write exactly once — the real load
+        event, whichever code path performs it. `__setitem__` is one dict-level operation (GIL-atomic),
+        so this cannot double-count even when several worker threads race to lazy-load the same symbol
+        (only the one thread inside `_load_lock`'s critical section ever assigns a genuinely new key)."""
 
-    def _counting_prefill(self, session, expected_symbols=None):
-        before = set(self._by_symbol)
-        orig_prefill(self, session, expected_symbols=expected_symbols)
-        for symbol in self._by_symbol:
-            if symbol not in before:  # newly loaded by this prefill (incl. a no-bar candidate as [])
-                _count(symbol)
+        def __setitem__(self, key, value):
+            is_new = key not in self
+            super().__setitem__(key, value)
+            if is_new:
+                _count(key)
 
-    monkeypatch.setattr(prices._BarCache, "bars_asof", _counting_bars_asof)
-    monkeypatch.setattr(prices._BarCache, "prefill", _counting_prefill)
+    orig_init = prices._BarCache.__init__
+
+    def _counting_init(self, *a, **kw):
+        orig_init(self, *a, **kw)
+        self._by_symbol = _CountingBySymbol()  # swap in the counting dict right after construction
+
+    monkeypatch.setattr(prices._BarCache, "__init__", _counting_init)
 
     job = create_job("backfill", r_start, r_end)
     summary = run_data_job(job.job_id, config=cfg, engine=engine)

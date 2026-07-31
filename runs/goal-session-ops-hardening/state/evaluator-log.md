@@ -3208,3 +3208,98 @@ never an iteration's goal: J-07's `[NEW]` walkthrough (eleventh iteration unreco
 unchanged, both to be settled BEFORE any achievement run: (a) iter-34/j — the `GET /api/health` ≤ 0.1 s
 budget, now missed eight times, this time max 1.73 s across 58 polls; three dispositions, all his;
 (b) iter-33/i — whether `start-frontend.sh` joins `HOST_GUARD_MARKER_FILES`.
+
+## Iteration 42 — goal-ops-hardening-iter-42
+
+**Date:** 2026-07-31T09:05:00Z
+**Verdict:** REGRESSION
+**Depth dispatched:** full (`iter-42/depth-dispatched` = `full`, matching the spec. `status.json` =
+`complete` / `closure_passed`. Note `browser_checks_run: false` in status.json is stale — the browser
+lane demonstrably ran: 11 dated screenshots in `reports/qa/goal-ops-hardening-iter-42-evidence/`
+(07:32-07:59), a merged results file at 08:03, and a demo run at 08:05-08:08.)
+**Journey deltas:**
+- **REGRESSED: J-05 "Aggregates are precomputed at ingest, never on the fly"** — `unknown` →
+  `regressed`. Last verified PASSING at iter-39; never tested at iters 40-41; verified FAILING here.
+- **Newly failing: J-07 "Heavy aggregates never take the service down"** — `partial` → `failing`
+  (eighth consecutive iteration without `passing`; `last_passing_iter` stays iter-34). `partial` is
+  no longer honest: the core assertion is contradicted, not merely under-evidenced.
+  `evidence_makeup` CLEARED (methodology A.7's rail — the make-up lane never applies when the
+  BEHAVIOR is unmet).
+- Re-verified `passing` with this-iteration evidence: **J-01, J-03, J-04, J-06, J-08, J-09** — six
+  dated replay rows plus screenshots; `last_verified_iter`/`last_passing_iter` advance to iter-42.
+  Deferred (`DEFERRED-BUDGET`): none. No `browser-infra.json`; no `journeys-changed.md`; all 8
+  `spec_hash`es match `goal_gate hash-journeys`.
+- Anti-goal violations: **TWO RESOLVED — iter-41/z** (the target-journey verification hole, closed
+  AND proved by this iteration's own FAIL headline) and **iter-41/ab** (the QA report's inaccurate
+  AG-8 row, now corrected). **THREE NEW: iter-42/ac** (minor, open — the shipped prefill filter is a
+  +5.1% peak-memory regression, recorded as a 2.5% win), **iter-42/ad** (minor, resolved in-audit —
+  the filter opened a `KeyError` publish race in the parallel backfill), **iter-42/ae** (minor, open
+  — the live service outage). Twelve carried items each given an ITER-42 UPDATE. Ledger now:
+  **43 total, 14 unresolved, 0 critical.** scan-report CLEAN; coherence COHERENCE-PASS (zero blocking,
+  two advisories); review PASS; QA PASS; audit PASS_WITH_GAPS (2 IMPORTANT found, both fixed
+  in-audit); ux-regression UX-REGRESSION-SKIPPED (budget-shed); closure CLOSURE-PASS.
+
+**Reasoning:** I checked every important fact in the log myself instead of trusting the reports.
+(1) **The stuck job is real.** The backfill was accepted with an HTTP 200 at `logs/backend.log:152717`
+and then asked about 290 times through line 154483 — I counted them — and its worker never once
+reported starting. The three jobs the J-01 check ran eight minutes earlier each reported reaching
+their finish step within about a second (`:152443`, `:152453`, `:152480`). So jobs worked at 07:32 and
+stopped working by 07:40 in the same server. A second job on a different date behaved the same way.
+The picture, which I opened, is a completely blank page. (2) **The service really went down.** I read
+the error trace at `:153050-153075`: the server could not start a new thread, and the very next line
+is `GET /api/health` returning 500. I counted 4 health failures and 2 Backtest failures, then a
+memory error at `:154035-154049`. The `/backtest` picture I opened says "Backend unavailable".
+(3) **But the cause is older than this round, and I proved that rather than accepting it.** I dated
+every memory error in the log: 7,004 of them across ten days, including 26 on 30 July and four on
+31 July at 00:08, 00:11, 01:44 and 01:54 — hours before this round's code was written. So this round
+did not create the ceiling. (4) **This round did make it slightly worse and said the opposite.** The
+memory change was recorded as a 2.5% saving; measured properly with the extra loads it forces, it is
+5.1% worse. The auditor found this; the developer, reviewer and QA all missed it. (5) **The six
+passing journeys are real but were photographed before the crash** — 07:32-07:34, minutes before the
+07:46 failure. I say that plainly rather than presenting them as proof the server is stable. I opened
+two of them: J-01's frame, where I re-added the regime parts (35.00+17.21+14.75+8.24+0.00) and got
+exactly the 75.20 shown; and J-09's frame with its "background compute running (1)" chip. (6) **The
+damage outlived the test lane:** the demo run at 08:05-08:08 recorded 7 of its 8 steps with the
+expected words missing.
+Chose REGRESSION (C.1). J-05 was passing at iter-39 and is now failing, which is exactly what the
+journey record defines as *regressed*, and a regressed journey means this verdict. I record honestly
+that the immediate previous status was `unknown`, not `passing` — a reader who requires the previous
+status to be `passing` would return ESCALATE instead. I did not take that reading because `unknown`
+was written down by an earlier evaluator as "not tested", never as "not broken", so the last thing we
+actually knew about J-05 was that it worked. Rejected STALLED (C.2): real agent work remains, so it
+is not true that every path needs a person. Rejected ESCALATE (C.4): this round already ran at full
+depth, and a ninth attempt at the same wall without the owner moving it first would waste a round.
+**FOUR THINGS I STATE PLAINLY RATHER THAN ROUND AWAY:** (i) **the thing this round was built to make
+works, and a halt must not be read as saying otherwise.** Choosing a journey to improve no longer
+switches its safety check off, and the proof is this round's own FAIL headline where the last round
+shipped a clean "PASS 6/6" over the identical two unchecked journeys. It found a real fault on its
+first run. (ii) **the developer's honesty was good and the auditor's was better.** The developer
+volunteered a 70-80× read-slowdown he was not asked to fix and labelled his own memory result
+"partial, not resolved". The auditor then showed even that result had the wrong sign. Six rounds
+running, only the audit lane caught the load-bearing defect. (iii) **the memory fix landed after the
+evidence was taken.** The `KeyError` race the auditor fixed was still in the code when the browser
+checks ran, so this round's live evidence came from the racy build. That does not explain the outage
+(a race raises an error, it does not exhaust memory), but it should be stated, not glossed. (iv) **the
+health endpoint problem has changed character and the owner should know.** For seven rounds it was
+"the health check is slower than the 0.1s promise". This round it returned an error four times and
+then stopped answering. The owner's pending decision is now about a hard failure, not a slow one.
+
+**Next-step recommendation:** HALT first — one owner decision blocks everything. The app is asked to
+handle 30 years of prices (about 3.3 million rows) while the backend is capped at 6 GB of memory, and
+those two numbers no longer fit: the heavy background calculation runs out of room and takes the whole
+service down. No agent may raise that cap — the goal file calls it a physical protection for the
+machine, added after two real hardware crashes. The owner picks one of three: raise the cap if the
+machine can safely take it; use a shorter price history so the work fits; or relax the goal so the
+heavy work may run in smaller pieces over more time. **Then, in order:** (1) make a job that cannot
+start say so — right now it reports "running" forever and shows nothing, which breaks the goal's own
+"no silent zero-work jobs" promise (J-05 "Aggregates are precomputed at ingest"); (2) decide the fate
+of this round's price-cache change — keep, undo, or finish it; undoing is simplest and also removes
+the new race risk; (3) re-run all eight journey checks afterwards, because the six that passed were
+photographed minutes before the crash; (4) address the 70-80× slower price read found this round;
+(5) CARRIED, untouched: iter-29/b and the badge wording after a permanently failed warm-up (TWELVE
+rounds unmade); iter-31/e; iter-32/f — now promoted from "watch" to "suspect", since the memory error
+came out of exactly that function; iter-36/n; iter-37/o; iter-37/q; iter-39/u — the freeze class
+returned in a new shape and the diagnostic tool armed at iter-40 was not used; (6) DEFERRED an EIGHTH
+time: iter-33/g, Regime Lab's cold pooled view; (7) CAPTURE ONLY, never a round's goal: J-07's `[NEW]`
+walkthrough (twelfth round unrecorded); (8) OWNER, unchanged: iter-33/i, whether `start-frontend.sh`
+joins `HOST_GUARD_MARKER_FILES`.

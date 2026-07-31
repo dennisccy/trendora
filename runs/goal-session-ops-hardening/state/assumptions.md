@@ -524,3 +524,54 @@ next, not a sixth agent attempt. A human who reads four consecutive partial resu
 proof that no further bound is reachable without a caller-semantics change would skip straight to
 amending goal.md's per-row budget language now rather than dispatching a fifth attempt.
 **Reversible:** yes
+
+## iter-42 — goal-evaluator
+
+**Ambiguity:** decision tree C.1's first clause reads "any journey moved `passing`/`already_passing`
+→ `failing`". J-05's IMMEDIATE prior recorded status was `unknown` (iters 40-41, not tested), not
+`passing` — so the clause's literal wording does not match. But the journey-history schema in my own
+agent file defines the `regressed` status as "was passing in a **prior iteration**, now failing"
+(not "the immediately prior iteration"), and J-05 was verified passing at iter-39. Methodology E.1
+then makes any `regressed` status force REGRESSION. `docs/goal.md` does not say which reading
+controls, and the two give different verdicts (REGRESSION vs ESCALATE).
+**We chose:** `regressed`, and therefore REGRESSION. Grounds stated rather than assumed: (1) the
+schema's own words are "a prior iteration", and the narrower reading would require inserting
+"immediately", which the text does not say; (2) `unknown` was never an assertion that the journey
+worked — the iter-40 evaluator who set it wrote explicitly "nothing anywhere shows a journey broken,
+so I recorded the reason as 'not tested'... rather than letting `unknown` imply a defect", so the
+last thing this session actually KNEW about J-05 was that it passed; treating a not-tested gap as
+erasing a prior pass would let any journey launder a regression by going unverified for one round —
+precisely the hole iters 40-42 were spent closing; (3) the underlying facts are worse than the label
+regardless: a user cannot load a day of history at all, and the health endpoint returned HTTP 500
+four times and then stopped answering, which no reading calls acceptable; (4) the cost asymmetry is
+one-sided — REGRESSION halts for an owner decision that is genuinely owner-only (AG-10 forbids any
+agent from raising `memory_cap_mb`, and eight iterations have failed to fit inside it), whereas
+ESCALATE dispatches a ninth attempt at a wall the owner must move first. I record the cost honestly:
+this is the session's first halt in 42 iterations, it stops a round whose headline deliverable
+genuinely worked, and the proximate cause of the failure is a PRE-EXISTING memory ceiling I verified
+myself (7,004 MemoryErrors across ten days, four of them hours before this iteration's code existed)
+— iter-42 did not break J-05. A human who requires C.1's "moved" to mean the immediately prior
+recorded status, or who weighs the pre-existing attribution as disqualifying a REGRESSION, would
+score J-05 `failing` and return ESCALATE with a full-depth recommendation.
+**Reversible:** yes
+
+## iter-42 — goal-evaluator
+
+**Ambiguity:** the six required-still-passing journeys have genuine, dated, this-iteration replay
+rows and screenshots (07:32-07:34) — but they were captured in the SAME run that, twelve minutes
+later, drove the process into its memory ceiling and produced HTTP 500s on `/api/health`. My agent
+file requires positive evidence of passing, which they have; it does not say whether evidence taken
+minutes before the same run's service outage still certifies a journey.
+**We chose:** keep all six `passing`, with the caveat recorded verbatim in each journey's note, in
+eval.md's journey table, and in the evaluator log. Grounds: (1) methodology A.3's bar is a results
+row plus a screenshot showing the acceptance state, and all six clear it — I opened two and both
+corroborate, including re-adding J-01's regime components to the displayed 75.20 myself;
+(2) the outage was induced by the J-07 warm the LLM lane deliberately triggered, not by these six
+journeys' own paths; (3) downgrading them on a later, different event would be inferring failure
+without evidence, which the honesty rail forbids as firmly as it forbids inferring success. Cost
+recorded honestly: these six passes attest this build's CODE on a healthy process, NOT the instance's
+stability, and J-01 is the sharpest case — its replay ran three real backfill jobs that all finished,
+and eight minutes later a backfill job in the same process never started at all. Any achievement run
+must re-check all six after the memory question is settled. A human who reads a service outage as
+voiding every result from the same run would score all six `unknown`.
+**Reversible:** yes

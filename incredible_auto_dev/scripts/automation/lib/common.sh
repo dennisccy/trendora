@@ -1282,6 +1282,26 @@ ensure_services_running() {
       2) export QA_FRONTEND_UP="slow" ;;   # alive, still compiling — gate re-probes
       *) export QA_FRONTEND_UP="no" ;;
     esac
+    # ops-hardening iter-42 (B4, TC-9): _start_service_with_retries' own budget (2×60s, or up to
+    # CHAIN_FRONTEND_HEAL_TIMEOUT on a corrupt-.next heal) can still return "slow"/"no" while the
+    # frontend genuinely is mid-recompile — iter-40's actual incident (frontend read 000 at one
+    # caller's 90s probe, then answered in 0s twenty minutes later from a DIFFERENT caller). The
+    # comment above already documents the intended design ("the downstream readiness gate
+    # re-probes"), but that only helps the callers that happen to add their OWN follow-up
+    # `_wait_for_frontend_ready` call (browser-qa-phase.sh, goal-iter-lean.sh, demo-phase.sh do; the
+    # REL-5 replay retry and the REL-14 preflight retry in lib/replay-lane.sh do not — they call only
+    # `ensure_services_running` after a mid-run restart and then immediately retry, which is exactly
+    # how a still-warm frontend gets misread as unreachable and the whole regression run goes
+    # silently all-SKIP on one premature timeout, iter-41 audit B4). Doing the bounded, corruption-
+    # aware re-probe HERE — inside `ensure_services_running` itself — closes the gap for every
+    # restart path uniformly, present and future, instead of hunting down each caller. Idempotent for
+    # callers that ALSO re-probe afterward: a frontend already answering 2xx/3xx here returns on the
+    # first curl, so their own subsequent call is a fast no-op, never a double wait.
+    if [[ "$QA_FRONTEND_UP" != "yes" ]] && declare -F _wait_for_frontend_ready >/dev/null 2>&1; then
+      if _wait_for_frontend_ready "$QA_FRONTEND_URL" "frontend" 90 "ensure-services"; then
+        export QA_FRONTEND_UP="yes"
+      fi
+    fi
   fi
 
   # ALWAYS 0: the five bare call sites run under `set -e`. Failure is surfaced

@@ -46,7 +46,11 @@
 # Dataflow is via GLOBALS, deliberately: goal-iter-lean.sh's SPEED-2 fork
 # serializes exactly these names through its state file (_bqa_state_save), so
 # they are a cross-process contract, not a style choice.
-#   In:  REQUIRED_JOURNEYS, FRONTEND_AVAILABLE, FRONTEND_URL, REPO_ROOT,
+#   In:  REQUIRED_JOURNEYS, TARGET_JOURNEYS (ops-hardening iter-42 — the
+#        iteration's own Target journeys:, read by replay_lane_merge_results
+#        exactly like REQUIRED_JOURNEYS; set BEFORE the SPEED-2 fork point in
+#        both callers so it needs no state-file serialization of its own),
+#        FRONTEND_AVAILABLE, FRONTEND_URL, REPO_ROOT,
 #        CHAIN_REGRESSION_REPLAY (knob, default true),
 #        REPLAY_LANE_CANARY_CAPABLE (SPEED-22; set only by goal-iter-lean.sh)
 #   Set by replay_lane_paths: EVIDENCE_DIR, SID, JOURNEY_SCRIPTS_DIR,
@@ -459,7 +463,17 @@ replay_lane_merge_results() {
   # merge()'s new check is then a no-op, unchanged behavior.
   local _rl_required_args=()
   [[ -n "${REQUIRED_JOURNEYS:-}" && -n "${REQUIRED_JOURNEYS// /}" ]] && _rl_required_args=(--required "$REQUIRED_JOURNEYS")
-  if ! python3 "$MERGE_RESULTS" "${_rl_required_args[@]}" "$_rl_out" "$REGRESSION_RESULTS" ${_rl_mid[@]+"${_rl_mid[@]}"} "$_rl_llm"; then
+  # ops-hardening iter-42: the sibling wiring for this iteration's OWN `Target journeys:` (iter-41
+  # audit finding B2 — promoting a journey to a target silently removed its verification, because
+  # nothing downstream of the spec-parse ever read TARGET_JOURNEYS). goal-iter-lean.sh already
+  # computes a global TARGET_JOURNEYS before its SPEED-2 fork point (used for its own dispatch
+  # prompt); browser-qa-phase.sh mirrors its local `_bqa_targets` into the SAME global name right
+  # after computing it, so this ONE shared merge function reads one consistent name from both
+  # callers, exactly mirroring the REQUIRED_JOURNEYS convention above. Empty/unset (plain phase
+  # mode, or a spec with no Target journeys line) is a no-op, byte-identical to before this change.
+  local _rl_target_args=()
+  [[ -n "${TARGET_JOURNEYS:-}" && -n "${TARGET_JOURNEYS// /}" ]] && _rl_target_args=(--target "$TARGET_JOURNEYS")
+  if ! python3 "$MERGE_RESULTS" "${_rl_required_args[@]}" "${_rl_target_args[@]}" "$_rl_out" "$REGRESSION_RESULTS" ${_rl_mid[@]+"${_rl_mid[@]}"} "$_rl_llm"; then
     _replay_lane_warn "results merge failed — falling back to a lane output."
     if [[ -f "$_rl_llm" ]]; then cp "$_rl_llm" "$_rl_out" 2>/dev/null || true
     elif [[ -f "$REGRESSION_RESULTS" ]]; then cp "$REGRESSION_RESULTS" "$_rl_out" 2>/dev/null || true; fi

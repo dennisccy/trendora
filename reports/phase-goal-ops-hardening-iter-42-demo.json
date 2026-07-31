@@ -1,0 +1,149 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-ops-hardening-iter-42",
+  "base_url": "http://localhost:3255",
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Open the dashboard",
+      "narration": "Let's start by loading the home page to check that the backend is ready. You should see a green 'Ready' badge in the top-right corner.",
+      "point_out": "The top-right badge shows 'Ready' with a green dot, confirming the backend is available.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "goto",
+        "url": "/"
+      },
+      "expect": {
+        "text": "Ready"
+      }
+    },
+    {
+      "n": 2,
+      "title": "Navigate to Data Manager",
+      "narration": "Go to the Data Manager page. This is where you start backfill jobs to ingest historical trading data.",
+      "point_out": "The Data Manager form appears with 'Start date' and 'End date' fields, ready to accept a date range.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "goto",
+        "url": "/data"
+      },
+      "expect": {
+        "text": "Start a fetch / backfill job"
+      }
+    },
+    {
+      "n": 3,
+      "title": "Run a backfill job",
+      "narration": "Submit a backfill request for a specific date range. This will fetch and snapshot the trading data, and compute aggregates like market coverage during ingest—not on request later.",
+      "point_out": "The Job progress panel shows the job has finished, and the Run history lists which aggregates (like 'latest snapshot' and 'coverage') were computed and stored.",
+      "journey": "J-01",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "fill",
+        "target": {
+          "role": "textbox",
+          "name": "Job start date"
+        },
+        "text": "2026-05-02"
+      }
+    },
+    {
+      "n": 4,
+      "title": "Set the end date and start the job",
+      "narration": "Enter the end date and click Start. The job will accept any range—no artificial cap—and begin processing.",
+      "point_out": "The 'Start' button becomes active. Once clicked, the Job progress panel moves from 'running' to a terminal status, showing 'Refreshed:' with a list of aggregates that were computed.",
+      "journey": "J-01",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "fill",
+        "target": {
+          "role": "textbox",
+          "name": "Job end date"
+        },
+        "text": "2026-05-29"
+      }
+    },
+    {
+      "n": 5,
+      "title": "Click Start to submit the backfill",
+      "narration": "Submit the job by clicking the Start button (the play icon).",
+      "point_out": "The Job progress panel transitions to 'running', showing live heartbeat activity, then settles to a finished state.",
+      "journey": "J-01",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "click",
+        "target": {
+          "role": "button",
+          "name": "Start"
+        }
+      },
+      "expect": {
+        "text": "Refreshed:"
+      }
+    },
+    {
+      "n": 6,
+      "title": "View scanner runs",
+      "narration": "Navigate to Scanner Runs to see the ingested snapshots. Click on a specific date to see the stored leaderboard—no recompute happens on click.",
+      "point_out": "The Scanner Runs list displays the date (e.g. 2026-05-29) and a populated leaderboard table. The data was computed once at ingest time, not on demand.",
+      "journey": "J-08",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "goto",
+        "url": "/scanner-runs"
+      },
+      "expect": {
+        "text": "2026-05-29"
+      }
+    },
+    {
+      "n": 7,
+      "title": "Open the Backtest page",
+      "narration": "View the Backtest page, which shows cached evidence values from past aggregates. Even during a heavy job in the background, this page renders instantly with stored data—never making the user wait for a cold recompute.",
+      "point_out": "The Backtest page displays evidence panels with real numbers or a 'Refreshing' banner, never a blank page or endless spinner.",
+      "journey": "J-08",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "goto",
+        "url": "/backtest"
+      },
+      "expect": {
+        "text": "Backtest"
+      }
+    },
+    {
+      "n": 8,
+      "title": "Check the Data page for background compute status",
+      "narration": "Return to the Data Manager and check the 'Background compute' panel. If any aggregates are being computed in the background, the badge shows a chip with a counter, and the panel lists elapsed time and progress.",
+      "point_out": "The Background compute panel displays in-flight windows or 'No background compute running' when idle. Any in-flight work is visible and measured.",
+      "journey": "J-09",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "goto",
+        "url": "/data"
+      },
+      "expect": {
+        "text": "Background compute"
+      }
+    }
+  ]
+}

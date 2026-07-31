@@ -34,6 +34,9 @@
 #  10. Merge: replay FAIL overturned by LLM PASS → merged PASS + dated
 #      reconciliation footer appended to the RAW replay artifact (companion 1:
 #      no stale FAIL survives the iteration); un-overturned FAIL → no footer.
+#      10b (ops-hardening iter-42): TARGET_JOURNEYS threads into --target the
+#      same way REQUIRED_JOURNEYS threads into --required — a missing target
+#      journey forces BLOCKED; unset TARGET_JOURNEYS stays byte-identical.
 #  11. Merge crash → lane-file cp fallback (LLM file preferred).
 #  12. REL-5 flake discipline: infra-then-success → the retry rescues the lane
 #      (normal PASS path, no SKIPPED-INFRA); infra-then-FAIL → the retry's rc=5
@@ -462,6 +465,64 @@ grep -q '^\*\*Browser QA Verdict:\*\* FAIL' "$SBX/reports/phase-$ITER-ui-test-re
 grep -q 'Reconciliation' "$SBX/reports/phase-$ITER-regression-replay-results.md" \
   && assert "merge: no footer when nothing was overturned" fail \
   || assert "merge: no footer when nothing was overturned" pass
+
+# ── 10b. Merge: TARGET_JOURNEYS threads into --target (ops-hardening iter-42) ─
+# A target journey (this iteration's OWN Target journeys: line) with zero rows
+# forces the merged headline to BLOCKED, exactly like REQUIRED_JOURNEYS does
+# for a required-still-passing journey (section 10) -- proves TARGET_JOURNEYS
+# genuinely reaches merge_ui_test_results.py's --target flag through
+# replay_lane_merge_results (the bash wiring), not just that merge()'s own
+# Python self-test covers the guard in isolation.
+reset_goldens
+REG="$SBX/reports/phase-$ITER-regression-replay-results.md"
+LLM="$SBX/reports/phase-$ITER-ui-test-results.llm.md"
+MERGED="$SBX/reports/phase-$ITER-ui-test-results.md"
+rm -f "$MERGED"
+cat > "$REG" <<'EOF'
+**Browser QA Verdict:** PASS
+
+## Results Table
+| Test ID | Name | Type | Priority | Expected | Actual | Verdict | Evidence |
+|---|---|---|---|---|---|---|---|
+| UT-J-06 | view dashboard | regression | P1 | e | ok | PASS | none |
+EOF
+cat > "$LLM" <<'EOF'
+**Browser QA Verdict:** PASS
+
+## Results Table
+| Test ID | Name | Type | Priority | Expected | Actual | Verdict | Evidence |
+|---|---|---|---|---|---|---|---|
+EOF
+(
+  set -euo pipefail
+  source "$LIB"
+  REPO_ROOT="$SBX"
+  replay_lane_paths "$ITER"
+  _use_replay=yes
+  TARGET_JOURNEYS="J-05 "   # this iteration's own target -- has ZERO rows in either lane above
+  replay_lane_merge_results "$MERGED" "$LLM"
+)
+grep -q '^\*\*Browser QA Verdict:\*\* BLOCKED' "$MERGED" \
+  && assert "merge: TARGET_JOURNEYS threads into --target -- missing target forces BLOCKED" pass \
+  || assert "merge: TARGET_JOURNEYS threads into --target -- missing target forces BLOCKED" fail
+grep -q '## Missing Target Journeys' "$MERGED" && grep -q 'UT-J-05' "$MERGED" \
+  && assert "merge: Missing Target Journeys section names J-05" pass \
+  || assert "merge: Missing Target Journeys section names J-05" fail
+
+# TARGET_JOURNEYS unset (plain phase mode / no Target journeys line) → unchanged clean PASS, so
+# every caller stays byte-identical until its own bash wiring sets TARGET_JOURNEYS.
+rm -f "$MERGED"
+(
+  set -euo pipefail
+  source "$LIB"
+  REPO_ROOT="$SBX"
+  replay_lane_paths "$ITER"
+  _use_replay=yes
+  replay_lane_merge_results "$MERGED" "$LLM"
+)
+grep -q '^\*\*Browser QA Verdict:\*\* PASS' "$MERGED" \
+  && assert "merge: TARGET_JOURNEYS unset -> unchanged clean PASS" pass \
+  || assert "merge: TARGET_JOURNEYS unset -> unchanged clean PASS" fail
 
 # ── 11. Merge crash → lane-file fallback ─────────────────────────────────────
 reset_goldens
