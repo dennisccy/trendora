@@ -1,0 +1,24 @@
+=== TC-8/TC-9 live kill -9 + restart evidence — 2026-07-30T22:07:05Z ===
+
+Live dev-DB backend (apps/backend/data/trendora.db), launched via scripts/start-backend.sh, port 8255.
+
+1. Triggered backfill job fdf68e4e77da4dc9bc18b875f40209de (2011-02-01..2011-02-28, 18 trading days).
+2. Polled until dates_done reached double digits (10/18 at 23:05:59 local), confirming genuine in-flight progress.
+3. Re-read job status immediately before killing: dates_done=18/18, snapshots_created=17, status=running,
+   finished_at=null, completed_stages=[backfill] -- backfill compute stage was done, finalize/aggregate-warm
+   tail was in flight (aggregates_refreshed still empty) when the kill signal was sent.
+4. kill -9 748801 (the real uvicorn PID, confirmed via 'ps aux', not a setsid wrapper) -- process confirmed dead.
+5. Restarted via scripts/start-backend.sh (same launch script, AG-10-compliant), same port. Health 200 within ~2s.
+6. GET /api/data (cold, first request post-restart, 0.12s wall-clock -- no OOM/hang):
+   - TC-8: run id 243 (job fdf68e4e...) status='interrupted', dates_done=2, dates_total=18,
+     snapshots_created=1 -- a REAL, non-zero last-checkpointed progress row, NOT '0 snapshots / 0 dates'.
+     (Note: dates_done=2 is the DB's last PERSISTED checkpoint, which lags the in-memory progress the
+     live process had reached (18/18) at the instant of the kill signal -- checkpoints are written
+     periodically, not on every single date; the row is honestly non-zero either way, satisfying the
+     'not a zeroed row' requirement precisely.)
+   - TC-9: coverage.coverage_status='stale' (real, non-'not_yet_computed'), snapshot_count=1902,
+     universe_count=540 -- served from storage cold, not the all-zero sentinel.
+   - Bonus: pre-existing orphaned runs 241/242 (left 'running' by an earlier, separately-interrupted
+     session, started_at 2026-07-30T16:11) were ALSO correctly swept to status='interrupted' with their
+     own real checkpoints preserved (dates_done=4/22 each) on this same restart -- independent
+     corroboration of the orphan-sweep + checkpoint-preservation behavior.

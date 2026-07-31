@@ -28,7 +28,7 @@ from sqlmodel import Session, select
 
 from app.config import load_config
 from app.db import create_db_and_tables, make_engine
-from app.engine import forward_testing, scanner
+from app.engine import data_manager, forward_testing, scanner
 from app.engine.data_manager import _trading_days, create_job, get_job, run_data_job
 from app.models import ForwardReturn, ScannerResult, ScannerRun
 from app.seed_loader import load_seed
@@ -314,6 +314,114 @@ def test_backfill_single_date_failure_isolated_others_complete(tmp_path, monkeyp
                 assert run is None
             else:
                 assert run is not None
+
+
+# ==================================================================================================
+# ops-hardening iter-39 FIX PASS (audit finding B2) — per-WORKER-THREAD MemoryError isolation.
+#
+# The audit found the one per-item loop that never carried iter-8's `except MemoryError` convention:
+# `_do_backfill`'s per-date compute. Submitted bare, a worker's `MemoryError` was stored on its `Future`
+# WITH its traceback (pinning every failing frame's locals alive until the orchestrator drained it) while
+# that worker immediately picked up the next date and allocated again — the same "hammer the next
+# allocation under pressure" amplifier iter-8 identified as the confirmed root cause of iter-7's 7+ minute
+# health hang, and the shape trial 3 reproduced this iteration
+# (`runs/goal-ops-hardening-iter-39/mem-drill/trial3-2650mb-wedge-evidence.txt`).
+# ==================================================================================================
+def test_backfill_worker_memory_error_caught_in_worker_thread_not_drain_loop(tmp_path, monkeypatch):
+    """A `MemoryError` in the PARALLEL per-date compute is caught inside the worker's own frame — proven
+    by the recorded per-date error carrying the WRAPPER's wording ("aborted for memory pressure at <date>")
+    rather than the raw exception text the old drain-loop `except Exception: str(exc)` would have recorded.
+    The job ends an honest `partial` (never a crash, a hang, or a stuck `running`), fabricates no snapshot,
+    calls `_release_process_memory()`, and keeps the run-summary invariant exact."""
+    cfg, engine = _fresh_seed_engine(tmp_path, "worker_mem")
+    with Session(engine) as session:
+        trading = _trading_days(session, cfg)
+    _base = _daily_region_start(trading, cfg)
+    r_start, r_end = trading[_base + 305], trading[_base + 308]
+    in_range = [d for d in trading if r_start <= d <= r_end]
+    assert len(in_range) == 4  # a real fan-out across the worker pool
+
+    release_calls: list[str] = []
+    real_release = data_manager._release_process_memory
+    monkeypatch.setattr(
+        data_manager, "_release_process_memory",
+        lambda: (release_calls.append("released"), real_release())[1],
+    )
+    # the test-only injector at the worker call site — deterministic, and (unlike a tightened cap) it
+    # induces no real memory pressure on this host at all (AG-10).
+    monkeypatch.setenv(data_manager._FAULT_INJECT_MEMORY_ERROR_ENV, "backfill_worker")
+
+    job = create_job("backfill", r_start, r_end)
+    summary = run_data_job(job.job_id, config=_with_backfill_workers(cfg, 4), engine=engine)
+
+    assert summary["status"] == "partial", "isolated per-date failures → partial, never a crash or stuck run"
+    assert summary["snapshots_created"] == 0, "nothing may be fabricated for a date whose compute aborted"
+    assert summary["error_other"] == len(in_range), "every unattempted/aborted date must be counted honestly"
+    # the run-summary contract in goal.md ("Canonical values"): the breakdown still partitions the range.
+    assert (
+        summary["snapshots_created"] + summary["already_snapshotted"] + summary["error_other"]
+        == summary["dates_total"]
+    )
+    errors = [f["error"] for f in summary["date_failures"]]
+    assert len(errors) == len(in_range)
+    assert all(
+        ("aborted for memory pressure at" in e) or ("already aborted a date for memory pressure" in e)
+        for e in errors
+    ), (
+        "every recorded error must come from the worker-frame isolation wrapper (abort or latch-skip); a "
+        f"raw injected-exception string would mean the MemoryError escaped to the drain loop: {errors}"
+    )
+    assert any("aborted for memory pressure at" in e for e in errors), (
+        f"at least one date must record the worker-frame MemoryError abort itself: {errors}"
+    )
+    assert release_calls, "the iter-8 convention requires _release_process_memory() on the MemoryError path"
+    with Session(engine) as session:
+        for d in in_range:
+            assert scanner.get_run_for_date(session, d) is None
+
+
+def test_backfill_memory_pressure_latch_stops_remaining_dates(tmp_path, monkeypatch):
+    """The latch half of the convention, asserted DETERMINISTICALLY on the serial arm (workers=1, so date
+    order is fixed and there is no in-flight-sibling race): once the FIRST date's compute raises
+    `MemoryError`, the remaining dates are NOT attempted — they are recorded as honest skips instead of
+    each firing its own large allocation under pressure. Load-bearing: `compute_run_payload` raises for the
+    first date ONLY, so without the latch the later dates would have succeeded and produced snapshots."""
+    cfg, engine = _fresh_seed_engine(tmp_path, "mem_latch")
+    with Session(engine) as session:
+        trading = _trading_days(session, cfg)
+    _base = _daily_region_start(trading, cfg)
+    r_start, r_end = trading[_base + 305], trading[_base + 307]
+    in_range = [d for d in trading if r_start <= d <= r_end]
+    assert len(in_range) == 3
+    first_date = in_range[0]
+
+    real_compute = scanner.compute_run_payload
+    attempted: list[date] = []
+
+    def _fail_first_only(session_arg, asof, config=None):
+        attempted.append(asof)
+        if asof == first_date:
+            raise MemoryError("simulated allocation failure on the first date")
+        return real_compute(session_arg, asof, config)
+
+    monkeypatch.setattr(scanner, "compute_run_payload", _fail_first_only)
+
+    job = create_job("backfill", r_start, r_end)
+    summary = run_data_job(job.job_id, config=_with_backfill_workers(cfg, 1), engine=engine)
+
+    assert attempted == [first_date], (
+        "after the first date's MemoryError the latch must stop the remaining dates from ATTEMPTING their "
+        f"own compute; dates that reached compute_run_payload: {attempted}"
+    )
+    assert summary["status"] == "partial"
+    assert summary["snapshots_created"] == 0
+    assert summary["error_other"] == len(in_range)  # skipped dates are failures, never silently dropped
+    errors = {f["date"]: f["error"] for f in summary["date_failures"]}
+    assert "aborted for memory pressure at" in errors[first_date.isoformat()]
+    for d in in_range[1:]:
+        assert "already aborted a date for memory pressure" in errors[d.isoformat()], (
+            f"a latch-skipped date must say so honestly, not masquerade as a compute failure: {errors}"
+        )
 
 
 def test_backfill_progress_never_exceeds_total(tmp_path):

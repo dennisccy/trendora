@@ -40,7 +40,13 @@ from app.config import load_config
 from app.db import create_db_and_tables, get_engine
 from app.engine.data_manager import sweep_orphaned_runs
 from app.engine.warmup import ensure_latest_snapshot, start_warmup
+from app.logging_config import configure_app_logging
 from app.seed_loader import load_seed
+
+# ops-hardening iter-39: attach a root-logger handler at INFO level BEFORE any `trendora.*`
+# logger is used below (or by any imported engine module) — see `app.logging_config`'s own
+# docstring for why this was needed (routine `.info()` calls were previously dropped silently).
+configure_app_logging()
 
 logger = logging.getLogger("trendora.lifespan")
 

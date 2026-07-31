@@ -1,0 +1,4 @@
+2026-07-31 00:10:52,524 INFO trendora.data_manager: J-07 finalize-tail cache_ctx liveness: job=c67a6b0a31c040d0a666605081aef4aa resolved=attach_shared_cache(live shared cache)
+2026-07-31 00:11:16,666 ERROR trendora.data_manager: ingest forward-aggregate warm aborted at horizon 1 — memory pressure, stopping remaining horizons in this loop: injected at fault-injection site 'forward_aggregates' (TRENDORA_FAULT_INJECT_MEMORY_ERROR)
+147787:2026-07-31 00:10:52,524 INFO trendora.data_manager: J-07 finalize-tail cache_ctx liveness: job=c67a6b0a31c040d0a666605081aef4aa resolved=attach_shared_cache(live shared cache)
+148264:2026-07-31 00:11:16,666 ERROR trendora.data_manager: ingest forward-aggregate warm aborted at horizon 1 — memory pressure, stopping remaining horizons in this loop: injected at fault-injection site 'forward_aggregates' (TRENDORA_FAULT_INJECT_MEMORY_ERROR)

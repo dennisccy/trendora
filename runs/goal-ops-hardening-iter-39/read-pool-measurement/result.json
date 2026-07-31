@@ -1,0 +1,27 @@
+{
+  "db_path": "/home/dennis-chan/Git/trendora/runs/goal-ops-hardening-iter-39/read-pool-measurement/scratch/measure.db",
+  "k": 3,
+  "target_dates": [
+    "2026-06-22",
+    "2026-06-23",
+    "2026-06-24"
+  ],
+  "seed_setup_seconds": 26.14,
+  "backfill_job_seconds": 16.651,
+  "read_pool_calls": 16,
+  "read_pool_total_seconds": 0.045582,
+  "read_pool_mean_ms": 2.8489,
+  "read_pool_min_ms": 0.4865,
+  "read_pool_max_ms": 32.8956,
+  "aggregates_refreshed": [
+    "latest_snapshot",
+    "coverage",
+    "membership_timeline",
+    "market_phase",
+    "forward_aggregates",
+    "research_hot_keys",
+    "index_series"
+  ],
+  "dates_total": 3,
+  "snapshots_created": 3
+}

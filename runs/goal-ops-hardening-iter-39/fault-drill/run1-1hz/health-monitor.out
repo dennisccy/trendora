@@ -1,0 +1,27 @@
+t=  0.00s health=200 latency=187.2ms vmpeak=1975732 job_status=running
+t=  1.19s health=200 latency=94.0ms vmpeak=1975732 job_status=running
+t=  2.28s health=200 latency=100.1ms vmpeak=1975732 job_status=running
+t=  3.39s health=200 latency=95.5ms vmpeak=1975732 job_status=running
+t=  4.48s health=200 latency=230.5ms vmpeak=1975732 job_status=running
+t=  5.72s health=200 latency=237.5ms vmpeak=1975732 job_status=running
+t=  6.96s health=200 latency=96.9ms vmpeak=1975732 job_status=running
+t=  8.06s health=200 latency=102.7ms vmpeak=2027152 job_status=running
+t=  9.16s health=200 latency=1476.9ms vmpeak=2344432 job_status=running
+t= 11.64s health=200 latency=192.7ms vmpeak=2575844 job_status=running
+t= 12.83s health=200 latency=167.7ms vmpeak=2575844 job_status=running
+t= 14.01s health=200 latency=122.8ms vmpeak=2575844 job_status=running
+t= 15.13s health=200 latency=170.1ms vmpeak=2575844 job_status=running
+t= 16.30s health=200 latency=483.1ms vmpeak=2596208 job_status=running
+t= 17.79s health=200 latency=443.0ms vmpeak=2596208 job_status=running
+t= 19.24s health=200 latency=400.1ms vmpeak=2596208 job_status=running
+t= 20.65s health=200 latency=723.0ms vmpeak=2596208 job_status=running
+t= 22.40s health=200 latency=166.8ms vmpeak=2596208 job_status=running
+t= 23.57s health=200 latency=266.3ms vmpeak=2596208 job_status=running
+t= 24.84s health=200 latency=129.8ms vmpeak=2596208 job_status=running
+t= 25.97s health=200 latency=144.2ms vmpeak=2596208 job_status=running
+t= 27.12s health=200 latency=115.9ms vmpeak=2596208 job_status=running
+t= 28.23s health=200 latency=205.6ms vmpeak=2596208 job_status=running
+t= 29.44s health=200 latency=189.7ms vmpeak=2596208 job_status=running
+t= 30.63s health=200 latency=227.1ms vmpeak=2596208 job_status=ok
+TOTAL_POLLS=25 NON_200=0 MAX_GAP_S=2.478 SAFETY_BACKSTOP_FIRED=False
+FINAL_JOB_STATUS_JSON={"job_id": "441758a38a444c55844a93b1f3cbbce5", "kind": "backfill", "start": "2026-06-25", "end": "2026-06-26", "source": null, "status": "ok", "symbols_total": 0, "symbols_ok": 0, "symbols_failed": 0, "bars_fetched": 0, "dates_total": 2, "dates_done": 2, "snapshots_created": 2, "forward_returns_inserted": 1106, "calendar_days": 2, "non_trading_days": 0, "already_snapshotted": 0, "error_other": 0, "aggregates_refreshed": ["latest_snapshot", "coverage", "membership_timeline", "market_phase", "research_hot_keys", "drawdown_expectations"], "chunk_index": 1, "chunk_total": 1, "passers": 0, "omitted_total": 0, "omitted": [], "stages": {"backfill": {"elapsed_seconds": 10.9982, "items_processed": 2, "concurrency": 2, "per_date_seconds_sum": 2.7471, "speedup_factor": 0.2498}}, "current_activity": "scanning 2026-06-26 (2/2)", "last_progress_at": "2026-07-30T23:08:45.974368+00:00", "completed_stages": ["backfill"], "date_failures": [], "message": "backfill: 2 snapshots over 2 dates, 1106 forward returns", "errors": [], "started_at": "2026-07-30T23:08:17.182235+00:00", "finished_at": "2026-07-30T23:08:47.958752+00:00"}

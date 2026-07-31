@@ -2902,6 +2902,43 @@ def _release_process_memory() -> None:
             pass
 
 
+# --------------------------------------------------------------------------------------------------
+# ops-hardening iter-39 (audit finding B3 / J-07 step 4) — TEST-ONLY `MemoryError` fault injection.
+#
+# J-07 step 4's own text sanctions exactly this: "Induce memory pressure during a warm (TEST HOOK or a
+# tightened cap in a throwaway process)". Three live calibration trials this iteration (3420/2700/2650 MB)
+# failed to reach the two NAMED per-item aggregate-warm handlers, because `_missing_data_diagnostic`'s
+# whole-`daily_prices` materialization runs EARLIER in the same finalize sequence and exhausts any cap
+# tight enough to threaten them first (audit B3). Continuing to tune the cap is the wrong-direction
+# pattern in `.claude/judgment-rubrics.md` §4; this hook makes the same proof DETERMINISTIC — and, because
+# it induces no real memory pressure at all, it is also strictly safer for this host (AG-10).
+#
+# Contract: unset in every real deployment (the env var is read once per warm call and is absent, so the
+# behavior is byte-identical to before this hook existed — no second code path, no config surface). Same
+# class of test-only env escape hatch as `TRENDORA_FORCE_LEGACY_BAR_CACHE` (iter-38), and it is deliberately
+# NOT a config.yaml key: a fault injector must not be reachable through the product's own configuration.
+# --------------------------------------------------------------------------------------------------
+_FAULT_INJECT_MEMORY_ERROR_ENV = "TRENDORA_FAULT_INJECT_MEMORY_ERROR"
+# The call sites this hook understands. Each is the exact per-item boundary whose `except MemoryError`
+# handler J-07's acceptance names; an unknown name in the env var injects nothing (a typo must not
+# silently look like a passing drill).
+_FAULT_INJECT_SITES = frozenset({"forward_aggregates", "drawdown_expectations", "backfill_worker"})
+
+
+def _fault_inject_memory_error(site: str) -> None:
+    """Raise `MemoryError` at `site` when this process was started with `site` listed in
+    `TRENDORA_FAULT_INJECT_MEMORY_ERROR` (comma-separated). A no-op — one `os.environ.get` — otherwise.
+
+    The raised exception carries the site name so the drill/test asserts WHICH stage aborted from a direct
+    read of the log line, never inferring it from "a `MemoryError` fired somewhere" (the binding iter-37/38
+    lesson). An unrecognized site name is ignored (see `_FAULT_INJECT_SITES`)."""
+    if site not in _FAULT_INJECT_SITES:
+        return
+    raw = os.environ.get(_FAULT_INJECT_MEMORY_ERROR_ENV, "")
+    if site in {token.strip() for token in raw.split(",") if token.strip()}:
+        raise MemoryError(f"injected at fault-injection site {site!r} ({_FAULT_INJECT_MEMORY_ERROR_ENV})")
+
+
 def _do_backfill(session: Session, cfg: Config, prog: JobProgress, *, eng: Engine) -> None:
     """For each in-range trading day with bars but NO snapshot, create the immutable snapshot then INSERT
     its realized forward returns (bars > D). No scan/return math is re-implemented and no snapshot is
@@ -3120,8 +3157,73 @@ def _do_backfill(session: Session, cfg: Config, prog: JobProgress, *, eng: Engin
             # `prog._shared_bar_cache is not None` check (`_persist_per_date_coverage_snapshots`,
             # `_refresh_ingest_aggregates`) falls back to its own independent `prefilled_bar_cache`/
             # `nullcontext()` path, unchanged from pre-iter-37 behavior — no second code path needed.
-            if not os.environ.get("TRENDORA_FORCE_LEGACY_BAR_CACHE"):
+            #
+            # ops-hardening iter-39 (audit B5 fix): the prior `if not os.environ.get(...)` treated ANY
+            # non-empty value as "force legacy" — including `"0"`/`"false"`, so a caller trying to
+            # explicitly DISABLE the toggle by setting it to `"0"` silently ENABLED legacy mode instead.
+            # An explicit truthy allowlist closes that: only a recognized truthy token forces legacy mode;
+            # unset, empty, `"0"`, or any other value takes the normal (live shared-cache) path.
+            if os.environ.get("TRENDORA_FORCE_LEGACY_BAR_CACHE", "").strip().lower() not in (
+                "1", "true", "yes",
+            ):
                 prog._shared_bar_cache = shared_cache
+
+            # ops-hardening iter-39 (audit finding B2) — per-JOB memory-pressure latch for the per-date
+            # compute. Set by `_compute_one_isolated` the first time any date's compute raises
+            # `MemoryError`; every date still pending then short-circuits without attempting its own
+            # allocation. This is the iter-8 finalize-tail convention ("on the first `MemoryError` that ONE
+            # loop stops attempting further items, instead of hammering the next item's allocation under
+            # real pressure — the confirmed root cause of iter-7's 7+ minute health hang") applied to the
+            # ONE per-item loop that never carried it: `_do_backfill`'s per-date compute. A `threading.Event`
+            # rather than a plain bool because the parallel arm reads/writes it from `backfill_workers`
+            # threads concurrently.
+            memory_pressure = threading.Event()
+
+            def _compute_one_isolated(
+                d: date_cls,
+            ) -> tuple[date_cls, Optional[dict], float, Optional[str]]:
+                """Compute ONE date INSIDE the calling (worker) thread with per-item failure isolation,
+                returning `(d, payload, seconds, compute_error)` — never raising.
+
+                ops-hardening iter-39 (audit finding B2): before this, `_compute_one_backfill_date` was
+                submitted to the pool bare, so a `MemoryError` in a worker was stored on its `Future` —
+                WITH its `__traceback__`, which pins every frame's locals (the half-materialized payload,
+                the ORM result buffers) alive until the orchestrating thread drains that future — while the
+                worker thread immediately picked up the NEXT date and started allocating again. Under
+                genuine pressure that is the amplifier, not the accident: N workers each retaining a failing
+                frame chain while N more allocations are attempted. Catching in the worker's own frame ends
+                both — the traceback dies with the `except` block and only a plain string crosses the thread
+                boundary, and the latch stops the remaining dates from piling on.
+
+                HONESTY: a short-circuited date is recorded as a per-date FAILURE (`error_other`), never as
+                a success and never silently dropped — so `snapshots_created + already_snapshotted +
+                error_other == dates_total` still holds exactly (the run-summary contract in goal.md).
+
+                Deviation from the finalize-tail loops' `logger.exception(...)`-then-`_release_process_
+                memory()` order, deliberately: formatting a traceback ALLOCATES, and this iteration's own
+                trial-3 evidence shows that failing under real exhaustion
+                (`runs/goal-ops-hardening-iter-39/mem-drill/trial3-2650mb-wedge-evidence.txt:50` —
+                "Exception ignored in thread started by: <object repr() failed>"). Freeing first buys the
+                headroom the log line needs, and the log line is what makes the abort diagnosable at all."""
+                if memory_pressure.is_set():
+                    return d, None, 0.0, (
+                        "skipped — this job already aborted a date for memory pressure "
+                        "(remaining dates not attempted)"
+                    )
+                try:
+                    _fault_inject_memory_error("backfill_worker")
+                    _, payload, secs = _compute_one_backfill_date(eng, cfg, d, shared_cache)
+                    return d, payload, secs, None
+                except MemoryError:
+                    memory_pressure.set()  # latch FIRST so in-flight siblings stop allocating immediately
+                    _release_process_memory()
+                    logger.exception(
+                        "backfill per-date compute aborted at %s — memory pressure, skipping the remaining "
+                        "dates in this job", d,
+                    )
+                    return d, None, 0.0, f"aborted for memory pressure at {d.isoformat()}"
+                except Exception as exc:  # noqa: BLE001 — isolate this date's compute failure (unchanged)
+                    return d, None, 0.0, str(exc)
 
             def _run_targets(window_targets: list[date_cls]) -> None:
                 """Compute + persist exactly this window's target dates — serial (workers<=1 or a single
@@ -3131,13 +3233,7 @@ def _do_backfill(session: Session, cfg: Config, prog: JobProgress, *, eng: Engin
                     # serial baseline — compute + persist inline, one date at a time, in order. A per-date
                     # compute failure is caught here (isolated), not raised — the rest still run.
                     for d in window_targets:
-                        compute_error: Optional[str] = None
-                        payload: Optional[dict] = None
-                        secs = 0.0
-                        try:
-                            _, payload, secs = _compute_one_backfill_date(eng, cfg, d, shared_cache)
-                        except Exception as exc:  # noqa: BLE001 — isolate this date's compute failure
-                            compute_error = str(exc)
+                        _, payload, secs, compute_error = _compute_one_isolated(d)
                         _persist_isolated(d, payload, secs, compute_error)
                     return
                 # PARALLEL: fan out the per-date compute; persist results IN DATE ORDER on this thread as
@@ -3147,16 +3243,22 @@ def _do_backfill(session: Session, cfg: Config, prog: JobProgress, *, eng: Engin
                 pending: dict[date_cls, tuple[Optional[dict], float, Optional[str]]] = {}
                 next_idx = 0
                 with ThreadPoolExecutor(max_workers=min(workers, len(window_targets))) as pool:
+                    # iter-39 (audit B2): submit the ISOLATING wrapper, not the bare compute — a worker's
+                    # `MemoryError` is now caught in that worker's own frame (traceback dropped there,
+                    # memory released there, latch set there) and arrives here as a plain error string.
                     future_to_date = {
-                        pool.submit(_compute_one_backfill_date, eng, cfg, d, shared_cache): d
+                        pool.submit(_compute_one_isolated, d): d
                         for d in window_targets
                     }
                     for future in as_completed(future_to_date):
                         d = future_to_date[future]
                         try:
-                            _, payload, secs = future.result()
-                            pending[d] = (payload, secs, None)
-                        except Exception as exc:  # noqa: BLE001 — capture this date's failure, keep draining
+                            _, payload, secs, compute_error = future.result()
+                            pending[d] = (payload, secs, compute_error)
+                        except Exception as exc:  # noqa: BLE001 — defensive: `_compute_one_isolated` never
+                            # raises, so this can now only fire for a pool-level fault (e.g. the
+                            # `RuntimeError: can't start new thread` iter-38's drill hit at the `ulimit -v`
+                            # ceiling). Still captured per date so the drain loop never deadlocks.
                             pending[d] = (None, 0.0, str(exc))
                         # drain any now-contiguous prefix in target (date) order — writes stay strictly
                         # ordered within the window.
@@ -3354,11 +3456,13 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
     # binding iter-37 lesson is that a drill on a conditional path (a stashed reference, an attach/fallback
     # context) must ASSERT the condition was live, never assume it from the lexical `with cache_ctx:` wrap
     # alone. One line per job, corroborable against a bounded range of the live `logs/backend.log`.
-    # `logger.warning` (not `.info`): this app never configures a root-logger handler/level, so uvicorn's
-    # last-resort handler — the ONLY thing writing `trendora.data_manager` records into `logs/backend.log`
-    # — only surfaces WARNING and above (confirmed live: an `.info` call here was silently dropped, never
-    # once appearing in the log across a full drilled job).
-    logger.warning(
+    # ops-hardening iter-39: downgraded `.warning` -> `.info`, its honest level — this is routine liveness
+    # telemetry, not a warning condition. Safe now that `app.logging_config.configure_app_logging()` (wired
+    # from `main.py` at import time) attaches a root-logger handler at INFO, so this no longer needs to
+    # masquerade as a warning to reach `logs/backend.log` (iter-38's workaround; confirmed live via TC-12 —
+    # see `test_data_manager.py` — that an `.info`-level record from this logger now reaches the configured
+    # handler).
+    logger.info(
         "J-07 finalize-tail cache_ctx liveness: job=%s resolved=%s",
         prog.job_id,
         "attach_shared_cache(live shared cache)" if shared is not None else "nullcontext(no shared cache)",
@@ -3440,6 +3544,10 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
                         # this loop stops immediately (no further horizons attempted) and forces memory back
                         # to the OS.
                         try:
+                            # iter-39 (audit B3 / J-07 step 4): test-only injection point — a no-op unless
+                            # this process was started with the env var naming this site. See
+                            # `_fault_inject_memory_error`.
+                            _fault_inject_memory_error("forward_aggregates")
                             forward_testing.forward_aggregates_ingest_cached(
                                 session, h, cfg, as_of=latest_run_date
                             )
@@ -3529,6 +3637,9 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
                 claim = entry.get("claim") if isinstance(entry.get("claim"), dict) else {}
                 prog.tick()  # heartbeat stamp before each claim's warm call — see docstring above.
                 try:
+                    # iter-39 (audit B3 / J-07 step 4): test-only injection point — see
+                    # `_fault_inject_memory_error` (a no-op unless this process names this site in the env).
+                    _fault_inject_memory_error("drawdown_expectations")
                     result = forward_testing.compute_drawdown_expectations_cached(session, claim, cfg)
                     # gate on an ACTUAL non-None payload (never just "the call didn't raise") — an
                     # out-of-scope horizon or an unresolvable cohort returns None honestly and must NOT be

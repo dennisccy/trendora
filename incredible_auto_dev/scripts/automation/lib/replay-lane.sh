@@ -335,8 +335,19 @@ replay_lane_partition_and_verify() {
       _replay_lane_mark_skipped_infra "$_rl_iter"
       _use_replay="no"
       R_REPLAY=""
+    elif [[ "$_replay_rc" -eq 7 ]]; then
+      # ops-hardening iter-39: demo_runner.py's OWN health probe found the backend unreachable
+      # BEFORE any journey ran (see demo_runner.py's run_verify docstring / TC-5) — every journey
+      # in $REGRESSION_RESULTS was written BLOCKED, never FAIL. Same safe fallback as any other
+      # lane failure below (route every replay journey to a genuine LLM-lane verification instead
+      # of trusting an unrun replay), logged distinctly so this reads as "the backend was down",
+      # not "the browser crashed" (rc=6) or "a selector broke" (rc=5) — exactly the ambiguity
+      # that produced iter-38/t's false-regression reports twice this session.
+      _replay_lane_warn "Replay lane: backend unreachable before any journey ran (rc=7, BLOCKED — see $REGRESSION_RESULTS) — falling back to the LLM lane for ALL regression journeys."
+      _use_replay="no"
+      R_REPLAY=""
     elif [[ "$_replay_rc" -ne 0 ]]; then
-      # Replay-lane infrastructure failure (non-6 rc = runner crash, missing
+      # Replay-lane infrastructure failure (non-6/7 rc = runner crash, missing
       # playwright, bad invocation). The replay journeys were NOT verified —
       # route ALL of them back to the LLM lane, byte-identical to running this
       # iteration with CHAIN_REGRESSION_REPLAY=false. Previously a replay crash
@@ -450,19 +461,44 @@ replay_lane_merge_results() {
 }
 
 # Reconcile the RAW replay artifact after a merge: any journey the replay lane
-# FAILed but the merged file records as PASS was overturned by the LLM lane's
-# re-confirmation (golden-script false positive — brittle selector, cleared
-# fixture, stale expected string). Append a dated footer naming those journeys
-# so no stale FAIL survives the iteration on disk: a human or fresh-context
-# evaluator reading the raw artifact must not see an uncontradicted FAIL that
-# the authoritative merged file already overturned.
+# FAILed but the merged file no longer records as FAIL was overturned by the
+# LLM lane's re-confirmation (golden-script false positive — brittle selector,
+# cleared fixture, stale expected string). Append a dated footer naming those
+# journeys so no stale FAIL survives the iteration on disk: a human or
+# fresh-context evaluator reading the raw artifact must not see an
+# uncontradicted FAIL that the authoritative merged file already overturned.
+#
+# ops-hardening iter-39 (TC-7, audit finding iter-38/T1): the overturned check delegates to
+# merge_ui_test_results.py's OWN tested `verdict-of` normalization (the same annotation-tolerant
+# parsing `parse_rows` uses) instead of a raw `grep -F '| PASS |'`. That exact-string match
+# silently missed BOTH J-05 (FAIL -> "PASS (steps 1,2,4 verified live; step 3 not executed, see
+# UT-J-04)") and J-04 (FAIL -> "SKIPPED (partial — see Actual)") in iter-38: neither annotated
+# cell contains the bare substring the old check required, and the old check only recognized a
+# flip to PASS in the first place (a flip to SKIP was never checked at all) — so the footer
+# under-reported by omitting both, even though both were genuinely overturned. "Overturned" is
+# now simply "the merged verdict for this journey exists and is no longer FAIL" — covers a flip
+# to PASS, SKIP, or any annotated variant of either.
+#
+# ops-hardening iter-39 FIX PASS (audit finding B6): the footer prose is now derived PER JOURNEY
+# from the actual new verdict instead of one fixed sentence. The fixed sentence ("were overturned
+# by the LLM lane's re-confirmation ... (golden-script false positive) ... superseded") is true
+# only of a flip to PASS. For a flip to SKIP it read as "the FAIL was disproven" when the truth is
+# "the journey was never re-verified" — the widened overturn check (correct in itself) made that
+# mis-wording reachable for the first time. A verdict that means NOT-VERIFIED must never be
+# reported in language that means VERIFIED-GOOD.
 replay_lane_reconcile_regression_artifact() {
   local _rl_merged="$1"
   [[ -f "$REGRESSION_RESULTS" && -f "$_rl_merged" ]] || return 0
-  local _rl_overturned="" _j
+  local _rl_overturned="" _rl_detail="" _j _rl_new_verdict
   for _j in $(grep -E '^\| UT-J-[0-9]+ ' "$REGRESSION_RESULTS" 2>/dev/null | grep -F '| FAIL |' | grep -oE 'J-[0-9]+' | sort -u || true); do
-    if grep -E "^\| UT-$_j " "$_rl_merged" 2>/dev/null | grep -qF '| PASS |'; then
+    _rl_new_verdict="$(python3 "$MERGE_RESULTS" verdict-of "$_rl_merged" "UT-$_j" 2>/dev/null || true)"
+    if [[ -n "$_rl_new_verdict" && "$_rl_new_verdict" != "FAIL" ]]; then
       _rl_overturned+="$_j "
+      if [[ "$_rl_new_verdict" == "PASS" ]]; then
+        _rl_detail+="**$_j -> PASS** (re-confirmed live by the LLM lane — the replay FAIL was a golden-script false positive); "
+      else
+        _rl_detail+="**$_j -> $_rl_new_verdict** (NOT re-verified — the replay FAIL is superseded, not disproven); "
+      fi
     fi
   done
   [[ -n "${_rl_overturned// /}" ]] || return 0
@@ -470,9 +506,9 @@ replay_lane_reconcile_regression_artifact() {
     echo ""
     echo "---"
     echo ""
-    echo "_Reconciliation ($(date -u +%Y-%m-%d)): the replay FAIL row(s) for ${_rl_overturned% } above were overturned by the LLM lane's re-confirmation this iteration (golden-script false positive). The authoritative merged verdicts are in $(basename "$_rl_merged"); the FAIL row(s) above are superseded._"
+    echo "_Reconciliation ($(date -u +%Y-%m-%d)): the replay FAIL row(s) above no longer stand in the authoritative merged file ($(basename "$_rl_merged")), which is what the goal-evaluator and the achievement gate read. Per journey: ${_rl_detail%; }._"
   } >> "$REGRESSION_RESULTS" 2>/dev/null || true
-  _replay_lane_log "Reconciled replay artifact: FAIL overturned by LLM re-confirmation for ${_rl_overturned% }(footer appended to $(basename "$REGRESSION_RESULTS"))."
+  _replay_lane_log "Reconciled replay artifact: replay FAIL no longer stands for ${_rl_overturned% }(per-journey footer appended to $(basename "$REGRESSION_RESULTS"))."
 }
 
 # Golden coverage: every PASSing journey in results file $1 should have a

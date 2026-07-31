@@ -77,6 +77,16 @@ _FAIL_CELL_RE = re.compile(r"\|\s*FAIL\s*\|")
 # this iteration — it keeps its prior status for scoring, but it must block
 # GOAL_ACHIEVED exactly like a FAIL until a later iteration re-verifies it.
 _DEFERRED_CELL_RE = re.compile(r"\|\s*DEFERRED-BUDGET\s*\|")
+# ops-hardening iter-39 audit (B2): demo_runner.py's new rc-7 path writes a BLOCKED row per
+# journey when the backend did not answer its health probe — correctly NOT a FAIL (the journey's
+# own assertions were never checked). But replay_lane_merge_results ALWAYS merges the raw replay
+# artifact into the authoritative merged results, and merge_ui_test_results.parse_rows does not
+# recognize BLOCKED, so those rows carry an empty verdict: they are excluded from the merged
+# headline, invisible to _FAIL_CELL_RE, and a run where the backend was down for every regression
+# journey could present as "**Browser QA Verdict:** PASS" with rc 0 here (reproduced during the
+# audit). BLOCKED means NOT VERIFIED — exactly the DEFERRED-BUDGET case above — so it must block
+# GOAL_ACHIEVED identically until a later iteration actually replays the journey.
+_BLOCKED_CELL_RE = re.compile(r"\|\s*BLOCKED\s*\|")
 
 
 def _load_history(path: str) -> dict | None:
@@ -137,7 +147,8 @@ def cmd_results(path: str) -> int:
         text = Path(path).read_text(encoding="utf-8")
     except OSError:
         return 2
-    return 1 if (_FAIL_CELL_RE.search(text) or _DEFERRED_CELL_RE.search(text)) else 0
+    return 1 if (_FAIL_CELL_RE.search(text) or _DEFERRED_CELL_RE.search(text)
+                 or _BLOCKED_CELL_RE.search(text)) else 0
 
 
 def cmd_regressions(pre_path: str, post_path: str) -> int:
@@ -453,6 +464,22 @@ def _self_test() -> int:
             "| UT-J-06 | J-06 regression re-check | regression | P2 | e | not run | DEFERRED-BUDGET | deferred: over iteration wall-clock budget |\n",
             encoding="utf-8")
         assert cmd_results(str(res_def)) == 1, "DEFERRED-BUDGET must block GOAL_ACHIEVED"
+        # ops-hardening iter-39 audit (B2): a BLOCKED row (demo_runner rc 7 — the backend never
+        # answered its health probe, so the journey was never replayed) must block achievement
+        # exactly like DEFERRED-BUDGET. It reaches the MERGED results file because
+        # replay_lane_merge_results always merges the raw replay artifact, and it carries no
+        # PASS/FAIL/SKIP verdict for parse_rows — so without this the merged headline can read
+        # PASS while every regression journey went unverified.
+        res_blocked = d / "r5.md"; res_blocked.write_text(
+            "| UT-J-07 | target journey | functional | P1 | e | ok | PASS | x.png |\n"
+            "| UT-J-01 | J-01 | regression | P1 | backend answers GET /api/health with HTTP 200 "
+            "before replay | backend unreachable: did not answer 200 | BLOCKED | none |\n",
+            encoding="utf-8")
+        assert cmd_results(str(res_blocked)) == 1, "BLOCKED (unverified journey) must block GOAL_ACHIEVED"
+        res_blocked_prose = d / "r6.md"; res_blocked_prose.write_text(
+            "| T1 | the run was never BLOCKED at any point | ui | P1 | e | a | PASS | x.png |\n",
+            encoding="utf-8")
+        assert cmd_results(str(res_blocked_prose)) == 0, "BLOCKED must match a whole cell only"
 
         # regressions: J-01 passing→failing is caught; missing pre → 0
         post = d / "post.json"

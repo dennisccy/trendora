@@ -1,0 +1,46 @@
+             ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/api/backtest.py", line 171, in backtest
+    backfill_result = backfill_run_forward_returns(session, run, cfg)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/forward_testing.py", line 2032, in backfill_run_forward_returns
+    ).all()
+      ^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/.venv/lib/python3.12/site-packages/sqlalchemy/engine/result.py", line 1433, in all
+    return self._allrows()
+           ^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/.venv/lib/python3.12/site-packages/sqlalchemy/engine/result.py", line 587, in _allrows
+    rows = self._fetchall_impl()
+           ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/.venv/lib/python3.12/site-packages/sqlalchemy/engine/result.py", line 2337, in _fetchall_impl
+    return list(self.iterator)
+           ^^^^^^^^^^^^^^^^^^^
+MemoryError
+INFO:     127.0.0.1:53400 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53404 - "POST /api/data/jobs HTTP/1.1" 200 OK
+ingest forward-aggregate warm aborted at horizon 1 — memory pressure, stopping remaining horizons in this loop: 
+Traceback (most recent call last):
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/data_manager.py", line 3416, in _refresh_ingest_aggregates
+    forward_testing.forward_aggregates_ingest_cached(
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/forward_testing.py", line 1504, in forward_aggregates_ingest_cached
+    payload = compute_forward_aggregates(session, horizon, cfg, as_of=as_of)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+MemoryError
+INFO:     127.0.0.1:51190 - "GET /api/data/jobs/52947bd4152e46038a4f5243996bb7d1 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51196 - "GET /api/data/jobs/52947bd4152e46038a4f5243996bb7d1 HTTP/1.1" 200 OK
+ingest drawdown-expectations warm aborted — memory pressure, stopping remaining claims in this loop: 
+Traceback (most recent call last):
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/data_manager.py", line 3505, in _refresh_ingest_aggregates
+    result = forward_testing.compute_drawdown_expectations_cached(session, claim, cfg)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/forward_testing.py", line 2456, in compute_drawdown_expectations_cached
+    payload = compute_drawdown_expectations(session, claim, cfg)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/forward_testing.py", line 2304, in compute_drawdown_expectations
+    samples = compute_samples(
+              ^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/samples.py", line 923, in compute_samples
+    built = _factor_samples(
+            ^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/samples.py", line 145, in _factor_samples
+    observations = _factor_observations(session, factor, horizon, as_of)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

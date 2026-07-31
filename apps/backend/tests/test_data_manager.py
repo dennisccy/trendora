@@ -2214,6 +2214,40 @@ def test_do_backfill_whole_stage_exception_releases_shared_cache_and_reraises(ba
     assert release_calls, "a whole-stage exception must call _release_process_memory() before re-raising"
 
 
+def test_do_backfill_env_toggle_falsy_value_keeps_shared_cache(backfilled_job, monkeypatch):
+    """TC-10 (audit B5 fix) — `TRENDORA_FORCE_LEGACY_BAR_CACHE=0` must be treated as FALSY: legacy mode is
+    NOT forced, so `prog._shared_bar_cache` is stashed to the real shared cache (not skipped). Before this
+    fix, `if not os.environ.get(...)` treated ANY non-empty string — including `"0"` — as truthy, so this
+    exact case silently forced legacy mode instead of leaving it disabled."""
+    engine = backfilled_job["engine"]
+    cfg = backfilled_job["cfg"]
+    monkeypatch.setenv("TRENDORA_FORCE_LEGACY_BAR_CACHE", "0")
+    with Session(engine) as session:
+        trading = _trading_days(session, cfg)
+        snapshotted = set(session.exec(select(ScannerRun.asof_date)).all())
+    fresh_date = next(d for d in trading if d not in snapshotted)
+    prog = JobProgress(job_id="env-toggle-falsy-probe", kind="backfill", start=fresh_date, end=fresh_date)
+    with Session(engine) as session:
+        data_manager._do_backfill(session, cfg, prog, eng=engine)
+    assert prog._shared_bar_cache is not None, "a falsy toggle value ('0') must NOT force legacy mode"
+
+
+def test_do_backfill_env_toggle_truthy_value_forces_legacy(backfilled_job, monkeypatch):
+    """TC-11 — `TRENDORA_FORCE_LEGACY_BAR_CACHE=1` is treated as TRUTHY: legacy mode IS forced, so the
+    shared-cache stash is skipped and `prog._shared_bar_cache` stays `None`."""
+    engine = backfilled_job["engine"]
+    cfg = backfilled_job["cfg"]
+    monkeypatch.setenv("TRENDORA_FORCE_LEGACY_BAR_CACHE", "1")
+    with Session(engine) as session:
+        trading = _trading_days(session, cfg)
+        snapshotted = set(session.exec(select(ScannerRun.asof_date)).all())
+    fresh_date = next(d for d in trading if d not in snapshotted)
+    prog = JobProgress(job_id="env-toggle-truthy-probe", kind="backfill", start=fresh_date, end=fresh_date)
+    with Session(engine) as session:
+        data_manager._do_backfill(session, cfg, prog, eng=engine)
+    assert prog._shared_bar_cache is None, "a truthy toggle value ('1') must force legacy mode (stash skipped)"
+
+
 def test_run_data_job_backfill_wires_finalize_hook_end_to_end(backfilled_job, monkeypatch):
     """ops-hardening iter-2 (J-05) end-to-end: a real backfill job dispatched through `run_data_job` (the
     SAME path the API uses) reaches the finalize hook, persists a `coverage_snapshot` row, and the job's

@@ -1,0 +1,19 @@
+CORRECTION (developer, 2026-07-30, later in the same iteration) — the two files in this directory
+(`all-isolation-handler-hits.txt`, `forward-aggregates-and-drawdown-expectations-memoryerror-log-excerpt.txt`)
+are SUPERSEDED and should NOT be cited as this iteration's TC-1 evidence.
+
+They were built by grepping `full-cumulative-backend.log` for the strings "aborted"/"MemoryError" across
+the WHOLE file without correlating hits to this iteration's own job IDs or timestamps. That log file
+accumulates across many sessions (it is never rotated); a line-number-range check against this iteration's
+actual job IDs (`2d261112…` trial2, `0ed9b6d7…` trial2b — see `../trial2-2700mb-job1-monitor.out` /
+`../trial2-2700mb-job2-monitor.out` for their real elapsed-time windows) shows ZERO forward-aggregate or
+drawdown-expectations abort lines inside either job's actual window. The forward-aggregate/drawdown-
+expectations MemoryError tracebacks captured in these two files belong to a DIFFERENT, much earlier job
+(`fe4c86a3…` / `52947bd4…`, neither of which exists in this iteration's throwaway `drill.db` or the live
+`data/trendora.db` — likely a prior iteration's own drill, e.g. iter-38's).
+
+This is exactly the "never infer which stage aborted from a MemoryError firing somewhere" trap the
+iter-37/38 lessons warn against. See `reports/perf-budgets.md`'s "Iteration 39" section for the corrected,
+job-ID-scoped account of what this iteration's own trials actually hit (coverage's generic handler at
+2700 MB; a genuine wedge at 2650 MB; the named forward-aggregates/drawdown-expectations per-item handler
+was NOT reached by any of this iteration's three live trials).

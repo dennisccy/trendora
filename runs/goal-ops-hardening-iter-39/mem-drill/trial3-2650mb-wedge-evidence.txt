@@ -1,0 +1,53 @@
+=== trial3 (2650MB) WEDGE evidence — captured 2026-07-30T21:56:53Z ===
+job triggered: ae1befd9050848e0a0cf3b71292986f8 (backfill 2026-06-22..24)
+last successful health/job-poll log line before hang: 2026-07-30 22:49:45 local (21:49:45 UTC)
+confirmed unresponsive: repeated /api/health probes 22:53:03 -> 22:56:19 local (>7 minutes), all connection failures (curl HTTP_CODE:000), zero new backend.log lines in that window
+
+=== process state at time of kill ===
+State:	S (sleeping)
+VmPeak:	 2713600 kB
+VmSize:	 1804912 kB
+VmRSS:	 1220824 kB
+Threads:	14
+
+=== last 40 backend.log lines ===
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/data_manager.py", line 936, in _compute_coverage_body
+    "diagnostic": _missing_data_diagnostic(session, cfg),
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/data_manager.py", line 271, in _missing_data_diagnostic
+    for symbol, d in session.exec(
+                     ^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/.venv/lib/python3.12/site-packages/sqlalchemy/engine/result.py", line 566, in iterrows
+    for raw_row in self._fetchiter_impl():
+                   ^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/.venv/lib/python3.12/site-packages/sqlalchemy/orm/loading.py", line 220, in chunks
+    fetch = cursor._raw_all_rows()
+            ^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/.venv/lib/python3.12/site-packages/sqlalchemy/engine/result.py", line 580, in _raw_all_rows
+    return [make_row(row) for row in rows]
+            ^^^^^^^^^^^^^
+MemoryError
+INFO:     127.0.0.1:40472 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40482 - "GET /api/data/jobs/ae1befd9050848e0a0cf3b71292986f8 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40484 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40488 - "GET /api/data/jobs/ae1befd9050848e0a0cf3b71292986f8 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40502 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:40516 - "GET /api/data/jobs/ae1befd9050848e0a0cf3b71292986f8 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56568 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56580 - "GET /api/data/jobs/ae1befd9050848e0a0cf3b71292986f8 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56590 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56596 - "GET /api/data/jobs/ae1befd9050848e0a0cf3b71292986f8 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56612 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56618 - "GET /api/data/jobs/ae1befd9050848e0a0cf3b71292986f8 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56632 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56642 - "GET /api/data/jobs/ae1befd9050848e0a0cf3b71292986f8 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56650 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56652 - "GET /api/data/jobs/ae1befd9050848e0a0cf3b71292986f8 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56666 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56676 - "GET /api/data/jobs/ae1befd9050848e0a0cf3b71292986f8 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56678 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56686 - "GET /api/data/jobs/ae1befd9050848e0a0cf3b71292986f8 HTTP/1.1" 200 OK
+Exception ignored in thread started by: <object repr() failed>
+MemoryError: 
+backtest_timing ts=2026-07-30T21:49:45.090171+00:00 is_latest=True total_ms=3082.39 resolved_run_ms=53.35 backfill_forward_returns_ms=102.84 scorecard_ms=2924.08 evidence_ms=1.99 write_taken=False
+2026-07-30 22:49:45,090 INFO trendora.backtest: backtest_timing ts=2026-07-30T21:49:45.090171+00:00 is_latest=True total_ms=3082.39 resolved_run_ms=53.35 backfill_forward_returns_ms=102.84 scorecard_ms=2924.08 evidence_ms=1.99 write_taken=False

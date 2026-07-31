@@ -1,0 +1,135 @@
+t=  0.00s health=200 latency=799.4ms vmpeak=1924760 job_status=running
+t=  1.80s health=200 latency=233.1ms vmpeak=1927832 job_status=running
+t=  3.03s health=200 latency=309.0ms vmpeak=1933976 job_status=running
+t=  4.39s health=200 latency=311.4ms vmpeak=1937080 job_status=running
+t=  5.75s health=200 latency=300.4ms vmpeak=1942200 job_status=running
+t=  7.11s health=200 latency=599.8ms vmpeak=1947320 job_status=running
+t=  8.71s health=200 latency=297.6ms vmpeak=1950392 job_status=running
+t= 10.01s health=200 latency=526.4ms vmpeak=1957592 job_status=running
+t= 11.54s health=200 latency=639.4ms vmpeak=1961688 job_status=running
+t= 13.18s health=200 latency=542.1ms vmpeak=1968856 job_status=running
+t= 14.72s health=200 latency=376.8ms vmpeak=1974008 job_status=running
+t= 16.13s health=200 latency=642.6ms vmpeak=1976056 job_status=running
+t= 17.78s health=200 latency=682.0ms vmpeak=1982200 job_status=running
+t= 19.46s health=200 latency=373.8ms vmpeak=1986328 job_status=running
+t= 20.89s health=200 latency=308.8ms vmpeak=1993496 job_status=running
+t= 22.24s health=200 latency=642.2ms vmpeak=2150188 job_status=running
+t= 23.92s health=200 latency=465.1ms vmpeak=2150188 job_status=running
+t= 25.38s health=200 latency=593.1ms vmpeak=2150188 job_status=running
+t= 26.99s health=200 latency=752.5ms vmpeak=2150188 job_status=running
+t= 28.77s health=200 latency=364.6ms vmpeak=2150188 job_status=running
+t= 30.17s health=200 latency=340.9ms vmpeak=2150188 job_status=running
+t= 31.52s health=200 latency=635.2ms vmpeak=2150188 job_status=running
+t= 33.15s health=200 latency=570.6ms vmpeak=2150188 job_status=running
+t= 34.72s health=200 latency=634.7ms vmpeak=2150188 job_status=running
+t= 36.49s health=200 latency=802.3ms vmpeak=2150188 job_status=running
+t= 38.32s health=200 latency=296.1ms vmpeak=2150188 job_status=running
+t= 39.62s health=200 latency=289.8ms vmpeak=2152348 job_status=running
+t= 40.91s health=200 latency=194.7ms vmpeak=2173856 job_status=running
+t= 42.10s health=200 latency=230.9ms vmpeak=2191264 job_status=running
+t= 43.34s health=200 latency=567.7ms vmpeak=2208672 job_status=running
+t= 44.90s health=200 latency=174.4ms vmpeak=2227104 job_status=running
+t= 46.08s health=200 latency=178.7ms vmpeak=2367392 job_status=running
+t= 47.26s health=200 latency=359.8ms vmpeak=2367392 job_status=running
+t= 48.62s health=200 latency=208.2ms vmpeak=2367392 job_status=running
+t= 49.83s health=200 latency=321.5ms vmpeak=2367392 job_status=running
+t= 51.16s health=200 latency=263.1ms vmpeak=2386848 job_status=running
+t= 52.42s health=200 latency=217.3ms vmpeak=2406304 job_status=running
+t= 53.64s health=200 latency=196.2ms vmpeak=2423712 job_status=running
+t= 54.84s health=200 latency=275.3ms vmpeak=2440096 job_status=running
+t= 56.11s health=200 latency=282.2ms vmpeak=2449312 job_status=running
+t= 57.40s health=200 latency=316.4ms vmpeak=2469792 job_status=running
+t= 58.71s health=200 latency=221.0ms vmpeak=2484128 job_status=running
+t= 59.94s health=200 latency=444.3ms vmpeak=2512804 job_status=running
+t= 61.38s health=200 latency=274.1ms vmpeak=2527136 job_status=running
+t= 62.66s health=200 latency=269.8ms vmpeak=2537408 job_status=running
+t= 63.93s health=200 latency=423.6ms vmpeak=2537408 job_status=running
+t= 65.35s health=200 latency=266.8ms vmpeak=2537408 job_status=running
+t= 66.62s health=200 latency=136.6ms vmpeak=2537408 job_status=running
+t= 67.76s health=200 latency=112.2ms vmpeak=2537408 job_status=running
+t= 68.87s health=200 latency=110.0ms vmpeak=2537408 job_status=running
+t= 69.98s health=200 latency=126.1ms vmpeak=2537408 job_status=running
+t= 71.11s health=200 latency=189.4ms vmpeak=2537408 job_status=running
+t= 72.30s health=200 latency=187.2ms vmpeak=2537408 job_status=running
+t= 73.49s health=200 latency=691.0ms vmpeak=2537408 job_status=running
+t= 75.18s health=200 latency=375.2ms vmpeak=2537408 job_status=running
+t= 76.56s health=200 latency=333.1ms vmpeak=2537408 job_status=running
+t= 77.89s health=200 latency=174.7ms vmpeak=2537408 job_status=running
+t= 79.07s health=200 latency=349.7ms vmpeak=2537408 job_status=running
+t= 80.42s health=200 latency=154.2ms vmpeak=2537408 job_status=running
+t= 81.57s health=200 latency=641.0ms vmpeak=2537408 job_status=running
+t= 83.22s health=200 latency=174.7ms vmpeak=2537408 job_status=running
+t= 84.39s health=200 latency=149.3ms vmpeak=2537408 job_status=running
+t= 85.54s health=200 latency=2687.0ms vmpeak=2561600 job_status=running
+t= 89.23s health=200 latency=235.4ms vmpeak=2561600 job_status=running
+t= 90.47s health=200 latency=237.8ms vmpeak=2687780 job_status=running
+t= 91.71s health=200 latency=964.2ms vmpeak=2692900 job_status=running
+t= 93.67s health=200 latency=403.6ms vmpeak=2727400 job_status=running
+t= 95.13s health=200 latency=231.8ms vmpeak=2764024 job_status=running
+t= 96.36s health=200 latency=899.2ms vmpeak=2764024 job_status=running
+t= 98.33s health=200 latency=370.0ms vmpeak=2764024 job_status=running
+t= 99.70s health=200 latency=382.4ms vmpeak=2764024 job_status=running
+t=101.09s health=200 latency=212.2ms vmpeak=2764024 job_status=running
+t=102.30s health=200 latency=1465.3ms vmpeak=2764024 job_status=running
+t=104.80s health=200 latency=446.9ms vmpeak=2764024 job_status=running
+t=106.28s health=200 latency=518.7ms vmpeak=2764024 job_status=running
+t=107.80s health=200 latency=210.1ms vmpeak=2764024 job_status=running
+t=109.01s health=200 latency=847.2ms vmpeak=2764024 job_status=running
+t=110.86s health=200 latency=672.9ms vmpeak=2764024 job_status=running
+t=112.53s health=200 latency=770.8ms vmpeak=2764024 job_status=running
+t=114.30s health=200 latency=179.6ms vmpeak=2764024 job_status=running
+t=115.49s health=200 latency=239.4ms vmpeak=2764024 job_status=running
+t=116.74s health=200 latency=1876.0ms vmpeak=2764024 job_status=running
+t=119.63s health=200 latency=575.0ms vmpeak=2764024 job_status=running
+t=121.21s health=200 latency=687.6ms vmpeak=2764024 job_status=running
+t=122.90s health=200 latency=664.3ms vmpeak=2764024 job_status=running
+t=124.57s health=200 latency=794.2ms vmpeak=2764024 job_status=running
+t=126.36s health=200 latency=796.5ms vmpeak=2764024 job_status=running
+t=128.16s health=200 latency=126.8ms vmpeak=2764024 job_status=running
+t=129.29s health=200 latency=964.2ms vmpeak=2764800 job_status=running
+t=131.30s health=200 latency=1164.6ms vmpeak=2764800 job_status=running
+t=133.52s health=200 latency=632.6ms vmpeak=2764800 job_status=running
+t=135.19s health=200 latency=725.0ms vmpeak=2764800 job_status=running
+t=136.91s health=200 latency=230.9ms vmpeak=2764800 job_status=running
+t=138.15s health=200 latency=270.1ms vmpeak=2764800 job_status=running
+t=139.42s health=200 latency=179.1ms vmpeak=2764800 job_status=running
+t=140.60s health=200 latency=440.0ms vmpeak=2764800 job_status=running
+t=142.04s health=200 latency=227.5ms vmpeak=2764800 job_status=running
+t=143.27s health=200 latency=443.3ms vmpeak=2764800 job_status=running
+t=144.71s health=200 latency=231.3ms vmpeak=2764800 job_status=running
+t=145.94s health=200 latency=314.9ms vmpeak=2764800 job_status=running
+t=147.26s health=200 latency=347.9ms vmpeak=2764800 job_status=running
+t=148.61s health=200 latency=267.9ms vmpeak=2764800 job_status=running
+t=149.88s health=200 latency=718.9ms vmpeak=2764800 job_status=running
+t=151.60s health=200 latency=223.5ms vmpeak=2764800 job_status=running
+t=152.83s health=200 latency=239.9ms vmpeak=2764800 job_status=running
+t=154.07s health=200 latency=1014.7ms vmpeak=2764800 job_status=running
+t=156.08s health=200 latency=152.7ms vmpeak=2764800 job_status=running
+t=157.24s health=200 latency=198.8ms vmpeak=2764800 job_status=running
+t=158.44s health=200 latency=832.0ms vmpeak=2764800 job_status=running
+t=160.27s health=200 latency=239.2ms vmpeak=2764800 job_status=running
+t=161.51s health=200 latency=483.5ms vmpeak=2764800 job_status=running
+t=162.99s health=200 latency=312.5ms vmpeak=2764800 job_status=running
+t=164.31s health=200 latency=311.0ms vmpeak=2764800 job_status=running
+t=165.62s health=200 latency=206.5ms vmpeak=2764800 job_status=running
+t=166.83s health=200 latency=261.0ms vmpeak=2764800 job_status=running
+t=168.09s health=200 latency=850.8ms vmpeak=2764800 job_status=running
+t=169.94s health=200 latency=881.5ms vmpeak=2764800 job_status=running
+t=171.83s health=200 latency=203.2ms vmpeak=2764800 job_status=running
+t=173.03s health=200 latency=261.8ms vmpeak=2764800 job_status=running
+t=174.29s health=200 latency=870.7ms vmpeak=2764800 job_status=running
+t=176.17s health=200 latency=725.3ms vmpeak=2764800 job_status=running
+t=177.89s health=200 latency=1058.4ms vmpeak=2764800 job_status=running
+t=179.95s health=200 latency=249.9ms vmpeak=2764800 job_status=running
+t=181.20s health=200 latency=1037.1ms vmpeak=2764800 job_status=running
+t=183.24s health=200 latency=280.4ms vmpeak=2764800 job_status=running
+t=184.52s health=200 latency=245.5ms vmpeak=2764800 job_status=running
+t=185.77s health=200 latency=341.6ms vmpeak=2764800 job_status=running
+t=187.11s health=200 latency=199.5ms vmpeak=2764800 job_status=running
+t=188.31s health=200 latency=320.1ms vmpeak=2764800 job_status=running
+t=189.63s health=200 latency=264.8ms vmpeak=2764800 job_status=running
+t=190.90s health=200 latency=292.1ms vmpeak=2764800 job_status=running
+t=192.19s health=200 latency=278.3ms vmpeak=2764800 job_status=running
+t=193.47s health=200 latency=934.2ms vmpeak=2764800 job_status=ok
+TOTAL_POLLS=133 NON_200=0 MAX_GAP_S=3.688 SAFETY_BACKSTOP_FIRED=False
+FINAL_JOB_STATUS_JSON={"job_id": "2d261112cc2841d995f8872073083a25", "kind": "backfill", "start": "2026-06-16", "end": "2026-06-18", "source": null, "status": "ok", "symbols_total": 0, "symbols_ok": 0, "symbols_failed": 0, "bars_fetched": 0, "dates_total": 3, "dates_done": 3, "snapshots_created": 3, "forward_returns_inserted": 3881, "calendar_days": 3, "non_trading_days": 0, "already_snapshotted": 0, "error_other": 0, "aggregates_refreshed": ["latest_snapshot", "market_phase", "forward_aggregates", "research_hot_keys", "index_series", "drawdown_expectations"], "chunk_index": 1, "chunk_total": 1, "passers": 0, "omitted_total": 0, "omitted": [], "stages": {"backfill": {"elapsed_seconds": 93.3455, "items_processed": 3, "concurrency": 3, "per_date_seconds_sum": 9.1098, "speedup_factor": 0.0976}}, "current_activity": "scanning 2026-06-18 (3/3)", "last_progress_at": "2026-07-30T15:59:26.567795+00:00", "completed_stages": ["backfill"], "date_failures": [], "message": "backfill: 3 snapshots over 3 dates, 3881 forward returns", "errors": [], "started_at": "2026-07-30T15:56:16.205688+00:00", "finished_at": "2026-07-30T15:59:33.866089+00:00"}

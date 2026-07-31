@@ -2742,3 +2742,153 @@ achievement run: (a) iter-34/j — the `GET /api/health` <= 0.1 s budget, now mi
 convention, rescope the budget for the bounded background-compute window, or commission the agent fix that
 serves readiness from a cached snapshot); (b) iter-33/i — whether `start-frontend.sh` joins
 `HOST_GUARD_MARKER_FILES`.
+
+## Iteration 39 — goal-ops-hardening-iter-39
+
+**Date:** 2026-07-31T02:10:00Z
+**Verdict:** ESCALATE
+**Depth dispatched:** full (`iter-39/depth-dispatched` = `full`, matching the spec — the iter-35
+mis-dispatch has not recurred for a fourth iteration. `.steps/` again holds only decomposer/coherence
+markers, which per the binding iter-36 lesson is NOT truncation evidence. I confirmed the full pipeline
+ran from artifact mtimes: dev → review → QA → replay 23:31 → LLM browser-qa 23:33 → demo 23:34 →
+ux-regression 23:36 → audit #1 FAIL → fix pass 00:03-00:19 → reviewer re-PASS → QA re-PASS → audit #2
+PASS_WITH_GAPS → closure 00:57. `status.json` = `complete` / `closure_passed`; its
+`browser_checks_run: false` is stale relative to the 23:31 replay — I scored from artifacts, not that field.)
+**Journey deltas:**
+- Newly passing: none. Newly failing: none. **Regressed (passing -> failing): NONE.** Unknown: none.
+  Deferred (`DEFERRED-BUDGET`): none. Still `partial`: **J-07 "Heavy aggregates never take the service
+  down"** — FIFTH consecutive iteration; `last_passing_iter` stays iter-34; `evidence_makeup` KEPT (the
+  `[NEW]` walkthrough is unrecorded for a 9th iteration — demo lane SKIPPED, "invalid demo script:
+  missing or empty steps[]", empty `reports/demo/goal-ops-hardening-iter-39/`).
+- Re-verified `passing` with THIS-iteration evidence, so `last_verified_iter` advances iter-38 -> iter-39
+  for six (J-01, J-03, J-05, J-06, J-08, J-09) and **iter-37 -> iter-39 for J-04**, which finally got the
+  genuine live `kill -9` + restart pass this session has owed it since iter-37. I opened
+  `J-04-verify.png` and `J-05-verify.png` as the two spot-checks; both corroborate their rows. All 8
+  `spec_hash`es match `goal_gate hash-journeys`; no `journeys-changed.md`; no `browser-infra.json`.
+- Anti-goal violations: **TWO RESOLVED — iter-38/s** (J-07 step 4 genuinely proven, in a live server, at
+  the named handler) and **iter-38/t** (the deterministic replay lane is repaired in code AND actually
+  worked: 7/7 PASS against a live stack, zero FAIL rows, zero overturns, seven DISTINCT screenshot md5s
+  — the iter-32/38 collision did not recur). **FOUR NEW, all minor and all open: iter-39/u** (a genuine
+  7+ minute process wedge at a 2650 MB throwaway cap, discovered and disclosed by this iteration's own
+  drill), **iter-39/v** (a second, newly-identified unbounded whole-table materialization —
+  `_missing_data_diagnostic`, `data_manager.py:271` — with a live traceback), **iter-39/w** (AG-3: the
+  post-crash job row shows 2/18 days when 18 were done in memory), **iter-39/x** (the merged results
+  artifact can headline PASS for a run whose journeys were all BLOCKED; the machine gate is closed, the
+  headline is not). Eleven carried `resolved: false`, each given an ITER-39 UPDATE recording what I
+  verified rather than inherited. Ledger now: **36 total, 15 unresolved, 0 critical.** scan-report CLEAN;
+  coherence COHERENCE-PASS (two non-blocking advisories); review PASS; QA PASS; audit #1 **FAIL** ->
+  audit #2 PASS_WITH_GAPS; ux-regression UX-REGRESSION-PASS; closure CLOSURE-PASS.
+
+**Reasoning:** I re-derived every load-bearing number first-hand rather than reading it off a report.
+(1) **Diff scope before touching any carried finding:** `git diff f55df154..HEAD --stat -- apps scripts
+project-extensions config.yaml` shows exactly ONE committed file — `project-extensions/host-guard/
+host-guard.env` — and `git status --porcelain` over the same paths shows four modified plus three
+untracked, all under `apps/backend`. `config.yaml` is byte-unchanged, so `memory_cap_mb: 6144` is the
+committed cap the drill actually ran at. (2) **I read the LIVE log, not the excerpt** (binding iter-34
+lesson): `logs/backend.log:147787` carries the job-scoped liveness line (`job=c67a6b0a…`,
+`resolved=attach_shared_cache`) and `:148264-148270` the abort, whose traceback names
+`data_manager.py:3550 _refresh_ingest_aggregates -> _fault_inject_memory_error("forward_aggregates")` —
+the NAMED per-horizon handler, not prefill and not `refresh_coverage_snapshot`'s generic one. The drill
+process's whole log window `:146509-149317` tallies **1,486 HTTP responses, ALL 200** — zero non-200 of
+any kind, zero "Exception ignored". Its boot banner at `:146507-146509` reads `port=18255
+memory_cap_mb=6144 malloc_arena_max=2` + `host-guard: cpu_list=0-15 blas_threads=8`. (3) **I recomputed
+TC-2 and TC-3 from the raw capture files:** `health-monitor.csv` = 68 polls, **68/68 HTTP 200**, max gap
+2.298 s, whole-job coverage (last sample t=81.965 s caught `job_status: ok`), no `MAX_SECONDS` backstop,
+VmPeak max 3,100,072 kB = **49.27%** of cap; `backtest-poll.jsonl` = **1,246 requests, 1,246/1,246 HTTP
+200**, exactly ONE whose interval literally contains the abort epoch 1785453076.666, and 500 more started
+after the abort, all 200. TC-1's isolation is proven end to end by `final-job-status.json`: `status: ok`,
+2/2 dates, `aggregates_refreshed` omits `forward_aggregates` while `research_hot_keys` and
+`drawdown_expectations` — which run AFTER it — completed. (4) **I verified the fault injector is
+genuinely inert in production rather than accepting the claim:** `_fault_inject_memory_error` is one
+`os.environ.get` behind a frozen three-site allowlist, and `grep -rn TRENDORA_FAULT_INJECT config.yaml
+project-extensions/ scripts/` returns NOTHING — it is not reachable through product configuration.
+(5) **The two reasons J-07 still does not cross came from this iteration's own honest disclosure, not
+from me raising the bar:** `mem-drill/trial3-2650mb-wedge-evidence.txt` records a real 7+ minute total
+`/api/health` unresponsiveness after the job had already persisted `status: ok` (curl `000`, zero new log
+lines, 14 threads in `futex_do_wait`, host 15 GiB free — so the process's own `ulimit -v`, not host
+pressure), and its traceback at `:17-29` exposes `_missing_data_diagnostic` (`data_manager.py:271`)
+materializing every universe member's `(symbol, date)` rows into ONE Python list via
+`loading.py:220 chunks -> result.py:580 _raw_all_rows` before the loop body runs. I read that code myself:
+the query IS bounded by symbol set and the in-code comment says "no unbounded whole-table scan" — true of
+the SCOPE, false of the MATERIALIZATION. J-07's acceptance says in its own words "a memory-pressure abort
+never leaves the process wedged" and "no unbounded whole-table ORM materialization remains on the warm or
+serving path"; both are falsified, the first by the very method step 4 sanctions. (6) **I checked TC-8/TC-9
+from raw payloads, not the summary:** `kill-test-mid-flight-state.json` = `dates_done 18/18,
+snapshots_created 17` at the kill instant, versus `post-restart-data-payload.json` run 243 =
+`interrupted, dates_done 2/18, snapshots_created 1`. TC-8's literal bar (a real, non-zeroed row) IS met, so
+J-04 passes — and the ~11% under-report is filed as iter-39/w rather than buried. TC-9's
+`coverage_status: stale`, `snapshot_count 1902`, `universe_count 540` is a real stored value, not the
+sentinel. (7) **The screenshots corroborated rather than contradicted this time, and I checked the
+collision:** all seven verify PNGs have DISTINCT md5s. `J-04-verify.png` shows a live "Ready / provider:
+seed / seed 2026-07-22 / 591 symbols" frame with real coverage figures (universe 540 of a 548 pool, 122
+candidates — matching the payload); `J-05-verify.png` shows "Immutable snapshot — as of 2005-04-12 ·
+Stored exactly as scanned; never recomputed for today" with regime components summing 21.25+10.98+15.00+
+7.50+0.00 = 54.73 exactly, so AG-3 holds on that frame by my own arithmetic.
+Rejected REGRESSION (C.1): nothing moved `passing` -> `failing`; scan-report CLEAN; all four launch/
+host-guard SCRIPTS byte-identical so AG-10's own trigger did not fire; and all 15 open ledger items are
+`minor`. I weighed calling iter-39/u or /v critical and decided against it on stated grounds — both are
+pre-existing code newly OBSERVED rather than newly INTRODUCED, neither is reachable at the shipped 6144 MB
+cap (the same code served 1,486/1,486 there), this iteration's product change IMPROVES isolation, and ten
+iterations of session precedent classify this family as minor. Rejected STALLED (C.2): the blocker is
+agent work with a recipe every lane independently wrote down (bound `_missing_data_diagnostic` with
+`yield_per` — output-identical, the grouping loop unchanged); the two owner items are real but neither is
+the only path. Rejected GOAL_ACHIEVED (C.3): J-07 is `partial`. **Chose ESCALATE (C.4, first clause)**
+under this session's thrice-recorded reading that "failed" = "did not reach `passing`" — J-07 has now
+missed five consecutive iterations — reinforced by an independent, iteration-specific trigger: the audit
+lane returned **FAIL** on findings the review lane and the QA lane had both passed, including a CRITICAL
+one (`backfill_workers`' per-date compute had no `MemoryError` isolation at all, so a worker's exception
+sat on its `Future` WITH its traceback, pinning every failing frame's locals alive while that same worker
+took the next date and allocated again). That is the third consecutive iteration where only the auditor
+caught the substantive defect. A lean iteration has no auditor, and the next iteration deliberately
+restructures a memory-critical path that serves BOTH ingest and `/api/data`.
+**FIVE THINGS I STATE PLAINLY RATHER THAN ROUND AWAY:** (i) **this is the best iteration of the five and
+a fifth ESCALATE must not be read as saying otherwise.** J-07 step 4 is genuinely, finally closed at the
+named handler in a live server; the drill runs at the COMMITTED cap and induces no host pressure at all,
+which makes it repeatable and strictly safer than any further cap-tuning; the tests are tight rather than
+loose (each fault-injection test carries its own control arm, asserts the OTHER stage's log line is
+ABSENT, and proves isolation positively via a later-category spy) and both were shown load-bearing by
+negative controls the reviewer independently reproduced; the replay lane went from 1/7-against-a-dead-
+backend to 7/7-live with distinct screenshots; and J-04 finally got the real `kill -9` test this session
+has owed it since iter-37. (ii) **the two blockers are the iteration's OWN discoveries, volunteered before
+any lane asked.** The wedge and the 3.3M-row materialization were both found by the team, disclosed in
+Known Issues, and named by developer, reviewer and auditor alike. That is the opposite of the failure mode
+I am here to catch, and it deserves saying. (iii) **abandoning cap-tuning was the right call and I want it
+on the record.** Three probes was already the wrong-direction signal; switching to the test hook — which
+J-07 step 4's own text sanctions verbatim — made the same proof deterministic AND removed all host risk.
+(iv) **the ≤ 0.1 s health budget is now missed a SIXTH time, 3 of 68 polls, max 1.297 s, in step 2's own
+scenario.** Four consecutive evaluators have called it an owner decision. It is the single item in J-07 no
+agent can settle and the most likely place a fresh-context second-key CONFIRM rejects a GOAL_ACHIEVED.
+(v) **two staleness facts.** Audit T1: the 7/7 replay (23:31:56) predates the fix pass's `data_manager.py`
+edit (00:05:31), so the browser evidence is one code state stale — I kept the seven `passing` because the
+auditor traced the delta inert on every non-`MemoryError` path and the backfill-parallel suite re-ran
+12/12 green after it, and I say so rather than hide it. And `reports/perf-budgets.md:4996` still carries
+the RETRACTED attribution of the wedge to a `backfill_workers` thread; the FIX PASS section corrects it,
+but its supersession sentence names only TC-1..TC-4, so a reader of the earlier section alone gets the
+withdrawn story.
+
+**Next-step recommendation:** FULL depth (mandatory via ESCALATE). ONE target: replace
+`_missing_data_diagnostic`'s whole-result materialization (`apps/backend/app/engine/data_manager.py:271`)
+with a bounded `yield_per` fetch — output-identical, the grouping loop unchanged — and correct the in-code
+comment at `:262-274` that currently claims "no unbounded whole-table scan". It is the one change that
+moves three things at once: the last standing acceptance clause on J-07, the most likely cause of the
+trial-3 wedge, and the mechanical reason three live cap trials could never reach the handlers J-07 names.
+Then, in order: (1) re-run the tightened-cap drill ONCE on a throwaway DB via `scripts/start-backend.sh`
+to see whether the wedge survives the bound, and if it does, positively identify the dying thread rather
+than attributing it; (2) iter-39/w — make the post-crash Run History figure honest (checkpoint per date,
+or relabel it "last saved checkpoint" rather than progress); (3) SMALL AND ALREADY WRITTEN DOWN: correct
+`perf-budgets.md:4996`'s retracted wedge attribution in place; teach `merge_ui_test_results.parse_rows` a
+BLOCKED class so the merged headline cannot read PASS for an all-BLOCKED run (iter-39/x — the machine gate
+is already closed via `goal_gate.py:89,151`); (4) CARRIED, untouched: iter-29/b + `warmup.py:194` and the
+badge wording after a permanently failed warm-up (NINE iterations unmade); iter-31/e; iter-32/f (watch
+only — `forward_testing.py` is not in this diff at all); iter-36/n; (5) THIRD IN QUEUE, deferred a FOURTH
+time: iter-33/g — give Regime Lab's cold `view=pooled` compute the same background dispatch
+`/api/backtest` got at iter-32; (6) CAPTURE ONLY, never an iteration's goal: J-07's `[NEW]` walkthrough
+(ninth iteration unrecorded); (7) OWNER, unchanged, both to be settled BEFORE any achievement run:
+(a) iter-34/j — the `GET /api/health` ≤ 0.1 s budget, now missed six times, this time 3/68 with max
+1.297 s during step 2's own scenario; three dispositions, all his (ratify the honest-WARN convention,
+rescope the budget for the bounded background-compute window, or commission the cached-readiness-snapshot
+fix); (b) iter-33/i — whether `start-frontend.sh` joins `HOST_GUARD_MARKER_FILES`, with fresh context:
+`host-guard.env` itself was re-parameterized by the owner this window (commit `1130a36b`,
+`HOST_GUARD_CPU_LIST` `0-3,8-11` -> `0-15`, `BLAS_THREADS` 4 -> 8) with a recorded hardware root cause —
+the launch SCRIPTS are byte-identical and the memory cap is unchanged, so AG-10 still passes, but a
+future evaluator must not mistake that widening for an agent weakening the caps.

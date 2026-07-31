@@ -1,0 +1,29 @@
+t=  0.00s health=200 latency=269.1ms vmpeak=2764800 job_status=running
+t=  1.27s health=200 latency=452.8ms vmpeak=2764800 job_status=running
+t=  2.73s health=200 latency=141.4ms vmpeak=2764800 job_status=running
+t=  3.87s health=200 latency=362.2ms vmpeak=2764800 job_status=running
+t=  5.24s health=200 latency=553.0ms vmpeak=2764800 job_status=running
+t=  6.79s health=200 latency=2212.1ms vmpeak=2764800 job_status=running
+t= 10.02s health=200 latency=249.3ms vmpeak=2764800 job_status=running
+t= 11.27s health=200 latency=216.5ms vmpeak=2764800 job_status=running
+t= 12.49s health=200 latency=547.0ms vmpeak=2764800 job_status=running
+t= 14.14s health=200 latency=847.2ms vmpeak=2764800 job_status=running
+t= 16.03s health=200 latency=155.6ms vmpeak=2764800 job_status=running
+t= 17.18s health=200 latency=583.7ms vmpeak=2764800 job_status=running
+t= 18.79s health=200 latency=218.1ms vmpeak=2764800 job_status=running
+t= 20.01s health=200 latency=618.3ms vmpeak=2764800 job_status=running
+t= 21.63s health=200 latency=1167.9ms vmpeak=2764800 job_status=running
+t= 23.85s health=200 latency=251.6ms vmpeak=2764800 job_status=running
+t= 25.10s health=200 latency=241.1ms vmpeak=2764800 job_status=running
+t= 26.34s health=200 latency=258.4ms vmpeak=2764800 job_status=running
+t= 27.60s health=200 latency=638.8ms vmpeak=2764800 job_status=running
+t= 29.24s health=200 latency=270.6ms vmpeak=2764800 job_status=running
+t= 30.52s health=200 latency=285.3ms vmpeak=2764800 job_status=running
+t= 31.80s health=200 latency=549.5ms vmpeak=2764800 job_status=running
+t= 33.35s health=200 latency=299.4ms vmpeak=2764800 job_status=running
+t= 34.65s health=200 latency=266.2ms vmpeak=2764800 job_status=running
+t= 35.92s health=200 latency=249.4ms vmpeak=2764800 job_status=running
+t= 37.17s health=200 latency=269.0ms vmpeak=2764800 job_status=running
+t= 38.44s health=200 latency=210.5ms vmpeak=2764800 job_status=ok
+TOTAL_POLLS=27 NON_200=0 MAX_GAP_S=3.229 SAFETY_BACKSTOP_FIRED=False
+FINAL_JOB_STATUS_JSON={"job_id": "0ed9b6d7c8ee4db78781e4f5e9b46f9f", "kind": "backfill", "start": "2026-06-04", "end": "2026-06-08", "source": null, "status": "ok", "symbols_total": 0, "symbols_ok": 0, "symbols_failed": 0, "bars_fetched": 0, "dates_total": 3, "dates_done": 3, "snapshots_created": 3, "forward_returns_inserted": 4995, "calendar_days": 5, "non_trading_days": 2, "already_snapshotted": 0, "error_other": 0, "aggregates_refreshed": ["latest_snapshot", "coverage", "membership_timeline", "market_phase", "forward_aggregates", "research_hot_keys", "drawdown_expectations"], "chunk_index": 1, "chunk_total": 1, "passers": 0, "omitted_total": 0, "omitted": [], "stages": {"backfill": {"elapsed_seconds": 15.03, "items_processed": 3, "concurrency": 3, "per_date_seconds_sum": 8.7049, "speedup_factor": 0.5792}}, "current_activity": "scanning 2026-06-08 (3/3)", "last_progress_at": "2026-07-30T16:03:51.463350+00:00", "completed_stages": ["backfill"], "date_failures": [], "message": "backfill: 3 snapshots over 3 dates, 4995 forward returns", "errors": [], "started_at": "2026-07-30T16:03:10.955863+00:00", "finished_at": "2026-07-30T16:03:54.138207+00:00"}

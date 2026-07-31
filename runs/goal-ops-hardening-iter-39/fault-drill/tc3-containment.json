@@ -1,0 +1,18 @@
+{
+  "abort_log_line_local": "2026-07-31 00:11:16,666",
+  "abort_epoch": 1785453076.666,
+  "total_polls": 1246,
+  "non_200": 0,
+  "in_flight_across_abort": [
+    {
+      "start_epoch": 1785453076.567,
+      "end_epoch": 1785453077.119,
+      "start_utc": "2026-07-30T23:11:16.566Z",
+      "end_utc": "2026-07-30T23:11:17.118Z",
+      "http_status": 200,
+      "bytes": 105190,
+      "error": null
+    }
+  ],
+  "polls_after_abort": 500
+}

@@ -314,6 +314,21 @@ grep -q 'routed to the LLM lane' "$REG6" \
   && assert "verify rc=6 twice: raw artifact footer explains the routing" pass \
   || assert "verify rc=6 twice: raw artifact footer explains the routing" fail
 
+# ── 6b. Verify rc=7 (ops-hardening iter-39, TC-5): backend-unreachable BLOCKED,
+#        distinct from rc=6 (browser-infra) — falls back to the LLM lane on the
+#        FIRST attempt, no retry, distinct log line naming it "BLOCKED" not
+#        "browser-infra" or a real regression.
+reset_goldens
+golden "J-01"
+out="$(STUB_REPLAY_RC=7 RUN_PARTITION_LOG="$WORK/lane7.log" run_partition "J-01 J-02 ")"
+want="R_REPLAY=<>|R_LLM=<J-02 >|use=<no>|failed=<>"
+[[ "$out" == "$want" ]] \
+  && assert "verify rc=7: falls back to LLM lane for ALL regression journeys" pass \
+  || { assert "verify rc=7: falls back to LLM lane for ALL regression journeys" fail; echo "    got: $out"; }
+grep -q "backend unreachable before any journey ran (rc=7, BLOCKED" "$WORK/lane7.log" \
+  && assert "verify rc=7: greppable BLOCKED-distinct log line" pass \
+  || assert "verify rc=7: greppable BLOCKED-distinct log line" fail
+
 # ── 7. Escape hatch ──────────────────────────────────────────────────────────
 reset_goldens
 golden "J-01"
@@ -394,6 +409,46 @@ grep -q 'Reconciliation' "$SBX/reports/phase-$ITER-regression-replay-results.md"
   && grep -q 'J-07' <(grep 'Reconciliation' "$SBX/reports/phase-$ITER-regression-replay-results.md") \
   && assert "merge: reconciliation footer names the overturned journey (companion 1)" pass \
   || assert "merge: reconciliation footer names the overturned journey (companion 1)" fail
+
+# ops-hardening iter-39 (TC-7, audit finding iter-38/T1): reproduces the EXACT bug — a raw
+# replay FAIL overturned to an ANNOTATED verdict cell (not a bare "PASS"/"SKIP") must still be
+# named in the footer. The old exact-string `grep -F '| PASS |'` missed both J-05-style
+# (FAIL -> "PASS (steps ... verified)") and J-04-style (FAIL -> "SKIPPED (partial ...)") flips
+# in iter-38, silently under-reporting the footer by omitting both.
+merge_case '**Browser QA Verdict:** PASS
+
+## Results Table
+| Test ID | Name | Type | Priority | Expected | Actual | Verdict | Evidence |
+|---|---|---|---|---|---|---|---|
+| UT-J-07 | filter table | regression | P1 | e | steps 1,2,4 verified live; step 3 not executed | PASS (steps 1,2,4 verified live; step 3 not executed, see UT-J-04) | none |'
+grep -q 'Reconciliation' "$SBX/reports/phase-$ITER-regression-replay-results.md" \
+  && grep -q 'J-07' <(grep 'Reconciliation' "$SBX/reports/phase-$ITER-regression-replay-results.md") \
+  && assert "merge: reconciliation footer names an ANNOTATED PASS overturn (J-05-style, TC-7)" pass \
+  || assert "merge: reconciliation footer names an ANNOTATED PASS overturn (J-05-style, TC-7)" fail
+# ops-hardening iter-39 FIX PASS (audit finding B6): a flip to PASS — and ONLY a flip to PASS — may
+# be described as a live re-confirmation / false positive.
+grep 'Reconciliation' "$SBX/reports/phase-$ITER-regression-replay-results.md" | grep -q 'J-07 -> PASS' \
+  && grep 'Reconciliation' "$SBX/reports/phase-$ITER-regression-replay-results.md" | grep -q 'false positive' \
+  && assert "merge: footer wording for a PASS flip claims re-confirmation (B6)" pass \
+  || assert "merge: footer wording for a PASS flip claims re-confirmation (B6)" fail
+
+merge_case '**Browser QA Verdict:** SKIPPED
+
+## Results Table
+| Test ID | Name | Type | Priority | Expected | Actual | Verdict | Evidence |
+|---|---|---|---|---|---|---|---|
+| UT-J-07 | filter table | regression | P1 | e | not executed live, judged unsafe to restart | SKIPPED (partial — see Actual) | none |'
+grep -q 'Reconciliation' "$SBX/reports/phase-$ITER-regression-replay-results.md" \
+  && grep -q 'J-07' <(grep 'Reconciliation' "$SBX/reports/phase-$ITER-regression-replay-results.md") \
+  && assert "merge: reconciliation footer names a FAIL->SKIPPED overturn (J-04-style, TC-7)" pass \
+  || assert "merge: reconciliation footer names a FAIL->SKIPPED overturn (J-04-style, TC-7)" fail
+# ops-hardening iter-39 FIX PASS (audit finding B6): the SAME flip must NOT be described as a
+# re-confirmation / disproven FAIL — SKIP means the journey was never re-verified. This is the
+# assertion the fixed wording exists for; the pre-fix fixed sentence fails it.
+grep 'Reconciliation' "$SBX/reports/phase-$ITER-regression-replay-results.md" | grep -q 'NOT re-verified' \
+  && ! grep 'Reconciliation' "$SBX/reports/phase-$ITER-regression-replay-results.md" | grep -q 'false positive' \
+  && assert "merge: footer wording for a SKIP flip does NOT claim re-confirmation (B6)" pass \
+  || assert "merge: footer wording for a SKIP flip does NOT claim re-confirmation (B6)" fail
 
 merge_case '**Browser QA Verdict:** PASS
 

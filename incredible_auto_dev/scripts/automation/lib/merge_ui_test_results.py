@@ -99,6 +99,23 @@ def file_top_verdict(text: str) -> str:
     return m.group(1) if m else ""
 
 
+def verdict_for(text: str, test_id: str) -> str:
+    """The single row's normalized verdict for `test_id` in `text` (`""` if not found) — the
+    SAME PASS/FAIL/SKIP normalization `parse_rows` already uses, so it tolerates bold cells
+    (`**FAIL**`) and ANNOTATED cells ("PASS (steps 1,2,4 verified live; step 3 not executed, see
+    UT-J-04)", "SKIPPED (partial — see Actual)").
+
+    ops-hardening iter-39 (TC-7): exists so a bash caller (replay-lane.sh's reconciliation
+    footer) never has to re-implement that matching as a raw `grep -F '| PASS |'` — which is
+    exactly what silently missed BOTH J-05 (FAIL -> PASS-with-caveat) and J-04 (FAIL -> SKIPPED-
+    with-caveat) in iter-38: neither annotated cell contains the bare substring `| PASS |` or
+    `| SKIP |` an exact-string grep requires, so the footer under-reported by omitting both."""
+    for row in parse_rows(text):
+        if row["test_id"] == test_id:
+            return row["verdict"]
+    return ""
+
+
 def compute_overall(rows: "list[dict]", file_verdicts: "list[str] | None" = None) -> str:
     """Overall verdict. Surviving rows are authoritative; only when NO rows could
     be parsed do we fall back to the input files' headline verdicts."""
@@ -243,6 +260,20 @@ def cmd_void(path: str, journeys: "list[str]") -> int:
     return 0
 
 
+def cmd_verdict_of(path: str, test_id: str) -> int:
+    """Print `test_id`'s normalized verdict word in `path` (empty line if the file is unreadable
+    or the row is not found) — a stable, tested CLI surface for a bash caller that needs the
+    SAME annotation-tolerant parsing `parse_rows` already uses (see `verdict_for`'s docstring)."""
+    p = Path(path)
+    try:
+        text = p.read_text(encoding="utf-8")
+    except OSError:
+        print("")
+        return 0
+    print(verdict_for(text, test_id))
+    return 0
+
+
 def main(argv: "list[str]") -> int:
     if argv and argv[0] in ("self-test", "--self-test"):
         return _self_test()
@@ -251,6 +282,11 @@ def main(argv: "list[str]") -> int:
             sys.stderr.write("usage: merge_ui_test_results.py void <results.md> <J-XX> [...]\n")
             return 2
         return cmd_void(argv[1], argv[2:])
+    if argv and argv[0] == "verdict-of":
+        if len(argv) < 3:
+            sys.stderr.write("usage: merge_ui_test_results.py verdict-of <results.md> <test-id>\n")
+            return 2
+        return cmd_verdict_of(argv[1], argv[2])
     if len(argv) < 2:
         sys.stderr.write("usage: merge_ui_test_results.py <out.md> <in1.md> [<in2.md> ...]\n")
         return 2
@@ -341,6 +377,25 @@ def _self_test() -> int:
         assert file_top_verdict(bold) == "FAIL", file_top_verdict(bold)
         md = merge([bold])
         assert file_top_verdict(md) == "FAIL", file_top_verdict(md)
+
+    def t_verdict_for_tolerates_annotated_cells():
+        # ops-hardening iter-39 (TC-7): verdict_for must resolve the SAME normalized verdict for
+        # an annotated cell that parse_rows already tolerates — reproduces the exact iter-38 rows
+        # that a naive `grep -F '| PASS |'` missed (J-05: FAIL -> PASS-with-caveat; a FAIL ->
+        # SKIPPED-with-caveat case mirroring J-04).
+        annotated = (
+            "**Browser QA Verdict:** PASS\n\n## Results Table\n"
+            "| Test ID | Name | Type | Priority | Expected | Actual | Verdict | Evidence |\n"
+            "|---|---|---|---|---|---|---|---|\n"
+            "| UT-J-05 | Aggregates precomputed | regression | P1 | e | steps 1,2,4 verified | "
+            "PASS (steps 1,2,4 verified live; step 3 not executed, see UT-J-04) | a.png |\n"
+            "| UT-J-04 | Non-blocking boot | regression | P1 | e | not executed live | "
+            "SKIPPED (partial — see Actual) | b.png |\n"
+            "| UT-J-02 | Still broken | regression | P1 | e | step 2 failed | FAIL | c.png |\n")
+        assert verdict_for(annotated, "UT-J-05") == "PASS", verdict_for(annotated, "UT-J-05")
+        assert verdict_for(annotated, "UT-J-04") == "SKIP", verdict_for(annotated, "UT-J-04")
+        assert verdict_for(annotated, "UT-J-02") == "FAIL", verdict_for(annotated, "UT-J-02")
+        assert verdict_for(annotated, "UT-J-99") == "", verdict_for(annotated, "UT-J-99")
 
     def t_annotated_verdicts():
         # "PASS (with caveat)" / "FAIL (see note)" must parse as their verdict; prose
@@ -435,6 +490,7 @@ def _self_test() -> int:
               ("skipped_only", t_skipped_only),
               ("bold_verdicts", t_bold_verdicts),
               ("annotated_verdicts", t_annotated_verdicts),
+              ("verdict_for_tolerates_annotated_cells", t_verdict_for_tolerates_annotated_cells),
               ("tc_prefixed_fail_survives", t_tc_prefixed_fail_survives),
               ("void_rewrites_and_recomputes", t_void_rewrites_and_recomputes),
               ("void_keeps_unlisted_fail", t_void_keeps_unlisted_fail),

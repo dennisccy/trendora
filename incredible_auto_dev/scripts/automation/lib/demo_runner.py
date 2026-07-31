@@ -19,7 +19,13 @@ Self-test (no browser, no network):
 
 Exit codes: 0 ok/soft-skip · 2 bad args/JSON · 3 playwright missing · 4 no DISPLAY (live)
 · 5 verify found ≥1 FAIL · 6 browser infrastructure failure (launch/crash — verify only;
-callers route replay journeys back to the LLM lane so nothing is silently unverified).
+callers route replay journeys back to the LLM lane so nothing is silently unverified)
+· 7 verify: backend unreachable BEFORE any journey ran — every journey is written BLOCKED
+(never FAIL; ops-hardening iter-39, see `probe_backend_health`/run_verify). Distinct from rc 6
+(a browser that launched and then died mid-run): rc 7 means the browser was never even asked to
+navigate anywhere, because the backend the app depends on never answered its own health check.
+Callers route BLOCKED journeys back to the LLM lane exactly like rc 6, so nothing is silently
+unverified — see the generic non-zero-rc fallback in lib/replay-lane.sh.
 """
 from __future__ import annotations
 
@@ -27,6 +33,8 @@ import datetime
 import json
 import os
 import sys
+import urllib.error
+import urllib.request
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
@@ -135,16 +143,59 @@ def compute_regression_verdict(results: list[dict]) -> str:
     """Overall verdict for a deterministic regression-replay run (verify mode).
 
     Unlike the showcase verdicts above, replay treats a journey's `expect`s as
-    HARD assertions: FAIL if any journey failed; SKIPPED if none ran or all were
-    skipped (e.g. no golden script on file); otherwise PASS."""
+    HARD assertions: FAIL if any journey failed; BLOCKED if the backend was
+    unreachable before any journey ran (ops-hardening iter-39 — a DISTINCT class
+    from FAIL: a journey verdict of FAIL means "this journey's own assertions did
+    not hold", which is untrue when the backend never answered in the first
+    place; conflating the two is exactly what let a downed backend read as
+    regressions twice in this session, iter-38/t); SKIPPED if none ran or all
+    were skipped (e.g. no golden script on file); otherwise PASS."""
     verdicts = [r.get("verdict") for r in results]
     if not verdicts:
         return "SKIPPED"
     if "FAIL" in verdicts:
         return "FAIL"
+    if "BLOCKED" in verdicts:
+        return "BLOCKED"
     if all(v == "SKIP" for v in verdicts):
         return "SKIPPED"
     return "PASS"
+
+
+def resolve_backend_health_url(base_url: str, explicit: "str | None" = None) -> str:
+    """The backend readiness URL `run_verify` must probe before trusting ANY replay verdict.
+
+    Preference order: an explicit `--backend-health-url` (set by a caller, or a test), then a
+    same-host guess built from `CHAIN_BACKEND_PORT` — the SAME env var every launch/QA script in
+    this framework already uses to compute the backend's assigned port (see lib/common.sh's
+    `ensure_phase_ports`), which is present in this process's environment by the time the
+    pipeline invokes `--mode verify` — combined with this project's canonical readiness path,
+    `GET /api/health` (Trendora goal.md: "computed only in `app.engine.readiness`, served only by
+    `GET /api/health`"). Deliberately NOT the framework's generic `/health` default
+    (lib/common.sh's `bqa_services_probe`): every Trendora route is namespaced under `/api`, so a
+    bare `/health` 404s even on a perfectly healthy backend — reusing that default here would
+    BLOCK every replay run unconditionally, which is worse than the bug this closes."""
+    if explicit:
+        return explicit
+    base = urlsplit(base_url or "http://localhost:3000")
+    port = os.environ.get("CHAIN_BACKEND_PORT", "8000")
+    host = base.hostname or "localhost"
+    return urlunsplit((base.scheme or "http", f"{host}:{port}", "/api/health", "", ""))
+
+
+def probe_backend_health(url: str, timeout: float = 5.0) -> bool:
+    """True iff `url` answers with EXACTLY HTTP 200 within `timeout` seconds.
+
+    Any failure mode — connection refused, timeout, DNS error, a non-200 status — is honestly
+    False. Deliberately STRICT (unlike the framework's permissive `bqa_services_probe`, which
+    treats any 1xx-5xx as "alive" — a reasonable bar for "is uvicorn listening at all", but not
+    for "is this app genuinely ready to serve a UI replay"): a half-up or wrong-port backend must
+    BLOCK the replay lane, not silently pass it through to a false FAIL."""
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as resp:  # noqa: S310 — localhost only
+            return resp.status == 200
+    except (urllib.error.URLError, OSError, ValueError):
+        return False
 
 
 def _today() -> str:
@@ -188,20 +239,24 @@ def render_regression_results_md(phase_id: str, frontend_url: str, iteration,
     replay — byte-shaped like templates/ui-test-results.md so the goal-evaluator
     reads it exactly like the LLM browser-qa output (top `**Browser QA Verdict:**`
     line, one `UT-<journey>` row per journey, evidence screenshots). `results` is
-    a list of {journey, name, verdict (PASS/FAIL/SKIP), expected, actual, evidence}."""
+    a list of {journey, name, verdict (PASS/FAIL/SKIP/BLOCKED), expected, actual, evidence}."""
     overall = compute_regression_verdict(results)
     total = len(results)
     n_pass = sum(1 for r in results if r.get("verdict") == "PASS")
     n_skip = sum(1 for r in results if r.get("verdict") == "SKIP")
+    n_blocked = sum(1 for r in results if r.get("verdict") == "BLOCKED")
     lines = [f"# Regression Replay — {phase_id}", ""]
     lines.append(f"**Phase:** {phase_id}")
     lines.append(f"**Date:** {_today()}")
     lines.append("**Written by:** demo_runner.py (deterministic replay)")
     if iteration is not None:
         lines.append(f"**Iteration:** {iteration}")
+    overall_line = f"**Overall:** {n_pass}/{total} journeys passed ({n_skip} skipped"
+    overall_line += f", {n_blocked} blocked — backend unreachable" if n_blocked else ""
+    overall_line += ")"
     lines += ["", "---", "",
               f"**Browser QA Verdict:** {overall}", "",
-              f"**Overall:** {n_pass}/{total} journeys passed ({n_skip} skipped)", "",
+              overall_line, "",
               "---", "", "## Results Table", "",
               "| Test ID | Name | Type | Priority | Expected | Actual | Verdict | Evidence |",
               "|---------|------|------|----------|----------|--------|---------|----------|"]
@@ -227,6 +282,16 @@ def render_regression_results_md(phase_id: str, frontend_url: str, iteration,
         for r in skipped:
             lines += [f"### UT-{r.get('journey', '')} — {r.get('name', '')}", "",
                       "**Verdict:** SKIPPED",
+                      f"**Reason:** {r.get('actual', '')}", ""]
+    blocked = [r for r in results if r.get("verdict") == "BLOCKED"]
+    if blocked:
+        lines += ["## Blocked Tests", "",
+                   "_Not a journey failure — the backend was unreachable before this journey (or any "
+                   "other in this run) was ever replayed. Distinct from FAIL: FAIL means the journey's "
+                   "own assertions did not hold; BLOCKED means they were never checked._", ""]
+        for r in blocked:
+            lines += [f"### UT-{r.get('journey', '')} — {r.get('name', '')}", "",
+                      "**Verdict:** BLOCKED",
                       f"**Reason:** {r.get('actual', '')}", ""]
     lines += ["## Environment", "",
               f"- **Frontend URL:** {frontend_url}",
@@ -402,6 +467,12 @@ def _t_regression_verdict_matrix() -> None:
     assert compute_regression_verdict([{"verdict": "SKIP"}, {"verdict": "SKIP"}]) == "SKIPPED"
     assert compute_regression_verdict([{"verdict": "SKIP"}, {"verdict": "PASS"}]) == "PASS"
     assert compute_regression_verdict([{"verdict": "FAIL"}, {"verdict": "SKIP"}]) == "FAIL"
+    # ops-hardening iter-39 (TC-5/TC-6): BLOCKED is a DISTINCT class from FAIL — an all-BLOCKED
+    # run (backend unreachable) must never present as the same overall verdict as a real
+    # regression, and a genuine FAIL must still win over a BLOCKED row if the two ever mix.
+    assert compute_regression_verdict([{"verdict": "BLOCKED"}, {"verdict": "BLOCKED"}]) == "BLOCKED"
+    assert compute_regression_verdict([{"verdict": "BLOCKED"}, {"verdict": "SKIP"}]) == "BLOCKED"
+    assert compute_regression_verdict([{"verdict": "FAIL"}, {"verdict": "BLOCKED"}]) == "FAIL"
 
 
 def _t_regression_results_md() -> None:
@@ -423,6 +494,106 @@ def _t_regression_results_md() -> None:
         assert tid in md, tid
     assert "## Failed Tests" in md and "## Skipped Tests" in md
     assert "1/3 journeys passed (1 skipped)" in md, md
+
+
+def _t_blocked_results_md() -> None:
+    # ops-hardening iter-39 (TC-5): an all-BLOCKED run renders a BLOCKED headline (never FAIL),
+    # a distinct "## Blocked Tests" section (never conflated with "## Failed Tests"), and the
+    # blocked count in the summary line.
+    results = [
+        {"journey": "J-01", "name": "J-01", "verdict": "BLOCKED",
+         "expected": "backend answers GET http://localhost:1/api/health with HTTP 200 before replay",
+         "actual": "backend unreachable: GET http://localhost:1/api/health did not answer 200",
+         "evidence": "none"},
+        {"journey": "J-03", "name": "J-03", "verdict": "BLOCKED",
+         "expected": "backend answers GET http://localhost:1/api/health with HTTP 200 before replay",
+         "actual": "backend unreachable: GET http://localhost:1/api/health did not answer 200",
+         "evidence": "none"},
+    ]
+    md = render_regression_results_md("goal-x-iter-39", "http://localhost:3017", 39, results, "verify")
+    assert "**Browser QA Verdict:** BLOCKED" in md, md
+    assert "**Browser QA Verdict:** FAIL" not in md, md
+    assert "## Blocked Tests" in md and "## Failed Tests" not in md, md
+    assert "2 blocked — backend unreachable" in md, md
+    for tid in ("UT-J-01", "UT-J-03"):
+        assert tid in md, tid
+
+
+def _t_resolve_backend_health_url() -> None:
+    # explicit override always wins.
+    assert resolve_backend_health_url("http://localhost:3017", "http://x:9/y") == "http://x:9/y"
+    # no override, no CHAIN_BACKEND_PORT env -> falls back to the default port (8000) + this
+    # project's real health path (/api/health, NOT the framework's generic /health -- every
+    # Trendora route is namespaced under /api).
+    saved = os.environ.pop("CHAIN_BACKEND_PORT", None)
+    try:
+        url = resolve_backend_health_url("http://localhost:3017", None)
+        assert url == "http://localhost:8000/api/health", url
+        os.environ["CHAIN_BACKEND_PORT"] = "9142"
+        url2 = resolve_backend_health_url("http://localhost:3017", None)
+        assert url2 == "http://localhost:9142/api/health", url2
+    finally:
+        if saved is None:
+            os.environ.pop("CHAIN_BACKEND_PORT", None)
+        else:
+            os.environ["CHAIN_BACKEND_PORT"] = saved
+
+
+def _t_probe_backend_health() -> None:
+    # No server at all on this port (connection refused) -> honestly False, never an exception.
+    assert probe_backend_health("http://127.0.0.1:1/api/health", timeout=1.0) is False
+
+    # A real local HTTP server that answers exactly 200 -> True; a 404 (server up, wrong path,
+    # exactly the pre-fix framework-default-path bug this closes) -> False.
+    import http.server
+    import threading
+
+    class _Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802 - stdlib method name
+            if self.path == "/api/health":
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b"{}")
+            else:
+                self.send_response(404)
+                self.end_headers()
+
+        def log_message(self, *_a):  # noqa: D401 - silence per-request stderr noise
+            pass
+
+    server = http.server.HTTPServer(("127.0.0.1", 0), _Handler)
+    port = server.server_address[1]
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        assert probe_backend_health(f"http://127.0.0.1:{port}/api/health", timeout=2.0) is True
+        assert probe_backend_health(f"http://127.0.0.1:{port}/health", timeout=2.0) is False
+    finally:
+        server.shutdown()
+        thread.join(timeout=2.0)
+
+
+def _t_run_verify_blocked_when_backend_unreachable() -> None:
+    # TC-5 end-to-end (no real browser launch reached — the probe short-circuits BEFORE
+    # Playwright ever opens a page): backend unreachable -> rc 7, every journey BLOCKED, never
+    # FAIL, and the written results file says so.
+    import argparse
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp:
+        results_path = os.path.join(tmp, "results.md")
+        opts = argparse.Namespace(
+            scripts_dir=tmp, journeys="J-01,J-03", phase_id="goal-x-iter-39", iteration=39,
+            evidence_dir=None, results=results_path, repo_root=tmp, timeout_ms=8000,
+            backend_health_url="http://127.0.0.1:1/api/health",  # nothing listens on port 1
+        )
+        rc = run_verify(opts, "http://localhost:3017")
+        assert rc == 7, rc
+        text = Path(results_path).read_text(encoding="utf-8")
+        assert "**Browser QA Verdict:** BLOCKED" in text, text
+        assert "**Browser QA Verdict:** FAIL" not in text, text
+        assert "UT-J-01" in text and "UT-J-03" in text, text
+        assert "| BLOCKED |" in text and "| FAIL |" not in text, text
 
 
 def _t_launch_chromium_retries() -> None:
@@ -550,6 +721,10 @@ _SELF_TEST_CHECKS = [
     _t_script_md_roundtrip,
     _t_regression_verdict_matrix,
     _t_regression_results_md,
+    _t_blocked_results_md,
+    _t_resolve_backend_health_url,
+    _t_probe_backend_health,
+    _t_run_verify_blocked_when_backend_unreachable,
     _t_launch_chromium_retries,
     _t_derive_happy,
     _t_derive_rejects_untagged_journey,
@@ -1121,7 +1296,11 @@ def run_verify(opts, base_url: str) -> int:
     Returns 0 when nothing failed, 5 when ≥1 journey FAILED (so the caller can
     re-confirm just those journeys with the LLM agent — guards against a brittle
     selector causing a false regression). A journey with no/invalid golden script
-    is SKIP (the caller routes those to the LLM lane)."""
+    is SKIP (the caller routes those to the LLM lane). Returns 7 when the backend
+    was unreachable BEFORE any journey ran — every journey is written BLOCKED,
+    never FAIL (ops-hardening iter-39: closes a real bug where a downed backend
+    produced false FAIL rows against every journey, twice in this session,
+    iter-38/t — see `probe_backend_health`/`resolve_backend_health_url`)."""
     from playwright.sync_api import sync_playwright
 
     scripts_dir = Path(opts.scripts_dir or ".")
@@ -1143,6 +1322,24 @@ def run_verify(opts, base_url: str) -> int:
         _write([])
         print("[demo_runner] verify: no journeys to replay (SKIPPED).")
         return 0
+
+    # ops-hardening iter-39: probe the backend's OWN health endpoint ONCE, before opening a
+    # browser or replaying a single journey. A journey verdict of FAIL means "this journey's own
+    # assertions did not hold" — untrue, and misleading, when the backend never answered at all.
+    # Every journey is written BLOCKED instead (a distinct verdict class the caller never confuses
+    # with a real regression signal — see compute_regression_verdict / the rc=7 contract above).
+    health_url = resolve_backend_health_url(base_url, getattr(opts, "backend_health_url", None))
+    if not probe_backend_health(health_url):
+        results = [{
+            "journey": jid, "name": jid, "verdict": "BLOCKED",
+            "expected": f"backend answers GET {health_url} with HTTP 200 before replay",
+            "actual": f"backend unreachable: GET {health_url} did not answer 200",
+            "evidence": "none",
+        } for jid in journeys]
+        _write(results)
+        print(f"[demo_runner] verify: backend unreachable ({health_url}) — "
+              f"{len(results)} journey(s) BLOCKED, not FAILed (rc 7).", file=sys.stderr)
+        return 7
 
     results: list[dict] = []
     try:
@@ -1256,6 +1453,9 @@ def main(argv: list[str]) -> int:
                    help="verify mode: comma-separated journey IDs to replay")
     p.add_argument("--evidence-dir", default=None,
                    help="verify mode: per-journey screenshot evidence dir")
+    p.add_argument("--backend-health-url", default=None,
+                   help="verify mode: explicit backend readiness URL to probe before replaying "
+                        "(default: guessed from CHAIN_BACKEND_PORT + this project's /api/health)")
     opts = p.parse_args(argv)
     live = opts.mode in ("live", "session-live")
     verify = opts.mode == "verify"

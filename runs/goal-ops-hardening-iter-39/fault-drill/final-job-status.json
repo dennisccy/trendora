@@ -1,0 +1,52 @@
+{
+    "job_id": "c67a6b0a31c040d0a666605081aef4aa",
+    "kind": "backfill",
+    "start": "2026-06-29",
+    "end": "2026-06-30",
+    "source": null,
+    "status": "ok",
+    "symbols_total": 0,
+    "symbols_ok": 0,
+    "symbols_failed": 0,
+    "bars_fetched": 0,
+    "dates_total": 2,
+    "dates_done": 2,
+    "snapshots_created": 2,
+    "forward_returns_inserted": 1106,
+    "calendar_days": 2,
+    "non_trading_days": 0,
+    "already_snapshotted": 0,
+    "error_other": 0,
+    "aggregates_refreshed": [
+        "latest_snapshot",
+        "coverage",
+        "membership_timeline",
+        "market_phase",
+        "research_hot_keys",
+        "drawdown_expectations"
+    ],
+    "chunk_index": 1,
+    "chunk_total": 1,
+    "passers": 0,
+    "omitted_total": 0,
+    "omitted": [],
+    "stages": {
+        "backfill": {
+            "elapsed_seconds": 35.9224,
+            "items_processed": 2,
+            "concurrency": 2,
+            "per_date_seconds_sum": 2.9019,
+            "speedup_factor": 0.0808
+        }
+    },
+    "current_activity": "scanning 2026-06-30 (2/2)",
+    "last_progress_at": "2026-07-30T23:11:34.982700+00:00",
+    "completed_stages": [
+        "backfill"
+    ],
+    "date_failures": [],
+    "message": "backfill: 2 snapshots over 2 dates, 1106 forward returns",
+    "errors": [],
+    "started_at": "2026-07-30T23:10:16.600206+00:00",
+    "finished_at": "2026-07-30T23:11:39.270935+00:00"
+}

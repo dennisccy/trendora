@@ -1,0 +1,28 @@
+25904:ingest forward-aggregate warm aborted at horizon 1 — memory pressure, stopping remaining horizons in this loop: 
+25929:ingest forward-aggregate warm aborted at horizon 1 — memory pressure, stopping remaining horizons in this loop: 
+26704:ingest forward-aggregate warm aborted at horizon 5 — memory pressure, stopping remaining horizons in this loop: 
+26920:ingest forward-aggregate warm aborted at horizon 1 — memory pressure, stopping remaining horizons in this loop: 
+27185:ingest forward-aggregate warm aborted at horizon 1 — memory pressure, stopping remaining horizons in this loop: 
+27233:ingest forward-aggregate warm aborted at horizon 1 — memory pressure, stopping remaining horizons in this loop: 
+27881:ingest coverage/membership-timeline refresh failed (non-fatal): 
+27934:ingest forward-aggregate warm aborted at horizon 1 — memory pressure, stopping remaining horizons in this loop: 
+28326:ingest forward-aggregate warm aborted at horizon 1 — memory pressure, stopping remaining horizons in this loop: 
+28930:ingest forward-aggregate warm aborted at horizon 1 — memory pressure, stopping remaining horizons in this loop: 
+30874:ingest forward-aggregate warm aborted at horizon 1 — memory pressure, stopping remaining horizons in this loop: 
+31314:ingest forward-aggregate warm aborted at horizon 1 — memory pressure, stopping remaining horizons in this loop: 
+31354:ingest forward-aggregate warm aborted at horizon 1 — memory pressure, stopping remaining horizons in this loop: 
+31399:ingest forward-aggregate warm aborted at horizon 1 — memory pressure, stopping remaining horizons in this loop: 
+32393:ingest forward-aggregate warm aborted at horizon 1 — memory pressure, stopping remaining horizons in this loop: 
+79965:ingest coverage/membership-timeline refresh failed (non-fatal): 
+80036:ingest coverage/membership-timeline refresh failed (non-fatal): 
+80083:ingest coverage/membership-timeline refresh failed (non-fatal): 
+80130:ingest index-series warm aborted — memory pressure: 
+81804:ingest drawdown-expectations warm aborted — memory pressure, stopping remaining claims in this loop: 
+82019:ingest drawdown-expectations warm aborted — memory pressure, stopping remaining claims in this loop: 
+130004:ingest coverage/membership-timeline refresh failed (non-fatal): 
+137191:ingest forward-aggregate warm aborted at horizon 5 — memory pressure, stopping remaining horizons in this loop: 
+137273:ingest forward-aggregate warm aborted at horizon 1 — memory pressure, stopping remaining horizons in this loop: 
+137307:ingest drawdown-expectations warm aborted — memory pressure, stopping remaining claims in this loop: 
+140814:ingest forward-aggregate warm aborted at horizon 1 — memory pressure, stopping remaining horizons in this loop: 
+140824:ingest drawdown-expectations warm aborted — memory pressure, stopping remaining claims in this loop: 
+145843:2026-07-30 16:57:57,831 ERROR trendora.data_manager: ingest coverage/membership-timeline refresh failed (non-fatal): 
