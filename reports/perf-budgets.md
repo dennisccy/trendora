@@ -4993,7 +4993,7 @@ memory_cap_mb trials, each launched only via `scripts/start-backend.sh`:
 |---|---|---|---|
 | 1 | 3420 MB (2,834,440 KB cushion-heavy) | completes | **Everything in the finalize tail succeeds gracefully** — no MemoryError anywhere (job `94817e26…`, `dates_total:3`, all categories in `aggregates_refreshed`). Confirms the prior session's own 3420 MB reading: too generous. |
 | 2 | 2700 MB (~135.6 MB cushion above the ~2565 MB prefill-done baseline) | completes | A real `MemoryError` fires — but inside `refresh_coverage_snapshot` → `_missing_data_diagnostic`'s whole-universe `symbol, date` scan (`data_manager.py:271`, the SAME "documented OOM-crash source" `GET /api/data`'s own coverage compute carries per goal.md), caught by ITS OWN single non-per-item `except Exception` (`"ingest coverage/membership-timeline refresh failed (non-fatal)"`), **not** the named per-item forward-aggregates/drawdown-expectations handler. Confirmed by a direct, job-id-scoped read of `logs/backend.log` (job `2d261112…`, ERROR at `16:57:57` local, squarely inside the job's own `16:56:16–16:59:33` window) — no `"forward-aggregate warm aborted"` / `"drawdown-expectations warm aborted"` line anywhere in that job's window. After the coverage exception is caught and its partial allocation is reclaimed, `forward_aggregates` (all 5 horizons) and `drawdown_expectations` complete normally on the SAME job — `aggregates_refreshed` lists both. Job status: `ok`. A second confirmation run at the same cap (`0ed9b6d7…`, different K=3 window) reproduces the identical pattern. **`GET /api/health` stayed live throughout both jobs on the SAME long-running process** (133 + 27 polls, 0/160 non-200, max gap 3.688 s — well under any wedge threshold; no `start-backend.sh: launching` log line appears between the two jobs, confirming no restart). |
-| 3 | 2650 MB (~84.6 MB cushion) | completes (job `ae1befd9…` itself reached `status: ok`, `finished_at` recorded, `aggregates_refreshed` includes `forward_aggregates` + `drawdown_expectations` again — `coverage`/`index_series` additionally fail this time, same non-fatal handler) | **The process WEDGED** shortly after the job's own DB row was written `ok`: `GET /api/health` answered normally through `21:49:45Z`, then every probe (repeated over >7 minutes, `22:53:03`–`23:00:xx` local) returned connection failures (curl `000`) with zero new `logs/backend.log` lines in that window; all 14 threads sat in `futex_do_wait` at ~0% CPU (genuinely blocked, not computing); host `free -h` showed 15 GiB free / 0 swap used (not a host-level memory crisis — this is the process's own `ulimit -v` ceiling). The log's last line before the hang was `"Exception ignored in thread started by: <object repr() failed>\nMemoryError:"` — an **uncaught** `MemoryError` inside a background thread (most likely one of the `backfill_workers` parallel per-date compute threads, which do not carry the finalize-tail's per-item `try/except MemoryError` convention), consistent with a dead worker leaving something (a lock, a `.join()`, a queue the orchestrator waits on forever) unresolved. The process was killed (`kill -9`, throwaway DB, no live-product impact) after 7+ minutes of confirmed non-recovery; evidence captured at `runs/goal-ops-hardening-iter-39/mem-drill/trial3-2650mb-wedge-evidence.txt`. |
+| 3 | 2650 MB (~84.6 MB cushion) | completes (job `ae1befd9…` itself reached `status: ok`, `finished_at` recorded, `aggregates_refreshed` includes `forward_aggregates` + `drawdown_expectations` again — `coverage`/`index_series` additionally fail this time, same non-fatal handler) | **The process WEDGED** shortly after the job's own DB row was written `ok`: `GET /api/health` answered normally through `21:49:45Z`, then every probe (repeated over >7 minutes, `22:53:03`–`23:00:xx` local) returned connection failures (curl `000`) with zero new `logs/backend.log` lines in that window; all 14 threads sat in `futex_do_wait` at ~0% CPU (genuinely blocked, not computing); host `free -h` showed 15 GiB free / 0 swap used (not a host-level memory crisis — this is the process's own `ulimit -v` ceiling). The log's last line before the hang was `"Exception ignored in thread started by: <object repr() failed>\nMemoryError:"` — an **uncaught** `MemoryError` inside a background thread (most likely one of the `backfill_workers` parallel per-date compute threads, which do not carry the finalize-tail's per-item `try/except MemoryError` convention), consistent with a dead worker leaving something (a lock, a `.join()`, a queue the orchestrator waits on forever) unresolved. **[RETRACTED — see "Audit B2" below and Iteration 40's section further down]:** this `backfill_workers` attribution was never positively identified; the dying thread's identity remained unconfirmed at the time this row was written — treat the wedge as an open, unreproduced hazard, not an established cause. The process was killed (`kill -9`, throwaway DB, no live-product impact) after 7+ minutes of confirmed non-recovery; evidence captured at `runs/goal-ops-hardening-iter-39/mem-drill/trial3-2650mb-wedge-evidence.txt`. |
 
 **Disposition (honest, not rounded up).** Tightening the cap further than 2700 MB does not redirect the
 failure onto the named forward-aggregates/drawdown-expectations per-item handler — it only makes the
@@ -5019,6 +5019,12 @@ call, not an agent one) and separately track the newly-discovered wedge as its o
 `_refresh_ingest_aggregates`'s own loops already use), or design a fault-injection-based drill (a test-only
 hook that raises `MemoryError` at a chosen call site) instead of continuing to chase this exact live-cap
 window, which has now been probed at 3420/2700/2650 MB without landing on the named stage.
+**[RETRACTED — see "Audit B2" below and Iteration 40's section further down]:** the `backfill_workers`
+attribution named above as the wedge's likely cause was never positively identified. "Audit B2" (below)
+did apply the suggested per-worker-thread hardening, but its own "What this does and does not establish"
+paragraph is explicit that doing so does **not** prove the trial-3 wedge is fixed — the dying thread was
+never confirmed. Do not read this paragraph alone as having named the wedge's cause; the corrected,
+evidence-grounded account is Iteration 40's section further down this file.
 
 ### TC-2 / TC-4 — health-poll coverage (no `MAX_SECONDS` bound) + no-wedge, at the cap that does not wedge
 
@@ -5201,3 +5207,121 @@ that wedge's dying thread was never positively identified (the audit's own attri
 `backfill_workers` thread is marked "most plausibly"), and by the time trial 3's coverage `MemoryError`
 fired, `_do_backfill`'s pool had already been joined. Treat the wedge as an open, unreproduced hazard —
 see the dev handoff's Known Issues for the specific next candidate.
+
+## Iteration 40 — bound `_missing_data_diagnostic`'s materialization (J-07's last blocker), post-fix
+## wedge re-check, and checkpoint-honesty live re-measurement (2026-07-31, developer)
+
+The iter-39 evaluator's own next-step recommendation, applied directly: fix the ONE site
+(`_missing_data_diagnostic`'s second query, `data_manager.py:271`) that iter-39's own trial-3 wedge
+evidence (`runs/goal-ops-hardening-iter-39/mem-drill/trial3-2650mb-wedge-evidence.txt:14-29`) already
+showed as the crash site — SQLAlchemy's `session.exec(select(...))` iterated bare materializes the WHOLE
+result via `cursor._raw_all_rows()` before the loop body runs, regardless of the query's `WHERE`-bounded
+scope — then re-check the wedge once against the fix and re-measure the iter-39/w checkpoint-honesty fix
+live.
+
+### The fix
+
+`data_manager.py:271` now streams via `.yield_per(cfg.research.read_batch_size)` — the SAME config knob
+`prices.py`'s `_BarCache.prefill` already uses for this exact pattern — instead of materializing the
+whole `(symbol, date)` result set. The downstream grouping into `own_dates_by_symbol` and every consumer
+are byte-identical; only the fetch strategy changed. Proven with a fixture-backed equality test
+(`test_diagnostic_own_dates_streamed_fetch_byte_identical_to_whole_result`,
+`apps/backend/tests/test_data_manager.py`): the same rows collected via the OLD whole-result `.all()`
+path (replicated as the reference) and the NEW `.yield_per()` path group into byte-identical per-symbol
+date sets, and the real function's output is unaffected by forcing a tiny (3-row) batch size. The
+in-code comment at `:262-274` is corrected in place: the query was always bounded IN SCOPE (the
+`WHERE ... IN (universe)` clause) but was previously materialized WHOLE-RESULT in memory regardless —
+now streamed.
+
+### TC-2 / TC-3 — post-fix wedge-recurrence drill: the wedge did NOT recur
+
+Full detail, both runs' evidence: `runs/goal-ops-hardening-iter-40/wedge-drill/README.md`. Summary:
+
+- **Run 1 (confounded by this iteration's own test-setup timing, not a product finding)** — the backfill
+  job was triggered while the boot warmup thread was still mid-flight, so two independent heavy
+  consumers competed for the same 2650 MB ceiling. The process wedged (all 14 threads in
+  `futex_do_wait`, 0-CPU-tick over a 3 s sample, `VmPeak` pinned at exactly 2,713,600 kB — identical to
+  iter-39's trial-3 reading) after an uncaught `"Exception ignored in thread ... MemoryError:"` line with
+  no preceding traceback. `gdb -p <pid> thread apply all bt` was attempted to positively identify the
+  blocked thread; this host's `yama.ptrace_scope` policy denies attach for a non-root, non-parent process
+  (`ptrace: Inappropriate ioctl for device`), and no `py-spy` was installed (not added mid-drill as an
+  unplanned new dependency). The dying thread in run 1 was **not positively identified**; killed after
+  ~3.5 min confirmed non-recovery. Retained for honesty (`run1-notes.md`), not read as evidence the fix
+  failed — the confound (warmup + job racing) is a DIFFERENT condition from iter-39's own single-job
+  trial 3.
+- **Run 2 (clean, authoritative)** — corrected: the job triggers only after `GET /api/health` reports
+  `"readiness":"ready"`, the same single-job shape iter-39's trial 3 exercised. Same 2650 MB cap (never
+  widened, binding iter-38 lesson), launched only via `scripts/start-backend.sh` (AG-10), throwaway DB
+  seeded offline from the committed seed (AG-9). Result: **the job finished `status: ok`** in 35.9 s;
+  `GET /api/health` answered 200 on all 28 polls (0 non-200, max inter-poll gap 1.826 s — well under
+  budget, no unresponsive window); `VmPeak` peaked at exactly the declared 2650 MB cap and never exceeded
+  it; the process stayed alive and answered a follow-up health check after the job completed. **A
+  `MemoryError` did fire once** — at `_compute_coverage_body`'s `symbol_count = session.scalar(select(
+  func.count(func.distinct(DailyPrice.symbol))))` (`data_manager.py:898`, a small COUNT-DISTINCT that
+  itself allocates almost nothing — the process was already at the ceiling from other work by the time
+  this line ran) — but `_missing_data_diagnostic` / `data_manager.py:271` / `_raw_all_rows` do **not**
+  appear anywhere in this traceback (live log lines 149620-149729 of the cumulative `logs/backend.log`,
+  saved verbatim at `runs/goal-ops-hardening-iter-40/wedge-drill/run2-live-log-lines-149620-149729.txt` —
+  not a trimmed excerpt, per the binding iter-34 lesson). This MemoryError was caught by the EXISTING
+  single non-per-item handler in `_refresh_ingest_aggregates` (`"ingest coverage/membership-timeline
+  refresh failed (non-fatal)"`) exactly as iter-39's own trial 2 (2700 MB) demonstrated for a different
+  site; `forward_aggregates` and `drawdown_expectations` both completed normally afterward on the SAME
+  run (`aggregates_refreshed` lists both; only `coverage` is honestly absent).
+
+**Disposition (signal, not certainty — this iteration's own binding instruction).** At the identical
+2650 MB ceiling and the identical single-job shape iter-39's trial 3 used, the fixed code (a) never
+reaches the old uncaught-materialization site, (b) still meets memory pressure at this tight a cap
+(expected — 2650 MB is only ~84.6 MB above the measured prefill/compute-done baseline), and (c) that
+pressure is fully absorbed by the pre-existing non-fatal isolation handler with zero downtime, zero
+restart, and full health-poll coverage throughout. This is consistent with the fixed allocation having
+been the trial-3 wedge's cause, without being independently provable as certain (the dying thread in
+iter-39's own trial 3 traceback WAS `_missing_data_diagnostic`/`_raw_all_rows` — see
+`trial3-2650mb-wedge-evidence.txt:17-29` — which is itself strong corroborating evidence, but a single
+non-recurrence at one cap value is a signal, not a proof of absence). Per this iteration's binding
+instruction, no second cap trial was attempted; run 1's inconclusive result is retained rather than
+treated as a repeat trial (it tests a different, confounded condition, not a re-tuned cap).
+
+### TC-4 — checkpoint-honesty live re-measurement (iter-39/w)
+
+Full detail: `runs/goal-ops-hardening-iter-40/checkpoint-drill/README.md`. `_RUN_RECORD_CHECKPOINT_
+INTERVAL_S` tightened 10.0 → 1.0 s (`data_manager.py:~4070`) so a fast job's per-date checkpoint calls
+are no longer throttled down to essentially one write for the whole run. Live `kill -9` + restart cycle,
+throwaway DB, committed `memory_cap_mb` (this drill is not about memory pressure): a 25-trading-day
+backfill was triggered and polled every 0.1 s (trigger and poll combined into one script — a first,
+discarded attempt lost the mid-flight window entirely because trigger and poll were two separate tool
+calls with a real wall-clock gap between them, and the 20-date job finished before a separately-started
+poller's first sample). The instant polled `dates_done` reached 12, the SAME script sent `kill -9`
+immediately. **True in-memory progress at kill time (M, independently tracked): 12 of 25 dates.**
+Restarted the same throwaway DB; the persisted row (read directly from `data_provider_runs`, the same
+row `GET /api/data`'s Run History panel serves) shows **`dates_done: 11`** — a **1-date gap**, not the
+order-of-magnitude gap iter-39 measured live (18/18 in memory vs. a persisted row still in single digits,
+`runs/goal-ops-hardening-iter-39/live-restart/kill-test-mid-flight-state.json` vs
+`pre-kill-runs-state.json`). The run-summary contract holds through the interrupted state exactly
+(`snapshots_created 10 + already_snapshotted 1 + error_other 0 = dates_done 11`). Unit-level cadence
+proof (density + throttle-still-bounds-writes control):
+`test_checkpoint_cadence_density_and_throttle_control` (`apps/backend/tests/test_data_manager.py`).
+
+### TC-5 — `backfill_workers` wedge-attribution retraction corrected in place
+
+Both earlier passages that named `backfill_workers` as the trial-3 wedge's likely cause (the trial-3
+table row above and the "Recommendation for the next iteration" paragraph immediately below TC-1's
+disposition) now carry an inline `**[RETRACTED — see "Audit B2" below and Iteration 40's section further
+down]**` note pointing forward to the corrected account, so a reader stopping at either earlier passage
+alone no longer gets the withdrawn story (iter-39 evaluator's fifth stated-plainly item).
+
+### For the evaluator — J-07 re-score inputs
+
+- **Consistency (single source):** unchanged this iteration — `compute_forward_aggregates` was not
+  touched (byte-frozen, per this iteration's own binding "do not redo").
+- **Correctness:** `test_diagnostic_own_dates_streamed_fetch_byte_identical_to_whole_result` proves the
+  fetch-strategy change is output-neutral for `_missing_data_diagnostic`; the full `test_data_manager.py`
+  suite (142 tests), `test_data_manager_jobs_pipeline.py` (12 tests), and
+  `test_ingest_finalize_fault_injection.py` (14 tests) all pass unchanged (`docs/handoffs/
+  goal-ops-hardening-iter-40-dev.md`).
+- **Honest status / no unbounded materialization:** the one remaining unbounded-materialization call site
+  goal.md's own "four offenders" list and iter-39's evaluator both named is fixed; live re-drill (above)
+  shows the fixed code never reaching that site, with memory pressure elsewhere in the SAME finalize
+  sequence still fully isolated (zero downtime).
+- **Walkthrough:** the `[NEW]` crash-free-warm + healthy-health-poll steps for `demo.sh --session-live`
+  remain unrecorded — a capture-only ride-along per this iteration's own OUT OF SCOPE list (rule 7), not
+  independently re-attempted this iteration.

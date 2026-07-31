@@ -2892,3 +2892,165 @@ fix); (b) iter-33/i — whether `start-frontend.sh` joins `HOST_GUARD_MARKER_FIL
 `HOST_GUARD_CPU_LIST` `0-3,8-11` -> `0-15`, `BLAS_THREADS` 4 -> 8) with a recorded hardware root cause —
 the launch SCRIPTS are byte-identical and the memory cap is unchanged, so AG-10 still passes, but a
 future evaluator must not mistake that widening for an agent weakening the caps.
+
+## Iteration 40 — goal-ops-hardening-iter-40
+
+**Date:** 2026-07-31T03:20:00Z
+**Verdict:** ESCALATE
+**Depth dispatched:** full (`iter-40/depth-dispatched` = `full`, matching the spec — the iter-35
+mis-dispatch has not recurred for a fifth iteration. `.steps/` again holds only decomposer/coherence
+markers, which per the binding iter-36 lesson is NOT truncation evidence. I confirmed the full pipeline
+ran from artifact mtimes: dev 02:10 → review 02:16 → ui-surface-map/user-visible-changes 02:19 →
+test-plan 02:20 → browser-qa 02:41 → QA 02:38 → demo 02:43 → ux-regression 02:43 (SKIPPED, budget-shed)
+→ audit 02:59 → closure 03:00. `status.json` = `complete` / `closure_passed`; its
+`browser_checks_run: false` is, for once, ACCURATE — see below.)
+**Journey deltas:**
+- Newly passing: none. Newly failing: none. **Regressed (passing -> failing): NONE.**
+  Deferred (`DEFERRED-BUDGET`): none.
+- **Four journeys moved `passing` -> `unknown`: J-01 "Backfill honors the requested range and explains
+  zero-work", J-04 "Non-blocking boot with visible status", J-05 "Aggregates are precomputed at ingest",
+  J-06 "Pages load only what they need."** Nothing was found broken — they were never tested, and this
+  iteration's diff sits on the code path that produces what each of them asserts, so evidence durability
+  (A.6) cannot carry them. `last_verified_iter` / `last_passing_iter` / `last_evidence_path` /
+  `spec_hash` all carried forward unchanged.
+- **Three journeys kept `passing` on durability (A.6): J-03, J-08, J-09** — neither diff hunk lies on
+  their path. `last_verified_iter` deliberately NOT advanced (stays iter-39). I opened
+  `J-08-verify.png` and `J-09-verify.png` as the two spot-checks; both corroborate their rows (a
+  `/backtest` frame reading "Viewing as-of 2026-07-22 (latest)" with an honest "No elapsed forward
+  window for this date yet"; a `/data` frame with "background compute running (1)" in the top bar).
+- Still `partial`: **J-07 "Heavy aggregates never take the service down"** — SIXTH consecutive
+  iteration; `last_passing_iter` stays iter-34; `last_verified_iter` DOES advance to iter-40 (the two
+  live drills are real this-iteration evidence); `evidence_makeup` KEPT (the `[NEW]` walkthrough is
+  unrecorded for a 10th iteration — demo NOT_YET, zero steps, empty
+  `reports/demo/goal-ops-hardening-iter-40/`).
+- All 8 `spec_hash`es match `goal_gate hash-journeys`; no `journeys-changed.md`; no `browser-infra.json`.
+- Anti-goal violations: **THREE RESOLVED — iter-39/v** (the ~3.3M-row materialization is genuinely
+  bounded, and independently MEASURED by the auditor at +4.6 MB vs +349 MB on a 1M-row table),
+  **iter-39/w** (kill -9 checkpoint gap: 12 in memory vs 11 persisted — one date, against iter-39's
+  order of magnitude) and **iter-39/x** (the `BLOCKED` verdict class ships with TC-6/TC-7 self-tests).
+  **ONE NEW, minor and open: iter-40/y** — DoD item 8 / TC-9 was never executed; the seven
+  required-still-passing journeys got zero verification while review, QA and closure all reported clean.
+  Twelve carried `resolved: false`, each given an ITER-40 UPDATE recording what I verified rather than
+  inherited. Ledger now: **37 total, 13 unresolved, 0 critical.** scan-report CLEAN; coherence
+  COHERENCE-PASS (zero advisories); review PASS_WITH_NOTES; QA PASS; audit PASS_WITH_GAPS;
+  ux-regression UX-REGRESSION-SKIPPED (budget-shed, credited nothing); closure CLOSURE-PASS.
+
+**Reasoning:** I re-derived every load-bearing number first-hand rather than reading it off a report.
+(1) **Diff scope before touching any carried finding:** `git status --porcelain -- apps scripts
+project-extensions config.yaml incredible_auto_dev` shows exactly THREE modified files
+(`data_manager.py`, `test_data_manager.py`, `merge_ui_test_results.py`) and
+`git diff ca42137f..HEAD --stat` over the same paths is EMPTY — nothing was committed. The four
+launch/host-guard files return ZERO lines, so AG-10's own REGRESSION trigger did not fire, and
+`config.yaml` is byte-unchanged so `memory_cap_mb: 6144` is still the committed cap. (2) **I read the
+LIVE log, not the excerpt** (binding iter-34 lesson): `sed -n '149620,149729p' logs/backend.log` diffs
+IDENTICAL to `run2-live-log-lines-149620-149729.txt`, and in that range `_raw_all_rows` /
+`_missing_data_diagnostic` / `data_manager.py:271` appear NOWHERE — the traceback names
+`data_manager.py:898 _compute_coverage_body` (a COUNT-DISTINCT) caught by the existing non-fatal handler
+at `_refresh_ingest_aggregates`. TC-2's literal assertion holds. (3) **But I then read the code and
+found why that is weaker than it looks:** `_missing_data_diagnostic` is called at `data_manager.py:951`,
+**53 lines AFTER** the line 898 that died — so run 2 never REACHED the fixed site. "The fix survives
+pressure" is therefore an inference, not a demonstration; what run 2 does show directly is that the
+process stayed responsive. (4) **I recomputed the drill's own numbers from the raw CSV:**
+`run2-monitor.csv` = 28 polls, 28/28 HTTP 200, max inter-poll gap 1.826 s, VmPeak exactly
+2,713,600 kB (= the declared 2650 MB cap), terminal `job_status: ok` at t=35.88 s — and latency
+min 0.1234 / mean 0.3266 / max 0.8083 s, **0 of 28 inside the committed ≤ 0.1 s budget**. (5) **I
+recomputed the checkpoint drill too:** `trigger-poll-kill.csv` first reads `dates_done=12` at t=26.577 s
+and records `KILLED` at t=26.590 s; `post-restart-persisted-row.txt` (job 367704f4…, row id 3,
+`status: interrupted`) carries `dates_done: 11` with `snapshots_created 10 + already_snapshotted 1 +
+error_other 0 = 11` — internally consistent. Gap = 1 date. Honest caveat I keep on the record (audit B4,
+confirmed by me from the same CSV): at the observed ~245 ms/date the 1.0 s throttle's TRUE bound is
+~4 dates, so 1 date is a favourable sample of a still-time-based mechanism. (6) **The biggest finding
+is one the artifacts contradict each other about, and I resolved it against the pipeline's own prose.**
+`reports/phase-goal-ops-hardening-iter-40-ui-test-results.md` headlines `SKIPPED`, 0/8 passed, with a
+`SKIP` row for every one of UT-J-01/03/04/05/06/08/09;
+`reports/qa/goal-ops-hardening-iter-40-evidence/` **was never created** (zero screenshots this
+iteration); **no iter-40 regression-replay artifact exists at all** while iters 36-39 each have one; and
+`reports/demo/goal-ops-hardening-iter-40/` is empty. So NOTHING verified any journey. The lane's stated
+reason is falsifiable and I falsified it: its Environment block records
+"http://localhost:8255/health returned HTTP 404 at precondition check time", but `apps/backend/main.py:127`
+mounts the health router under prefix `/api` (`apps/backend/app/api/health.py:46`), so the live endpoint
+is `/api/health` — and **a 404 is a response from a LIVE server**, not a dead one. `logs/backend.log`
+shows `GET /health HTTP/1.1 404 Not Found` interleaved with `GET /api/health HTTP/1.1 200 OK` on the
+same port-8255 process. Seven journeys were waived against a backend that was answering, because the
+probe asked the wrong address and because `reports/phase-goal-ops-hardening-iter-40-ui-test-plan.md`
+declared "N/A — Backend-only phase. No UI tests required." off the spec's `Frontend Present: no`.
+(7) **I checked the ONE remaining unbounded whole-table load myself rather than assume the fix closed
+the clause:** `apps/backend/app/engine/prices.py:132-142` (`_BarCache.prefill`) selects seven columns
+with NO `WHERE` clause and, though it streams with `.yield_per(batch)`, accumulates EVERY row into one
+`by_symbol` dict of `Bar` objects — the cursor is bounded, the accumulator is not. That is the ~1.1 GB
+the dev handoff itself names as one of run 1's two competing consumers, and docs/goal.md's Success
+Criteria forbid it verbatim ("no code path streams the full `daily_prices` table into RAM"). I record it
+as an ITER-40 UPDATE on the long-standing iter-29/d, NOT as a new gate on J-07 — it predates iter-34's
+`passing` score and no lane has ever treated it as a J-07 blocker. (8) **AG hygiene checked, not
+assumed:** scan-report CLEAN; both drill `config.scratch.yaml` files carry env-var NAMES only
+(`TIINGO_API_KEY`, `FRED_API_KEY`, …), never values; `git check-ignore` confirms both 545-625 MB
+`drill.db` files are ignored; host-guard banners (`memory_cap_mb=2650|6144 malloc_arena_max=2`,
+`cpu_list=0-15 blas_threads=8`) are present at both drill boots.
+Rejected REGRESSION (C.1): nothing moved `passing` -> `failing` — nothing was tested, so nothing failed;
+scan-report CLEAN; all four launch/host-guard files byte-identical; all 13 open ledger items are `minor`.
+I weighed calling iter-40/y critical and decided against it on stated grounds: it is a verification-
+COVERAGE gap, not a product defect, and no artifact anywhere shows a journey broken. Rejected STALLED
+(C.2): every blocker has an agent path — the replay lane needs a one-line URL fix plus a test-plan rule
+change; the frozen thread can be identified with Python's in-process `faulthandler.register(SIGUSR1,
+all_threads=True)`, which needs neither the `kernel.yama.ptrace_scope` change `gdb` was refused nor the
+`py-spy` dependency the dev declined to add; and `prices.py`'s accumulator is ordinary bounded-read work.
+The two owner items are real but neither is the only path. Rejected GOAL_ACHIEVED (C.3): J-07 is
+`partial` and four journeys are `unknown`. **Chose ESCALATE (C.4, first clause)** under this session's
+four-times-recorded reading that "failed" = "did not reach `passing`" — J-07 has now missed six
+consecutive iterations — reinforced by an independent, iteration-specific trigger that is the strongest
+of the session so far: an iteration shipped with a DoD checkbox entirely unexecuted and SEVEN required
+journeys unverified, and the review lane, the QA lane AND the deterministic closure gate all reported
+clean. Only the auditor caught it. That is the FOURTH consecutive iteration where only the auditor
+caught the substantive defect; a lean iteration has no auditor.
+**FIVE THINGS I STATE PLAINLY RATHER THAN ROUND AWAY:** (i) **the code work is good and a fifth
+ESCALATE must not be read as saying otherwise.** The one risky change is minimal, uses the codebase's
+own existing idiom and config knob rather than inventing a mechanism, is byte-identity-proven by a test
+that replays the OLD path as its reference AND structurally proven by an independent auditor, and its
+memory effect was measured rather than asserted. The checkpoint fix is the minimum change that could
+work. The confounded first drill run was retained and explained in three places instead of deleted, the
+non-recurrence is labelled "signal, not certainty", and the `MemoryError` that DID fire is reported at
+its real site rather than folded into the success story. (ii) **the verification hole is the story of
+this iteration and I will not soften it.** Zero screenshots, zero replay, zero demo steps, seven
+journeys waived — against a backend that was demonstrably answering — and three separate gates called
+it clean. I downgraded four journeys to `unknown` precisely so this cannot be inherited as verified
+next iteration. (iii) **run 2 did not reach the fixed site.** The clause "no unbounded whole-table ORM
+materialization remains" is closed for `_missing_data_diagnostic` on the evidence of the code, the test
+and the auditor's measurement — not on the evidence of the drill, which died 53 lines upstream. Anyone
+reading "the wedge did not recur" as "the fix was exercised under pressure" is reading more than the
+data carries. (iv) **the ≤ 0.1 s health budget is now missed a SEVENTH time, and this time 0 of 28
+polls met it.** Five consecutive evaluators have called it an owner decision. It remains the single
+item in J-07 no agent can settle and the most likely place a fresh-context second-key CONFIRM rejects a
+GOAL_ACHIEVED. (v) **`prices.py:132-142` is the last unbounded whole-table load and it is now the
+prime suspect.** `yield_per` on that query bounds the cursor and not the accumulator, which is exactly
+the distinction this iteration taught itself about `_missing_data_diagnostic` — applied one file over
+and not yet acted on. It is also the ~1.1 GB that competed with the warm in the run that froze.
+
+**Next-step recommendation:** FULL depth (mandatory via ESCALATE). The target ORDER changes this time:
+verification coverage comes FIRST, ahead of J-07. (1) **Make the seven journey checks run again.** Fix
+the browser-QA precondition to probe `/api/health` rather than `/health` (a live server answering 404
+to the wrong path must never again be read as "backend down"), and stop `Frontend Present: no` from
+suppressing the required-still-passing regression replay — it should suppress NEW-surface UI tests only.
+A browser-QA run whose every regression row is `SKIP` must surface as an unmet DoD item, not a clean
+`SKIPPED`. All seven journeys need a fresh screenshot before any achievement attempt. (2) **Identify
+the thread that froze in wedge-drill run 1 — do not tune the cap again.** Arm
+`faulthandler.register(signal.SIGUSR1, all_threads=True)` in the drill launch: it dumps every thread's
+stack from inside the process, needs no ptrace permission and no new dependency, so both routes the dev
+found blocked are unnecessary. (3) **Bound `prices.py:132-142`'s accumulator** (iter-29/d): stream is
+already there, the `by_symbol` dict is the leak. It is the last code path that streams the full
+`daily_prices` table into RAM, which docs/goal.md's Success Criteria forbid in their own words.
+(4) **Keep the drill monitor polling past terminal job status** (audit B2): `wedge-drill/monitor.py:96-99`
+breaks the moment `job_status` is terminal, and iter-39's wedge appeared AFTER the row was written `ok`,
+so the 28 clean polls all land before the window that previously failed. (5) SMALL AND ALREADY WRITTEN
+DOWN: give the checkpoint density a count-based floor alongside the time-based throttle (dev Known Issue
+#2, reviewer NOTE); add `BLOCKED` to `verdicts.py::BrowserQAVerdict` and the four
+`grep -oE 'PASS|FAIL|SKIPPED'` sites in `goal-iter-lean.sh` so the vocabulary stops disagreeing across
+files (audit T3 — traced fail-safe, so it is hygiene, not a gate). (6) CARRIED, untouched: iter-29/b +
+`warmup.py:194` and the badge wording after a permanently failed warm-up (TEN iterations unmade);
+iter-31/e; iter-32/f (watch only); iter-36/n; iter-37/o; iter-37/q. (7) THIRD IN QUEUE, deferred a
+FIFTH time: iter-33/g — give Regime Lab's cold `view=pooled` compute the same background dispatch
+`/api/backtest` got at iter-32. (8) CAPTURE ONLY, never an iteration's goal: J-07's `[NEW]` walkthrough
+(tenth iteration unrecorded). (9) OWNER, unchanged, both to be settled BEFORE any achievement run:
+(a) iter-34/j — the `GET /api/health` ≤ 0.1 s budget, now missed seven times, this time 0 of 28 polls in
+step 2's own scenario; three dispositions, all his (ratify the honest-WARN convention, rescope the budget
+for the bounded background-compute window, or commission the cached-readiness-snapshot fix);
+(b) iter-33/i — whether `start-frontend.sh` joins `HOST_GUARD_MARKER_FILES`.

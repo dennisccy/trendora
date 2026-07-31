@@ -1,0 +1,30 @@
+t=  0.00s health=200 latency=123.4ms vmpeak=2349744 job_status=running
+t=  1.12s health=200 latency=361.3ms vmpeak=2495152 job_status=running
+t=  2.57s health=200 latency=808.3ms vmpeak=2570724 job_status=running
+t=  4.38s health=200 latency=135.6ms vmpeak=2713480 job_status=running
+t=  5.52s health=200 latency=776.9ms vmpeak=2713480 job_status=running
+t=  7.34s health=200 latency=132.6ms vmpeak=2713480 job_status=running
+t=  8.48s health=200 latency=132.1ms vmpeak=2713480 job_status=running
+t=  9.61s health=200 latency=179.9ms vmpeak=2713480 job_status=running
+t= 10.81s health=200 latency=179.4ms vmpeak=2713480 job_status=running
+t= 11.99s health=200 latency=167.1ms vmpeak=2713480 job_status=running
+t= 13.16s health=200 latency=205.6ms vmpeak=2713496 job_status=running
+t= 14.37s health=200 latency=155.3ms vmpeak=2713496 job_status=running
+t= 15.52s health=200 latency=241.0ms vmpeak=2713496 job_status=running
+t= 16.77s health=200 latency=420.1ms vmpeak=2713496 job_status=running
+t= 18.19s health=200 latency=292.9ms vmpeak=2713496 job_status=running
+t= 19.48s health=200 latency=343.4ms vmpeak=2713496 job_status=running
+t= 20.87s health=200 latency=145.2ms vmpeak=2713600 job_status=running
+t= 22.01s health=200 latency=251.7ms vmpeak=2713600 job_status=running
+t= 23.27s health=200 latency=236.3ms vmpeak=2713600 job_status=running
+t= 24.51s health=200 latency=149.5ms vmpeak=2713600 job_status=running
+t= 25.66s health=200 latency=494.3ms vmpeak=2713600 job_status=running
+t= 27.15s health=200 latency=483.3ms vmpeak=2713600 job_status=running
+t= 28.64s health=200 latency=510.0ms vmpeak=2713600 job_status=running
+t= 30.15s health=200 latency=465.8ms vmpeak=2713600 job_status=running
+t= 31.62s health=200 latency=197.2ms vmpeak=2713600 job_status=running
+t= 32.81s health=200 latency=431.7ms vmpeak=2713600 job_status=running
+t= 34.25s health=200 latency=630.3ms vmpeak=2713600 job_status=running
+t= 35.88s health=200 latency=495.4ms vmpeak=2713600 job_status=ok
+TOTAL_POLLS=28 NON_200=0 MAX_GAP_S=1.826 SAFETY_BACKSTOP_FIRED=False
+FINAL_JOB_STATUS_JSON={"job_id": "b447496315604ef0ab39e76aa93b3109", "kind": "backfill", "start": "2026-06-16", "end": "2026-06-18", "source": null, "status": "ok", "symbols_total": 0, "symbols_ok": 0, "symbols_failed": 0, "bars_fetched": 0, "dates_total": 3, "dates_done": 3, "snapshots_created": 3, "forward_returns_inserted": 3881, "calendar_days": 3, "non_trading_days": 0, "already_snapshotted": 0, "error_other": 0, "aggregates_refreshed": ["latest_snapshot", "market_phase", "forward_aggregates", "research_hot_keys", "index_series", "drawdown_expectations"], "chunk_index": 1, "chunk_total": 1, "passers": 0, "omitted_total": 0, "omitted": [], "stages": {"backfill": {"elapsed_seconds": 10.686, "items_processed": 3, "concurrency": 3, "per_date_seconds_sum": 3.9717, "speedup_factor": 0.3717}}, "current_activity": "scanning 2026-06-18 (3/3)", "last_progress_at": "2026-07-31T00:54:38.568956+00:00", "completed_stages": ["backfill"], "date_failures": [], "message": "backfill: 3 snapshots over 3 dates, 3881 forward returns", "errors": [], "started_at": "2026-07-31T00:54:01.617279+00:00", "finished_at": "2026-07-31T00:54:44.805153+00:00"}

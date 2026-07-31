@@ -4408,6 +4408,145 @@ def test_diagnostic_query_count_does_not_scale_with_universe_size(tmp_path):
     assert small_count <= 4  # sanity bound: calendar (2) + grouped stats (1) + bulk own-dates (1)
 
 
+def test_diagnostic_own_dates_streamed_fetch_byte_identical_to_whole_result(diagnostic_engine):
+    """TC-1 (iter-40, J-07 last blocker) -- `_missing_data_diagnostic`'s own-dates scan
+    (`data_manager.py:271`) now streams via `.yield_per(cfg.research.read_batch_size)` instead of
+    materializing the whole result (the iter-39 trial-3 wedge site: a `MemoryError` inside
+    `cursor._raw_all_rows()` on this exact line,
+    `runs/goal-ops-hardening-iter-39/mem-drill/trial3-2650mb-wedge-evidence.txt:17-29`). This proves the
+    fetch-STRATEGY change is output-neutral:
+
+      1. the SAME (symbol, date) rows collected via the OLD whole-result `.all()` path (replicated here
+         as the reference -- it is no longer production code) and via the streamed `.yield_per()` path
+         group into byte-identical per-symbol date sets, and
+      2. the actual `_missing_data_diagnostic` output (`no_history`/`thin`/`intra_series_gaps`) is
+         unaffected by the batch size -- forced tiny here (3) so the fixture's rows genuinely cross
+         multiple yield_per batches, not just one, proving the streaming boundary never splits a
+         symbol's dates across an inconsistent partial read."""
+    engine, _days = diagnostic_engine
+    cfg = _diag_cfg()
+    universe = list(cfg.universe.symbols)
+
+    with Session(engine) as session:
+        # the PRE-FIX fetch strategy, replicated as the reference (no longer live in data_manager.py).
+        whole_result_dates: dict[str, set] = {}
+        for symbol, d in session.exec(
+            select(DailyPrice.symbol, DailyPrice.date).where(DailyPrice.symbol.in_(universe))
+        ).all():
+            whole_result_dates.setdefault(symbol, set()).add(d)
+
+    with Session(engine) as session:
+        # the POST-FIX fetch strategy, batch size forced small to exercise >= 2 yield_per fetches.
+        streamed_dates: dict[str, set] = {}
+        for symbol, d in session.exec(
+            select(DailyPrice.symbol, DailyPrice.date).where(DailyPrice.symbol.in_(universe))
+        ).yield_per(3):
+            streamed_dates.setdefault(symbol, set()).add(d)
+
+    assert streamed_dates == whole_result_dates  # same rows, same grouping -- fetch strategy is invisible
+    assert streamed_dates  # sanity: the fixture actually has rows to compare (not a vacuous pass)
+
+    # and the real function, driven by a config with a tiny read_batch_size, serves the SAME categorized
+    # payload as the default (much larger) batch size -- the fetch strategy never leaks into the output.
+    cfg_tiny_batch = cfg.model_copy(
+        update={"research": cfg.research.model_copy(update={"read_batch_size": 3})}
+    )
+    with Session(engine) as session:
+        diag_default = _missing_data_diagnostic(session, cfg)
+    with Session(engine) as session:
+        diag_tiny_batch = _missing_data_diagnostic(session, cfg_tiny_batch)
+    assert diag_default == diag_tiny_batch
+
+
+# ==================================================================================================
+# iter-40 (iter-39/w, AG-3) — checkpoint cadence: per-date density + throttle still bounds writes
+# ==================================================================================================
+def test_checkpoint_cadence_density_and_throttle_control(tmp_path, monkeypatch):
+    """TC-4 (iter-40) -- `_checkpoint_run_record`'s tightened interval (`_RUN_RECORD_CHECKPOINT_INTERVAL_S`,
+    10.0 -> 1.0) must land per-date checkpoints densely enough that a `kill -9` at any point never leaves
+    the persisted `dates_done` more than one checkpoint interval's worth of dates behind true in-memory
+    progress -- iter-39's live drill measured an order-of-magnitude gap (18/18 dates done in memory vs a
+    persisted row stuck in single digits) at the old 10s interval
+    (`runs/goal-ops-hardening-iter-39/live-restart/kill-test-mid-flight-state.json` vs
+    `pre-kill-runs-state.json`). Two things proven on ONE simulated run (a fake monotonic clock ticks a
+    fixed `dt` per simulated date, so the test is deterministic and fast, not wall-clock-flaky):
+
+      1. density  -- after EVERY simulated date, the persisted `dates_done` is within
+         `ceil(interval / dt)` dates of the CURRENT true `dates_done` (never further stale than the
+         interval mathematically allows for this per-date speed).
+      2. throttle -- the total write count across N dates stays well under N (the throttle still bounds
+         write amplification -- this is NOT "a write on every single date regardless of interval", which
+         would defeat the whole point of a throttle; see the pre-existing
+         `test_run_record_checkpoint_is_throttled_open_ended_and_never_fatal` in
+         test_data_manager_jobs_pipeline.py for the throttle's own unit-level contract)."""
+    engine = make_engine(f"sqlite:///{tmp_path / 'cadence.db'}")
+    create_db_and_tables(engine)
+    cfg = load_config()
+
+    fake_now = [1_000_000.0]  # start far past any interval so the FIRST checkpoint call always writes
+
+    def _fake_monotonic() -> float:
+        return fake_now[0]
+
+    monkeypatch.setattr(data_manager.time, "monotonic", _fake_monotonic)
+    interval = data_manager._RUN_RECORD_CHECKPOINT_INTERVAL_S  # the tightened production value (1.0)
+
+    # iter-40 AUDIT (T1) -- pin the interval itself. Every budget below is DERIVED from `interval`, so
+    # they hold for ANY value of it: reverting the constant to its pre-iter-40 10.0 leaves this whole
+    # test green while re-opening exactly the iter-39/w honesty gap it exists to guard (verified during
+    # the iter-40 audit: the test passed unchanged with the constant monkeypatched back to 10.0). Bound
+    # it to the knob the constant's OWN in-code rationale cites -- `job_progress.poll_interval_seconds`,
+    # the cadence the `/data` live job card re-polls at (No magic numbers: this is config, not a literal).
+    # A checkpoint interval looser than the UI's own poll cadence means the panel can re-read the row
+    # faster than the row is refreshed, which is the stale-figure defect in the first place.
+    assert interval <= cfg.data_manager.job_progress.poll_interval_seconds, (
+        f"_RUN_RECORD_CHECKPOINT_INTERVAL_S ({interval}s) is looser than the /data job card's own poll "
+        f"cadence ({cfg.data_manager.job_progress.poll_interval_seconds}s) -- a killed job's persisted "
+        f"progress can then lag true progress by more than the UI's own refresh period (iter-39/w)"
+    )
+    dt = 0.3  # simulated wall-clock seconds per date -- faster than the interval (the "fast job" case
+              # iter-39 actually hit: 18 dates / 45.18s elapsed ~= 2.5s/date average, but per-date compute
+              # can be much faster than the write-serialized average once workers overlap -- 0.3s stresses
+              # the density guarantee harder than the observed case).
+    n_dates = 20
+
+    prog = JobProgress(job_id="cadence-probe", kind="backfill", start=date(2024, 1, 1), end=date(2024, 1, 20))
+    prog.dates_total = n_dates
+    data_manager._create_run_record(engine, cfg, prog)
+
+    def _persisted_dates_done() -> int:
+        with Session(engine) as session:
+            row = session.exec(select(DataProviderRun).where(DataProviderRun.job_id == "cadence-probe")).one()
+        return json.loads(row.message)["dates_done"]
+
+    write_count = 0
+    max_staleness = 0
+    for i in range(1, n_dates + 1):
+        prog.dates_done = i
+        fake_now[0] += dt
+        before = _persisted_dates_done()
+        data_manager._checkpoint_run_record(engine, prog)
+        after = _persisted_dates_done()
+        if after != before:
+            write_count += 1
+        max_staleness = max(max_staleness, prog.dates_done - after)
+
+    # density: never more than ceil(interval/dt) dates stale at any point in the simulated run.
+    allowed_staleness = -(-interval // dt)  # ceil via floor-division negation
+    assert max_staleness <= allowed_staleness, (
+        f"persisted dates_done fell {max_staleness} dates behind true progress -- more than the "
+        f"{allowed_staleness}-date budget the {interval}s interval / {dt}s-per-date rate allows"
+    )
+    # a kill "at date N" (the last iteration above) must leave persisted progress close to the true end.
+    assert n_dates - _persisted_dates_done() <= allowed_staleness
+
+    # throttle control: NOT a write on every single date -- well under n_dates writes for n_dates calls.
+    assert 0 < write_count < n_dates, (
+        f"expected the throttle to still bound writes (fewer than {n_dates} for {n_dates} calls), got "
+        f"{write_count} -- either the throttle stopped working or nothing ever wrote"
+    )
+
+
 # ==================================================================================================
 # J-37 — Pull-missing job constructor (gap-exact, dispatched through the EXISTING J-34 chunked engine)
 # ==================================================================================================

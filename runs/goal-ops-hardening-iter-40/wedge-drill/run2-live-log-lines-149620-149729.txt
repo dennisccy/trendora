@@ -1,0 +1,110 @@
+INFO:     127.0.0.1:33260 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:33276 - "POST /api/data/jobs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49694 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49700 - "GET /api/data/jobs/b447496315604ef0ab39e76aa93b3109 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49710 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49714 - "GET /api/data/jobs/b447496315604ef0ab39e76aa93b3109 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49720 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58196 - "GET /api/data/jobs/b447496315604ef0ab39e76aa93b3109 HTTP/1.1" 200 OK
+2026-07-31 01:54:12,305 INFO trendora.data_manager: J-07 finalize-tail cache_ctx liveness: job=b447496315604ef0ab39e76aa93b3109 resolved=attach_shared_cache(live shared cache)
+2026-07-31 01:54:12,545 ERROR trendora.data_manager: ingest coverage/membership-timeline refresh failed (non-fatal): 
+Traceback (most recent call last):
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/data_manager.py", line 3488, in _refresh_ingest_aggregates
+    payload = refresh_coverage_snapshot(session, cfg)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/data_manager.py", line 1131, in refresh_coverage_snapshot
+    return refresh_coverage_snapshot_for(session, cfg, resolved_asof)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/data_manager.py", line 1111, in refresh_coverage_snapshot_for
+    payload = _compute_coverage_uncached(session, cfg, as_of=resolved_asof)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/data_manager.py", line 885, in _compute_coverage_uncached
+    return _compute_coverage_body(session, cfg, as_of=as_of)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/app/engine/data_manager.py", line 898, in _compute_coverage_body
+    symbol_count = session.scalar(select(func.count(func.distinct(DailyPrice.symbol))))
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/.venv/lib/python3.12/site-packages/sqlalchemy/orm/session.py", line 2421, in scalar
+    return self._execute_internal(
+           ^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/.venv/lib/python3.12/site-packages/sqlalchemy/orm/session.py", line 2271, in _execute_internal
+    result: Result[Any] = compile_state_cls.orm_execute_statement(
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/.venv/lib/python3.12/site-packages/sqlalchemy/orm/context.py", line 306, in orm_execute_statement
+    result = conn.execute(
+             ^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/.venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py", line 1421, in execute
+    return meth(
+           ^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/.venv/lib/python3.12/site-packages/sqlalchemy/sql/elements.py", line 526, in _execute_on_connection
+    return connection._execute_clauseelement(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/.venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py", line 1643, in _execute_clauseelement
+    ret = self._execute_context(
+          ^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/.venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py", line 1848, in _execute_context
+    return self._exec_single_context(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/dennis-chan/Git/trendora/apps/backend/.venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py", line 1988, in _exec_single_context
+    self._handle_dbapi_exception(
+  File "/home/dennis-chan/Git/trendora/apps/backend/.venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py", line 2368, in _handle_dbapi_exception
+    raise exc_info[1].with_traceback(exc_info[2])
+  File "/home/dennis-chan/Git/trendora/apps/backend/.venv/lib/python3.12/site-packages/sqlalchemy/engine/base.py", line 1969, in _exec_single_context
+    self.dialect.do_execute(
+  File "/home/dennis-chan/Git/trendora/apps/backend/.venv/lib/python3.12/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+MemoryError
+INFO:     127.0.0.1:58204 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58216 - "GET /api/data/jobs/b447496315604ef0ab39e76aa93b3109 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58222 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58230 - "GET /api/data/jobs/b447496315604ef0ab39e76aa93b3109 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58246 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58258 - "GET /api/data/jobs/b447496315604ef0ab39e76aa93b3109 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58272 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58282 - "GET /api/data/jobs/b447496315604ef0ab39e76aa93b3109 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58290 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58296 - "GET /api/data/jobs/b447496315604ef0ab39e76aa93b3109 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58298 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58308 - "GET /api/data/jobs/b447496315604ef0ab39e76aa93b3109 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58318 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58326 - "GET /api/data/jobs/b447496315604ef0ab39e76aa93b3109 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58354 - "GET /api/data/jobs/b447496315604ef0ab39e76aa93b3109 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58338 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44190 - "GET /api/data/jobs/b447496315604ef0ab39e76aa93b3109 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44202 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44216 - "GET /api/data/jobs/b447496315604ef0ab39e76aa93b3109 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44230 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44232 - "GET /api/data/jobs/b447496315604ef0ab39e76aa93b3109 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44244 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44250 - "GET /api/data/jobs/b447496315604ef0ab39e76aa93b3109 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44254 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44266 - "GET /api/data/jobs/b447496315604ef0ab39e76aa93b3109 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44272 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44286 - "GET /api/data/jobs/b447496315604ef0ab39e76aa93b3109 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44302 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44304 - "GET /api/data/jobs/b447496315604ef0ab39e76aa93b3109 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44310 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44312 - "GET /api/data/jobs/b447496315604ef0ab39e76aa93b3109 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:44320 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36458 - "GET /api/data/jobs/b447496315604ef0ab39e76aa93b3109 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36464 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36474 - "GET /api/data/jobs/b447496315604ef0ab39e76aa93b3109 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36482 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36494 - "GET /api/data/jobs/b447496315604ef0ab39e76aa93b3109 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36496 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36504 - "GET /api/data/jobs/b447496315604ef0ab39e76aa93b3109 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36518 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36520 - "GET /api/data/jobs/b447496315604ef0ab39e76aa93b3109 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36536 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36542 - "GET /api/data/jobs/b447496315604ef0ab39e76aa93b3109 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36544 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36554 - "GET /api/data/jobs/b447496315604ef0ab39e76aa93b3109 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36566 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36578 - "GET /api/data/jobs/b447496315604ef0ab39e76aa93b3109 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43410 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43412 - "GET /api/data/jobs/b447496315604ef0ab39e76aa93b3109 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43414 - "GET /api/data/jobs/b447496315604ef0ab39e76aa93b3109 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43424 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43438 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43444 - "GET /api/data/jobs/b447496315604ef0ab39e76aa93b3109 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43100 - "GET /api/data/jobs/b447496315604ef0ab39e76aa93b3109 HTTP/1.1" 200 OK

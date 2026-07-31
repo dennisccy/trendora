@@ -367,3 +367,57 @@ say so explicitly rather than letting the verdict imply the work was poor. A hum
 strictly not "failed", or who weighs "escalate sparingly" against a session that has now escalated four
 times, would return CONTINUE with an advisory full-depth recommendation.
 **Reversible:** yes
+
+## iter-40 — goal-evaluator
+
+**Ambiguity:** All seven required-still-passing journeys got ZERO verification this iteration (browser QA
+headlined `SKIPPED` with 8/8 `SKIP` rows, `reports/qa/goal-ops-hardening-iter-40-evidence/` was never
+created, no iter-40 replay artifact exists, demo produced zero steps). My agent file says an un-evidenced
+journey that the browser lane skipped is `unknown`; methodology A.6 says evidence expires with CHANGE, not
+time, and the auditor's own instruction is the middle position — "do not treat them as re-verified", i.e.
+keep the inherited status without advancing verification (the precedent iter-38 set for J-04). `docs/goal.md`
+does not say which wins, and the diff's behaviour-neutrality is unusually well proven (a fixture equality
+test replaying the OLD path, plus an independent structural trace by the auditor showing neither row order
+nor fetch strategy can reach the output).
+**We chose:** a code-path split rather than one blanket answer. A journey keeps `passing` on durability ONLY
+when no hunk in this iteration's diff lies on the path that produces what that journey asserts; otherwise,
+with zero fresh evidence, it drops to `unknown`. That gives J-03/J-08/J-09 `passing` (neither hunk touches
+range validation, `/api/backtest`-from-storage, or the `/api/health` disclosure) and J-01/J-04/J-05/J-06
+`unknown` (hunk 1 sits inside the coverage-payload producer they read; hunk 2 writes the very
+`data_provider_runs` row J-01 and J-04 assert on). Grounds stated rather than assumed: (1) A.6's durability
+carve-out is scoped by its own words to code that is UNCHANGED, and for four journeys it is not — the
+no-screenshot rail (A.3) then forbids `passing`; (2) the asymmetry of the two errors is one-sided —
+`unknown` costs a replay run the next iteration was going to owe anyway, while a stale `passing` row
+mechanically satisfies the achievement gate and could carry an unverified journey into a GOAL_ACHIEVED
+attempt; (3) the auditor named this exact risk ("Before any GOAL_ACHIEVED attempt, the deterministic replay
+lane must actually run against this build"), and a machine-checkable `unknown` enforces it where prose does
+not; (4) nothing anywhere shows a journey broken, so I recorded the reason as "not tested" in plain words in
+eval.md rather than letting `unknown` imply a defect. I record the cost honestly: this discards real,
+recent, high-quality evidence (iter-39's live 7/7 replay with seven distinct screenshots, one code state
+ago) and it is harsher than the iter-38 precedent I am extending. A human who reads A.6's "change" as
+BEHAVIOURAL change — and this diff's byte-identity is proven twice over — or who follows the auditor's
+"inherited, not re-established" wording literally, would keep all seven `passing` with `last_verified_iter`
+frozen at iter-39.
+**Reversible:** yes
+
+## iter-40 — goal-evaluator
+
+**Ambiguity:** decision tree C.4's first clause ("the SAME journey has now failed 2+ consecutive
+iterations") matches under the reading this session recorded at iter-36, 37, 38 and 39 (`partial` = "did
+not reach `passing`"), which makes ESCALATE first-match-wins over CONTINUE. But this is the FIFTH
+consecutive ESCALATE, the methodology says to use it sparingly, this iteration was ALREADY dispatched at
+full depth, and it delivered its mandated code target well.
+**We chose:** ESCALATE again. Grounds: (1) the tree is applied top-down, first match wins, and four prior
+evaluators recorded the identical reading on the identical journey in this same session — flipping it now
+would make the session's own ledger inconsistent; (2) ESCALATE's only practical effect is to make full depth
+MANDATORY rather than advisory, and this session provably lost iteration 35 in its entirety to exactly that
+downgrade; (3) an independent, iteration-specific trigger exists and it is the strongest of the session — an
+iteration shipped with a DoD checkbox entirely unexecuted and seven required journeys unverified, and the
+review lane, the QA lane AND the deterministic closure gate all reported clean; only the auditor caught it,
+the fourth consecutive iteration where that is true, and a lean iteration has no auditor; (4) the cost of
+being wrong is one unnecessary full pipeline, versus a lost iteration the other way. I record the cost
+honestly: five ESCALATEs running reads as a far harsher judgement than this iteration's code work deserves,
+and both eval.md's Summary and the evaluator log's plainly-stated list say so explicitly. A human who reads
+`partial` as strictly not "failed", or who weighs "escalate sparingly" against a session that has now
+escalated five times, would return CONTINUE with an advisory full-depth recommendation.
+**Reversible:** yes

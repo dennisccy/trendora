@@ -1,0 +1,3 @@
+elapsed_s,dates_done,status
+0.0,20,running
+0.034,20,KILLED

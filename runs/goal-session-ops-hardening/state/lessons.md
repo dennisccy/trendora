@@ -420,3 +420,36 @@ only PASS/FAIL/SKIP/SKIPPED and drops an unknown verdict from every count. The m
 rule for every future evaluator: read the results TABLE ROWS, never the `Overall:`/verdict headline.
 **Applies to:** any iteration touching `merge_ui_test_results.py` / `demo_runner.py` / `replay-lane.sh`,
 and every goal-evaluator reading `reports/phase-*-ui-test-results.md`.
+
+## iter-40 — 2026-07-31T03:20:00Z
+
+**Verdict:** ESCALATE
+**Lesson:** A `404` from a health probe is proof the server is UP, not down — and this session just lost
+seven journey verifications to that confusion. The browser-QA precondition probed
+`http://localhost:8255/health`, but `apps/backend/main.py:127` mounts the health router under prefix
+`/api`, so the live endpoint is `/api/health`; `logs/backend.log` shows the 404 interleaved with
+`GET /api/health 200 OK` on the same process. Combined with a UI test plan that read the spec's
+`Frontend Present: no` as "no UI tests required", DoD item 8 / TC-9 went entirely unexecuted while
+review, QA and the deterministic closure gate all reported clean. Two durable rules: (a) a precondition
+check must distinguish *connection refused* (down) from *any HTTP status* (up) — never treat a 404 as
+absence; (b) `Frontend Present: no` may suppress NEW-surface UI tests, never the required-still-passing
+regression replay, and a browser run whose every regression row is `SKIP` must read as an unmet DoD item,
+not a clean `SKIPPED`.
+**Applies to:** every iteration's browser-qa/replay precondition and ui-test-plan step; any
+goal-evaluator reading a `SKIPPED` browser headline; and any framework work on
+`goal-iter-lean.sh` / `replay-lane.sh` / the ui-test-designer.
+
+## iter-40 — 2026-07-31T03:20:00Z (second)
+
+**Verdict:** ESCALATE
+**Lesson:** `.yield_per()` bounds the DB cursor, not your accumulator — the same distinction iter-39
+learned about `WHERE` clauses, one level up. This iteration correctly fixed `_missing_data_diagnostic`
+(`data_manager.py:271`), but `apps/backend/app/engine/prices.py:132-142` (`_BarCache.prefill`) already
+used `.yield_per(batch)` AND still collects every `daily_prices` row into one `by_symbol` dict of `Bar`
+objects (~1.1 GB on the deep basis, named by the dev handoff as one of the two consumers in the drill run
+that froze). So "it streams" is not evidence of a bound; check what the loop BODY retains. Also worth
+recording: the post-fix drill's `MemoryError` fired at `data_manager.py:898`, **53 lines before** the
+fixed call at `:951` — so "no traceback names the fixed site" was true because the code never got there,
+which is much weaker than "the fix held under pressure".
+**Applies to:** any review of a "bounded read" claim in `apps/backend/app/engine/`; any
+memory-pressure drill whose success criterion is the ABSENCE of a name in a traceback.

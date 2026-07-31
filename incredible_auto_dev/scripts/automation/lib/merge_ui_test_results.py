@@ -75,7 +75,12 @@ def parse_rows(text: str) -> "list[dict]":
         verdict = ""
         for c in cells:
             cu = _norm_verdict_cell(c)
-            if cu in ("PASS", "FAIL", "SKIP", "SKIPPED"):
+            # ops-hardening iter-40: BLOCKED joins the recognized verdict words, mirroring
+            # demo_runner.py's already-shipped class (a journey never checked — e.g. the backend was
+            # unreachable — distinct from FAIL, where it WAS checked and did not hold). Previously an
+            # unrecognized BLOCKED cell fell all the way through to the empty-verdict default below,
+            # silently dropping the row from `compute_overall`'s reckoning.
+            if cu in ("PASS", "FAIL", "SKIP", "SKIPPED", "BLOCKED"):
                 verdict = "SKIP" if cu == "SKIPPED" else cu
                 break
         if not verdict:
@@ -84,7 +89,7 @@ def parse_rows(text: str) -> "list[dict]":
             # the free-prose Actual column) wins over any prose that happens to
             # start with a verdict word. \b keeps "FAILED ..." prose non-matching.
             for c in reversed(cells):
-                mv = re.match(r"(PASS|FAIL|SKIPPED|SKIP)\b", _norm_verdict_cell(c))
+                mv = re.match(r"(PASS|FAIL|SKIPPED|SKIP|BLOCKED)\b", _norm_verdict_cell(c))
                 if mv:
                     cu = mv.group(1)
                     verdict = "SKIP" if cu == "SKIPPED" else cu
@@ -118,17 +123,29 @@ def verdict_for(text: str, test_id: str) -> str:
 
 def compute_overall(rows: "list[dict]", file_verdicts: "list[str] | None" = None) -> str:
     """Overall verdict. Surviving rows are authoritative; only when NO rows could
-    be parsed do we fall back to the input files' headline verdicts."""
+    be parsed do we fall back to the input files' headline verdicts.
+
+    Priority FAIL > BLOCKED > PASS > SKIP/SKIPPED — ops-hardening iter-40, mirroring
+    demo_runner.py's already-shipped `compute_regression_verdict` (BLOCKED is a DISTINCT class from
+    FAIL: it means a journey's own assertions were never checked at all — e.g. the backend was
+    unreachable — not that they were checked and failed; goal_gate.py already blocks achievement on
+    any BLOCKED cell regardless of this headline, so this fixes the LLM-readable summary only). Before
+    this fix an all-BLOCKED merged run fell through both branches below to the SKIPPED default,
+    because BLOCKED matched neither "FAIL" nor "PASS" in either list — never a bare `PASS`."""
     verdicts = [r["verdict"] for r in rows if r["verdict"]]
     if verdicts:
         if "FAIL" in verdicts:
             return "FAIL"
+        if "BLOCKED" in verdicts:
+            return "BLOCKED"
         if "PASS" in verdicts:
             return "PASS"
         return "SKIPPED"
     file_verdicts = file_verdicts or []
     if "FAIL" in file_verdicts:
         return "FAIL"
+    if "BLOCKED" in file_verdicts:
+        return "BLOCKED"
     if "PASS" in file_verdicts:
         return "PASS"
     return "SKIPPED"
@@ -157,14 +174,18 @@ def merge(texts: "list[str]") -> str:
     overall = compute_overall(rows, file_verdicts)
     n_pass = sum(1 for r in rows if r["verdict"] == "PASS")
     n_skip = sum(1 for r in rows if r["verdict"] == "SKIP")
+    n_blocked = sum(1 for r in rows if r["verdict"] == "BLOCKED")
     total = len(rows)
 
+    overall_line = f"**Overall:** {n_pass}/{total} journeys passed ({n_skip} skipped"
+    overall_line += f", {n_blocked} blocked" if n_blocked else ""
+    overall_line += ")"
     out = ["# UI Test Results (merged)", "",
            f"**Date:** {_today()}",
            "**Written by:** merge_ui_test_results.py (LLM browser-qa + deterministic replay)",
            "", "---", "",
            f"**Browser QA Verdict:** {overall}", "",
-           f"**Overall:** {n_pass}/{total} journeys passed ({n_skip} skipped)",
+           overall_line,
            "", "---", "", "## Results Table", "",
            "| Test ID | Name | Type | Priority | Expected | Actual | Verdict | Evidence |",
            "|---------|------|------|----------|----------|--------|---------|----------|"]
@@ -174,6 +195,7 @@ def merge(texts: "list[str]") -> str:
 
     failed = [r for r in rows if r["verdict"] == "FAIL"]
     skipped = [r for r in rows if r["verdict"] == "SKIP"]
+    blocked = [r for r in rows if r["verdict"] == "BLOCKED"]
     if failed:
         out += ["## Failed Tests", ""]
         for r in failed:
@@ -186,6 +208,15 @@ def merge(texts: "list[str]") -> str:
         for r in skipped:
             out += [f"### {r['test_id']} — {_cell(r, _C_NAME)}", "",
                     "**Verdict:** SKIPPED",
+                    f"**Reason:** {_cell(r, _C_ACTUAL)}", ""]
+    if blocked:
+        out += ["## Blocked Tests", "",
+                "_Not a journey failure — its own assertions were never checked (e.g. the backend was "
+                "unreachable). Distinct from FAIL: FAIL means the journey's own assertions did not "
+                "hold; BLOCKED means they were never checked._", ""]
+        for r in blocked:
+            out += [f"### {r['test_id']} — {_cell(r, _C_NAME)}", "",
+                    "**Verdict:** BLOCKED",
                     f"**Reason:** {_cell(r, _C_ACTUAL)}", ""]
     out += ["## Environment", "",
             "- **Browser:** Chromium (LLM browser-qa + deterministic replay)",
@@ -465,6 +496,44 @@ def _self_test() -> int:
         new, voided = void_text(mass, ["J-99"])
         assert voided == [] and new == mass
 
+    def t_blocked_all_headlines_blocked():
+        # TC-6 (iter-40) — two input files whose surviving rows are ALL BLOCKED merge to a BLOCKED
+        # headline, never PASS (falls through both `verdicts`/`file_verdicts` "PASS" checks) or
+        # SKIPPED (the pre-fix default when nothing else matched).
+        f1 = (
+            "**Browser QA Verdict:** BLOCKED\n\n## Results Table\n"
+            "| Test ID | Name | Type | Priority | Expected | Actual | Verdict | Evidence |\n"
+            "|---|---|---|---|---|---|---|---|\n"
+            "| UT-J-01 | Backfill honors range | regression | P1 | e | backend unreachable | BLOCKED | none |\n")
+        f2 = (
+            "**Browser QA Verdict:** BLOCKED\n\n## Results Table\n"
+            "| Test ID | Name | Type | Priority | Expected | Actual | Verdict | Evidence |\n"
+            "|---|---|---|---|---|---|---|---|\n"
+            "| UT-J-03 | No per-run range cap | regression | P1 | e | backend unreachable | BLOCKED | none |\n")
+        rows = parse_rows(f1)
+        assert rows[0]["verdict"] == "BLOCKED", rows
+        md = merge([f1, f2])
+        assert file_top_verdict(md) == "BLOCKED", file_top_verdict(md)
+        assert "## Blocked Tests" in md and "UT-J-01" in md and "UT-J-03" in md
+        assert "## Failed Tests" not in md and "## Skipped Tests" not in md
+
+    def t_fail_still_wins_over_blocked():
+        # TC-7 (iter-40) — a merged set with at least one FAIL and at least one BLOCKED headlines FAIL
+        # (FAIL still wins), mirroring demo_runner.py's compute_regression_verdict ordering.
+        mixed = (
+            "**Browser QA Verdict:** FAIL\n\n## Results Table\n"
+            "| Test ID | Name | Type | Priority | Expected | Actual | Verdict | Evidence |\n"
+            "|---|---|---|---|---|---|---|---|\n"
+            "| UT-J-05 | Aggregates precomputed | regression | P1 | e | zeros shown | FAIL | a.png |\n"
+            "| UT-J-06 | Pages load lazily | regression | P1 | e | backend unreachable | BLOCKED | none |\n")
+        md = merge([mixed])
+        assert file_top_verdict(md) == "FAIL", file_top_verdict(md)
+        assert "## Failed Tests" in md and "## Blocked Tests" in md
+        # and directly against compute_overall, independent of any markdown rendering:
+        assert compute_overall([{"verdict": "FAIL"}, {"verdict": "BLOCKED"}]) == "FAIL"
+        assert compute_overall([{"verdict": "BLOCKED"}, {"verdict": "PASS"}]) == "BLOCKED"
+        assert compute_overall([{"verdict": "BLOCKED"}, {"verdict": "SKIP"}]) == "BLOCKED"
+
     def t_void_respects_escaped_pipes():
         # The replay renderer escapes '|' in cells; void must not split on it.
         esc = (
@@ -492,6 +561,8 @@ def _self_test() -> int:
               ("annotated_verdicts", t_annotated_verdicts),
               ("verdict_for_tolerates_annotated_cells", t_verdict_for_tolerates_annotated_cells),
               ("tc_prefixed_fail_survives", t_tc_prefixed_fail_survives),
+              ("blocked_all_headlines_blocked", t_blocked_all_headlines_blocked),
+              ("fail_still_wins_over_blocked", t_fail_still_wins_over_blocked),
               ("void_rewrites_and_recomputes", t_void_rewrites_and_recomputes),
               ("void_keeps_unlisted_fail", t_void_keeps_unlisted_fail),
               ("void_no_match_is_noop", t_void_no_match_is_noop),

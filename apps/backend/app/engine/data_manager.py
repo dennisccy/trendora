@@ -260,17 +260,32 @@ def _missing_data_diagnostic(session: Session, cfg: Config) -> dict:
     }
 
     # item H (iter-24 fast-platform pass): ONE bulk query for every universe member's own dates, bounded
-    # to `universe` (~len(config.universe.symbols) members — no unbounded whole-table scan) — replaces
-    # the FORMER one-`DailyPrice.date`-query-per-member loop (a query per member that HAS data, run on
-    # every cold `/api/data` coverage compute). Grouped in Python into per-symbol date sets BEFORE the
-    # existing gap-diff logic below, which is otherwise UNCHANGED — byte-identical output (a symbol's
-    # bars outside its own [first, last] range, if any, are irrelevant to that logic either way, so
-    # narrowing the query to `[first, last]` per symbol would have been equivalent; fetching the full
-    # per-symbol series here is simpler and still strictly bounded to the universe).
+    # to `universe` (~len(config.universe.symbols) members — its SCOPE is bounded, never a whole-table
+    # scan) — replaces the FORMER one-`DailyPrice.date`-query-per-member loop (a query per member that
+    # HAS data, run on every cold `/api/data` coverage compute). Grouped in Python into per-symbol date
+    # sets BEFORE the existing gap-diff logic below, which is otherwise UNCHANGED — byte-identical output
+    # (a symbol's bars outside its own [first, last] range, if any, are irrelevant to that logic either
+    # way, so narrowing the query to `[first, last]` per symbol would have been equivalent; fetching the
+    # full per-symbol series here is simpler and still strictly bounded to the universe).
+    #
+    # iter-40 (J-07 last blocker): being bounded IN SCOPE (the `WHERE ... IN (universe)` clause) is NOT
+    # the same as being bounded IN MEMORY. Iterating `session.exec(select(...))` directly makes SQLAlchemy
+    # materialize the WHOLE result via `cursor._raw_all_rows()` before this loop's body ever runs (see
+    # `sqlalchemy/orm/loading.py::chunks`) — on the deep basis that is ~3.3M `(symbol, date)` rows held
+    # live in one Python list, confirmed as the ACTUAL wedge site in iter-39's trial-3 drill (a `MemoryError`
+    # raised from this exact line's `_raw_all_rows()` call,
+    # `runs/goal-ops-hardening-iter-39/mem-drill/trial3-2650mb-wedge-evidence.txt:17-29`) and the reason
+    # three separate cap trials could never reach the aggregate-warm handlers this drill was actually
+    # targeting. `.yield_per(cfg.research.read_batch_size)` streams the SAME query in bounded-size batches
+    # instead — the SAME knob `prices.py`'s `_BarCache.prefill` / `research.py` / `forward_testing.py`
+    # already use for this exact pattern (see `prices.py:132-141`). The grouping into
+    # `own_dates_by_symbol` below and every downstream consumer are UNCHANGED — only the fetch strategy
+    # (materialize-then-iterate vs. stream-in-batches) changes; the output is byte-identical (TC-1).
     own_dates_by_symbol: dict[str, set[date_cls]] = {}
+    _diag_batch = cfg.research.read_batch_size
     for symbol, d in session.exec(
         select(DailyPrice.symbol, DailyPrice.date).where(DailyPrice.symbol.in_(universe))
-    ):
+    ).yield_per(_diag_batch):
         own_dates_by_symbol.setdefault(symbol, set()).add(d)
 
     no_history: list[dict] = []
@@ -4052,7 +4067,22 @@ def _has_open_run_record(engine: Engine, job_id: Optional[str]) -> bool:
 # ops-hardening iter-9 (F1) — how often a long-running backfill re-writes its CURRENT progress onto its
 # OPEN run-history row. One small UPDATE per interval bounds the write amplification regardless of how
 # fast dates complete, while keeping a killed job's persisted progress at most one interval stale.
-_RUN_RECORD_CHECKPOINT_INTERVAL_S = 10.0
+#
+# iter-40 (iter-39/w, AG-3 checkpoint honesty): tightened 10.0 -> 1.0. At 10s, a job whose ENTIRE run
+# completes faster than one interval only ever writes its first checkpoint (the pre-loop plan write, or
+# the first per-date call — whichever lands first after process start, since `time.monotonic()` at boot
+# is already far past 10s) and then throttles away every later per-date call for the rest of the job, so
+# a `kill -9` anywhere after that leaves the persisted row stuck near the START regardless of how far the
+# job really got — iter-39's live drill measured 18/18 dates done in memory against a persisted row still
+# reading single digits, an order-of-magnitude gap (`runs/goal-ops-hardening-iter-39/live-restart/
+# kill-test-mid-flight-state.json` vs `pre-kill-runs-state.json`). At ~1-2.5s observed per-date wall time
+# (`kill-test-mid-flight-state.json`: 18 dates / 45.18s elapsed), a 1.0s interval checkpoints roughly once
+# per date instead of once per 4-10 dates — the SAME throttled-write mechanism (unchanged call sites,
+# unchanged `message` field, unchanged `_run_detail()` serializer), just dense enough that a fast job's
+# kill-time progress is never stale by more than about one date. 1.0s also matches `job_progress.
+# poll_interval_seconds` (no UI consumer reads the row faster than that anyway, so sub-second precision
+# would buy nothing); write amplification stays bounded to at most one UPDATE per second per running job.
+_RUN_RECORD_CHECKPOINT_INTERVAL_S = 1.0
 
 
 def _checkpoint_run_record(engine: Engine, prog: JobProgress) -> None:

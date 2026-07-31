@@ -1,0 +1,39 @@
+TTP/1.1" 200 OK
+INFO:     127.0.0.1:58760 - "GET /api/data/jobs/0b8a66eda30a489ab754d63554139d17 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58766 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58776 - "GET /api/data/jobs/0b8a66eda30a489ab754d63554139d17 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58778 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58780 - "GET /api/data/jobs/0b8a66eda30a489ab754d63554139d17 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58790 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58806 - "GET /api/data/jobs/0b8a66eda30a489ab754d63554139d17 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58818 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58826 - "GET /api/data/jobs/0b8a66eda30a489ab754d63554139d17 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58838 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58848 - "GET /api/data/jobs/0b8a66eda30a489ab754d63554139d17 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58852 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58866 - "GET /api/data/jobs/0b8a66eda30a489ab754d63554139d17 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58950 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58962 - "GET /api/data/jobs/0b8a66eda30a489ab754d63554139d17 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58968 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58978 - "GET /api/data/jobs/0b8a66eda30a489ab754d63554139d17 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58986 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58990 - "GET /api/data/jobs/0b8a66eda30a489ab754d63554139d17 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59002 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59012 - "GET /api/data/jobs/0b8a66eda30a489ab754d63554139d17 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59022 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59032 - "GET /api/data/jobs/0b8a66eda30a489ab754d63554139d17 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59044 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59052 - "GET /api/data/jobs/0b8a66eda30a489ab754d63554139d17 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59066 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47846 - "GET /api/data/jobs/0b8a66eda30a489ab754d63554139d17 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47862 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47878 - "GET /api/data/jobs/0b8a66eda30a489ab754d63554139d17 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47880 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47894 - "GET /api/data/jobs/0b8a66eda30a489ab754d63554139d17 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47906 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47914 - "GET /api/data/jobs/0b8a66eda30a489ab754d63554139d17 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47922 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:47934 - "GET /api/data/jobs/0b8a66eda30a489ab754d63554139d17 HTTP/1.1" 200 OK
+Exception ignored in thread started by: <object repr() failed>
+MemoryError: 
+2026-07-31 01:45:47,600 INFO trendora.warmup: coverage snapshot warmed (asof=2026-07-01)
