@@ -421,3 +421,25 @@ and both eval.md's Summary and the evaluator log's plainly-stated list say so ex
 `partial` as strictly not "failed", or who weighs "escalate sparingly" against a session that has now
 escalated five times, would return CONTINUE with an advisory full-depth recommendation.
 **Reversible:** yes
+
+## iter-41 — goal-decomposer
+
+**Ambiguity:** the iter-40 evaluator's next-step recommendation lists five ordered items for
+"the next iteration" (verification-lane fix; faulthandler thread ID; bound `prices.py`'s
+accumulator; monitor-past-terminal polling; two small hygiene items) without saying whether
+they are one iteration's scope or should split across several. Rule 5 ("never bundle two risky
+journeys") and rule 4 ("smallest spec wins ties") could argue for splitting the verification-lane
+repair (tooling) into its own iteration before touching `_BarCache.prefill` (product code).
+**We chose:** bundled all five into iter-41. Grounds: (1) the verification-lane fix and the drill
+diagnostics are tooling/instrumentation, not product code — only `_BarCache.prefill`'s bound is a
+risky product-code action, so rule 5's "one risky item" cap still holds; (2) the evaluator's own
+prose frames items 1-5 as one ordered do-list for "the next iteration" (singular), and four prior
+evaluators have already logged that ESCALATE-driven full-depth iterations in this session
+routinely bundle a QA-tooling fix with one risky product change (iter-38/39/40 precedent); (3)
+without the verification-lane fix landing FIRST inside this same iteration, J-05's own re-check
+(needed because `_BarCache.prefill` is called from J-05's coverage-payload producer) would have
+nothing to verify against — splitting would strand the risky change unverified for a whole extra
+iteration. A human who weighs rule 4's tie-break more heavily than the evaluator's explicit
+single-iteration framing would split this into a verification-lane-only iteration followed by a
+separate `_BarCache.prefill` iteration.
+**Reversible:** yes
