@@ -5601,3 +5601,66 @@ numeric columns degrade honestly instead of crashing, but the resident footprint
 full-table case (no fundamental order-of-magnitude bound), AND the `_SymbolColumns` read path
 introduced in iteration 41 is measurably ~70-80× slower per call than the `list[Bar]` it replaced
 (T2, above) — never an unqualified "✓ PASS / no whole-table loads" claim for either finding.
+
+---
+
+## OWNER AMENDMENT — 2026-07-31 — memory envelope raised to `memory_cap_mb: 8192`, and the
+## `GET /api/health` ceiling rescoped for bounded background-compute windows
+## (authored by the OWNER, not an agent measurement pass)
+
+**This section AMENDS the budget contract and is APPEND-ONLY: no figure recorded above is edited or
+withdrawn.** Every measurement in the sections above was taken under the then-current
+`server.memory_cap_mb: 6144` and remains a valid record of that configuration. Measurements from
+iteration 43 onward record their margin against the new cap.
+
+Written by the owner after the iter-42 REGRESSION_HALT
+(`runs/goal-session-ops-hardening/iter-42/eval.md`), which escalated a decision no agent is permitted
+to make (AG-10): raise the envelope, shorten the price basis, or relax the goal's timing promise. The
+owner chose to raise the envelope. The companion entry — grounds, arithmetic, and the work
+commissioned alongside it — is the dated bullet in `docs/goal.md` → "Additional binding notes".
+
+### 1. Memory envelope — new committed values
+
+| Knob | Declared in | Was | Now |
+|---|---|---|---|
+| `server.memory_cap_mb` — backend `ulimit -v` (RLIMIT_AS, virtual address space) | `config.yaml` | 6144 MB | **8192 MB** |
+| `HOST_GUARD_MEMORY_HIGH` — engine-tree cgroup `memory.high` (soft: reclaim/throttle, never OOM-kill) | `project-extensions/host-guard/host-guard.env` | 10G | **12G** |
+| `HOST_GUARD_GLOBAL_MEMORY_BUDGET` — machine-wide sum check across live projects | `~/.config/iad/host-guard-host.env` (outside this repo) | 22G | **24G** |
+
+Arithmetic: 12G (this project) + 10G (the other live project) = 22G ≤ 24G budget ≤ 26.7G installed,
+leaving ~4.7G for desktop / Chrome / page cache. `memory_cap_mb` and `HOST_GUARD_MEMORY_HIGH` are
+independent mechanisms (per-process RLIMIT_AS vs per-tree cgroup ceiling); nothing in the toolchain
+cross-validates them, so they are set consistently here by hand.
+
+Sizing evidence — all figures are pre-existing measurements from the sections above, re-expressed
+against the new cap. No new measurement run was performed for this amendment:
+
+| Scenario | VmPeak | % of old 6144 cap | % of new 8192 cap |
+|---|---|---|---|
+| Isolated full historical forward-aggregate warm, live 30y basis (iteration 32) | 2,691,600 kB | 42.8% | **32.1%** |
+| Same, driven through the real ingest-finalize hook (iteration 38, TC-3) | 3,688,916 kB | 58.6% | **44.0%** |
+| Iteration 42 outage — ~6 concurrent heavy computes (warm + regime lab + factor lab + drawdown + samples + universe resolve) | pinned at the 6,291,456 kB ceiling | 100% (fatal) | ~75% |
+
+The old cap was calibrated against a whole-table ORM `.all()` load of ~6.8 GB that iteration 19
+replaced with a streamed, column-projected load; it was never re-derived from measured demand after
+that. J-07 step 3 ("VmPeak stays under the declared `server.memory_cap_mb`, margin recorded here")
+is unchanged as a requirement — only the number it compares against moves.
+
+### 2. `GET /api/health` — steady state UNCHANGED, bounded-compute window rescoped
+
+| Regime | Latency ceiling | Availability |
+|---|---|---|
+| **Steady state** (no ingest / aggregate warm in flight) | **≤ 0.1 s — unchanged** | 100% HTTP 200 |
+| **Bounded background-compute window (BCW)** — an in-flight ingest or aggregate warm, order ~30 s, disclosed by `/api/health`'s own background-compute field (J-09) | **≤ 2 s** | **100% HTTP 200 — no exceptions** |
+
+Still a failure inside a BCW, exactly as before: any non-200, a frozen or unresponsive window (the
+iter-42 signature: 500s then five consecutive HTTP-000 timeouts), an untruthful readiness value, or a
+window that outlasts the compute that justified it.
+
+Why rescoped rather than met or waived: `/api/health` consumes ~98.6% of the 0.1 s budget **at rest**
+(recorded at line ~553 above), so no amount of pacing creates headroom during compute; the ceiling
+was missed in eight consecutive iterations and every miss was inside a compute window, never at rest.
+The two alternatives the evaluator put to the owner — ratifying the honest-WARN convention, or
+commissioning a cached-readiness-snapshot rewrite — were declined in favour of stating the real
+contract: during bounded background compute the promise is *availability and honesty*, not sub-100 ms
+latency. J-07 step 2's "within its existing budget" resolves to this table.

@@ -627,6 +627,11 @@ class ServerOpsCfg(BaseModel):
                                      one-copy ~3.27M-row bar prefill (iter-19: a streamed, column-projected
                                      load — retained footprint ~0.4-0.5 GB) + headroom, so a pathological
                                      N-copy spike is OOM-killed as ONE process rather than swap-thrashing the VM.
+                                     OWNER-RAISED 6144 -> 8192 on 2026-07-31 after the iter-42 REGRESSION_HALT
+                                     (dated amendment: `docs/goal.md` "Additional binding notes" +
+                                     `reports/perf-budgets.md`): an isolated full historical forward-aggregate
+                                     warm measures 2.6-3.7 GB VmPeak, and the outage came from ~6 concurrent
+                                     heavy computes stacking to the old 6144 wall.
       - `malloc_arena_max`         — the `MALLOC_ARENA_MAX` glibc allocator cap the start script exports
                                      (iter-27, anti-goal #8). By default glibc creates up to `8 x ncpus`
                                      independent malloc arenas (up to 128 on this 16-core host); each retains
@@ -645,7 +650,7 @@ class ServerOpsCfg(BaseModel):
     limit_concurrency: int = 64
     timeout_keep_alive_seconds: int = 65
     graceful_timeout_seconds: int = 120
-    memory_cap_mb: int = 6144
+    memory_cap_mb: int = 8192
     malloc_arena_max: int = 2
 
     @model_validator(mode="after")
@@ -1928,7 +1933,8 @@ class DatabasePragmasCfg(BaseModel):
                            space PER pooled connection, so `mmap_size_bytes` x (pool_size + max_overflow)
                            must stay well under the `server.memory_cap_mb` `ulimit -v` cap AND leave room
                            for the ~3.27M-row cold bar prefill. At 1 GB x the default pool this exhausted
-                           the 6144 MB cap and crashed the first cold `/api/data` load (iter-24 audit / UT-16).
+                           the then-6144 MB cap and crashed the first cold `/api/data` load (iter-24 audit /
+                           UT-16).
       - `temp_store`     — "MEMORY" keeps temporary b-trees/sort spills off disk.
 
     Boot-validated: `journal_mode`/`synchronous`/`temp_store` against SQLite's own documented PRAGMA

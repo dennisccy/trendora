@@ -110,7 +110,7 @@ database:
     mmap_size_bytes: 0           # mmap DISABLED (iter-24 audit). A non-zero mmap_size reserves that many
                                  # bytes of VIRTUAL address space PER pooled connection; at 1 GB x the
                                  # pool (pool_size 10 + max_overflow 20) just ~6 connections exhausted the
-                                 # server.memory_cap_mb=6144 `ulimit -v` cap BEFORE the cold /api/data bar
+                                 # then-6144 MB `server.memory_cap_mb` `ulimit -v` cap BEFORE the cold /api/data bar
                                  # prefill even ran -> MemoryError/PyO3-panic crash on the first /data load
                                  # after a restart (browser-qa UT-16, reproduced 2/2). The 256 MB page cache
                                  # above (demand-resident, not a virtual reservation) keeps reads fast.
@@ -1360,7 +1360,7 @@ server:
   limit_concurrency: 64                    # uvicorn --limit-concurrency: max simultaneous connections before 503 (light reads never starved by a heavy /api/data burst)
   timeout_keep_alive_seconds: 65           # uvicorn keep-alive idle timeout (a heavy /api/data warm read is ~10s; this bounds an idle-kept connection generously above that)
   graceful_timeout_seconds: 120            # uvicorn --timeout-graceful-shutdown: bound how long a heavy in-flight request may delay shutdown
-  memory_cap_mb: 6144                      # ulimit -v virtual-memory cap (MB) for the backend process: clears the one-copy ~3.27M-row bar prefill (iter-19: now a streamed, column-projected load — retained footprint ~0.4-0.5 GB, not the ~6.8 GB whole-table ORM `.all()` load this cap used to barely clear) + headroom; a pathological N-copy spike is OOM-killed as ONE process, never a VM-wide swap freeze
+  memory_cap_mb: 8192                      # ulimit -v virtual-memory cap (MB) for the backend process. OWNER-RAISED 6144 -> 8192 on 2026-07-31 after the iter-42 REGRESSION_HALT — see the dated owner amendment in docs/goal.md "Additional binding notes" and reports/perf-budgets.md. Recalibration: 6144 was sized against the long-retired ~6.8 GB whole-table ORM `.all()` load (iter-19 replaced it with a streamed, column-projected load, retained footprint ~0.4-0.5 GB); MEASURED demand today is 2.6-3.7 GB VmPeak for an ISOLATED full historical forward-aggregate warm on the live 30y basis (iter-32: 2,691,600 kB; iter-38: 3,688,916 kB), and iter-42's outage was ~6 concurrent heavy computes stacking to the 6144 wall (MemoryError + `can't start new thread` -> /api/health 500s -> multi-minute outage). 8192 leaves the isolated warm at ~45% of cap and clears the observed concurrent-death point by ~27%; a pathological N-copy spike is still OOM-killed as ONE process, never a VM-wide swap freeze
   malloc_arena_max: 2                      # iter-27 (anti-goal #8): MALLOC_ARENA_MAX exported by start-backend.sh. glibc otherwise creates up to 8*ncpus (128 on a 16-core host) independent malloc arenas, each retaining freed-but-unreturned address space; across the uvicorn threadpool + parallel backfill workers that fragments VSZ and pins the ulimit -v ceiling on a SECOND full-universe rebuild. Capping to 2 arenas bounds that fragmentation (the dominant VSZ lever behind the iter-26/iter-27 rebuild crash) — byte-identical outputs (allocator layout only, never a stored/served value)
 
 # ----------------------------------------------------------------------------------------

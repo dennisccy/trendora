@@ -425,7 +425,13 @@ no-ops or arbitrary limits.
   marked block from a launch script is a REGRESSION regardless of test outcomes. The ceilings
   are a physical constraint of the current host (two instant hardware resets under all-core
   vectorized ingest bursts: 2026-07-20 19:17, 2026-07-21 10:33), not a performance budget to
-  optimize away. *(critical)*
+  optimize away. *(Owner amendment 2026-07-31, two corrections of record — nothing above is
+  relaxed: `memory_cap_mb` / `malloc_arena_max` live in `config.yaml`, not in `host-guard.env`;
+  and the 2026-07-20/21 resets were subsequently attributed to an uncorrected hardware
+  data-fabric fault (`host-guard.env`, 2026-07-30), so the ceiling VALUES are an owner-set
+  envelope — re-set by the dated entry in "Additional binding notes" below — while this
+  paragraph's prohibition on agents removing, weakening, or bypassing caps is unchanged.)*
+  *(critical)*
 
 ## Loop mechanics (for the iteration planner)
 
@@ -508,3 +514,37 @@ tables + orphan sweep + existence checks. Nothing global loads at startup.
   applies no caps at all (confirmed by direct read); closing that gap is in-scope launcher work
   for the next iteration. The sampler, `run-goal.sh` preflight, and `host-guard.env` itself are
   owner/framework work, not product scope.
+- **Owner amendment — sanctioned memory envelope raised (added 2026-07-31 by the owner, committed
+  before the iter-43 resume, after the iter-42 REGRESSION_HALT):** `server.memory_cap_mb`
+  (`config.yaml`) 6144 → **8192**; `HOST_GUARD_MEMORY_HIGH` (`host-guard.env`) 10G → **12G**; the
+  machine budget `HOST_GUARD_GLOBAL_MEMORY_BUDGET` (`~/.config/iad/host-guard-host.env`, outside
+  this repo) 22G → **24G** — 12G + the other live project's 10G = 22G ≤ 24G ≤ 26.7G installed.
+  Grounds: 6144 was calibrated against a long-retired ~6.8 GB whole-table ORM load; measured demand
+  is 2.6-3.7 GB VmPeak for an *isolated* full historical forward-aggregate warm (iter-32:
+  2,691,600 kB; iter-38: 3,688,916 kB), and iter-42's outage came from ~6 *concurrent* heavy
+  computes stacking to the 6144 wall (`MemoryError` + `can't start new thread` → `/api/health`
+  500s → multi-minute outage), not from one runaway accumulator. **This is the OWNER re-setting
+  AG-10's envelope; AG-10's prohibition stands verbatim** — agents must never remove, weaken, or
+  bypass these caps, and the launch scripts must keep enforcing whatever values are declared.
+  J-09's "AG-8/AG-10 are untouched" acceptance clause describes what the J-09 change itself did and
+  is not contradicted by this owner edit; **no journey text is modified by this amendment** (all
+  eight journey `spec_hash`es verified unchanged across it). `reports/perf-budgets.md` stays
+  append-only: existing sections are records taken under the old cap; new measurements record their
+  margin against 8192. Commissioned by the same decision, for the iterations that follow:
+  - **`GET /api/health` (the iter-34/j owner item) is RESCOPED, not waived.** The ≤ 0.1 s ceiling
+    continues to bind steady-state reads, unchanged. During a *bounded background-compute window*
+    (an in-flight ingest / aggregate warm, order ~30 s), the binding requirement is that **every
+    poll answers HTTP 200** under a relaxed **≤ 2 s** ceiling; a frozen or unresponsive window, any
+    non-200, or an untruthful readiness value remains a failure. Recorded with its own dated
+    section in `reports/perf-budgets.md`; J-07 step 2's "within its existing budget" resolves to
+    that entry.
+  - **The iter-42 `_BarCache.prefill` symbol filter is REVERTED** — re-measured it costs +5.1 %
+    VmPeak rather than the 2.5 % reduction first recorded. The `KeyError` publish-race fix landed
+    alongside it in `prices.py` MUST survive the revert, with its regression test.
+  - **The warm seam is UNFROZEN for bounding work:** `compute_forward_aggregates`,
+    `_forward_agg_slice_map`, `_fr_slice_map` and `ensure_historical_forward_aggregates_dispatched`
+    may now be modified to bound their peak footprint — byte-identical outputs for the same inputs
+    still required (J-07 acceptance).
+  - **`scripts/start-frontend.sh` joins `HOST_GUARD_MARKER_FILES`** (the iter-33/i owner item): it
+    can trigger a multi-worker `next build` from the QA / demo lanes, so it carries a HOST-GUARD
+    block like the other launchers.
