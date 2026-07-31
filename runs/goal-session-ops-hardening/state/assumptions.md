@@ -490,3 +490,37 @@ interrupted mid-flight row got NO this-iteration evidence, and a full J-04 drill
 achievement run. A human who requires a journey's replay script to cover the steps whose code changed
 would score J-04 `unknown` and block on it now rather than at the next attempt.
 **Reversible:** yes
+
+## iter-42 — goal-decomposer
+
+**Ambiguity:** the iter-41 evaluator's next-step item (3) — "settle what 'no whole-table load' means
+— either write the real per-symbol bound or amend goal.md to a per-row budget the current design
+meets — and correct the QA report's AG-8 row either way" — offers two dispositions without marking
+either OWNER the way item (8)'s health-budget/host-guard items explicitly are. Four prior iterations
+(35, 36, 37, 41) each attempted a narrower fix at this exact code (`_BarCache.prefill`,
+`app/engine/prices.py`) and each fell short of a genuine bound — iter-41's own columnar rewrite is,
+by its own evaluator's words, "a COMPRESSION, not a BOUND." A fifth attempt risks repeating the
+pattern; amending goal.md's Success Criteria (owner-authored, per docs/goal.md's Vision) is not
+something this agent edits unilaterally.
+**We chose:** plan a fifth, narrower-scoped attempt as agent-actionable dev work (not an owner
+escalation) for iter-42, because a concrete, previously-unexplored path exists that the prior four
+attempts did not take: `_BarCache.prefill`'s SELECT has no `WHERE symbol IN (...)` filter at all —
+it always scans every symbol in `daily_prices` regardless of the `expected_symbols` pool callers
+already pass it — while its own sibling `load_only` (same file) already implements exactly that
+symbol-filtered, `yield_per`-streamed pattern for the identical query shape. Reusing that
+already-proven pattern, plus auditing whether `_compute_coverage_uncached`/`_membership_timeline`'s
+resolver loops need a symbol's FULL history or only a bounded trailing window, is new ground, not a
+sixth retread of the columnar-compression approach. Grounds: (1) it is a genuinely different lever
+than iter-35/36/37/41's attempts (query-time filtering / windowing vs. per-row storage format), so
+"the same fix failing a fifth time" does not apply; (2) the fallback is written into this iteration's
+DoD explicitly — if analysis shows every current caller genuinely needs full history for the full
+universe, the developer documents that finding for evaluator/owner disposition instead of re-claiming
+a fix that isn't one, so the iteration cannot silently repeat iter-41's overstatement risk; (3) editing
+docs/goal.md's Success Criteria is out of this agent's remit per this session's "goal.md-only" governance
+convention — that path stays available to the human owner, not self-authorized here. Cost recorded
+honestly: if this fifth attempt also falls short, twelve-plus iterations of ambiguity will have become
+thirteen, and the next decomposer should read this entry as evidence favoring an owner escalation
+next, not a sixth agent attempt. A human who reads four consecutive partial results as sufficient
+proof that no further bound is reachable without a caller-semantics change would skip straight to
+amending goal.md's per-row budget language now rather than dispatching a fifth attempt.
+**Reversible:** yes
