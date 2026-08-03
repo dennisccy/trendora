@@ -342,3 +342,38 @@ plainly-stated list both say so explicitly. A human who weighs "escalate sparing
 escalations, or who notes that this round already ran full depth so the verdict changes nothing
 operationally, would return CONTINUE with an advisory full-depth recommendation.
 **Reversible:** yes
+
+## iter-44 — goal-decomposer
+
+**Ambiguity:** the iter-43 evaluator's next-step item (1) says "give shutdown a deadline, and make a
+calculation that stops making progress give up and say so instead of freezing" — two verbs, no
+mechanism named. "Give up and say so" could mean (a) a new watchdog that actively times out and
+cancels the stalled background dispatch, (b) a new disclosed field marking it stalled while it keeps
+running, or (c) simply making the existing shutdown path bounded so the PROCESS gives up even though
+the stuck computation itself does not. `docs/goal.md` does not specify which; J-07's acceptance text
+only requires the service stay reachable and truthful, not any particular stall-handling shape.
+
+**We chose:** (c) first — wire the ALREADY-DECLARED-but-never-enforced `ServerOpsCfg` launcher flags
+(`limit_concurrency`/`timeout_keep_alive_seconds`/`graceful_timeout_seconds`) into `start-backend.sh`,
+which bounds how long a stuck process can hold the port unreachable — plus a genuine live diagnostic
+(the SIGUSR1 all-thread dump, armed at iter-40 and never fired) to find the ACTUAL blocked call, with
+the fix shape (a)/(b)/neither left CONDITIONAL on what that diagnostic finds, rather than committing to
+a specific watchdog mechanism upfront. Grounds: (1) the launcher-flag gap is concrete, previously
+undiscovered, and low-risk — a direct code read found `ServerOpsCfg`'s own docstring already claims
+`start-backend.sh` is "the SINGLE source" of these timeouts, which is false today; wiring it needs no
+new mechanism, only reading already-declared config, mirroring the exact pattern iter-2 used for
+`memory_cap_mb`; (2) the binding iter-38 lesson (mixing a "prove a failure mode" experiment with a
+"compare two arms" experiment silently kills the first) argues against guessing a watchdog's threshold
+values without first seeing what the live stack actually blocks on — a threshold picked before the
+diagnostic runs would be exactly that kind of unevidenced guess; (3) the binding iter-39 lesson (three
+probes without hitting the target is diagnosing the wrong thing) argues for reading the live dump
+before writing any fix, which this iteration does for the first time in four attempts at this class of
+freeze; (4) making TC-4's outcome conditional (fix OR honest disclosure) follows the iter-42 precedent
+already used for an inconclusive AG-8 attempt, so this iteration cannot silently overclaim a fix that
+isn't one. Cost recorded honestly: if the diagnostic implicates something outside this iteration's
+evidenced reach (e.g., a kernel/host-level cause), the shutdown-deadline wiring alone will bound the
+OUTAGE duration but not eliminate the underlying stall, and a further iteration is still needed. A
+human who reads "give up and say so" as requiring an ACTIVE stall-detector shipped this same iteration
+regardless of what the diagnostic finds would commit to option (a)/(b) upfront rather than making it
+conditional.
+**Reversible:** yes
