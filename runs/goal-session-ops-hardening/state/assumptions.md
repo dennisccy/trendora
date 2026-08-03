@@ -410,3 +410,55 @@ this round is not wrong to want it. A human who reads the schema's "a prior iter
 who holds that any 21-minute total outage is a critical AG-8 breach regardless of authorship — would
 score J-05 `regressed`, return REGRESSION, and halt.
 **Reversible:** yes
+
+## iter-45 — goal-decomposer
+
+**Ambiguity:** the iter-44 evaluator's next-step recommendation lists two items "in order" — (1) an
+out-of-process watchdog/shutdown-deadline, (2) the membership-timeline incremental-invalidation fix —
+and phrases EACH as deserving "its own round," but `docs/goal.md` says nothing about which must come
+first, and rule 5 ("never bundle two risky journeys/changes in one iteration") only says they must be
+separate, not which is separate first.
+
+**We chose:** do item (2), the membership-timeline incremental fix, this iteration, deferring item (1)
+(the watchdog) to a later one — reversing the evaluator's literal listed order. Grounds stated rather
+than assumed: (1) a direct code read (`app.engine.data_manager._refresh_ingest_aggregates`) confirms the
+SAME root cause — `refresh_coverage_snapshot`'s call into `membership_timeline_cached`, the FIRST step
+of the finalize hook, runs BEFORE the forward-aggregate warm loop — is why J-07's warm never advances
+past `horizons_done: 0/5` AND why J-05's own defining case never completes; fixing it is rule 3's
+"unblocker" for BOTH currently-failing journeys' actual defect, not merely a bound on one symptom's
+duration; (2) `reports/perf-budgets.md`'s own "For the evaluator" section independently names the
+membership-timeline fix "the fix the evidence actually points at," ranking it above the watchdog in
+substance even though the evaluator's prose listed the watchdog first; (3) the SAME artifact calls the
+watchdog "small and mechanical," and J-07's own acceptance text ("never a deadlock, wedge, or restart
+requirement") means a watchdog alone cannot make any currently-failing J-07 acceptance clause pass — it
+only bounds an outage's duration, whereas the membership-timeline fix has a plausible path to making
+both J-05 and J-07 pass. Cost recorded honestly: the app has no out-of-process safety net for one more
+iteration — if this iteration's fix is incomplete or a different freeze recurs, the same unbounded-outage
+risk stands until the watchdog iteration lands. A human who reads the evaluator's "(1)... (2)..."
+enumeration as a mandated sequence would build the watchdog first this iteration instead.
+**Reversible:** yes
+
+## iter-45 — goal-decomposer
+
+**Ambiguity:** `perf-budgets.md`'s framing of the fix ("scoping the cache key per-date, or merging
+incrementally... a real design change to order-dependent `entries`/`exits` state") does not say whether
+the incremental path must correctly handle EVERY ingest shape — including a historical gap-fill day
+inserted BEFORE an already-cached later date, which can retroactively change that later date's `entries`/
+`exits` — or may be scoped to the common append-forward case with a full-recompute fallback for the
+rarer shape. `docs/goal.md`'s J-05 step 1 names only "one unsnapshotted historical trading day," without
+specifying its position relative to already-cached dates.
+
+**We chose:** scope the incremental fast path to the append-forward case (the new date is at or after
+every already-cached date), falling back to the EXISTING full recompute whenever an ingest lands a date
+strictly earlier than an already-cached date. Grounds: (1) neither iter-43's nor iter-44's live attempts
+at J-05's defining case exercised the reorder-sensitive shape, so nothing in evidence requires solving it
+this iteration; (2) mirrors this session's own established precedent (iter-16's `is_latest=true`-only
+scoping, iter-27's stamp-narrowing) of shipping a scoped fix for the common case rather than an unproven
+general-case rewrite, per the binding iter-38 lesson against speculative rewrites; (3) correctness for the
+harder case is fully preserved — it falls back to the already-correct full recompute, so nothing is wrong
+or fabricated, only unaccelerated for a shape this iteration doesn't evidence as broken. Cost recorded
+honestly: a historical gap-fill inserted behind an already-cached later date still pays the full O(dates x
+pool) cost after this iteration — if that shape is a common operator workflow, a further iteration is
+needed to extend the fast path to it. A human prioritizing full generality over evidenced scope would
+mandate the incremental path handle every insertion order in this same iteration.
+**Reversible:** yes
