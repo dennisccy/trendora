@@ -3303,3 +3303,122 @@ returned in a new shape and the diagnostic tool armed at iter-40 was not used; (
 time: iter-33/g, Regime Lab's cold pooled view; (7) CAPTURE ONLY, never a round's goal: J-07's `[NEW]`
 walkthrough (twelfth round unrecorded); (8) OWNER, unchanged: iter-33/i, whether `start-frontend.sh`
 joins `HOST_GUARD_MARKER_FILES`.
+
+## Iteration 43 — goal-ops-hardening-iter-43
+
+**Date:** 2026-08-03T19:30:00Z
+**Verdict:** ESCALATE
+**Depth dispatched:** full (`iter-43/depth-dispatched` = `full`, matching the spec's `Depth: full` /
+`Full trigger: 3`. `runs/goal-ops-hardening-iter-43/status.json` = `complete` / `closure_passed`.
+Note `browser_checks_run: false` and `next_action: review` in that file are STALE — both browser
+lanes demonstrably ran (deterministic replay 13:52-13:53 with six dated PNGs, LLM browser-QA
+14:13-14:22), and the auditor flagged the same staleness independently as T2. `ui-test-results.md`
+is authoritative over `status.json`.)
+**Journey deltas:**
+- **RECOVERED: J-05 "Aggregates are precomputed at ingest, never on the fly"** — `regressed` →
+  `partial`. The iter-42 mechanism (a backfill accepted 200, whose worker thread never started,
+  leaving the run row at `running` forever behind a blank page) is genuinely CLOSED: job 258 ran
+  325.4 s to terminal `ok`. Not `passing`, because the journey's own step 1 demands an
+  UNSNAPSHOTTED day and the tested day was already snapshotted (0 snapshots created).
+  `evidence_makeup` SET (the confirmed behaviour was never captured in a frame that shows it).
+- **Still failing: J-07 "Heavy aggregates never take the service down"** — second consecutive hard
+  live FAIL; `last_passing_iter` stays iter-34 (nine iterations). `last_verified_iter` advances to
+  iter-43. `evidence_makeup` stays CLEARED (A.7 rail — the behaviour is unmet, not the artifact).
+- Re-verified `passing` with this-iteration evidence: **J-01, J-03, J-04, J-06, J-08, J-09** — six
+  dated replay rows plus screenshots; `last_verified_iter`/`last_passing_iter` advance to iter-43.
+  Newly failing: none. **Regressed: NONE.** Deferred (`DEFERRED-BUDGET`): none. No
+  `browser-infra.json`; no `journeys-changed.md`; all 8 `spec_hash`es match `goal_gate
+  hash-journeys` run by me, confirming the owner's amendment left every journey text untouched.
+- Anti-goal violations: **THREE RESOLVED — iter-33/i** (the `start-frontend.sh` host-guard owner
+  item, done and verified by me at both sites), **iter-34/j** (the `/api/health` budget — the owner
+  rescoped rather than waived it, so the DECISION is settled), **iter-42/ac** (the +5.1% prefill
+  regression, reverted and oracle-tested). **FIVE NEW: iter-43/af** (minor, open — the total
+  connection-refused outage under a stalled warm), **iter-43/ag** (minor, open — the owner's new
+  ≤2 s health budget breached on its first measurement), **iter-43/ah** (minor, open — the QA
+  report's three over-claims), **iter-43/ai** (minor, open — duplicate evidence screenshots),
+  **iter-43/aj** (minor, resolved in-audit — the launch guard missed `MemoryError`). Twelve carried
+  items each given an ITER-43 UPDATE recording what I verified rather than inherited. Ledger now:
+  **48 total, 15 unresolved, 0 critical.** scan-report CLEAN; coherence COHERENCE-PASS (zero
+  blocking, zero advisories); review PASS_WITH_NOTES; QA PASS (over-claimed); audit
+  PASS_WITH_GAPS; ux-regression SKIPPED (budget-shed); closure CLOSURE-PASS.
+
+**Reasoning:** I checked the load-bearing facts myself rather than reading them off a report.
+(1) **The owner's memory decision worked, and I say that first because the FAIL will otherwise bury
+it.** Against the raised 8192 MB cap the heavy calculation held its memory perfectly flat at
+2,720,636 kB — 32.4% of cap, 67.6% margin — for a continuously watched 1,001 s with one thread at
+90-99% CPU. J-07's memory step passes with room to spare, and the plan's conditional rewrite was
+correctly not triggered. (2) **But the app still went down, for a different reason, and that is the
+finding of the round.** The browser lane found the port refusing connections before it ran a single
+step: five failed connection attempts, nothing listening, the server process alive at 82-98% CPU,
+its log ending mid-shutdown, and the blocking work a background calculation frozen at zero of five
+horizons after 137 seconds. It needed a hard kill. Last round the app ran out of memory; this round
+it had plenty and simply got stuck. (3) **I found the trigger first-hand in a screenshot.**
+`J-09-verify.png`, which I opened, shows the live "background compute running (1)" chip at 13:53 —
+the replay lane's own J-09 step is what put that calculation in flight minutes before the hang.
+J-09 reported it honestly; surviving it is J-07's job. (4) **The health promise the owner just
+rewrote failed its first measurement:** 173 of 272 polls over 2 s, worst 6.6 s, and getting worse
+across the window rather than staying flat as every earlier measurement in that file did. The
+developer disclosed this unprompted and refused to round it into the two axes that passed. (5) **I
+did not accept J-05's PASS row at face value.** The row is honest and detailed, but its own text
+says the tested day was already saved: the job created 0 snapshots, and the leaderboard it displayed
+had been stored the previous day. J-05 exists to prove that ingesting data produces fresh stored
+aggregates; that half was not tried. The developer's attempt at the real case ran 1,001 s and never
+finished. So `partial`. (6) **I ran `md5sum` over the evidence directory and two pairs collide:**
+`UT-J-05-result.png` == `UT-J-07-fail.png`, and `J-03-verify.png` == `J-04-verify.png`. The picture
+cited as proof of J-07's failure shows a healthy Ready badge. I opened it: it is a generic `/data`
+capture. The auditor found the same thing independently. (7) **AG-10 checked at both sites, not
+assumed:** `host-guard.env:89` lists all three launchers and `start-frontend.sh:28-58` carries the
+marked block; `git diff 9165b2ea..HEAD` over `config.yaml`/`docs/goal.md` is empty, so the 8192 cap
+is the owner's own committed value and nothing here weakened a cap.
+Rejected REGRESSION (C.1): nothing moved `passing` → `failing`; J-05 improved off `regressed`; all
+15 open ledger items are `minor` and the scan-report is CLEAN. I weighed calling iter-43/af critical
+and decided against it on stated grounds — it is an availability defect with a named,
+agent-actionable lead, of the same family this session has carried as minor since iter-35/k, no data
+was lost or fabricated, and halting now would waste the unblock the owner just granted. Rejected
+STALLED (C.2): every blocker has an agent path — a shutdown timeout on `start-backend.sh:95`, the
+thread-dump tool armed at iter-40 and still never fired at a live freeze, a clean single-trigger
+latency re-measurement, and a re-run of J-05 on a genuinely new day. Rejected GOAL_ACHIEVED (C.3):
+J-07 is `failing` and J-05 is `partial`. **Chose ESCALATE (C.4, first clause):** J-07 has now failed
+two consecutive iterations outright, reinforced by an independent iteration-specific trigger — the
+audit lane again returned the load-bearing findings that the review lane (PASS_WITH_NOTES), the QA
+lane (PASS, "No blockers to shipping") and the deterministic closure gate (CLOSURE-PASS over a `FAIL`
+headline) all passed over. That is the **seventh consecutive iteration where only the auditor caught
+the substantive defect,** and a lean iteration has no auditor.
+**FIVE THINGS I STATE PLAINLY RATHER THAN ROUND AWAY:** (i) **the owner's decision was correct and
+this ESCALATE must not be read as saying otherwise.** Every number the raise was meant to move,
+moved: flat memory at a third of cap, all 272 polls answering 200, the induced-pressure abort a full
+clean pass on all four clauses, and the journey that was broken now running to completion. (ii)
+**the failure mode changed underneath the fix, and that is progress, not stagnation.** iter-42 died
+of memory exhaustion; iter-43 hung with two thirds of its memory free. Anyone reading "J-07 failed
+again" as "nothing moved" is reading less than the data carries. (iii) **the honesty gradient across
+the lanes is the process story.** The developer volunteered a latency regression nobody asked about
+and labelled his own live run incomplete; the QA lane then wrote `PASS` and "No blockers" over that
+same evidence 32 minutes before the browser lane returned `FAIL` on a target journey. Same
+iteration, same facts, opposite reports. (iv) **the near-miss on the launch guard is the most
+instructive artifact here:** the fix written to close a silent-failure hole was keyed to one of the
+two exceptions the incident actually produced, and only a live parametrization — not a reading —
+exposed it. When a guard is written for a specific past incident, that incident's own exception set
+is the fixture. (v) **J-05's own defining case has still never been run.** Three iterations have now
+touched J-05 without once backfilling a day that was not already saved, and the one attempt at it
+ran 1,001 s without finishing. Until that runs, "aggregates are precomputed at ingest" is proven
+only on the serving half.
+
+**Next-step recommendation:** FULL depth (mandatory via ESCALATE). In order: (1) **stop the app going
+silent when a heavy calculation gets stuck** — the backend start script launches its web server with
+no shutdown time limit (`incredible_auto_dev/scripts/start-backend.sh:95`), so one stuck job holds
+the whole app hostage; give shutdown a deadline and make a calculation that stops progressing give up
+and say so; (2) **find out WHY it stalled at zero of five horizons after 137 seconds** — the
+thread-dump tool for exactly this was armed three rounds ago and has never been fired at a live
+freeze; (3) **re-test J-05 on a day that has NOT been saved before**, which is what the journey
+actually asks and what three rounds have skipped; (4) **deal with the slow health checks** (64 of
+every 100 over the new 2-second promise, worsening) — either measure the suspected slow price-reading
+path cleanly on its own, one trigger and no side probes, or fix it; (5) SMALL AND ALREADY WRITTEN
+DOWN: make a failed job's saved message name the real reason instead of a generic summary (reviewer
+MINOR), give the Retry endpoint the same 503 its two siblings now return (audit B4), drop the stray
+`apps/frontend/tsconfig.json` churn (audit F1), and stop two journeys sharing one screenshot
+(iter-43/ai); (6) CARRIED, untouched: iter-29/b + the badge wording after a permanently failed
+warm-up (FIFTEEN rounds unmade); iter-31/e; iter-32/f; iter-35/k; iter-36/n; iter-37/o; iter-37/q;
+iter-39/u; (7) DEFERRED a NINTH time: iter-33/g, Regime Lab's cold pooled view; (8) CAPTURE ONLY,
+never a round's goal: J-07's `[NEW]` walkthrough (thirteenth round unrecorded) and J-05's real
+acceptance frames; (9) OWNER: nothing outstanding — both standing owner items (iter-33/i and
+iter-34/j) are closed this iteration.

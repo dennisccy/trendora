@@ -1,40 +1,41 @@
 # Iteration State — ops-hardening
 
-**After iteration:** 42 · **Date:** 2026-07-31 · **Verdict:** REGRESSION
+**After iteration:** 43 · **Date:** 2026-08-03 · **Verdict:** ESCALATE
 
 ## Journeys
 
-6 passing (J-01 J-03 J-04 J-06 J-08 J-09) · 1 regressed (J-05) · 1 failing (J-07) — 8 total
+6 passing (J-01 J-03 J-04 J-06 J-08 J-09) · 1 partial (J-05) · 1 failing (J-07) — 8 total
 
 ## Active blockers
 
-- **OWNER — halt reason.** The 30-year basis (~3.3M rows) no longer fits `memory_cap_mb: 6144`
-  (`config.yaml:1363`): the heavy warm exhausts it — `/api/health` 500 ×4 then unresponsive
-  (`logs/backend.log:153050-153075`), MemoryError (`:154035-154049`), "Backend unavailable" pages.
-  Pre-existing; AG-10 bars any agent raising the cap. Owner: raise cap · shorten basis · relax goal.
-- **dev, after that decision — J-05's failure.** An accepted job whose worker can't start reports
-  `running`/0 forever, showing nothing (job `cbf08538…`, `logs/backend.log:152717`→`:154483`, 290
-  polls, no worker line) — breaks "Zero silent zero-work jobs".
-- **dev/owner — `_BarCache.prefill`'s symbol filter** (`apps/backend/app/engine/prices.py`) measured
-  **+5.1% VmPeak REGRESSION**, not the recorded 2.5% win (audit B2). Keep / revert / finish.
-- **dev — `bars_asof` 70-80× slower/call** since iter-41's `_SymbolColumns` (T2). Re-run all 8
-  journey checks after the memory decision — the 6 passes predate the outage by minutes.
-- **OWNER, carried:** iter-34/j `/api/health` ≤0.1s budget (now a hard 500); iter-33/i
-  `start-frontend.sh` → `HOST_GUARD_MARKER_FILES`?
+- **dev — J-07: a stuck heavy calculation takes the whole app offline.** No shutdown deadline on the
+  web server (`incredible_auto_dev/scripts/start-backend.sh:95`): one frozen job (`horizons_done: 0/5`
+  after 137 s) left the port refusing connections for minutes, needing a hard kill — with 67.6% memory
+  free, so a stall, not exhaustion.
+- **dev — J-07: health checks too slow during heavy work.** 173 of 272 polls over the owner's new 2 s
+  ceiling, worst 6.6 s, worsening. Suspect `_SymbolColumns` per-call slicing
+  (`apps/backend/app/engine/prices.py`); the revert widened its exposure 548 → 591 symbols.
+- **dev — J-05 has never been tested on a genuinely new day.** Every run used an already-snapshotted
+  date (0 snapshots created); the one real attempt ran 1,001 s without finishing.
+- **No owner/human blockers outstanding** — iter-33/i and iter-34/j both closed this iteration.
 
 ## Last 2 verdicts
 
-- iter 42: REGRESSION — J-05 passing at iter-39, untested 40-41, now verified FAILING; J-07's first
-  hard live FAIL (service outage). The new target-journey guard is what surfaced both.
-- iter 41: ESCALATE — J-07 missed `passing` a 7th time; audit caught a CRITICAL review + QA passed.
+- iter 43: ESCALATE — J-07 failed a 2nd consecutive round (total outage + health latency); for the
+  7th round running only the audit lane caught the load-bearing defect, and a lean round has no auditor.
+- iter 42: REGRESSION — J-05 broke (jobs accepted then never started) and J-07 went down under the
+  then-6144 MB ceiling; halted for the owner's memory decision, which has since landed.
 
 ## Do not redo
 
-- **Target-journey verification lane DONE and PROVEN** (iter-41/z): `ui-test-designer` emits `UT-<id>`
-  rows for targets; `merge_ui_test_results.py:201-232` forces BLOCKED on a missing/all-SKIP target
-  (proof: this run's own `FAIL 6/8`). QA's AG-8 row corrected — iter-41/ab.
-- **`KeyError` publish race FIXED in-audit** (`prices.py:364-377`/`:422-427`) + regression test;
-  **B4 re-probe DONE** (`common.sh` `ensure_services_running`); **B6 NULL-tolerance DONE** (TC-8).
-- **Never re-tune `server.memory_cap_mb`**; don't touch `compute_forward_aggregates` /
-  `ensure_historical_forward_aggregates_dispatched` before the owner's envelope decision.
-- **iter-33/g (Regime Lab cold `view=pooled`) deferred 7×; J-07's `[NEW]` walkthrough: capture-only.**
+- **Memory cap raise 6144 → 8192 is DONE and PROVEN** (owner commit `1376601c`): the post-revert warm
+  held flat at 32.4% of cap for 1,001 s. Never re-tune `config.yaml` / `host-guard.env` caps.
+- **iter-42's `_BarCache.prefill` symbol filter is REVERTED** (`app/engine/prices.py`), oracle-tested,
+  `KeyError` publish-race fix preserved. No sixth prefill-bound attempt — "compression, not a bound".
+- **Job-launch honesty is DONE** — `start_data_job`/`start_resume_job` catch `Exception`, record
+  `failed` + message, re-raise; `api/data.py` returns 503 (covers `RuntimeError` AND `MemoryError`).
+- **`start-frontend.sh` host-guard is DONE** — block at `:28-58`; `host-guard.env:89` lists all three
+  launchers (owner item iter-33/i closed).
+- **`/api/health` budget rescope SETTLED** (steady-state ≤0.1 s; ≤2 s in a bounded compute window) —
+  meet it, do not re-litigate it. **iter-33/g deferred 9×; J-07's `[NEW]` walkthrough and J-05's
+  acceptance frames are capture-only, never a round's goal.**

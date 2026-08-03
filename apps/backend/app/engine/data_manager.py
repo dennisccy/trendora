@@ -4026,7 +4026,15 @@ def _run_detail(prog: JobProgress) -> dict:
         # J-59: which pipeline stages completed (so a `failed`/`interrupted` record stays honest about how
         # far it got).
         "completed_stages": list(prog.completed_stages),
-        "summary": _final_summary(prog),
+        # iter-43 AUDIT (B2): serve `prog.message` on a terminal FAILED row. Provably a no-op for every
+        # pre-existing path: `_run_job`'s `finally` assigns `prog.message = _final_summary(prog)` and then
+        # calls `_finalize_run_record` without mutating any field `_final_summary` reads, so the two
+        # expressions are the SAME string there; the only other callers (`_create_run_record`,
+        # `_checkpoint_run_record`) serialize a still-`running` job, which this guard never matches. What
+        # it DOES carry through is `_fail_unlaunched_job`'s reason line — the thread-launch failure TC-3/
+        # TC-4 require the run-history row's message to name, which `_final_summary` (a summary of WORK
+        # DONE) structurally cannot express for a job that never started.
+        "summary": prog.message if (prog.status == "failed" and prog.message) else _final_summary(prog),
     }
 
 
@@ -4580,6 +4588,45 @@ def run_data_job(
     )
 
 
+def _progress_from_checkpoint(cfg: Config, cp: ImportCheckpoint) -> JobProgress:
+    """The in-memory `JobProgress` a resume of `cp` runs under — seeded from the durable checkpoint so the
+    resumed job continues from the work already recorded rather than from zero.
+
+    iter-43 AUDIT (B1): extracted verbatim from `resume_data_job` (its only caller until now) so the
+    unlaunched-resume guard (`_fail_unlaunched_resume`) can build the SAME shape. That matters because
+    `_finalize_run_record` UPDATEs the OPEN run-history row's `symbols_ok`/`symbols_failed`/detail JSON
+    straight off whatever progress it is handed: closing the paused attempt's row with a bare
+    `JobProgress(...)` erased its recorded counts (live-proved: `symbols_ok` 1 -> 0, `bars_fetched`
+    10 -> 0, summary "fetch: 0/0 symbols ok, 0 failed, 0 new bars") on the permanent audit record."""
+    prog = JobProgress(job_id=cp.import_id, kind=cp.kind, start=cp.start, end=cp.end, source=cp.source)
+    plan_symbols = json.loads(cp.symbol_plan_json)
+    # J-66: reconstruct the distinct per-symbol completion sets from the COMPLETED chunks so the
+    # per-symbol counter continues from the right point (rather than double-counting or resetting).
+    # The chunks already committed (< next_chunk_index) fetched their symbol batches successfully, so
+    # those distinct symbols are `done`; the persisted failed count is honored as-is (its symbols are
+    # outside the committed batches). This keeps symbols_ok == distinct done across the resume.
+    completed_chunks = _chunk_plan(cfg, plan_symbols, cp.start, cp.end)[: cp.next_chunk_index]
+    for sym_batch, _window in completed_chunks:
+        prog.symbols_done.update(sym_batch)
+    prog.symbols_total = len(plan_symbols)
+    prog.bars_fetched = cp.bars_fetched
+    prog.chunk_total = cp.chunk_total
+    prog.chunk_index = cp.next_chunk_index
+    # J-59: seed the completed-stages from the durable checkpoint so a resume can skip a completed
+    # fetch stage entirely (zero provider calls) and route straight to the remaining stage(s).
+    try:
+        prog.completed_stages = list(json.loads(cp.completed_stages_json or "[]"))
+    except (ValueError, TypeError):
+        prog.completed_stages = []
+    prog._recount_symbols()
+    # honor any persisted failed count not captured by the reconstructed sets (defensive: a legacy
+    # checkpoint may carry a failed tally without per-symbol detail).
+    if cp.symbols_failed > prog.symbols_failed:
+        prog.symbols_failed = cp.symbols_failed
+    prog.message = _fetch_message(prog)
+    return prog
+
+
 def resume_data_job(
     import_id: str,
     *,
@@ -4605,32 +4652,7 @@ def resume_data_job(
             raise LookupError(f"unknown import: {import_id}")
         if cp.status not in RESUMABLE_CHECKPOINT_STATUSES:
             raise ValueError(f"import {import_id} is not resumable (status {cp.status})")
-        prog = JobProgress(job_id=cp.import_id, kind=cp.kind, start=cp.start, end=cp.end, source=cp.source)
-        plan_symbols = json.loads(cp.symbol_plan_json)
-        # J-66: reconstruct the distinct per-symbol completion sets from the COMPLETED chunks so the
-        # per-symbol counter continues from the right point (rather than double-counting or resetting).
-        # The chunks already committed (< next_chunk_index) fetched their symbol batches successfully, so
-        # those distinct symbols are `done`; the persisted failed count is honored as-is (its symbols are
-        # outside the committed batches). This keeps symbols_ok == distinct done across the resume.
-        completed_chunks = _chunk_plan(cfg, plan_symbols, cp.start, cp.end)[: cp.next_chunk_index]
-        for sym_batch, _window in completed_chunks:
-            prog.symbols_done.update(sym_batch)
-        prog.symbols_total = len(plan_symbols)
-        prog.bars_fetched = cp.bars_fetched
-        prog.chunk_total = cp.chunk_total
-        prog.chunk_index = cp.next_chunk_index
-        # J-59: seed the completed-stages from the durable checkpoint so a resume can skip a completed
-        # fetch stage entirely (zero provider calls) and route straight to the remaining stage(s).
-        try:
-            prog.completed_stages = list(json.loads(cp.completed_stages_json or "[]"))
-        except (ValueError, TypeError):
-            prog.completed_stages = []
-        prog._recount_symbols()
-        # honor any persisted failed count not captured by the reconstructed sets (defensive: a legacy
-        # checkpoint may carry a failed tally without per-symbol detail).
-        if cp.symbols_failed > prog.symbols_failed:
-            prog.symbols_failed = cp.symbols_failed
-        prog.message = _fetch_message(prog)
+        prog = _progress_from_checkpoint(cfg, cp)
     with _LOCK:
         _JOBS[prog.job_id] = prog
     return _run_job(
@@ -4638,6 +4660,74 @@ def resume_data_job(
         sleep_fn=sleep_fn or _sleep, is_resume=True,
         seed_dir=Path(seed_dir) if seed_dir else DEFAULT_SEED_DIR,
     )
+
+
+def _fail_unlaunched_job(prog: JobProgress, cfg: Config, eng: Engine, exc: BaseException) -> None:
+    """ops-hardening iter-43 (J-05 regression fix) — a `threading.Thread(...).start()` failure (the live
+    incident: `RuntimeError: can't start new thread`) happens OUTSIDE `_run_job`'s own outer `except
+    Exception` handler (`:4504-4506`), which only ever runs INSIDE the thread body once it is running.
+    Left unguarded, the just-created job stays at its `create_job()`-time `running` default forever — a
+    silent zero-work job goal.md's own "Zero silent zero-work jobs" promise forbids. Mirrors `_run_job`'s
+    OWN failure mechanism (`prog.status = "failed"` + `_record_error`) so both the live in-memory registry
+    (a poller's `GET /api/data/jobs/{id}`) and the persisted run-history row read the SAME honest outcome
+    every other job failure already produces. `_finalize_run_record`'s own documented no-open-row fallback
+    (an INSERT, not an UPDATE) is exactly the right shape here, since a launch failure never reaches
+    `_create_run_record` (that only runs inside `_run_job`, on the thread that never started)."""
+    reason = f"failed to launch job worker thread: {exc}"
+    prog.status = "failed"
+    _record_error(prog, reason)
+    # iter-43 AUDIT (B2): `_run_job`'s `finally` sets `prog.message = _final_summary(prog)` on every
+    # in-flight failure; this path must set it too, or the persisted row (and a live poller's
+    # `to_dict()["message"]`) carries an all-zeros work summary with no hint of WHY — TC-3/TC-4 ask for a
+    # message that NAMES the thread-launch failure. Prefixed to the same summary `_final_summary` would
+    # produce, mirroring that function's own "rate-limited — resumable at chunk N/M; {summary}" idiom, so
+    # the reason AND whatever work the attempt had already recorded both survive on one honest line.
+    prog.message = f"{reason}; {_final_summary(prog)}"
+    prog.finished_at = _utcnow()
+    with _LOCK:
+        # Ensures a live poller sees the failure even when the caller (a resume) never registered this
+        # `prog` itself — see `_fail_unlaunched_resume`. A no-op re-assignment for the normal
+        # `start_data_job` case, where `create_job()` already registered this exact object.
+        _JOBS[prog.job_id] = prog
+    try:
+        _finalize_run_record(eng, cfg, prog)
+    except Exception:  # noqa: BLE001 — persistence failure must not crash the launch-failure path further
+        logger.exception("failed to persist run summary for unlaunched job %s", prog.job_id)
+
+
+def _fail_unlaunched_resume(import_id: str, cfg: Config, eng: Engine, exc: BaseException) -> None:
+    """The RESUME sibling of `_fail_unlaunched_job`. Unlike `start_data_job` (whose `create_job()` already
+    registered a `JobProgress` before `thread.start()` is attempted), a resume's `JobProgress` is normally
+    built INSIDE `resume_data_job` (the thread target) from the durable checkpoint — since the thread never
+    ran, nothing has built or registered one yet. Rebuilds it via the SAME `_progress_from_checkpoint`
+    `resume_data_job` itself uses so the EXISTING open run-history row (left `resumable`/`running` by the
+    paused attempt this resume was trying to continue) is closed to `failed` via the same mechanism,
+    instead of staying open forever. The caller (`POST /api/data/jobs/{import_id}/resume`) already
+    validated the checkpoint exists and is resumable before calling `start_resume_job`, so a missing
+    checkpoint here is defensive only.
+
+    iter-43 AUDIT (B1): this originally built a BARE `JobProgress(job_id=..., kind=..., start=..., end=...,
+    source=...)` — only the constructor line of what `resume_data_job` does, not its checkpoint seeding.
+    Because `_finalize_run_record` UPDATEs the open row's `symbols_ok`/`symbols_failed`/detail JSON
+    straight off the progress it is handed, that ERASED the paused attempt's recorded work from the
+    permanent audit row (live-proved: `symbols_ok` 1 -> 0, `bars_fetched` 10 -> 0) and left
+    `_run_state_text` rendering the fabricated "Failed — every symbol failed (0 of 0); provider
+    unreachable" for an import that had really completed a chunk. The checkpoint itself is untouched
+    either way, so Resume still works — but the audit record must not lie about what already happened."""
+    try:
+        # build INSIDE the session (as `resume_data_job` does): the seeding reads several checkpoint
+        # columns, and reading a detached instance is only safe while every one of them happens to be
+        # already loaded — not a property to depend on.
+        with Session(eng) as session:
+            cp = _load_checkpoint(session, import_id)
+            if cp is None:
+                logger.error("cannot record unlaunched-resume failure — unknown checkpoint %s", import_id)
+                return
+            prog = _progress_from_checkpoint(cfg, cp)
+    except Exception:  # noqa: BLE001 — never let this bookkeeping path itself crash the launch-failure path
+        logger.exception("failed to rebuild job progress for unlaunched resume %s", import_id)
+        return
+    _fail_unlaunched_job(prog, cfg, eng, exc)
 
 
 def start_data_job(
@@ -4679,7 +4769,24 @@ def start_data_job(
         daemon=True,
         name=f"data-job-{job.job_id}",
     )
-    thread.start()
+    try:
+        thread.start()
+    except Exception as exc:  # noqa: BLE001 — see below; ALWAYS re-raised, never swallowed
+        # ops-hardening iter-43 (J-05 regression fix) — see `_fail_unlaunched_job`. Re-raised so the
+        # caller (`POST /api/data/jobs`) can return an honest error instead of a 200 over a dead job.
+        # iter-43 AUDIT (B3): deliberately NOT keyed to `RuntimeError`. `Thread.start()` itself catches a
+        # bare `Exception` around `_start_new_thread` (CPython `Lib/threading.py`) because the C-level
+        # `thread.start_new_thread` has two distinct failure exits under one memory ceiling:
+        # `RuntimeError("can't start new thread")` when the OS refuses the thread, and `PyErr_NoMemory()`
+        # -> `MemoryError` when its own bootstate allocation fails first. iter-42's outage produced BOTH
+        # side by side, so a `RuntimeError`-only guard left this iteration's "zero silent zero-work jobs"
+        # promise open on its nearest sibling path (live-proved by
+        # `test_start_data_job_non_runtimeerror_launch_failure_also_marks_job_failed`, which orphaned the
+        # job at `running` with no run-history row at all before this widening). The `raise` below is
+        # unconditional — this handler only ever ADDS an honest record, it never converts a launch
+        # failure into a success.
+        _fail_unlaunched_job(job, cfg, eng, exc)
+        raise
     return job.job_id
 
 
@@ -4702,7 +4809,15 @@ def start_resume_job(
         daemon=True,
         name=f"data-resume-{import_id}",
     )
-    thread.start()
+    try:
+        thread.start()
+    except Exception as exc:  # noqa: BLE001 — same contract as `start_data_job`; ALWAYS re-raised
+        # ops-hardening iter-43 (J-05 regression fix) — see `_fail_unlaunched_resume`. Re-raised so the
+        # caller (`POST /api/data/jobs/{import_id}/resume`) can return an honest error instead of a 200
+        # over a resume that never started. iter-43 AUDIT (B3): not keyed to `RuntimeError` — see the
+        # matching comment in `start_data_job` for why `MemoryError` is the evidenced sibling exit.
+        _fail_unlaunched_resume(import_id, cfg, eng, exc)
+        raise
     return import_id
 
 

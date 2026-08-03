@@ -1,0 +1,272 @@
+t=  0.00s health=200 latency=1731.0ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=  2.75s health=200 latency=1672.0ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=  5.48s health=200 latency=2195.8ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=  8.88s health=200 latency=2273.7ms vmpeak=2720636 job_status=running phase=pre_terminal
+t= 12.34s health=200 latency=1723.7ms vmpeak=2720636 job_status=running phase=pre_terminal
+t= 15.12s health=200 latency=2135.2ms vmpeak=2720636 job_status=running phase=pre_terminal
+t= 18.30s health=200 latency=1679.3ms vmpeak=2720636 job_status=running phase=pre_terminal
+t= 21.02s health=200 latency=1635.8ms vmpeak=2720636 job_status=running phase=pre_terminal
+t= 23.69s health=200 latency=1912.2ms vmpeak=2720636 job_status=running phase=pre_terminal
+t= 26.66s health=200 latency=1684.0ms vmpeak=2720636 job_status=running phase=pre_terminal
+t= 29.50s health=200 latency=969.5ms vmpeak=2720636 job_status=running phase=pre_terminal
+t= 31.52s health=200 latency=1623.6ms vmpeak=2720636 job_status=running phase=pre_terminal
+t= 34.21s health=200 latency=2116.6ms vmpeak=2720636 job_status=running phase=pre_terminal
+t= 37.40s health=200 latency=2291.7ms vmpeak=2720636 job_status=running phase=pre_terminal
+t= 40.72s health=200 latency=2298.4ms vmpeak=2720636 job_status=running phase=pre_terminal
+t= 44.07s health=200 latency=1626.3ms vmpeak=2720636 job_status=running phase=pre_terminal
+t= 46.74s health=200 latency=1701.9ms vmpeak=2720636 job_status=running phase=pre_terminal
+t= 49.50s health=200 latency=1158.4ms vmpeak=2720636 job_status=running phase=pre_terminal
+t= 51.74s health=200 latency=1671.7ms vmpeak=2720636 job_status=running phase=pre_terminal
+t= 54.60s health=200 latency=1545.6ms vmpeak=2720636 job_status=running phase=pre_terminal
+t= 57.34s health=200 latency=1927.9ms vmpeak=2720636 job_status=running phase=pre_terminal
+t= 60.32s health=200 latency=1597.7ms vmpeak=2720636 job_status=running phase=pre_terminal
+t= 62.98s health=200 latency=1733.6ms vmpeak=2720636 job_status=running phase=pre_terminal
+t= 65.77s health=200 latency=2234.2ms vmpeak=2720636 job_status=running phase=pre_terminal
+t= 69.09s health=200 latency=2209.1ms vmpeak=2720636 job_status=running phase=pre_terminal
+t= 72.48s health=200 latency=1565.1ms vmpeak=2720636 job_status=running phase=pre_terminal
+t= 75.23s health=200 latency=1716.2ms vmpeak=2720636 job_status=running phase=pre_terminal
+t= 77.96s health=200 latency=1990.1ms vmpeak=2720636 job_status=running phase=pre_terminal
+t= 81.02s health=200 latency=1466.7ms vmpeak=2720636 job_status=running phase=pre_terminal
+t= 83.64s health=200 latency=1739.8ms vmpeak=2720636 job_status=running phase=pre_terminal
+t= 86.59s health=200 latency=998.3ms vmpeak=2720636 job_status=running phase=pre_terminal
+t= 88.65s health=200 latency=1390.5ms vmpeak=2720636 job_status=running phase=pre_terminal
+t= 91.12s health=200 latency=1457.5ms vmpeak=2720636 job_status=running phase=pre_terminal
+t= 93.76s health=200 latency=1699.1ms vmpeak=2720636 job_status=running phase=pre_terminal
+t= 96.49s health=200 latency=3089.4ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=100.74s health=200 latency=948.2ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=102.85s health=200 latency=977.3ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=104.87s health=200 latency=793.8ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=106.83s health=200 latency=2971.1ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=110.99s health=200 latency=2282.1ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=114.33s health=200 latency=1848.6ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=117.23s health=200 latency=2234.4ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=120.51s health=200 latency=1854.6ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=123.41s health=200 latency=1660.9ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=126.13s health=200 latency=2494.0ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=129.82s health=200 latency=1749.9ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=132.72s health=200 latency=533.4ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=134.30s health=200 latency=1626.7ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=136.98s health=200 latency=1670.4ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=139.82s health=200 latency=1908.1ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=142.76s health=200 latency=1704.7ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=145.63s health=200 latency=1453.7ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=148.13s health=200 latency=1278.8ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=150.58s health=200 latency=2454.3ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=154.22s health=200 latency=964.4ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=156.22s health=200 latency=1842.3ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=159.25s health=200 latency=2269.4ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=162.70s health=200 latency=1542.0ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=165.44s health=200 latency=1195.0ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=167.70s health=200 latency=1503.8ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=170.28s health=200 latency=2143.9ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=173.49s health=200 latency=1181.1ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=175.67s health=200 latency=1973.8ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=178.76s health=200 latency=1828.7ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=181.62s health=200 latency=1918.1ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=184.61s health=200 latency=1472.8ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=187.27s health=200 latency=1598.1ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=190.04s health=200 latency=1673.8ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=192.75s health=200 latency=1404.1ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=195.20s health=200 latency=1754.3ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=198.00s health=200 latency=1345.7ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=200.38s health=200 latency=1756.9ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=203.32s health=200 latency=1675.3ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=206.05s health=200 latency=1932.9ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=209.03s health=200 latency=2015.6ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=212.22s health=200 latency=1239.1ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=214.66s health=200 latency=1981.7ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=217.69s health=200 latency=1695.3ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=220.58s health=200 latency=2657.8ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=224.29s health=200 latency=2091.1ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=227.44s health=200 latency=1660.6ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=230.15s health=200 latency=1474.0ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=232.79s health=200 latency=1788.2ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=235.74s health=200 latency=1551.5ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=238.45s health=200 latency=1184.2ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=240.69s health=200 latency=1659.0ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=243.43s health=200 latency=1660.0ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=246.12s health=200 latency=1458.1ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=248.64s health=200 latency=1515.9ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=251.35s health=200 latency=1741.2ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=254.15s health=200 latency=1881.0ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=257.09s health=200 latency=1753.6ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=260.00s health=200 latency=1586.6ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=262.78s health=200 latency=1781.8ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=265.75s health=200 latency=2002.9ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=268.80s health=200 latency=2801.8ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=272.82s health=200 latency=3805.2ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=277.68s health=200 latency=2105.4ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=280.82s health=200 latency=3316.0ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=285.18s health=200 latency=3933.5ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=290.14s health=200 latency=2926.2ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=294.28s health=200 latency=3252.2ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=298.60s health=200 latency=1731.3ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=301.53s health=200 latency=2270.3ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=304.86s health=200 latency=4757.6ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=310.82s health=200 latency=3813.7ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=315.84s health=200 latency=1504.0ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=318.39s health=200 latency=4064.3ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=323.64s health=200 latency=3906.0ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=328.60s health=200 latency=2166.4ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=331.83s health=200 latency=3717.6ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=336.75s health=200 latency=2963.5ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=340.78s health=200 latency=2661.1ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=344.64s health=200 latency=1521.0ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=347.18s health=200 latency=3179.5ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=351.43s health=200 latency=5258.0ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=357.71s health=200 latency=2640.5ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=361.41s health=200 latency=5034.4ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=367.48s health=200 latency=4002.2ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=372.68s health=200 latency=6165.5ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=379.88s health=200 latency=1863.3ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=382.80s health=200 latency=3024.9ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=387.04s health=200 latency=2544.4ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=390.64s health=200 latency=5977.7ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=397.64s health=200 latency=2952.6ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=401.64s health=200 latency=2540.0ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=405.43s health=200 latency=2336.0ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=408.94s health=200 latency=2163.2ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=412.15s health=200 latency=3022.7ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=416.21s health=200 latency=3105.9ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=420.77s health=200 latency=3077.8ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=425.03s health=200 latency=2695.9ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=428.78s health=200 latency=2321.0ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=432.14s health=200 latency=1232.8ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=434.44s health=200 latency=3790.7ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=439.41s health=200 latency=2359.4ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=442.83s health=200 latency=3351.9ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=447.60s health=200 latency=1386.4ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=450.07s health=200 latency=2842.4ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=453.94s health=200 latency=3601.2ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=458.61s health=200 latency=2674.4ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=462.45s health=200 latency=2454.6ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=465.95s health=200 latency=1698.6ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=468.90s health=200 latency=2144.9ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=472.06s health=200 latency=2977.9ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=476.26s health=200 latency=3962.1ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=481.25s health=200 latency=2934.2ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=485.23s health=200 latency=2536.1ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=488.83s health=200 latency=1800.5ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=491.65s health=200 latency=3038.8ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=495.96s health=200 latency=2644.5ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=500.02s health=200 latency=3538.2ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=504.63s health=200 latency=2673.6ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=508.52s health=200 latency=2290.1ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=511.99s health=200 latency=2844.2ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=515.85s health=200 latency=3605.6ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=520.62s health=200 latency=3788.6ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=525.58s health=200 latency=3046.4ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=529.68s health=200 latency=1596.1ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=532.54s health=200 latency=3493.1ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=537.25s health=200 latency=3323.9ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=541.63s health=200 latency=2550.5ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=545.42s health=200 latency=776.5ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=547.41s health=200 latency=3689.8ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=552.29s health=200 latency=2196.3ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=555.53s health=200 latency=3265.1ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=559.99s health=200 latency=2392.3ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=563.41s health=200 latency=1842.8ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=566.44s health=200 latency=2636.8ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=570.11s health=200 latency=3121.4ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=574.38s health=200 latency=4488.4ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=580.05s health=200 latency=1034.9ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=582.18s health=200 latency=3325.4ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=586.70s health=200 latency=1975.5ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=589.89s health=200 latency=2892.9ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=593.94s health=200 latency=2673.9ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=597.79s health=200 latency=2544.2ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=601.39s health=200 latency=2523.2ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=604.94s health=200 latency=935.9ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=606.90s health=200 latency=3077.6ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=611.13s health=200 latency=2580.1ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=614.77s health=200 latency=2880.2ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=618.88s health=200 latency=1646.5ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=621.55s health=200 latency=2327.5ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=624.92s health=200 latency=2029.2ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=627.98s health=200 latency=2399.3ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=631.41s health=200 latency=3069.5ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=635.51s health=200 latency=2471.7ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=639.03s health=200 latency=4097.8ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=644.30s health=200 latency=3376.4ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=648.88s health=200 latency=1879.4ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=651.78s health=200 latency=2866.7ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=655.83s health=200 latency=3920.0ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=660.98s health=200 latency=3622.4ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=665.76s health=200 latency=2691.4ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=669.61s health=200 latency=2856.3ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=673.66s health=200 latency=1511.8ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=676.42s health=200 latency=4236.5ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=681.69s health=200 latency=2649.4ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=685.58s health=200 latency=6598.9ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=693.48s health=200 latency=3570.8ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=698.06s health=200 latency=2883.2ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=701.99s health=200 latency=4561.3ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=707.79s health=200 latency=3611.0ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=712.59s health=200 latency=3808.1ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=717.69s health=200 latency=1614.8ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=720.36s health=200 latency=2636.4ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=724.13s health=200 latency=3413.2ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=728.57s health=200 latency=4266.9ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=733.99s health=200 latency=2651.9ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=737.68s health=200 latency=2617.6ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=741.52s health=200 latency=6008.4ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=748.59s health=200 latency=2069.7ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=751.88s health=200 latency=3886.5ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=757.03s health=200 latency=4190.9ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=762.27s health=200 latency=1949.1ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=765.29s health=200 latency=3888.0ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=770.36s health=200 latency=3973.6ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=775.49s health=200 latency=3969.9ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=780.51s health=200 latency=1900.2ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=783.64s health=200 latency=2850.1ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=787.55s health=200 latency=3257.6ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=791.85s health=200 latency=4304.8ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=797.35s health=200 latency=3147.2ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=801.55s health=200 latency=3048.5ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=805.64s health=200 latency=2177.0ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=808.90s health=200 latency=2846.0ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=812.95s health=200 latency=3531.3ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=817.75s health=200 latency=4391.9ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=823.20s health=200 latency=3519.9ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=827.73s health=200 latency=2906.5ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=831.68s health=200 latency=1940.5ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=834.81s health=200 latency=1700.3ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=837.76s health=200 latency=3612.9ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=842.62s health=200 latency=2358.9ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=846.20s health=200 latency=4257.3ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=851.50s health=200 latency=3552.0ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=856.10s health=200 latency=1623.1ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=858.77s health=200 latency=4861.6ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=864.85s health=200 latency=4025.0ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=869.91s health=200 latency=2128.7ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=873.26s health=200 latency=3573.8ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=877.87s health=200 latency=3176.9ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=882.15s health=200 latency=2292.4ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=885.63s health=200 latency=2737.9ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=889.56s health=200 latency=4167.1ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=894.92s health=200 latency=2424.1ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=898.43s health=200 latency=2615.2ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=902.29s health=200 latency=2655.8ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=906.00s health=200 latency=3365.3ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=910.38s health=200 latency=2474.8ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=914.06s health=200 latency=2665.9ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=917.92s health=200 latency=3026.1ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=922.14s health=200 latency=2876.0ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=926.06s health=200 latency=3095.5ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=930.23s health=200 latency=2598.5ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=933.93s health=200 latency=2817.6ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=938.00s health=200 latency=3538.7ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=942.58s health=200 latency=2276.4ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=946.02s health=200 latency=1767.7ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=948.81s health=200 latency=4070.4ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=954.04s health=200 latency=3213.7ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=958.43s health=200 latency=4179.5ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=963.78s health=200 latency=4589.8ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=969.44s health=200 latency=3389.9ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=974.05s health=200 latency=4107.8ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=979.21s health=200 latency=3179.9ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=983.64s health=200 latency=2651.5ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=987.48s health=200 latency=2731.8ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=991.26s health=200 latency=5071.6ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=997.43s health=200 latency=2621.3ms vmpeak=2720636 job_status=running phase=pre_terminal
+t=1001.10s health=200 latency=3104.2ms vmpeak=2720636 job_status=running phase=pre_terminal

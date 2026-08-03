@@ -524,3 +524,186 @@ def test_broken_source_fails_build_and_leaves_no_stray_process(launcher):
 
     with pytest.raises(AssertionError):
         _owning_pid(_TC3_PORT, timeout=3.0)
+
+
+# ==================================================================================================
+# ops-hardening iter-43 (goal.md "Additional binding notes", the iter-33/i owner item) -- TC-5:
+# start-frontend.sh now carries the SAME HOST-GUARD cap block scripts/start-backend.sh already applies.
+# Mirrors test_start_backend_script.py's own `_read_host_guard_env` / `_parse_cpu_list` /
+# `_read_proc_status_cpus_allowed` / `_read_proc_environ` helpers exactly (duplicated, not imported --
+# this module's own established convention; see e.g. `_owning_pid` above).
+# ==================================================================================================
+HOST_GUARD_ENV_FILE = REPO_ROOT / "project-extensions" / "host-guard" / "host-guard.env"
+_HOST_GUARD_BLAS_VARS = ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "NUMEXPR_NUM_THREADS")
+_HG_TEST_PORT = 21300 + _offset
+
+
+def _read_host_guard_env(path: Path) -> dict[str, str]:
+    values: dict[str, str] = {}
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, val = line.partition("=")
+        val = val.strip().strip('"').strip("'")
+        values[key.strip()] = val
+    return values
+
+
+def _parse_cpu_list(spec: str) -> set[int]:
+    cpus: set[int] = set()
+    spec = spec.strip()
+    if not spec:
+        return cpus
+    for part in spec.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        if "-" in part:
+            lo, _, hi = part.partition("-")
+            cpus.update(range(int(lo), int(hi) + 1))
+        else:
+            cpus.add(int(part))
+    return cpus
+
+
+def _read_proc_status_cpus_allowed(pid: int) -> str:
+    with open(f"/proc/{pid}/status") as fh:
+        for line in fh:
+            if line.startswith("Cpus_allowed_list:"):
+                return line.split(":", 1)[1].strip()
+    raise AssertionError(f"no 'Cpus_allowed_list' row in /proc/{pid}/status")
+
+
+def _read_proc_environ(pid: int) -> dict[str, str]:
+    with open(f"/proc/{pid}/environ", "rb") as fh:
+        raw = fh.read()
+    env: dict[str, str] = {}
+    for entry in raw.split(b"\x00"):
+        if b"=" in entry:
+            k, _, v = entry.partition(b"=")
+            env[k.decode(errors="replace")] = v.decode(errors="replace")
+    return env
+
+
+def test_start_frontend_applies_host_guard_and_skips_when_absent_or_disabled(tmp_path):
+    """TC-5 -- `scripts/start-frontend.sh` carries the SAME HOST-GUARD cap block
+    `scripts/start-backend.sh` already applies. Three cases share ONE real `next build` (against a
+    single scratch dist dir) so only the FIRST boot pays the full build cost -- every later boot in
+    this test takes the existing skip-rebuild fast path (seconds, not minutes):
+
+      1. enabled (the real committed host-guard.env) -> the `next start` worker's CPU affinity matches
+         `HOST_GUARD_CPU_LIST` and its environment carries the BLAS/OMP/numexpr thread-cap vars.
+      2. absent (HOST_GUARD_ENV_FILE points at a nonexistent path, never the real committed file) -> no
+         CPU-affinity restriction, no BLAS/OMP env change.
+      3. disabled (a scratch copy of the real file with ONLY HOST_GUARD_ENABLED=0 changed) -> same as (2).
+    """
+    if not SCRIPT.exists():
+        pytest.skip(f"{SCRIPT} not found")
+    if not (FRONTEND_DIR / "node_modules").exists():
+        pytest.skip("apps/frontend/node_modules not installed -- cannot build/start the frontend")
+    if not HOST_GUARD_ENV_FILE.exists():
+        pytest.skip(f"{HOST_GUARD_ENV_FILE} not present -- host-guard is optional, nothing to verify")
+    hg = _read_host_guard_env(HOST_GUARD_ENV_FILE)
+    if hg.get("HOST_GUARD_ENABLED") != "1":
+        pytest.skip("HOST_GUARD_ENABLED != 1 in the committed host-guard.env -- nothing to verify")
+
+    dist_rel = _scratch_dist_name("hg")
+    own_cpus = os.sched_getaffinity(0)
+    ambient_blas = {v: os.environ.get(v) for v in _HOST_GUARD_BLAS_VARS}
+
+    def _boot(port: int, log_name: str, extra_env: dict) -> _Launcher:
+        log_path = tmp_path / log_name
+        env = dict(os.environ)
+        env["CHAIN_FRONTEND_PORT"] = str(port)
+        env["CHAIN_BACKEND_PORT"] = str(port + 1000)
+        env["NEXT_DIST_DIR"] = dist_rel
+        env.update(extra_env)
+        log_fh = open(log_path, "wb")
+        proc = subprocess.Popen(
+            ["bash", str(SCRIPT)], cwd=str(REPO_ROOT), env=env,
+            stdout=log_fh, stderr=subprocess.STDOUT, preexec_fn=os.setsid,
+        )
+        return _Launcher(proc, log_path, log_fh, FRONTEND_DIR / dist_rel)
+
+    # --- case 1: enabled (real committed host-guard.env) -- pays for the one real build in this test ---
+    launched = _boot(_HG_TEST_PORT, "hg-enabled.log", {})
+    try:
+        _wait_for_port_answering(
+            _HG_TEST_PORT, timeout=_BUILD_TIMEOUT_S, proc=launched.proc, log_path=launched.log_path
+        )
+        assert (launched.dist_abs / "BUILD_ID").exists(), "expected the shared build to produce a BUILD_ID"
+        pid = _owning_pid(_HG_TEST_PORT)
+        expected_cpus = _parse_cpu_list(hg["HOST_GUARD_CPU_LIST"])
+        actual_cpus = _parse_cpu_list(_read_proc_status_cpus_allowed(pid))
+        assert actual_cpus == expected_cpus, (
+            f"expected Cpus_allowed_list {sorted(expected_cpus)}, got {sorted(actual_cpus)}"
+        )
+        env = _read_proc_environ(pid)
+        for var in _HOST_GUARD_BLAS_VARS:
+            assert env.get(var) == hg["HOST_GUARD_BLAS_THREADS"], (
+                f"expected {var}={hg['HOST_GUARD_BLAS_THREADS']!r}, got {env.get(var)!r}"
+            )
+    finally:
+        launched.stop()
+
+    # --- case 2: absent (nonexistent HOST_GUARD_ENV_FILE, never the real committed file) ---
+    missing = tmp_path / "no-such-host-guard.env"
+    assert not missing.exists()
+    launched = _boot(_HG_TEST_PORT + 1, "hg-absent.log", {"HOST_GUARD_ENV_FILE": str(missing)})
+    try:
+        _wait_for_port_answering(
+            _HG_TEST_PORT + 1, timeout=_START_TIMEOUT_S, proc=launched.proc, log_path=launched.log_path
+        )
+        pid = _owning_pid(_HG_TEST_PORT + 1)
+        cpus = _parse_cpu_list(_read_proc_status_cpus_allowed(pid))
+        assert cpus == own_cpus, "no CPU-affinity restriction should apply when host-guard.env is absent"
+        penv = _read_proc_environ(pid)
+        for var, ambient_val in ambient_blas.items():
+            assert penv.get(var) == ambient_val, (
+                f"host-guard.env absent must not change {var} (ambient {ambient_val!r}, got {penv.get(var)!r})"
+            )
+    finally:
+        launched.stop()
+
+    # --- case 3: disabled (scratch copy, ONLY HOST_GUARD_ENABLED=0 changed) ---
+    real_text = HOST_GUARD_ENV_FILE.read_text()
+    disabled_text, n = re.subn(
+        r"^HOST_GUARD_ENABLED=.*$", "HOST_GUARD_ENABLED=0", real_text, count=1, flags=re.MULTILINE
+    )
+    assert n == 1, "expected exactly one HOST_GUARD_ENABLED= line in the committed host-guard.env"
+    scratch = tmp_path / "host-guard-disabled.env"
+    scratch.write_text(disabled_text)
+    launched = _boot(_HG_TEST_PORT + 2, "hg-disabled.log", {"HOST_GUARD_ENV_FILE": str(scratch)})
+    try:
+        _wait_for_port_answering(
+            _HG_TEST_PORT + 2, timeout=_START_TIMEOUT_S, proc=launched.proc, log_path=launched.log_path
+        )
+        pid = _owning_pid(_HG_TEST_PORT + 2)
+        cpus = _parse_cpu_list(_read_proc_status_cpus_allowed(pid))
+        assert cpus == own_cpus, "no CPU-affinity restriction should apply when HOST_GUARD_ENABLED=0"
+        penv = _read_proc_environ(pid)
+        for var, ambient_val in ambient_blas.items():
+            assert penv.get(var) == ambient_val, (
+                f"HOST_GUARD_ENABLED=0 must not change {var} (ambient {ambient_val!r}, got {penv.get(var)!r})"
+            )
+    finally:
+        launched.stop()
+
+
+def test_host_guard_marker_files_lists_start_frontend():
+    """TC-5 (marker registration) -- `project-extensions/host-guard/host-guard.env`'s
+    `HOST_GUARD_MARKER_FILES` lists `scripts/start-frontend.sh` alongside the two pre-existing launchers,
+    so the framework's own generic marker check (`grep -q "HOST-GUARD" <file>`,
+    `incredible_auto_dev/scripts/automation/run-goal.sh`) covers it too."""
+    if not HOST_GUARD_ENV_FILE.exists():
+        pytest.skip(f"{HOST_GUARD_ENV_FILE} not present -- nothing to verify")
+    hg = _read_host_guard_env(HOST_GUARD_ENV_FILE)
+    markers = (hg.get("HOST_GUARD_MARKER_FILES") or "").split()
+    assert "scripts/start-frontend.sh" in markers, f"HOST_GUARD_MARKER_FILES={markers!r}"
+    assert "scripts/dev.sh" in markers and "scripts/start-backend.sh" in markers, (
+        "the two pre-existing launchers must still be listed too — never a replacement, an addition"
+    )
+    # the marker check itself is a plain substring grep — confirm the block is genuinely present, not
+    # merely declared in the list above.
+    assert "HOST-GUARD" in SCRIPT.read_text()

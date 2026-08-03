@@ -239,41 +239,56 @@ class _BarCache:
         `.prefill(session)` call with no argument) keeps the prior unconditional whole-table scan,
         byte-identical to before this change. An empty (but non-None) `expected_symbols` short-circuits to
         zero rows without issuing a malformed `WHERE symbol IN ()` — mirrors `load_only`'s own empty-list
-        guard."""
+        guard. [Superseded by iter-43 below — the filter this paragraph documents is REVERTED; kept as the
+        historical record of what was tried.]
+
+        iter-43 (REVERT, this iteration): the `WHERE symbol IN (...)` filter above is REMOVED — `prefill`
+        is back to the unconditional whole-table scan for EVERY `expected_symbols` value (`None`, a
+        non-empty list, or `[]`), byte-identical to the pre-iter-42 shape (proven by `test_bar_cache.py`'s
+        byte-identity oracle, TC-1). The iter-42 auditor's finding B2 (`reports/perf-budgets.md`,
+        iteration-42 section, "AUDIT CORRECTION") re-measured the filter's cost over the WHOLE job it runs
+        inside, not `prefill` in isolation: the 36 excluded ETF/index/sector symbols (SPY, QQQ, the XL*
+        sector SPDRs, `^VIX`, etc.) that `sectors.py`/`themes.py`/`regime.py`/`market_phase.py` read on
+        every snapshot date fell into the lazy per-symbol `list[Bar]` path iter-41's `_SymbolColumns` (B5)
+        specifically exists to avoid (~3.3x more bytes/row) — a net **+5.1% peak-memory REGRESSION**, not
+        the 2.5% reduction iter-42's own narrower measurement claimed. `_SymbolColumns` (B5) and the
+        NULL-tolerance sentinel substitution (B6) are UNCHANGED by this revert — only the filtering layer
+        comes out. `_BarCache.prefill` remains a COMPRESSION of the whole-table load (smaller bytes/row
+        than `list[Bar]`), not a BOUND on row count — the owner's separate 2026-07-31 `memory_cap_mb`
+        6144->8192 amendment is what restores headroom for the reverted unconditional scan; this revert
+        does not itself change the function's O(table) footprint."""
         with self._load_lock:
             need_scan = not self._prefilled
         if need_scan:
             batch = get_config().research.read_batch_size
-            symbol_filter = sorted(set(expected_symbols)) if expected_symbols is not None else None
             by_symbol: dict[str, _SymbolColumns] = {}
-            if symbol_filter is None or symbol_filter:
-                stmt = (
-                    select(
-                        DailyPrice.symbol, DailyPrice.date, DailyPrice.open, DailyPrice.high,
-                        DailyPrice.low, DailyPrice.close, DailyPrice.volume,
-                    )
-                    .order_by(DailyPrice.symbol, DailyPrice.date)
+            # iter-43 (REVERT): unconditional whole-table scan regardless of `expected_symbols` — the
+            # iter-42 `WHERE symbol IN (...)` filter is removed (see the docstring's iter-43 paragraph).
+            stmt = (
+                select(
+                    DailyPrice.symbol, DailyPrice.date, DailyPrice.open, DailyPrice.high,
+                    DailyPrice.low, DailyPrice.close, DailyPrice.volume,
                 )
-                if symbol_filter is not None:
-                    stmt = stmt.where(DailyPrice.symbol.in_(symbol_filter))
-                for symbol, d, o, h, lo, c, v in session.exec(stmt).yield_per(batch):
-                    cols = by_symbol.get(symbol)
-                    if cols is None:
-                        cols = _SymbolColumns(
-                            [], array.array("d"), array.array("d"), array.array("d"),
-                            array.array("d"), array.array("d"),
-                        )
-                        by_symbol[symbol] = cols
-                    cols.dates.append(d)
-                    # iter-42 (B6, AG-8): substitute the honest NA sentinel for a NULL numeric field
-                    # instead of letting `array.array('d').append(None)` raise `TypeError` — see the
-                    # module-level `_NULL_NUMERIC_SENTINEL` comment. Unreachable on the current NOT
-                    # NULL schema; a defensive degrade for a future widening, not a live bug fix.
-                    cols.opens.append(o if o is not None else _NULL_NUMERIC_SENTINEL)
-                    cols.highs.append(h if h is not None else _NULL_NUMERIC_SENTINEL)
-                    cols.lows.append(lo if lo is not None else _NULL_NUMERIC_SENTINEL)
-                    cols.closes.append(c if c is not None else _NULL_NUMERIC_SENTINEL)
-                    cols.volumes.append(v if v is not None else _NULL_NUMERIC_SENTINEL)
+                .order_by(DailyPrice.symbol, DailyPrice.date)
+            )
+            for symbol, d, o, h, lo, c, v in session.exec(stmt).yield_per(batch):
+                cols = by_symbol.get(symbol)
+                if cols is None:
+                    cols = _SymbolColumns(
+                        [], array.array("d"), array.array("d"), array.array("d"),
+                        array.array("d"), array.array("d"),
+                    )
+                    by_symbol[symbol] = cols
+                cols.dates.append(d)
+                # iter-42 (B6, AG-8): substitute the honest NA sentinel for a NULL numeric field
+                # instead of letting `array.array('d').append(None)` raise `TypeError` — see the
+                # module-level `_NULL_NUMERIC_SENTINEL` comment. Unreachable on the current NOT
+                # NULL schema; a defensive degrade for a future widening, not a live bug fix.
+                cols.opens.append(o if o is not None else _NULL_NUMERIC_SENTINEL)
+                cols.highs.append(h if h is not None else _NULL_NUMERIC_SENTINEL)
+                cols.lows.append(lo if lo is not None else _NULL_NUMERIC_SENTINEL)
+                cols.closes.append(c if c is not None else _NULL_NUMERIC_SENTINEL)
+                cols.volumes.append(v if v is not None else _NULL_NUMERIC_SENTINEL)
             # publish atomically under the lock so a concurrent reader sees a fully-built map, not a
             # partial one; re-check `_prefilled` in case another thread raced us to the scan (rare —
             # `_BarCache` is normally driven by one orchestrating thread — but the merge below is

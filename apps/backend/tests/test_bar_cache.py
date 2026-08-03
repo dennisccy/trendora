@@ -145,16 +145,16 @@ def test_prefill_old_vs_new_implementation_byte_identical(tiny_engine):
         assert list(new_by_symbol[symbol]) == list(old_by_symbol[symbol])
 
 
-def test_prefill_symbol_filtered_query_when_expected_symbols_given(tiny_engine):
-    """iter-42 (bound attempt #5, AG-8): `prefill(expected_symbols=...)` issues a `WHERE symbol IN
-    (...)`-filtered query -- mirroring `load_only`'s already-proven shape -- instead of the
-    unconditional whole-table scan `expected_symbols=None` still uses. Proves the filtered path is
-    GENUINELY engaged (the iter-37 lesson: assert the condition was actually live, not merely present
-    in the code): SPY has real bars in this fixture but is NOT named in `expected_symbols`, so it must
-    be entirely ABSENT from the cache immediately after `prefill` -- the eager scan really did skip
-    it, this isn't a no-op filter. SPY then falls back to the EXISTING lazy per-symbol load on first
-    access (unchanged by this iteration), loading with exactly ONE additional query and serving a
-    value byte-identical to a full-scan prefill's own result for that symbol."""
+def test_prefill_expected_symbols_no_longer_filters_the_eager_scan(tiny_engine):
+    """iter-43 (REVERT): `prefill(expected_symbols=...)` no longer filters its SELECT — TC-1's
+    byte-identity oracle against the pre-iter-42 (unfiltered) reference body. Proves the revert is
+    GENUINELY engaged (the iter-37 lesson, applied in reverse this time: assert the REMOVED condition
+    is truly gone, not merely absent from the diff): SPY has real bars in this fixture and is NOT named
+    in `expected_symbols=["AAA"]`, yet it must be FULLY PRESENT in the cache immediately after
+    `prefill` returns — the eager scan loads the whole table regardless of `expected_symbols`, exactly
+    like the `expected_symbols=None` case. A subsequent `bars_asof(session, "SPY", ...)` read issues
+    ZERO additional queries (SPY was never lazily loaded — it was already eagerly scanned), unlike the
+    iter-42 shape this test replaces (which required exactly one lazy-load query for SPY)."""
     engine, days = tiny_engine
     with Session(engine) as reference_session:
         reference_spy = [
@@ -172,17 +172,20 @@ def test_prefill_symbol_filtered_query_when_expected_symbols_given(tiny_engine):
     with Session(engine) as session:
         cache = prices._BarCache()
         cache.prefill(session, expected_symbols=["AAA"])
-        # LIVE proof the filter genuinely engaged: SPY has real bars in this fixture but was excluded
-        # from expected_symbols, so it must be ABSENT from the eager scan's result set.
-        assert set(cache._by_symbol) == {"AAA"}, (
-            f"SPY should be excluded from the filtered eager scan, got {set(cache._by_symbol)}"
+        # LIVE proof the filter is genuinely gone: SPY was excluded from expected_symbols but must be
+        # present anyway — the eager scan is unconditional again, byte-identical to expected_symbols=None.
+        assert set(cache._by_symbol) == {"AAA", "SPY"}, (
+            f"SPY must be present after the revert (no filtering), got {set(cache._by_symbol)}"
         )
         aaa_bars = [(b.date, b.open, b.high, b.low, b.close, b.volume) for b in cache._by_symbol["AAA"]]
+        spy_bars = [(b.date, b.open, b.high, b.low, b.close, b.volume) for b in cache._by_symbol["SPY"]]
         assert aaa_bars == reference_aaa
+        assert spy_bars == reference_spy
         assert all(isinstance(b, prices.Bar) for b in cache._by_symbol["AAA"])
+        assert all(isinstance(b, prices.Bar) for b in cache._by_symbol["SPY"])
 
-        # SPY was never in expected_symbols -> the unchanged lazy per-symbol path loads it on first
-        # access: exactly ONE additional query, byte-identical result.
+        # SPY was never in expected_symbols, but it was already eagerly loaded -> reading it now issues
+        # ZERO additional queries (no lazy per-symbol fallback needed, unlike the pre-revert shape).
         calls = {"n": 0}
         orig_exec = session.exec
 
@@ -195,23 +198,42 @@ def test_prefill_symbol_filtered_query_when_expected_symbols_given(tiny_engine):
             (b.date, b.open, b.high, b.low, b.close, b.volume)
             for b in cache.bars_asof(session, "SPY", days[-1])
         ]
-        assert calls["n"] == 1, "SPY must lazy-load with exactly one query (the eager scan skipped it)"
+        assert calls["n"] == 0, (
+            f"SPY was already eagerly loaded by the unconditional scan — a read must issue no query, "
+            f"got {calls['n']}"
+        )
         assert spy_via_cache == reference_spy
-        cache.bars_asof(session, "SPY", days[-1])  # second access: load-once holds, no re-query
-        assert calls["n"] == 1
 
 
-def test_prefill_empty_expected_symbols_loads_nothing_no_malformed_query(tiny_engine):
-    """`expected_symbols=[]` (a genuinely empty, but non-None, candidate set) must short-circuit to
-    zero eagerly-loaded rows without ever issuing a malformed `WHERE symbol IN ()` -- mirrors
-    `load_only`'s own empty-list guard. Distinct from `expected_symbols=None` (unconditional full scan,
-    proven by other tests in this file)."""
+def test_prefill_empty_expected_symbols_still_loads_full_table(tiny_engine):
+    """iter-43 (REVERT): `expected_symbols=[]` (a genuinely empty, but non-None, candidate set) no
+    longer short-circuits to zero eagerly-loaded rows -- that iter-42 guard is removed along with the
+    filter it protected. Post-revert, `[]` behaves EXACTLY like `expected_symbols=None`: the
+    unconditional whole-table scan still runs and loads every symbol (byte-identical to the reference
+    query), and the empty `expected_symbols` list only affects the SEPARATE "record a zero-bar
+    candidate" bookkeeping loop at the end of `prefill` (a no-op here, since the list is empty) --
+    never the SELECT itself."""
     engine, days = tiny_engine
+    with Session(engine) as reference_session:
+        reference = [
+            (bar.symbol, bar.date, bar.open, bar.high, bar.low, bar.close, bar.volume)
+            for bar in reference_session.exec(
+                select(DailyPrice).order_by(DailyPrice.symbol, DailyPrice.date)
+            ).all()
+        ]
     with Session(engine) as session:
         cache = prices._BarCache()
         cache.prefill(session, expected_symbols=[])
-        assert cache._by_symbol == {}
-        assert cache._prefilled is True  # the (empty) scan still ran/completed once
+        assert set(cache._by_symbol) == {"AAA", "SPY"}, (
+            f"the full table must load even with an empty expected_symbols list, got {set(cache._by_symbol)}"
+        )
+        loaded = [
+            (symbol, bar.date, bar.open, bar.high, bar.low, bar.close, bar.volume)
+            for symbol in sorted(cache._by_symbol)
+            for bar in cache._by_symbol[symbol]
+        ]
+        assert loaded == reference
+        assert cache._prefilled is True  # the (now-unconditional) scan still ran/completed once
 
 
 def test_prefill_null_numeric_column_degrades_without_crashing(tiny_engine):

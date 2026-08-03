@@ -1,0 +1,35 @@
+t=  0.00s health=200 latency=8.4ms vmpeak=691528 job_status=ok phase=pre_terminal
+--- job reached terminal status 'ok' at t=0.00s -- continuing to poll for 30.0s PAST this point (audit B2: iter-39's wedge appeared shortly after the terminal DB write) ---
+t=  1.01s health=200 latency=6.1ms vmpeak=691528 job_status=ok phase=post_terminal
+t=  2.02s health=200 latency=8.4ms vmpeak=691528 job_status=ok phase=post_terminal
+t=  3.03s health=200 latency=6.4ms vmpeak=691528 job_status=ok phase=post_terminal
+t=  4.03s health=200 latency=10.0ms vmpeak=691528 job_status=ok phase=post_terminal
+t=  5.05s health=200 latency=6.2ms vmpeak=691528 job_status=ok phase=post_terminal
+t=  6.05s health=200 latency=6.0ms vmpeak=691528 job_status=ok phase=post_terminal
+t=  7.06s health=200 latency=7.9ms vmpeak=691528 job_status=ok phase=post_terminal
+t=  8.07s health=200 latency=54.1ms vmpeak=691528 job_status=ok phase=post_terminal
+t=  9.12s health=200 latency=5.1ms vmpeak=691528 job_status=ok phase=post_terminal
+t= 10.13s health=200 latency=7.8ms vmpeak=691528 job_status=ok phase=post_terminal
+t= 11.14s health=200 latency=10.0ms vmpeak=691528 job_status=ok phase=post_terminal
+t= 12.15s health=200 latency=9.4ms vmpeak=691528 job_status=ok phase=post_terminal
+t= 13.16s health=200 latency=7.2ms vmpeak=691528 job_status=ok phase=post_terminal
+t= 14.17s health=200 latency=4.5ms vmpeak=691528 job_status=ok phase=post_terminal
+t= 15.18s health=200 latency=6.0ms vmpeak=691528 job_status=ok phase=post_terminal
+t= 16.18s health=200 latency=3.7ms vmpeak=691528 job_status=ok phase=post_terminal
+t= 17.19s health=200 latency=40.8ms vmpeak=691528 job_status=ok phase=post_terminal
+t= 18.23s health=200 latency=4.7ms vmpeak=691528 job_status=ok phase=post_terminal
+t= 19.24s health=200 latency=3.3ms vmpeak=691528 job_status=ok phase=post_terminal
+t= 20.24s health=200 latency=5.5ms vmpeak=691528 job_status=ok phase=post_terminal
+t= 21.25s health=200 latency=7.0ms vmpeak=691528 job_status=ok phase=post_terminal
+t= 22.26s health=200 latency=7.0ms vmpeak=691528 job_status=ok phase=post_terminal
+t= 23.27s health=200 latency=3.9ms vmpeak=691528 job_status=ok phase=post_terminal
+t= 24.27s health=200 latency=8.2ms vmpeak=691528 job_status=ok phase=post_terminal
+t= 25.28s health=200 latency=9.1ms vmpeak=691528 job_status=ok phase=post_terminal
+t= 26.29s health=200 latency=30.4ms vmpeak=691528 job_status=ok phase=post_terminal
+t= 27.32s health=200 latency=6.2ms vmpeak=691528 job_status=ok phase=post_terminal
+t= 28.33s health=200 latency=8.2ms vmpeak=691528 job_status=ok phase=post_terminal
+t= 29.34s health=200 latency=6.4ms vmpeak=691528 job_status=ok phase=post_terminal
+t= 30.35s health=200 latency=8.1ms vmpeak=691528 job_status=ok phase=post_terminal
+--- post-terminal window (30.0s) elapsed with 30 additional poll(s) recorded -- stopping ---
+TOTAL_POLLS=31 NON_200=0 MAX_GAP_S=1.056 POST_TERMINAL_POLLS=30 SAFETY_BACKSTOP_FIRED=False
+FINAL_JOB_STATUS_JSON={"job_id": "6f0e196ce55a49158fbd670a10746e10", "kind": "backfill", "start": "2020-01-03", "end": "2020-01-04", "source": null, "status": "ok", "symbols_total": 0, "symbols_ok": 0, "symbols_failed": 0, "bars_fetched": 0, "dates_total": 0, "dates_done": 0, "snapshots_created": 0, "forward_returns_inserted": 0, "calendar_days": 2, "non_trading_days": 2, "already_snapshotted": 0, "error_other": 0, "aggregates_refreshed": ["coverage", "membership_timeline", "research_hot_keys", "index_series", "drawdown_expectations"], "chunk_index": 1, "chunk_total": 1, "passers": 0, "omitted_total": 0, "omitted": [], "stages": {"backfill": {"elapsed_seconds": 0.0007, "items_processed": 0, "concurrency": 4, "per_date_seconds_sum": 0.0, "speedup_factor": null}}, "current_activity": "", "last_progress_at": "2026-07-31T11:39:54.378582+00:00", "completed_stages": ["backfill"], "date_failures": [], "message": "backfill: 0 snapshots over 0 dates, 0 forward returns", "errors": [], "started_at": "2026-07-31T11:39:54.258843+00:00", "finished_at": "2026-07-31T11:39:54.388151+00:00"}

@@ -1,7 +1,7 @@
 {
   "session_id": "ops-hardening",
   "started_at": "2026-07-19T13:57:02.848410Z",
-  "current_iter": 43,
+  "current_iter": 44,
   "cli": "claude",
   "agent_backend": "interactive",
   "halt_config": {
@@ -10,15 +10,15 @@
     "regression_halt": true
   },
   "status": "in_progress",
-  "last_verdict": "REGRESSION",
+  "last_verdict": "ESCALATE",
   "next_depth": "full",
   "auto_release": false,
   "push_per_iter": true,
   "push_branch": "goal/ops-hardening",
-  "finished_at": "2026-07-30T22:14:55.337946Z",
-  "total_iterations": 39,
-  "wall_time_seconds": 2390,
+  "finished_at": "2026-07-31T08:07:41.092226Z",
+  "total_iterations": 43,
+  "wall_time_seconds": 35483,
   "quota_pause_count": 0,
-  "updated_at": "2026-07-31T08:07:40.560486Z",
-  "parked_wip_sha": "b951de40"
+  "updated_at": "2026-08-03T18:16:20.362796Z",
+  "parked_wip_sha": "df4635fe"
 }

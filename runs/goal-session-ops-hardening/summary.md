@@ -1,32 +1,32 @@
 # Goal Session Summary — ops-hardening
 
-**Final verdict:** AWAITING_PUMP
-**Total iterations:** 39
-**Wall time (seconds):** 2390
+**Final verdict:** REGRESSION_HALT
+**Total iterations:** 43
+**Wall time (seconds):** 35483
 **Quota pauses:** 0
 **Started:** 2026-07-19T13:57:02.848410Z
-**Finished:** 2026-07-30T22:14:55.337946Z
+**Finished:** 2026-07-31T08:07:41.092226Z
 
 ## Branch
 
 This session pushed iteration commits to `goal/ops-hardening`. Open a PR with:
 
     gh pr create --base main --head goal/ops-hardening \
-      --title "feat: ops-hardening — AWAITING_PUMP" \
+      --title "feat: ops-hardening — REGRESSION_HALT" \
       --body-file runs/goal-session-ops-hardening/summary.md
 
 ## Final journey state
 
 | Journey | Status | Last passing iter |
 |---|---|---|
-| J-01 | passing | goal-ops-hardening-iter-38 |
-| J-03 | passing | goal-ops-hardening-iter-38 |
-| J-04 | passing | goal-ops-hardening-iter-37 |
-| J-05 | passing | goal-ops-hardening-iter-38 |
-| J-06 | passing | goal-ops-hardening-iter-38 |
-| J-07 | partial | goal-ops-hardening-iter-34 |
-| J-08 | passing | goal-ops-hardening-iter-38 |
-| J-09 | passing | goal-ops-hardening-iter-38 |
+| J-01 | passing | goal-ops-hardening-iter-42 |
+| J-03 | passing | goal-ops-hardening-iter-42 |
+| J-04 | passing | goal-ops-hardening-iter-42 |
+| J-05 | regressed | goal-ops-hardening-iter-39 |
+| J-06 | passing | goal-ops-hardening-iter-42 |
+| J-07 | failing | goal-ops-hardening-iter-34 |
+| J-08 | passing | goal-ops-hardening-iter-42 |
+| J-09 | passing | goal-ops-hardening-iter-42 |
 
 ## Anti-goal violations
 
@@ -62,6 +62,17 @@ This session pushed iteration commits to `goal/ops-hardening`. Open a PR with:
 - [minor] docs/goal.md Success Criteria ('measured, recorded in reports/perf-budgets.md') + .claude/core.md evidence honesty: a number presented as measured must be the number the instrument actually produced. (iter goal-ops-hardening-iter-38)
 - [minor] docs/goal.md J-07 step 4 (verbatim): 'Induce memory pressure during a warm (test hook or a tightened cap in a throwaway process); assert the warm aborts honestly per the existing isolation convention while the SAME process keeps serving GET /api/health and previously cached reads - never a deadlock, wedge, or restart requirement.' (iter goal-ops-hardening-iter-38)
 - [minor] docs/goal.md Must-have user journeys (the required-still-passing set must stay green) + the iteration spec's TC-11 ('zero FAIL rows and zero reconciliation overturns'). (iter goal-ops-hardening-iter-38)
+- [minor] docs/goal.md J-07 Acceptance (verbatim): 'a memory-pressure abort never leaves the process wedged (step 4)'; and AG-8 - Resilience to data-shape and data-scale change: widening the data basis must never exhaust a service's memory. (iter goal-ops-hardening-iter-39)
+- [minor] AG-8 - Resilience to data-shape and data-scale change: unbounded whole-table ORM loads are forbidden on the deep basis; and docs/goal.md J-07 Acceptance: 'no unbounded whole-table ORM materialization remains on the warm or serving path'. (iter goal-ops-hardening-iter-39)
+- [minor] AG-3: A journey passes ONLY if the displayed numbers are correct - they match the engine's computation for the same as-of date - not merely that the page renders. (iter goal-ops-hardening-iter-39)
+- [minor] docs/goal.md Must-have user journeys (the required-still-passing set must stay green) - the evidence artifacts the evaluator reads must not report a run as passing when its journeys were never verified. (iter goal-ops-hardening-iter-39)
+- [minor] docs/goal.md Must-have user journeys — the required-still-passing set must stay green, and the evidence artifacts must actually carry that claim (same family as iter-38/t and iter-39/x) (iter goal-ops-hardening-iter-40)
+- [minor] docs/goal.md Must-have user journeys - the evidence artifacts the evaluator reads must not report a run as passing when its journeys were never verified (same family as iter-38/t, iter-39/x, iter-40/y). (iter goal-ops-hardening-iter-41)
+- [minor] docs/goal.md Must-have user journeys - a guard written to prevent a specific past failure must actually be tested against that failure's own artifact. (iter goal-ops-hardening-iter-41)
+- [minor] AG-8 - Resilience to data-shape and data-scale change: unbounded whole-table ORM loads are forbidden on the deep basis. (critical anti-goal; this entry records an inaccurate CLAIM about it, not a new violation) (iter goal-ops-hardening-iter-41)
+- [minor] AG-8 - Resilience to data-shape and data-scale change: widening the data basis ... must never crash an existing page or exhaust a service's memory ... unbounded whole-table ORM loads are forbidden on the deep basis. *(critical)* (iter goal-ops-hardening-iter-42)
+- [minor] AG-8 - Resilience to data-shape and data-scale change: widening the data basis ... must never crash an existing page or exhaust a service's memory. *(critical)* (iter goal-ops-hardening-iter-42)
+- [minor] AG-8 (critical) + docs/goal.md Success Criteria: 'Backend process start -> first GET /api/health HTTP 200 in <= 5 seconds' and 'Zero silent zero-work jobs: every job outcome shows date counts and per-date exclusion reasons'. (iter goal-ops-hardening-iter-42)
 
 ## Telemetry
 
@@ -578,23 +589,99 @@ See `runs/goal-session-ops-hardening/telemetry.jsonl` for the structured event l
       [engine] showcase-join       0.0m  (contains agent time above)
       (resume-skipped: goal-decomposer)
       pump-wait                  0.2m
-  session: 39 completed iteration(s), mean wall 203.6m
-      total developer                 1154.3m
-      total browser-qa-agent           909.5m
-      total goal-evaluator             586.4m
-      total goal-decomposer            567.2m
-      total iteration-summarizer       372.4m
-      total coherence-auditor          165.5m
-      total auditor                    162.0m
-      total reviewer                   138.4m
-      total qa                         138.3m
+  goal-ops-hardening-iter-39  depth=full  verdict=ESCALATE  wall=119.3m
+      auditor                     29.5m  calls=2
+      developer                   25.9m  calls=1
+      reviewer                    20.7m  calls=2
+      qa                          18.7m  calls=2
+      goal-evaluator              14.8m  calls=1
+      ui-test-designer             6.1m  calls=1
+      coherence-auditor            3.0m  calls=1
+      ux-regression-reviewer       2.0m  calls=1
+      browser-qa-agent             1.7m  calls=1
+      ui-impact-analyst            1.4m  calls=1
+      demo-narrator                1.0m  calls=1
+      [engine] full-pipeline     101.5m  (contains agent time above)
+      [engine] showcase-join       0.0m  (contains agent time above)
+      (resume-skipped: goal-decomposer)
+      pump-wait                  2.4m
+      OVER BUDGET at coherence-auditor: 6090s > 3600s (mode=trim)
+      overlap saved              5.5m  (parallel steps)
+  goal-ops-hardening-iter-40  depth=full  verdict=ESCALATE  wall=122.7m
+      developer                   46.2m  calls=1
+      qa                          21.4m  calls=1
+      browser-qa-agent            19.8m  calls=1
+      auditor                     17.1m  calls=1
+      goal-evaluator              15.7m  calls=1
+      iteration-summarizer         6.5m  calls=1
+      goal-decomposer              6.5m  calls=1
+      reviewer                     5.4m  calls=1
+      orchestrator                 3.6m  calls=1
+      ui-impact-analyst            2.7m  calls=1
+      coherence-auditor            2.5m  calls=1
+      demo-narrator                1.1m  calls=1
+      [engine] full-pipeline      97.8m  (contains agent time above)
+      [engine] showcase-join       0.1m  (contains agent time above)
+      (resume-skipped: ui-test-design, ux-regression)
+      pump-wait                 20.6m
+      OVER BUDGET at post-dev-fanout: 3712s > 3600s (mode=trim)
+      overlap saved             25.9m  (parallel steps)
+  goal-ops-hardening-iter-41  depth=full  verdict=ESCALATE  wall=178.1m
+      developer                   93.5m  calls=2
+      reviewer                    17.9m  calls=2
+      goal-evaluator              14.7m  calls=1
+      auditor                     13.7m  calls=1
+      qa                          13.1m  calls=1
+      iteration-summarizer        11.8m  calls=1
+      goal-decomposer             11.8m  calls=1
+      browser-qa-agent             9.3m  calls=1
+      ui-impact-analyst            6.8m  calls=1
+      orchestrator                 4.3m  calls=1
+      coherence-auditor            2.1m  calls=1
+      demo-narrator                1.5m  calls=1
+      [engine] full-pipeline     149.3m  (contains agent time above)
+      [engine] showcase-join       0.1m  (contains agent time above)
+      (resume-skipped: ui-test-design, ux-regression)
+      pump-wait                 12.4m
+      OVER BUDGET at post-dev-fanout: 7670s > 3600s (mode=trim)
+      overlap saved             22.6m  (parallel steps)
+  goal-ops-hardening-iter-42  depth=full  verdict=REGRESSION  wall=171.0m
+      developer                   43.9m  calls=1
+      auditor                     32.2m  calls=1
+      browser-qa-agent            29.1m  calls=1
+      goal-evaluator              17.1m  calls=1
+      iteration-summarizer        15.3m  calls=2
+      qa                          12.4m  calls=1
+      ui-test-designer            10.5m  calls=1
+      goal-decomposer             10.0m  calls=1
+      reviewer                     5.6m  calls=1
+      coherence-auditor            4.6m  calls=1
+      orchestrator                 3.9m  calls=1
+      demo-narrator                2.0m  calls=1
+      ui-impact-analyst            2.0m  calls=1
+      [engine] full-pipeline     133.8m  (contains agent time above)
+      [engine] showcase-join       0.1m  (contains agent time above)
+      (resume-skipped: ux-regression)
+      pump-wait                  2.7m
+      OVER BUDGET at post-dev-fanout: 3810s > 3600s (mode=trim)
+      overlap saved             17.6m  (parallel steps)
+  session: 43 completed iteration(s), mean wall 198.4m
+      total developer                 1363.8m
+      total browser-qa-agent           969.4m
+      total goal-evaluator             648.6m
+      total goal-decomposer            595.5m
+      total iteration-summarizer       406.1m
+      total auditor                    254.5m
+      total qa                         203.9m
+      total reviewer                   188.0m
+      total coherence-auditor          177.8m
+      total ui-impact-analyst           76.8m
       total readme-maintainer           69.3m
-      total ui-impact-analyst           63.9m
-      total orchestrator                38.8m
-      total ui-test-designer            33.4m
-      total ux-regression-reviewer      16.9m
-      total demo-narrator               12.8m
+      total orchestrator                50.6m
+      total ui-test-designer            50.0m
+      total ux-regression-reviewer      18.9m
+      total demo-narrator               18.4m
       total browser-qa-replay            2.3m
-      total AWAITING_PUMP paused gaps: 11.0m
-      halts: AWAITING_PUMP, AWAITING_PUMP, REGRESSION_HALT, BUDGET_EXHAUSTED, REGRESSION_HALT, STALLED, DECOMPOSER_FAILED, STALLED, STALLED, AWAITING_PUMP, machine_reset, AWAITING_PUMP
+      total AWAITING_PUMP paused gaps: 12.4m
+      halts: AWAITING_PUMP, AWAITING_PUMP, REGRESSION_HALT, BUDGET_EXHAUSTED, REGRESSION_HALT, STALLED, DECOMPOSER_FAILED, STALLED, STALLED, AWAITING_PUMP, machine_reset, AWAITING_PUMP, REGRESSION_HALT
 ```

@@ -1,0 +1,151 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-ops-hardening-iter-43",
+  "base_url": "http://localhost:3255",
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Open the dashboard",
+      "narration": "The dashboard displays a ready status and confirms the system is initialized with seed data.",
+      "point_out": "The top-right badge shows a green Ready state; the page shows 'provider: seed'",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {"type": "goto", "url": "/"}
+    },
+    {
+      "n": 2,
+      "title": "Start a simple backfill job",
+      "narration": "Navigate to the Data Manager to run a backfill. We'll start with a single date range.",
+      "point_out": "The Data Manager page loads with the backfill form ready to use.",
+      "journey": "J-01",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {"type": "goto", "url": "/data"}
+    },
+    {
+      "n": 3,
+      "title": "Enter dates and start the backfill",
+      "narration": "Backfill a small, single-day range to see how the system handles zero-work scenarios.",
+      "point_out": "After the job finishes, reload to see the job summary explains why no work was needed—'2 non-trading'.",
+      "journey": "J-01",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {"type": "fill", "target": {"testid": "job-start-date"}, "text": "2026-05-02"}
+    },
+    {
+      "n": 4,
+      "title": "Set end date and start",
+      "narration": "Complete the range and trigger the backfill to run.",
+      "point_out": "The job progresses to completion; the system explains what it did.",
+      "journey": "J-01",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {"type": "fill", "target": {"testid": "job-end-date"}, "text": "2026-05-03"}
+    },
+    {
+      "n": 5,
+      "title": "Start the job",
+      "narration": "Click Start to queue the backfill.",
+      "point_out": "Job progress panel updates as the job runs.",
+      "journey": "J-01",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {"type": "click", "target": {"role": "button", "name": "Start"}}
+    },
+    {
+      "n": 6,
+      "title": "View the completed job in history",
+      "narration": "After the job finishes, reload the Data Manager to see its summary. The system explains that it found 2 non-trading days—zero work needed.",
+      "point_out": "Run history shows the completed job with its explanation: '2 non-trading'.",
+      "journey": "J-01",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {"type": "goto", "url": "/data"}
+    },
+    {
+      "n": 7,
+      "title": "Run a wide date range without rejection",
+      "narration": "This iteration removed any per-run date range cap. We'll backfill a full year plus—412 calendar days—to prove the system accepts it.",
+      "point_out": "The wide range (2025-06-01 to 2026-07-17) is accepted and begins processing.",
+      "journey": "J-03",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {"type": "fill", "target": {"testid": "job-start-date"}, "text": "2025-06-01"}
+    },
+    {
+      "n": 8,
+      "title": "Set the wide range end date",
+      "narration": "Enter the end date for the 412-day range.",
+      "point_out": "The form accepts both dates without complaints.",
+      "journey": "J-03",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {"type": "fill", "target": {"testid": "job-end-date"}, "text": "2026-07-17"}
+    },
+    {
+      "n": 9,
+      "title": "Start the wide backfill",
+      "narration": "Submit the 412-day range. No 'date range too large' error appears; the job begins processing.",
+      "point_out": "The job shows it is running and accepting the full, wide range.",
+      "journey": "J-03",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {"type": "click", "target": {"role": "button", "name": "Start"}}
+    },
+    {
+      "n": 10,
+      "title": "Navigate to Stocks",
+      "narration": "Tour the main surfaces to verify they load quickly and stay responsive. Start with Stocks.",
+      "point_out": "The Stocks page renders with the list of available symbols.",
+      "journey": "J-06",
+      "new": false,
+      "verified": true,
+      "section": "full_tour",
+      "action": {"type": "goto", "url": "/stocks"}
+    },
+    {
+      "n": 11,
+      "title": "View a stock detail page",
+      "narration": "Each symbol loads its details on demand, avoiding unnecessary preloading.",
+      "point_out": "AAPL details render with its chart and metrics.",
+      "journey": "J-06",
+      "new": false,
+      "verified": true,
+      "section": "full_tour",
+      "action": {"type": "goto", "url": "/stocks/AAPL"}
+    },
+    {
+      "n": 12,
+      "title": "View the Evidence page",
+      "narration": "The Evidence page loads with stored backtest results, never recomputing on the fly.",
+      "point_out": "Forward-tested evidence values display from storage.",
+      "journey": "J-08",
+      "new": false,
+      "verified": true,
+      "section": "full_tour",
+      "action": {"type": "goto", "url": "/backtest"}
+    },
+    {
+      "n": 13,
+      "title": "View background compute disclosure",
+      "narration": "Return to the Data Manager to see the background compute panel. It discloses any in-flight aggregation work and its scope.",
+      "point_out": "If work is running, the panel lists the window with elapsed time and horizon progress; it states the work is 'process-lifetime only, never persisted'.",
+      "journey": "J-09",
+      "new": false,
+      "verified": true,
+      "section": "full_tour",
+      "action": {"type": "goto", "url": "/data"}
+    }
+  ]
+}

@@ -1,0 +1,45 @@
+{
+    "job_id": "cef95af89b6c4aae85d0fd18209f1149",
+    "kind": "backfill",
+    "start": "2013-06-12",
+    "end": "2013-06-12",
+    "source": null,
+    "status": "running",
+    "symbols_total": 0,
+    "symbols_ok": 0,
+    "symbols_failed": 0,
+    "bars_fetched": 0,
+    "dates_total": 1,
+    "dates_done": 1,
+    "snapshots_created": 1,
+    "forward_returns_inserted": 1580,
+    "calendar_days": 1,
+    "non_trading_days": 0,
+    "already_snapshotted": 0,
+    "error_other": 0,
+    "aggregates_refreshed": [],
+    "chunk_index": 1,
+    "chunk_total": 1,
+    "passers": 0,
+    "omitted_total": 0,
+    "omitted": [],
+    "stages": {
+        "backfill": {
+            "elapsed_seconds": 12.6118,
+            "items_processed": 1,
+            "concurrency": 1,
+            "per_date_seconds_sum": 3.5007,
+            "speedup_factor": 0.2776
+        }
+    },
+    "current_activity": "scanning 2013-06-12 (1/1)",
+    "last_progress_at": "2026-07-31T11:42:51.468456+00:00",
+    "completed_stages": [
+        "backfill"
+    ],
+    "date_failures": [],
+    "message": "snapshots 1/1 dates",
+    "errors": [],
+    "started_at": "2026-07-31T11:42:38.778744+00:00",
+    "finished_at": null
+}

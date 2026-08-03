@@ -188,11 +188,22 @@ def start_job(payload: JobCreate, session: Session = Depends(get_session)) -> di
     symbols = None
     if payload.symbols:
         symbols = [s.strip() for s in payload.symbols if s and s.strip()] or None
-    job_id = data_manager.start_data_job(
-        payload.kind, payload.start, payload.end,
-        source=source, api_key=payload.api_key, config=cfg, engine=get_engine(),
-        symbols=symbols,
-    )
+    # ops-hardening iter-43 (J-05 regression fix): a failure to LAUNCH the worker thread (e.g.
+    # `RuntimeError: can't start new thread`) is recorded honestly on the job by `start_data_job` itself
+    # (status `failed`, a descriptive message) and re-raised here so this endpoint returns an explicit
+    # error — never a 200 `"status": "running"` over a job that never started (goal.md's "Zero silent
+    # zero-work jobs"). Mirrors the file's own existing idiom two lines above `start_job`'s own 503.
+    try:
+        job_id = data_manager.start_data_job(
+            payload.kind, payload.start, payload.end,
+            source=source, api_key=payload.api_key, config=cfg, engine=get_engine(),
+            symbols=symbols,
+        )
+    except (RuntimeError, MemoryError) as exc:
+        # iter-43 AUDIT (B3): `MemoryError` is the OTHER exit `thread.start()` takes under the same
+        # memory ceiling (CPython raises it when `start_new_thread`'s own allocation fails before the OS
+        # refusal path's `RuntimeError`) — both are launch failures, both belong on 503, never a 200.
+        raise HTTPException(status_code=503, detail=f"failed to launch job worker: {exc}") from exc
     return {
         "job_id": job_id,
         "kind": payload.kind,
@@ -251,7 +262,14 @@ def resume_job(
             status_code=400,
             detail=f"source {checkpoint.source!r} requires a key; set ${entry.env_var} or paste a session key",
         )
-    data_manager.start_resume_job(import_id, api_key=api_key, config=cfg, engine=get_engine())
+    # ops-hardening iter-43 (J-05 regression fix): same honest-error contract as `start_job` above — a
+    # thread-launch failure is already recorded on the resumed job's run-history row by
+    # `start_resume_job`/`_fail_unlaunched_resume`; re-raised here so this endpoint never returns a 200
+    # over a resume that never started.
+    try:
+        data_manager.start_resume_job(import_id, api_key=api_key, config=cfg, engine=get_engine())
+    except (RuntimeError, MemoryError) as exc:  # iter-43 AUDIT (B3) — see `start_job` above
+        raise HTTPException(status_code=503, detail=f"failed to launch resume worker: {exc}") from exc
     return {"import_id": import_id, "source": checkpoint.source, "status": "running"}
 
 

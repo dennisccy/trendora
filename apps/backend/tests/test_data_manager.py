@@ -58,6 +58,7 @@ from app.engine.data_manager import (
     retry_run,
     run_data_job,
     seed_import_source_enabled,
+    summarize_provider_run,
     unfinished_imports,
     validate_job_request,
     SEED_IMPORT_ENV_FLAG,
@@ -4998,6 +4999,240 @@ def unfinished_engine(tmp_path):
     engine = make_engine(f"sqlite:///{tmp_path / 'unfinished.db'}")
     create_db_and_tables(engine)
     return engine
+
+
+# ==================================================================================================
+# ops-hardening iter-43 (J-05 regression fix) — a `threading.Thread.start()` launch failure must not
+# orphan a job at its `create_job()`-time `running` default forever.
+# ==================================================================================================
+def test_start_data_job_thread_launch_failure_marks_job_failed(tmp_path, monkeypatch):
+    """TC-3: `threading.Thread.start()` raising `RuntimeError` (the live incident: "can't start new
+    thread", `logs/backend.log:153050-153075`) inside `start_data_job` must not leave the just-created
+    job at `running` with zero further updates. The failure reaches BOTH the live in-memory registry (a
+    poller's `GET /api/data/jobs/{id}`) and the persisted run-history row (`GET /api/data`'s Run history
+    panel) as `failed`, with a message naming the thread-launch failure — and the original exception
+    propagates to the caller so the HTTP layer can return an honest error instead of a 200."""
+    engine = make_engine(f"sqlite:///{tmp_path / 'launch_fail.db'}")
+    create_db_and_tables(engine)
+    cfg = load_config()
+
+    created: dict = {}
+    real_create_job = data_manager.create_job
+
+    def _spy_create_job(*a, **kw):
+        job = real_create_job(*a, **kw)
+        created["job"] = job
+        return job
+
+    def _raise_cannot_start_thread(self):
+        raise RuntimeError("can't start new thread")
+
+    monkeypatch.setattr(data_manager, "create_job", _spy_create_job)
+    monkeypatch.setattr("threading.Thread.start", _raise_cannot_start_thread)
+
+    with pytest.raises(RuntimeError, match="can't start new thread"):
+        data_manager.start_data_job("backfill", date(2024, 1, 2), date(2024, 1, 2), config=cfg, engine=engine)
+
+    assert "job" in created, "create_job must have run (and been captured) before the launch failure"
+    prog = created["job"]
+    assert prog.status == "failed"
+    assert any("failed to launch job worker thread" in e for e in prog.errors), prog.errors
+    assert prog.finished_at is not None
+    # the live in-memory registry (what a concurrent poller sees) reflects the SAME object.
+    assert data_manager.get_job(prog.job_id)["status"] == "failed"
+
+    with Session(engine) as session:
+        row = session.exec(select(DataProviderRun).where(DataProviderRun.job_id == prog.job_id)).one()
+    assert row.status == "failed"
+    assert row.finished_at is not None
+    # iter-43 AUDIT (B2): TC-3 asks for the PERSISTED row's message to name the launch failure — the
+    # 503 body and the in-memory `errors[]` are both transient, so without this the durable audit record
+    # (what `GET /api/data`'s Run history panel renders) would read as a plain all-zeros work summary.
+    assert "failed to launch job worker thread" in summarize_provider_run(row)["message"]
+
+
+@pytest.mark.parametrize("launch_exc", [RuntimeError("can't start new thread"), MemoryError()])
+def test_start_data_job_non_runtimeerror_launch_failure_also_marks_job_failed(
+    tmp_path, monkeypatch, launch_exc
+):
+    """iter-43 AUDIT (B3) — the spec's own error case is a `RuntimeError` **"or equivalent"** raised by
+    `threading.Thread.start()`; the guard must therefore not be keyed to that ONE exception type.
+
+    `Thread.start()` itself catches a bare `Exception` around `_start_new_thread` (CPython
+    `Lib/threading.py`), because the C-level `thread.start_new_thread` has two distinct failure exits:
+    `PyErr_SetString(PyExc_RuntimeError, "can't start new thread")` when the OS refuses the thread, and
+    `PyErr_NoMemory()` -> **`MemoryError`** when its own bootstate allocation fails first. Both live in
+    the SAME regime this guard exists for — iter-42's outage produced `MemoryError` and
+    `RuntimeError: can't start new thread` side by side under one `ulimit -v` ceiling
+    (`reports/perf-budgets.md`, iteration-42) — so catching only `RuntimeError` left the exact
+    "silent zero-work job" hole this iteration closed still open on its nearest sibling path: pre-fix,
+    the `MemoryError` parametrization left the job at its `create_job()`-time `running` default with NO
+    run-history row at all, forever.
+
+    Both parametrizations must reach the SAME honest terminal state, and the original exception must
+    still propagate (never swallowed into a false success)."""
+    engine = make_engine(f"sqlite:///{tmp_path / 'launch_fail_kind.db'}")
+    create_db_and_tables(engine)
+    cfg = load_config()
+
+    created: dict = {}
+    real_create_job = data_manager.create_job
+
+    def _spy_create_job(*a, **kw):
+        job = real_create_job(*a, **kw)
+        created["job"] = job
+        return job
+
+    def _raise_launch_failure(self):
+        raise launch_exc
+
+    monkeypatch.setattr(data_manager, "create_job", _spy_create_job)
+    monkeypatch.setattr("threading.Thread.start", _raise_launch_failure)
+
+    with pytest.raises(type(launch_exc)):
+        data_manager.start_data_job("backfill", date(2024, 1, 2), date(2024, 1, 2), config=cfg, engine=engine)
+
+    prog = created["job"]
+    assert prog.status == "failed", f"job orphaned at {prog.status!r} after a {type(launch_exc).__name__}"
+    assert prog.finished_at is not None
+    assert data_manager.get_job(prog.job_id)["status"] == "failed"
+    with Session(engine) as session:
+        row = session.exec(select(DataProviderRun).where(DataProviderRun.job_id == prog.job_id)).one()
+    assert row.status == "failed"
+    assert "failed to launch job worker thread" in summarize_provider_run(row)["message"]
+
+
+def test_start_resume_job_non_runtimeerror_launch_failure_also_marks_job_failed(
+    unfinished_engine, monkeypatch
+):
+    """iter-43 AUDIT (B3), resume sibling — same argument as the `start_data_job` parametrization above.
+    Pre-fix, a `MemoryError` from `Thread.start()` left the paused attempt's OPEN run-history row open
+    (`resumable`) forever with no further update, which is the state the J-05 regression was about."""
+    engine = unfinished_engine
+    cfg = load_config()
+    with Session(engine) as session:
+        _add_resumable_checkpoint(session, "cp-launch-oom")
+
+    def _raise_memory_error(self):
+        raise MemoryError()
+
+    monkeypatch.setattr("threading.Thread.start", _raise_memory_error)
+
+    with pytest.raises(MemoryError):
+        data_manager.start_resume_job("cp-launch-oom", config=cfg, engine=engine)
+
+    assert data_manager.get_job("cp-launch-oom")["status"] == "failed"
+    with Session(engine) as session:
+        row = session.exec(
+            select(DataProviderRun).where(DataProviderRun.job_id == "cp-launch-oom")
+        ).one()
+    assert row.status == "failed"
+    assert row.finished_at is not None
+    assert "failed to launch job worker thread" in summarize_provider_run(row)["message"]
+
+
+def test_start_resume_job_thread_launch_failure_marks_job_failed(unfinished_engine, monkeypatch):
+    """TC-4: the same mocked `threading.Thread.start()` failure inside `start_resume_job` closes the
+    resumed import's run-history row to `failed` with a descriptive message via the SAME mechanism.
+    `resume_data_job` (the thread target) is normally what builds this job's `JobProgress` from its
+    checkpoint — since the thread never starts, the guard rebuilds the same minimal shape from the
+    checkpoint directly, so the row is honestly closed instead of staying open (`resumable`/`running`)
+    forever."""
+    engine = unfinished_engine
+    cfg = load_config()
+    with Session(engine) as session:
+        _add_resumable_checkpoint(session, "cp-launch-fail")
+
+    def _raise_cannot_start_thread(self):
+        raise RuntimeError("can't start new thread")
+
+    monkeypatch.setattr("threading.Thread.start", _raise_cannot_start_thread)
+
+    with pytest.raises(RuntimeError, match="can't start new thread"):
+        data_manager.start_resume_job("cp-launch-fail", config=cfg, engine=engine)
+
+    # the live in-memory registry now carries the failure too (nothing registered it before the launch
+    # attempt — the guard is what creates this entry).
+    assert data_manager.get_job("cp-launch-fail")["status"] == "failed"
+
+    with Session(engine) as session:
+        row = session.exec(
+            select(DataProviderRun).where(DataProviderRun.job_id == "cp-launch-fail")
+        ).one()
+    assert row.status == "failed"
+    assert row.finished_at is not None
+    assert "failed to launch job worker thread" in summarize_provider_run(row)["message"]  # B2
+
+
+def test_start_resume_job_launch_failure_preserves_the_paused_runs_recorded_progress(
+    unfinished_engine, monkeypatch
+):
+    """iter-43 AUDIT (B1) — a resume whose worker thread never launches must close the paused attempt's
+    OPEN run-history row to `failed` WITHOUT erasing the work that attempt already recorded.
+
+    `_finalize_run_record` UPDATEs the open row's `symbols_ok`/`symbols_failed`/detail JSON straight off
+    the `JobProgress` it is handed. `resume_data_job` (the thread target) seeds that progress from the
+    durable checkpoint (`symbols_done` from the committed chunks, `bars_fetched`, `chunk_index`,
+    `completed_stages`, the persisted failed tally) BEFORE any run row is touched, so the row's counts
+    only ever move forward. The unlaunched-resume guard must seed it the SAME way — handing
+    `_finalize_run_record` a bare `JobProgress()` instead zeroes the permanent audit row (and makes
+    `_run_state_text` render the fabricated "every symbol failed (0 of 0); provider unreachable" for an
+    import that really completed one chunk of three)."""
+    engine = unfinished_engine
+    cfg = load_config()
+    with Session(engine) as session:
+        _add_resumable_checkpoint(session, "cp-progress-kept")
+        # the OPEN row the paused attempt left behind, carrying its real recorded progress
+        session.add(
+            DataProviderRun(
+                provider="tiingo",
+                started_at=datetime(2024, 1, 3, 12, 0, 0),
+                finished_at=None,
+                symbols_ok=1,
+                symbols_failed=0,
+                status="resumable",
+                message=json.dumps({
+                    "kind": "fetch", "start": "2024-01-02", "end": "2024-01-03",
+                    "bars_fetched": 10, "summary": "rate-limited — resumable at chunk 1/3",
+                }),
+                job_id="cp-progress-kept",
+            )
+        )
+        session.commit()
+
+    def _raise_cannot_start_thread(self):
+        raise RuntimeError("can't start new thread")
+
+    monkeypatch.setattr("threading.Thread.start", _raise_cannot_start_thread)
+
+    with pytest.raises(RuntimeError, match="can't start new thread"):
+        data_manager.start_resume_job("cp-progress-kept", config=cfg, engine=engine)
+
+    with Session(engine) as session:
+        rows = session.exec(
+            select(DataProviderRun).where(DataProviderRun.job_id == "cp-progress-kept")
+        ).all()
+    assert len(rows) == 1, "the paused attempt's own row is closed — never a second, duplicate row"
+    row = rows[0]
+    assert row.status == "failed"
+    assert row.finished_at is not None
+    # The recorded progress survives the honest failure transition. Oracle: `symbols_ok` is the DISTINCT
+    # symbol count of the chunks already committed (`< next_chunk_index`) — the same derivation
+    # `resume_data_job` performs, computed here independently from the checkpoint's own stored plan
+    # rather than hardcoded, so this asserts the resume contract and not a magic number. (It is NOT
+    # `cp.symbols_ok`: the reconstructed per-symbol sets deliberately supersede that stored tally; only a
+    # LARGER persisted `symbols_failed` is honored.) Pre-fix this read 0 — the row was wiped.
+    expected_done: set[str] = set()
+    for sym_batch, _window in _chunk_plan(cfg, ["AAA", "BBB", "CCC"], date(2024, 1, 2), date(2024, 1, 3))[:1]:
+        expected_done.update(sym_batch)
+    assert expected_done, "fixture sanity: the checkpoint must have at least one committed chunk"
+    assert row.symbols_ok == len(expected_done), f"paused attempt's symbols_ok was erased: {row.symbols_ok}"
+    assert row.symbols_failed == 0
+    detail = json.loads(row.message)
+    assert detail["bars_fetched"] == 10, f"paused attempt's bars_fetched was erased: {detail}"
+    assert detail["kind"] == "fetch"
+    # B2: and the row still NAMES why it failed, alongside the preserved work summary
+    assert "failed to launch job worker thread" in detail["summary"]
 
 
 def test_unfinished_imports_union(unfinished_engine):

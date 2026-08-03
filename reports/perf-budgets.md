@@ -5664,3 +5664,229 @@ The two alternatives the evaluator put to the owner — ratifying the honest-WAR
 commissioning a cached-readiness-snapshot rewrite — were declined in favour of stating the real
 contract: during bounded background compute the promise is *availability and honesty*, not sub-100 ms
 latency. J-07 step 2's "within its existing budget" resolves to this table.
+
+## Iteration 43 — REGRESSION_HALT resume: `_BarCache.prefill` revert, job-launch-failure honesty,
+## `start-frontend.sh` host-guard, live J-05/J-07 re-verification against `memory_cap_mb: 8192`
+## (2026-07-31, developer)
+
+Executes the four follow-up actions the owner's 2026-07-31 memory-envelope amendment commissioned
+(`_BarCache.prefill` filter revert, `start-frontend.sh` host-guard, live J-05/J-07 re-verification,
+conditional warm-seam bounding) plus the separately-named job-launch-failure fix. The `memory_cap_mb`
+6144→8192 / `HOST_GUARD_MEMORY_HIGH` 10G→12G values themselves are NOT this iteration's diff (already
+committed `1376601c`) — every figure below measures AGAINST that already-raised cap, never changes it.
+
+### 1. `_BarCache.prefill` revert — TC-1/TC-2
+
+The iter-42 `WHERE symbol IN (expected_symbols)` filter is removed; `prefill` is back to the
+unconditional whole-table scan for every `expected_symbols` value, byte-identical to the pre-iter-42
+shape. `_SymbolColumns` (B5) and the NULL-tolerance sentinel (B6) are unchanged — only the filtering
+layer came out. Proof: `test_bar_cache.py`'s two filter-specific tests were replaced with a
+byte-identity oracle (`test_prefill_expected_symbols_no_longer_filters_the_eager_scan`,
+`test_prefill_empty_expected_symbols_still_loads_full_table`) proving SPY (excluded from
+`expected_symbols` in the fixture) is now present in the eager scan with ZERO additional queries needed
+to read it — full suite **22/22 passed**, including the B1 `KeyError` publish-race regression test
+(`test_lazy_load_is_published_atomically_to_a_concurrent_reader`, both parametrizations) and the B6
+NULL-tolerance test, both unmodified.
+
+### 2. Job-launch-failure honesty — TC-3/TC-4
+
+`start_data_job`/`start_resume_job` (`data_manager.py`) now guard `threading.Thread(...).start()`: a
+`RuntimeError` (the live incident: "can't start new thread") marks the job `failed` with a descriptive
+message via the SAME `prog.status`/`_record_error`/`_finalize_run_record` mechanism `_run_job`'s own
+outer handler uses, then re-raises so `POST /api/data/jobs` and `POST /api/data/jobs/{id}/resume`
+(`api/data.py`) return `HTTPException(503, ...)` instead of a `200 {"status": "running"}` over a job that
+never started. New tests `test_start_data_job_thread_launch_failure_marks_job_failed` /
+`test_start_resume_job_thread_launch_failure_marks_job_failed` mock `threading.Thread.start()` to raise
+and assert both the live in-memory registry AND the persisted `DataProviderRun` row read `failed` — full
+`test_data_manager.py` suite **146/146 passed** (includes these two).
+
+### 3. `scripts/start-frontend.sh` HOST-GUARD block — TC-5
+
+Mirrors `start-backend.sh`'s block (source `host-guard.env`, export the four BLAS/OMP/numexpr thread-cap
+vars, prefix the launched process with `taskset -c "$HOST_GUARD_CPU_LIST"` when enabled) — placed BEFORE
+the build-if-stale section so it ALSO wraps the `next build` invocation, not just the final `next start`
+(a stale-build path's multi-worker TypeScript/webpack compile is real CPU pressure from the QA/demo
+lanes, the exact concern goal.md names for this item). `HOST_GUARD_MARKER_FILES` (`host-guard.env`) now
+lists all three launchers. Live-verified with a single real `next build` (`test_start_frontend_script.py
+::test_start_frontend_applies_host_guard_and_skips_when_absent_or_disabled`, 83.56 s): the `next start`
+worker's `Cpus_allowed_list` matched `HOST_GUARD_CPU_LIST` and its environment carried the four thread-cap
+vars when enabled; two further boots against the SAME already-built dist dir (skip-rebuild fast path)
+confirmed zero caps applied when the file is absent or `HOST_GUARD_ENABLED=0` — **2/2 new tests passed**.
+The pre-existing TC-1/2/3 build-mode tests in this file were not re-run this pass (no change to the code
+they cover; time-bounded per this iteration's own live-measurement cost below).
+
+### 4. J-07 step 4 — induced-pressure drill, LIVE re-run against `memory_cap_mb: 8192` — TC-9: **PASS**
+
+Reused the ALREADY-sanctioned env-gated fault injector (`TRENDORA_FAULT_INJECT_MEMORY_ERROR=
+forward_aggregates`, `data_manager._fault_inject_memory_error`) per the binding iter-39 lesson — no cap
+tuning. Throwaway DB (`seed_throwaway_db.py`, 50/3 tickers — the injector fires before any real compute,
+so fixture scale is irrelevant), launched only via `scripts/start-backend.sh` (host-guard block intact,
+`cpu_list=0-15 blas_threads=8`), port 18999, PID 3373677:
+
+```
+ERROR trendora.data_manager: ingest forward-aggregate warm aborted at horizon 1 — memory pressure,
+      stopping remaining horizons in this loop: injected at fault-injection site 'forward_aggregates'
+```
+
+— the exact named per-horizon handler, not `refresh_coverage_snapshot`'s generic one. Job
+`6f0e196ce55a49158fbd670a10746e10` finished `status: "ok"` with `aggregates_refreshed = [coverage,
+membership_timeline, research_hot_keys, index_series, drawdown_expectations]` — `forward_aggregates`
+honestly absent (aborted), the later categories completed normally (isolation held). **Health**: 31 polls
+at 1 Hz spanning the abort + a 30 s post-terminal window, **0/31 non-200**, max inter-poll gap 1.056 s.
+**Cached read**: a back-to-back (0 s interval) poller against `as_of=2020-01-02` (pre-computed before the
+drill) issued **5,386 requests, 0 non-200** — the abort fired mid-run inside that continuous stream (log
+timestamp `12:39:54,269`; the poller was in flight throughout). **No wedge**: PID 3373677 unchanged
+before/after, a follow-up `GET /api/health` answered 200, process stopped cleanly (`SIGTERM`, port
+confirmed free). All four of J-07 step 4's acceptance clauses hold on fresh, dated evidence.
+
+### 5. J-07 steps 1-3 — live full-basis warm against `memory_cap_mb: 8192` — TC-7/TC-8: **INCOMPLETE,
+### reported honestly (memory axis PASSES; a new latency finding is disclosed, not resolved)**
+
+**Methodology.** `scripts/start-backend.sh` against the real committed-seed DB
+(`apps/backend/data/trendora.db`, 591 symbols, `dataset_version` at ~1919-1920 stored `ScannerRun`
+dates), PID 3379814, boot banner `logs/backend.log` `2026-07-31T11:41:36Z`. Boot warm-up stabilized in
+9 s (`readiness: "ready"`, `warmup.status: "ok"`, `VmPeak` flat at 2,720,636 kB across 5 consecutive 3 s
+polls). A single-day backfill (`2013-06-12`, chosen from `GET /api/data/availability`'s unsnapshotted
+candidates) was triggered to drive the SAME ingest-finalize path J-05 exercises, which — per
+`_refresh_ingest_aggregates`'s own design — warms `forward_aggregates` for the DB's LATEST stored run
+date (not the newly-backfilled historical date), across all 5 configured horizons, over the full
+accumulated history. A 1 Hz `GET /api/health` poller + `/proc/<pid>/status` VmPeak sampler ran
+concurrently throughout (`runs/goal-ops-hardening-iter-43/j05-live/monitor.py`,
+`health-monitor-partial-snapshot.out`).
+
+**What completed.** The backfill's own snapshot-creation stage finished in 12.6 s (`dates_done: 1/1`,
+`snapshots_created: 1`, `forward_returns_inserted: 1580`) — the create-once scan itself is unaffected by
+this iteration's changes. The finalize-tail's forward-aggregate warm entered its shared-cache context at
+`12:42:51` and was still running, with `aggregates_refreshed` still empty, when this pass ended it after
+**1,001 s (16.7 min) of continuous observation** (job total wall time at that point: ~28 min, including
+setup) — it never reached a terminal status this session. The process was stopped (`SIGTERM`, clean
+shutdown, port confirmed free) rather than left running unobserved.
+
+**Memory axis — PASSES, with a wide margin, for the entire observed window:**
+
+| | Value |
+|---|---|
+| `server.memory_cap_mb` (already-committed) | 8192 MB = 8,388,608 kB |
+| `VmPeak` — constant across all 272 recorded samples, `t=0` to `t=1001.10s`, zero growth | **2,720,636 kB** |
+| `VmPeak` in MB | 2,656.9 MB |
+| Margin | **5,667,972 kB ≈ 5,535.1 MB (67.6% headroom, 32.4% utilized)** |
+| `VmHWM` at the point this pass stopped | 2,187,548 kB |
+
+Zero memory growth over 1,001 s of real, GIL-bound computation (16 OS threads, one consistently in `R`
+state at ~90-99% CPU throughout — confirmed by `/proc/<pid>/task/*/status`, not merely inferred) is
+itself informative: whatever is making this run slow is NOT accumulating unbounded state — the
+`_SymbolColumns`/streamed-query bounding this session's revert relies on continues to hold under a much
+longer soak than any prior iteration's measurement covered. This is the specific question this
+iteration's revert was mandated to answer, and the answer is a clean, wide-margin **PASS**.
+
+**Availability axis — PASSES (zero non-200, zero freeze):** all 272 recorded `GET /api/health` polls
+returned HTTP 200; the LAST poll issued (immediately before the `SIGTERM`) was also 200. No gap, hang, or
+connection failure at any point.
+
+**Latency axis — a genuine, newly-disclosed WARN against the rescoped ≤2s BCW ceiling, worsening over
+the observed window (NOT flat, unlike every prior BCW measurement in this file):**
+
+| Window (elapsed since trigger) | n | mean latency | max latency |
+|---|---:|---:|---:|
+| t = 0 – 251 s (first third) | 90 | 1,725 ms | 3,089 ms |
+| t = 254 – 611 s (second third) | 91 | 2,838 ms | 6,166 ms |
+| t = 615 – 1,001 s (third third) | 91 | 3,162 ms | 6,599 ms |
+| **Whole window** | **272** | **2,578 ms** | **6,599 ms** |
+
+**173 of 272 polls (63.6%) exceeded the rescoped ≤2s BCW ceiling** — every poll still HTTP 200 (an
+availability/latency distinction, not a failure), but a materially worse profile than iter-32/34's own
+BCW measurements (which found `GET /api/health` staying under ~1.13 s even during a full 5-horizon warm)
+or iter-39/40's drill measurements (max inter-poll gap ~1-3.7 s at any cap). **Honest, unproven
+hypothesis, disclosed per this iteration's own binding "no narrowed measurement" lesson — not asserted as
+fact:** iter-32/34's own baselines were measured BEFORE iter-41's `_SymbolColumns` rewrite (pre-dating it
+entirely — those numbers used the plain `list[Bar]` prefill, with none of T2's slicing cost). iter-42's
+own carried, unresolved finding T2 (`_SymbolColumns.__getitem__`'s slice reconstruction measured ~70-80×
+slower per call than `list[Bar]`'s native slice, `reports/perf-budgets.md` iteration-42 section) is a
+plausible, not confirmed, explanation for both the extended duration and the worsening latency trend —
+this iteration's revert widens T2's exposure from 548 to all 591 symbols. A SECOND, self-inflicted
+confound is also disclosed: partway through this observation window an unrelated manual `GET
+/api/backtest?as_of=2026-07-20` probe (checking cached-read latency) itself missed the freshly-bumped
+`dataset_version` and triggered a SECOND, concurrent `ensure_historical_forward_aggregates_dispatched`
+warm (confirmed live: `background_compute.active` showed `dataset_version=r1920-f4019170`,
+`horizons_done: 0` after 60+ s) — meaning the third-window figures above measure TWO competing
+GIL-bound warms, not one, and are not a clean single-warm reading. **Neither hypothesis is confirmed
+this session; both are recorded for the evaluator/next iteration, not resolved.** T2 itself remains
+explicitly out of this iteration's scope (goal.md's own carried disposition) — no code change was made
+to `_SymbolColumns` or the warm-seam functions in response to this finding.
+
+**Recovery — confirmed clean.** After stopping the run, `scripts/start-backend.sh` was relaunched against
+the SAME (unmodified) DB: `GET /api/health` reached `ready` in 1 s; the FIRST cold `GET /api/data`
+returned in **0.489 s** with `coverage_status: "stale"` (a real, non-fabricated value, served from the
+persisted `coverage_snapshot` row — no evidence of a whole-table prefill on this cold path) and
+`snapshot_count: 1919` (the interrupted run's own snapshot survived, transactionally committed before the
+finalize tail was stopped). The interrupted job's Run History row correctly reads **`status:
+"interrupted"`** with its real partial progress (`snapshots_created: 1`) — the boot orphan-sweep
+(`sweep_orphaned_runs`) and J-60's checkpoint-preservation contract held under this abrupt stop exactly as
+iter-39's own live kill-restart drill established, an unplanned but useful confirmation of J-04's
+restart-resilience promise under this session's own interruption.
+
+**Per-TC verdict (facts only — scoring the journey is the evaluator's call):**
+
+| TC | Requirement | Result |
+|---|---|---|
+| TC-7 (memory) | VmPeak stays under `server.memory_cap_mb` with margin recorded | **PASS** — 2,720,636 kB flat, 67.6% margin, over a 1,001 s observation (longer than any prior single-warm measurement in this file) |
+| TC-7 (health availability) | every poll HTTP 200 | **PASS** — 272/272 |
+| TC-7 (health latency, rescoped ≤2s BCW) | every poll within budget | **WARN, disclosed — 63.6% of polls exceeded 2s**, worsening over time; two unproven hypotheses recorded, neither this iteration's scope to fix |
+| TC-8 (concurrent cached read stays 200) | not literally re-measured this pass against the real DB (see step 4 above for a clean pass of this exact clause against the throwaway DB) | **not attempted this session against the live deep-basis DB** — the accidental second dispatch (above) makes any read issued during this window an uncontrolled probe, not a clean TC-8 reading; deferred |
+| — (job completion) | the warm reaches a terminal status | **NOT REACHED this session** — stopped after 1,001 s of continuous observation; no terminal `aggregates_refreshed` list was obtained |
+
+### 6. J-05 — live single-day backfill re-verification — partial
+
+**Step 1 (backfill honors the request):** confirmed — `2013-06-12` (an unsnapshotted trading day with
+bars) produced exactly one new snapshot in 12.6 s, `forward_returns_inserted: 1580`.
+**Step 2 (aggregates served from storage, run record lists refreshed categories):** **NOT confirmed this
+session** — the finalize tail that would populate `aggregates_refreshed` never reached a terminal state
+before this pass stopped it (see §5 above; the SAME run is the one measured there).
+**Step 3 (restart + cold `/data` within budget, no whole-table prefill):** confirmed — 0.489 s cold
+response, correct persisted coverage payload (see §5's "Recovery" paragraph).
+**Step 4 (health responsive during a heavy job):** confirmed by the SAME evidence as J-07 TC-7 above
+(availability axis) — 272/272 HTTP 200 — though see the latency WARN there too.
+
+### 7. Regression suite (required-still-passing set + broader unit coverage)
+
+| Suite | Result |
+|---|---|
+| `test_bar_cache.py` (full) | **22/22 passed** (97.4 s) |
+| `test_data_manager.py` (full) | **146/146 passed** (402.2 s) |
+| `test_ingest_finalize_fault_injection.py` (J-07 step-4 sanctioned hook, unmodified) | **5/5 passed** |
+| `test_ingest_finalize_memory_pressure.py` (real `ulimit -v` subprocess induction, unmodified) | **2/2 passed** (157.4 s) |
+| `test_start_frontend_script.py` (new host-guard tests only) | **2/2 passed** (83.6 s) |
+
+A full browser-driven regression replay of J-01/J-03/J-04/J-06/J-08/J-09 (TC-11) was **not** run by this
+developer pass — that is the browser-qa lane's own step per this iteration's TESTING REQUIREMENTS; the
+backend-level evidence above (J-09's `background_compute.active` disclosure confirmed live in §5; J-03's
+`max_range_days` removal unchanged/untouched this iteration; J-08's storage-serving contract exercised
+live in §4 against the throwaway DB) is offered as supporting, not substituting, evidence.
+
+### 8. Conditional warm-seam bounding (step 6) — NOT triggered, and NOT attempted
+
+The plan's trigger condition is explicit: bound `compute_forward_aggregates` et al. only if the live
+measurement shows the warm **over the 8192 MB cap** or the **pressure-abort wedging the process**.
+Neither happened — VmPeak stayed flat at 32.4% of cap for the full 1,001 s observed, and the induced-
+pressure drill (§4) showed clean, repeated, wedge-free recovery. The NEW latency finding (§5) is a
+different axis (read-time, not peak-memory or wedging) that the plan's own conditional does not name as a
+trigger — per the binding "T2 stays out of scope" carried disposition, `forward_testing.py`'s warm-seam
+functions were left untouched this iteration. This is a disposition call the plan already made in
+advance (not one this developer pass is exercising judgment on), recorded here for the evaluator's
+visibility alongside the honest incompleteness above.
+
+### For the evaluator — carried disposition, next-iteration candidates
+
+- **`_BarCache.prefill` remains a COMPRESSION, not a BOUND**, on `daily_prices` after this revert (carried
+  from iter-42, unchanged by this iteration — see the OUT OF SCOPE list).
+- **NEW this iteration:** the live full-basis forward-aggregate warm, run through the real ingest-finalize
+  path against the raised cap, did not reach completion within a ~28-minute session window, and its
+  `/api/health` latency degraded from a ~1.7 s to a ~3.2 s window-mean over the observed 1,001 s — a
+  genuine regression against iter-32/34's own pre-`_SymbolColumns` baselines, plausibly (not confirmedly)
+  attributable to T2's broadened exposure from this iteration's mandated revert. T2 itself was already
+  carried as an unresolved, out-of-scope finding (iter-42); this iteration adds evidence that its cost is
+  larger and more consequential than previously measured, without itself resolving it. **Recommended for
+  next-iteration priority:** either a live-attributable re-measurement isolating T2's contribution from
+  the accidental second-dispatch confound (a clean single-trigger repeat, no manual probing mid-run), or
+  addressing T2 directly (an `_SymbolColumns`-aware bounded-window accessor for `bars_asof`, avoiding a
+  full `Bar` reconstruction per element) — owner/evaluator disposition, not decided here.

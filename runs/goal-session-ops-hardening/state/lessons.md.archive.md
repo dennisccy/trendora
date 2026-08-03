@@ -721,3 +721,135 @@ any iteration touching `scripts/start-frontend.sh` / `start-backend.sh` / `dev.s
 whose acceptance names a measurement — schedule the measurement expecting it to FIND something,
 and leave fix-mode room for what it finds.
 
+
+<!-- condense.sh 2026-07-31T10:44:48Z: moved 9 entries (keep-iters=5) -->
+
+## iter-34 — 2026-07-30T01:05:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** A saved log EXCERPT is not the log. `mem-drill/pass6/drill-log-excerpt.txt` is cited by
+`reports/perf-budgets.md`'s TC-8 row as "the source for every claim above", but it contains zero
+`/api/health` lines — so it cannot corroborate TC-3 ("the SAME process kept serving health after the
+abort"), the single most important claim of the drill. The real `logs/backend.log` does corroborate it
+(14 post-abort health 200s inside the throwaway process's own boot section, 137264-137369, bounded by the
+next boot banner). Whoever saves a verbatim excerpt as drill evidence must grep it for EVERY claim it is
+going to be cited for, and whoever reads one must re-bound the same window in the source log.
+**Applies to:** any iteration that proves a liveness/recovery property from a log excerpt, and any
+evaluator scoring a drill (memory pressure, concurrency, crash recovery) whose evidence is a trimmed file
+rather than a line range in the live log.
+
+## iter-34 — 2026-07-30T01:05:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** The reason the induced-memory-pressure drill finally worked after 20 iterations of deferral
+is that it stopped trying to break the REAL basis. iter-32 measured the bounded warm as adding ZERO
+VmPeak growth at the live 590-symbol/30-year scale, so tightening `server.memory_cap_mb` far enough to
+matter kills BOOT, never the warm specifically — the drill is unreproducible there by construction. A
+throwaway synthetic DB, launched through the real `scripts/start-backend.sh` so every host-guard cap
+still applies, isolates the target frame at a cap (970 MB, ~73 MB over baseline) that leaves the rest of
+boot intact. One non-obvious detail made the difference and is worth reusing: the fixture seeds
+`setup_status="Avoid"` rather than `"Actionable"`, because Actionable rows make `research_hot_keys`'s
+warm — which has a GENERIC, non-`MemoryError`-specific except — the first thing to fail, so the drill
+would exercise the wrong handler and look like a pass.
+**Applies to:** any future drill that must induce a specific failure inside one loop of a multi-stage
+finalize hook; check which stage runs first and whether its except clause is specific enough to attribute
+the result.
+
+## iter-35 — 2026-07-30T02:05:00Z
+
+**Verdict:** ESCALATE
+**Lesson:** An `evidence`-depth dispatch paired with a spec whose Definition of Done requires code
+produces a guaranteed-FAIL iteration that looks like a regression but is not: no developer runs, so
+browser-qa measures the product against work nobody was asked to do, and it scores the target
+journeys FAIL on grounds that are the *iteration's* scope rather than the *journey's* goal text.
+Check `iter-<N>/depth-dispatched` against the spec's own `Depth:` metadata and `.steps/` contents
+BEFORE reading any verdict — if only `decomposer.done` and `browser-qa.done` exist, every "FAIL"
+row needs re-reading against `docs/goal.md`, not against the spec's DoD.
+**Applies to:** any iteration whose `.steps/` lacks `developer.done`; any evaluator reading a
+browser-qa FAIL whose Expected column quotes the iteration spec rather than the journey text.
+
+## iter-35 — 2026-07-30T02:05:00Z (second entry)
+
+**Verdict:** ESCALATE
+**Lesson:** A finding classified `minor` on a stated, checkable premise must be re-read against that
+premise every iteration, because the premise can die without the code changing. iter-33/h said in
+its own text "no such lab is measured slow today" and iter-29/d rested on "no memory is exhausted";
+one heavier live scenario (a long-lived process that had already run a backfill, then 5 concurrent
+warms) falsified both at once — four labs caught slow behind unlabelled skeletons, and VmPeak at
+exactly the 6,291,456 kB cap with 4 MemoryErrors. Reversing a journey's pass on a falsified premise
+is NOT goalpost-moving; carrying the old wording forward would have been the dishonest move.
+**Applies to:** any evaluator carrying an anti-goal finding whose severity rationale contains a
+"nothing is failing today"-style clause — re-test the clause, do not re-copy it.
+
+## iter-35 — 2026-07-30T02:05:00Z (third entry)
+
+**Verdict:** ESCALATE
+**Lesson:** browser-qa's prose and its own attached screenshots can disagree in the direction of
+*more* severity, not less. Its J-06 text said the four sibling labs "render correct data
+(functionally fine)"; all four attached PNGs show bare grey placeholders. The tie-breaker that
+settled it was the backend log: zero completed `/api/research/*` access-log lines in the whole
+process window (uvicorn logs on completion), proving those fetches were still in flight rather than
+fast. Cross-check a "page renders fine" claim against the server's own access log for the same
+minutes.
+**Applies to:** any journey scored on a "the page loaded correctly" claim where the screenshot shows
+a skeleton, spinner, or empty card.
+
+## iter-36 — 2026-07-30T08:45:00Z
+
+**Verdict:** ESCALATE
+**Lesson:** `.steps/` marker presence does NOT tell you which lanes ran, and the binding iter-35
+lesson ("check `.steps/` before trusting a verdict about the predecessor iteration") will manufacture
+a false alarm if applied literally. iter-36 ran the FULL pipeline yet carries only
+`decomposer.done` + `coherence.done` — exactly the same two markers as iter-32, which was also full —
+because `developer.done` / `review-1.done` / `browser-qa.done` are written by the LEAN executor, not
+by the full pipeline. The reliable check is `iter-<N>/depth-dispatched` plus the artifact set and its
+timestamps (dev handoff, review, replay, QA, browser-qa, demo, audit, closure).
+**Applies to:** any evaluator or decomposer reasoning about whether a predecessor iteration actually
+built something; any future edit to the iter-35 lesson's wording.
+
+## iter-36 — 2026-07-30T08:45:00Z
+
+**Verdict:** ESCALATE
+**Lesson:** A browser test plan that deliberately takes the backend DOWN must schedule those tests
+LAST. iter-36 ran its four "Backend unavailable / Retry" tests in the middle of the plan, could not
+get permission to restart the backend afterwards (three attempts denied), and thereby lost two P1
+regression tests (`UT-13` `/data`, `UT-14` `/evidence`) AND the entire J-07 journey verification —
+the iteration's own Definition-of-Done item 1 — even though every line of shipped code was sound. An
+irreversible teardown placed early converts one permission denial into a whole journey's missing
+evidence.
+**Applies to:** any `ui-test-plan` containing backend-down / service-kill steps; any iteration whose
+target journey needs a live backend after an error-state test.
+
+## iter-36 — 2026-07-30T08:45:00Z
+
+**Verdict:** ESCALATE
+**Lesson:** `closure_gate.py:71-74`'s backend-only guard is a bare regex
+(`backend-only|no user-visible|no visible changes|frontend present:\s*no`) over
+`user-visible-changes.md`, so a CORRECTLY written document that documents four changed pages and then
+labels its backend-only portion "Backend-only:" fails the gate as if it had claimed no visible
+changes. iter-36 halted at `closure_failed` on exactly that single word. The guard needs to test the
+document's CLAIM, not the presence of the phrase.
+**Applies to:** any iteration mixing frontend and backend work whose ui-impact documents scope the
+backend half explicitly; any fix to the closure gate.
+
+## iter-37 — 2026-07-30T12:05:00Z
+
+**Verdict:** ESCALATE
+**Lesson:** A drill can execute every named step and still measure nothing, because the changed
+code is *conditional on runtime state*. Both of this iteration's live drills missed it: the
+step-1/3 warm was triggered from `GET /api/backtest` (a daemon-thread path with no `JobProgress`,
+so `prog._shared_bar_cache` was never set), and the step-4 pressure drill used a `dates_total: 0`
+backfill, so `_do_backfill` returned before its prefill and `cache_ctx` resolved to
+`nullcontext()` — the new `with cache_ctx:` wrap was lexically present and semantically a no-op,
+which the handoff then cited as proof the wrap works. Any perf/memory drill on a conditional code
+path must ASSERT the condition was live (log the cache identity, assert `cache_ctx is not
+nullcontext`, or assert a non-zero target count) or its evidence is vacuous. Second, smaller
+lesson from the same diff: moving a `finally:` release to a later stage requires enumerating every
+path between the two stages — `_do_backfill` -> `_refresh_ingest_aggregates` has three
+intermediate writes plus a `Session(eng)`, any of which skips the hook, and `_JOBS` never evicts,
+so the ~1.13 GB would have been pinned for the process lifetime (audit B1; both the reviewer and
+QA passed it).
+**Applies to:** any iteration measuring memory/performance on a path guarded by a stashed
+reference, an attach/fallback context, or an early return; and any change that moves a resource
+release from one stage's `finally` to a later stage's.
+
