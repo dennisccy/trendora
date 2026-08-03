@@ -71,6 +71,8 @@ _DEVSCRIPT_BACKEND_PORT = 18700 + _offset
 _DEVSCRIPT_FRONTEND_PORT = 19700 + _offset
 # A FIFTH port for the "caps absent/disabled" launcher test (TC-9) below.
 _NOCAP_TEST_PORT = 18800 + _offset
+# A SIXTH port for the ops-hardening iter-44 ServerOpsCfg-flags fast-shutdown test below.
+_FAST_SHUTDOWN_TEST_PORT = 18900 + _offset
 
 # ops-hardening iter-9 (AG-10): the real, committed host-guard config this project runs under.
 HOST_GUARD_ENV_FILE = REPO_ROOT / "project-extensions" / "host-guard" / "host-guard.env"
@@ -330,6 +332,167 @@ def test_start_backend_logfile_ends_abruptly_after_simulated_crash(spawned_backe
         assert phrase not in content_after, (
             f"unexpected clean-shutdown phrase {phrase!r} after this spawn's own simulated SIGKILL"
         )
+
+
+def _read_proc_cmdline(pid: int) -> list[str]:
+    with open(f"/proc/{pid}/cmdline", "rb") as fh:
+        raw = fh.read()
+    return [part.decode(errors="replace") for part in raw.split(b"\x00") if part]
+
+
+def test_start_backend_wires_server_ops_cfg_flags_into_uvicorn_cmdline(spawned_backend):
+    """ops-hardening iter-44 TC-1 — `ServerOpsCfg`'s three previously-unwired values
+    (`limit_concurrency` / `timeout_keep_alive_seconds` / `graceful_timeout_seconds`, declared since the
+    mcp-loop session J-100 but never enforced by any launch script until now — a direct read of the
+    `exec` line before this iteration passed only --host/--port/--app-dir) reach the REAL launched
+    uvicorn process's own command line as `--limit-concurrency` / `--timeout-keep-alive` /
+    `--timeout-graceful-shutdown`, each matching `get_config().server` — verified against `/proc/<pid>/
+    cmdline`, never the script's source text."""
+    from app.config import get_config
+
+    cfg = get_config()
+    cmdline = _read_proc_cmdline(spawned_backend.pid)
+
+    def _flag_value(flag: str) -> str:
+        assert flag in cmdline, f"expected {flag!r} in the launched process's cmdline: {cmdline}"
+        return cmdline[cmdline.index(flag) + 1]
+
+    assert _flag_value("--limit-concurrency") == str(cfg.server.limit_concurrency)
+    assert _flag_value("--timeout-keep-alive") == str(cfg.server.timeout_keep_alive_seconds)
+    assert _flag_value("--timeout-graceful-shutdown") == str(cfg.server.graceful_timeout_seconds)
+
+
+# ==================================================================================================
+# ops-hardening iter-44 TC-2 — a backend launched via `start-backend.sh` with a REAL stuck in-flight
+# background task (a heavy backfill's finalize-tail forward-aggregate warm on the throwaway-DB copy —
+# the SAME class of long-running daemon-thread compute J-07 step 1 exercises) self-terminates on SIGTERM
+# within its configured `graceful_timeout_seconds` window, WITHOUT a manual `kill -9`. Uses a scratch
+# config that overrides ONLY `server.graceful_timeout_seconds` to a small test value (never the real
+# committed 120s — this test's own SIGTERM-to-exit budget scales off THAT overridden value, not a
+# hardcoded literal) so the assertion stays fast; every other setting (memory_cap_mb, snapshot_cadence,
+# walk_forward.horizons, etc.) is the REAL committed config, unchanged — mirrors
+# `spawned_backend_throwaway_db`'s own "everything but one field is real" methodology above.
+# ==================================================================================================
+_FAST_GRACEFUL_TIMEOUT_SECONDS = 8
+
+
+@dataclass
+class FastShutdownBackend:
+    pid: int
+    port: int
+
+
+@pytest.fixture()
+def spawned_backend_fast_graceful_timeout(tmp_path):
+    """Like `spawned_backend_throwaway_db`, but ALSO rewrites `server.graceful_timeout_seconds` to
+    `_FAST_GRACEFUL_TIMEOUT_SECONDS` in the scratch config, so a SIGTERM-to-exit test does not have to
+    wait out the real committed 120s. Opt-in via the SAME `TRENDORA_RUN_HEAVY_INGEST_TEST=1` gate as the
+    existing heavy-ingest fixture (a real backfill against a real DB copy is not a fast default-suite
+    test) — never starts by accident, consistent with that fixture's own documented rationale."""
+    if os.environ.get("TRENDORA_RUN_HEAVY_INGEST_TEST") != "1":
+        pytest.skip(
+            "heavy real-process SIGTERM-under-stuck-task test is opt-in — set "
+            "TRENDORA_RUN_HEAVY_INGEST_TEST=1 (run it only on an idle host with the host-guard "
+            "protections active)"
+        )
+    if not SCRIPT.exists():
+        pytest.skip(f"{SCRIPT} not found")
+    if not REAL_DB.exists():
+        pytest.skip(f"real dev DB not found at {REAL_DB} — nothing to copy for a real capacity measurement")
+
+    scratch_db = tmp_path / "throwaway_fast_shutdown.db"
+    for suffix in ("", "-wal", "-shm"):
+        src = Path(str(REAL_DB) + suffix)
+        if src.exists():
+            shutil.copy2(src, Path(str(scratch_db) + suffix))
+
+    scratch_config = tmp_path / "throwaway-fast-shutdown-config.yaml"
+    real_cfg_text = REAL_CONFIG.read_text()
+    new_cfg_text, n_db = re.subn(
+        r'url:\s*"sqlite:///apps/backend/data/trendora\.db"',
+        f'url: "sqlite:///{scratch_db}"',
+        real_cfg_text,
+        count=1,
+    )
+    assert n_db == 1, "expected exactly one database.url line to rewrite in the real config.yaml"
+    new_cfg_text, n_gt = re.subn(
+        r"^(\s*graceful_timeout_seconds:\s*)\d+",
+        rf"\g<1>{_FAST_GRACEFUL_TIMEOUT_SECONDS}",
+        new_cfg_text,
+        count=1,
+        flags=re.MULTILINE,
+    )
+    assert n_gt == 1, "expected exactly one server.graceful_timeout_seconds line to rewrite"
+    scratch_config.write_text(new_cfg_text)
+
+    env = dict(os.environ)
+    env["CHAIN_BACKEND_PORT"] = str(_FAST_SHUTDOWN_TEST_PORT)
+    env["CHAIN_FRONTEND_PORT"] = str(_FAST_SHUTDOWN_TEST_PORT + 1000)
+    env["TRENDORA_CONFIG"] = str(scratch_config)
+    proc = subprocess.Popen(
+        ["bash", str(SCRIPT)], cwd=str(REPO_ROOT), env=env,
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
+    try:
+        _wait_for_health(_FAST_SHUTDOWN_TEST_PORT, timeout=60.0)
+        yield FastShutdownBackend(pid=proc.pid, port=_FAST_SHUTDOWN_TEST_PORT)
+    finally:
+        if _pid_alive(proc.pid):
+            os.kill(proc.pid, signal.SIGKILL)
+            deadline = time.monotonic() + 10.0
+            while _pid_alive(proc.pid) and time.monotonic() < deadline:
+                time.sleep(0.2)
+        try:
+            proc.wait(timeout=10)
+        except ChildProcessError:
+            pass
+
+
+def test_start_backend_self_terminates_on_sigterm_with_stuck_background_task(
+    spawned_backend_fast_graceful_timeout,
+):
+    """ops-hardening iter-44 TC-2 — with a REAL heavy backfill's finalize-tail forward-aggregate warm
+    in flight (a genuine long-running daemon-thread compute, launched moments before via the real
+    `/api/data/jobs` endpoint), sending SIGTERM to the `start-backend.sh`-launched process makes it exit
+    within `_FAST_GRACEFUL_TIMEOUT_SECONDS` + a small scheduling margin — never requiring a manual
+    `kill -9`. Before this iteration's TC-1 wiring, `--timeout-graceful-shutdown` was never passed to
+    uvicorn at all, so a stuck background task could hold the process hostage indefinitely (the live
+    iter-43 incident this closes: `logs/backend.log`, "the process needed kill -9")."""
+    from app.config import get_config
+
+    backend = spawned_backend_fast_graceful_timeout
+    cfg = get_config()
+
+    # Trigger a REAL backfill for a genuinely unsnapshotted trading day (selected at run time from this
+    # spawned instance's own availability map — a hardcoded date silently decays into a zero-work no-op
+    # the moment anything snapshots it, mirroring the existing heavy-ingest fixture's own T3 audit fix).
+    backfill_date = _pick_unsnapshotted_trading_day(backend.port, cfg)
+    job_id = _post_job(backend.port, "backfill", backfill_date, backfill_date)
+
+    # Give the job a moment to genuinely be mid-flight (past its cheap validation, into real per-date
+    # compute) before sending SIGTERM — this is a "stuck in-flight background task" test, not a "job
+    # never started" test.
+    time.sleep(2.0)
+    status_before = httpx.get(f"http://127.0.0.1:{backend.port}/api/data/jobs/{job_id}", timeout=10.0)
+    assert status_before.json().get("status") == "running", (
+        f"expected the backfill to still be running 2s after trigger (a genuine in-flight task), "
+        f"got {status_before.json()}"
+    )
+
+    t0 = time.monotonic()
+    os.kill(backend.pid, signal.SIGTERM)
+    deadline = t0 + _FAST_GRACEFUL_TIMEOUT_SECONDS + 15.0  # generous scheduling margin, never a kill -9
+    while _pid_alive(backend.pid) and time.monotonic() < deadline:
+        time.sleep(0.2)
+    elapsed = time.monotonic() - t0
+
+    assert not _pid_alive(backend.pid), (
+        f"process (pid {backend.pid}) was still alive {elapsed:.1f}s after SIGTERM — exceeded its own "
+        f"configured graceful_timeout_seconds={_FAST_GRACEFUL_TIMEOUT_SECONDS}s + margin; a manual "
+        f"kill -9 would have been required (the exact TC-2 regression)"
+    )
+    print(f"\n[TC-2] SIGTERM-to-exit elapsed={elapsed:.2f}s (configured graceful_timeout_seconds="
+          f"{_FAST_GRACEFUL_TIMEOUT_SECONDS}s)")
 
 
 # ==================================================================================================

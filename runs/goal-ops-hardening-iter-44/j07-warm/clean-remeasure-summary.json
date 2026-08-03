@@ -1,0 +1,10 @@
+{
+  "total_health_polls": 240,
+  "non_200": 0,
+  "over_2s_budget": 16,
+  "over_2s_budget_pct": 6.7,
+  "max_latency_s": 2.354,
+  "concurrent_backtest_fired": true,
+  "final_job_status": "running",
+  "elapsed_s": 601.28
+}

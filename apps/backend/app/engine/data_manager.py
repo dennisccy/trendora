@@ -2885,8 +2885,22 @@ def _resolve_libc_malloc_trim():
             libc_name = ctypes.util.find_library("c") or "libc.so.6"
             libc = ctypes.CDLL(libc_name)
             _libc_malloc_trim_cache["fn"] = libc.malloc_trim
-        except (OSError, AttributeError):  # non-glibc / symbol absent
+        except (OSError, AttributeError):  # non-glibc / symbol absent — a PERMANENT failure, cached
             _libc_malloc_trim_cache["fn"] = None
+        except MemoryError:
+            # ops-hardening iter-44 AUDIT (B2): the resolution ITSELF allocates — `ctypes.util.find_library`
+            # forks `ldconfig` and regexes its whole stdout — so under an exhausted `ulimit -v` it raises
+            # `MemoryError`. That is precisely WHEN `_release_process_memory()` is called: from inside the
+            # per-horizon `except MemoryError` abort handler in `_refresh_ingest_aggregates`. With only
+            # `(OSError, AttributeError)` caught here, the abort handler's own cleanup re-raised and the
+            # "log + continue, never raise" contract broke — the live escape captured by
+            # `test_ingest_finalize_memory_pressure.py`'s child probe (returncode 1,
+            # `ctypes/util.py:297 in _findSoname_ldconfig` under a 750,000 KB cap). Return None WITHOUT
+            # caching it: unlike a non-glibc host this is a TRANSIENT condition, and caching would
+            # permanently disable the iter-27 `malloc_trim` memory-return path for the process's whole
+            # life (an AG-8 regression). Applies the binding iter-43 lesson — key the guard to the whole
+            # exception set the incident actually produces, not its headline exception.
+            return None
     return _libc_malloc_trim_cache["fn"]
 
 
@@ -3617,9 +3631,18 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
             # appended ONLY when this call actually persisted a new row this run (`persisted` is False on a
             # cache HIT — an honest "was skipped" omission, never a fabricated refresh, mirroring every other
             # category's honesty gate above).
-            from app.engine import indexes  # deferred: see comment above (breaks a module-load cycle)
-
             try:
+                # ops-hardening iter-44 AUDIT (B2): the deferred import stays INSIDE this block's guards.
+                # Sitting one line above the `try`, it was the only unguarded statement left in this
+                # otherwise fully-isolated finalize sequence — and importing a not-yet-loaded module
+                # allocates (read + compile of `indexes.py`), so under an exhausted `ulimit -v` it raised
+                # `MemoryError` and escaped `_refresh_ingest_aggregates` entirely, breaking its documented
+                # "log + continue, never raise" contract. Live-captured by
+                # `test_ingest_finalize_memory_pressure.py`'s child probe (`<frozen
+                # importlib._bootstrap_external>:1191 in get_data`, returncode 1). Import position is
+                # unchanged in every other respect — still deferred, still breaking the module-load cycle.
+                from app.engine import indexes  # deferred: see comment above (breaks a module-load cycle)
+
                 _, index_series_persisted = indexes.index_series_cached_with_status(session, cfg)
                 if index_series_persisted:
                     refreshed.append("index_series")
@@ -4511,7 +4534,29 @@ def _run_job(
             prog.status = final_status
     except Exception as exc:  # noqa: BLE001 — any failure must surface as an explicit failed job (scrubbed)
         prog.status = "failed"
-        _record_error(prog, scrub(str(exc)))
+        # ops-hardening iter-44 AUDIT (B1): `str(MemoryError())` is the EMPTY STRING — and `MemoryError`
+        # is THE exception class this session's real failures actually raise (see `logs/backend.log`'s
+        # caught-MemoryError storm during the 2026-08-03 browser-lane incident). With a bare
+        # `scrub(str(exc))` the whole honesty fix below collapsed for exactly that class: `prog.message`
+        # became `""`, whose falsiness sends `_run_detail`'s `prog.message if (... and prog.message)`
+        # guard straight back to `_final_summary`'s generic "0 snapshots over N dates" text — the precise
+        # string this iteration's TC-10 exists to eliminate (live-observed on run 272). Name the
+        # exception TYPE when it carries no text, so a failed job's persisted reason is never blank.
+        # Applies the binding iter-43 lesson: key the guard to the WHOLE exception set the diagnosed
+        # incident produces, not its headline (text-carrying) exception.
+        reason = scrub(str(exc)) or f"{type(exc).__name__} (no message)"
+        _record_error(prog, reason)
+        # ops-hardening iter-44 (reviewer MINOR, carried from iter-43 B5): capture the REAL reason on
+        # `prog.message` itself (not just `prog.errors`) so the `finally` block below — which no longer
+        # unconditionally overwrites a failed job's message with `_final_summary` (a summary of WORK DONE,
+        # which structurally cannot name a failure that happened before any work was recorded) — has
+        # something honest to preserve. This is also what makes the iter-43 audit's `_run_detail` B2 fix
+        # (line ~4037, `"summary": prog.message if (prog.status == "failed" and prog.message) else
+        # _final_summary(prog)`) stop being a no-op: that guard already special-cased a failed status, but
+        # until now `prog.message` at that point was ALWAYS `_final_summary(prog)` too (assigned
+        # unconditionally by this same `finally` block), so the two branches collided and always produced
+        # the identical string (audit B5's finding).
+        prog.message = reason
         # J-59: a `both`/`backfill` job whose FETCH completed but whose BACKFILL failed is marked
         # `failed_backfill` on its durable checkpoint, so Unfinished-imports offers it as "failed at
         # backfill — resumable from the backfill stage" (a Resume skips the completed fetch — zero
@@ -4540,7 +4585,13 @@ def _run_job(
         if prog._shared_bar_cache is not None:
             prog._shared_bar_cache = None
             _release_process_memory()
-        prog.message = _final_summary(prog)
+        # ops-hardening iter-44 (reviewer MINOR, carried from iter-43 B5): a job that failed via the outer
+        # exception handler above already has its real captured reason on `prog.message` (set at the
+        # `except Exception as exc` block, alongside `_record_error`) — do NOT clobber it with
+        # `_final_summary`'s generic "work done" text. Every other terminal status (`ok`/`partial`/
+        # `resumable`) keeps getting `_final_summary`'s descriptive summary, byte-identical to before.
+        if prog.status != "failed":
+            prog.message = _final_summary(prog)
         # J-60: close the SAME run-history record this job created at start (one record per job, one
         # transition). A graceful `resumable` pause is NOT a terminal state — its run row is UPDATEd to
         # `resumable` (so it shows that way in Run history AND is skipped by the boot sweep, which only

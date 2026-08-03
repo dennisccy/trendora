@@ -306,7 +306,13 @@ def retry_job(
             status_code=400,
             detail=f"source {run.provider!r} requires a key; set ${entry.env_var} or paste a session key",
         )
-    job_id = data_manager.retry_run(run_id, api_key=api_key, config=cfg, engine=get_engine())
+    # ops-hardening iter-44 (audit B4): same honest-error contract as `start_job`/`resume_job` above — a
+    # thread-launch failure is already recorded on the retried job's run-history row by `retry_run` itself;
+    # re-raised here so this endpoint never returns a 200 over a retry that never started.
+    try:
+        job_id = data_manager.retry_run(run_id, api_key=api_key, config=cfg, engine=get_engine())
+    except (RuntimeError, MemoryError) as exc:  # iter-44 (audit B4) — see `start_job` above
+        raise HTTPException(status_code=503, detail=f"failed to launch retry worker: {exc}") from exc
     return {"run_id": run_id, "job_id": job_id, "source": run.provider, "status": "running"}
 
 

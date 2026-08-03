@@ -3422,3 +3422,139 @@ iter-39/u; (7) DEFERRED a NINTH time: iter-33/g, Regime Lab's cold pooled view; 
 never a round's goal: J-07's `[NEW]` walkthrough (thirteenth round unrecorded) and J-05's real
 acceptance frames; (9) OWNER: nothing outstanding — both standing owner items (iter-33/i and
 iter-34/j) are closed this iteration.
+
+## Iteration 44 — goal-ops-hardening-iter-44
+
+**Date:** 2026-08-03T22:10:00Z
+**Verdict:** ESCALATE
+**Depth dispatched:** full (`iter-44/depth-dispatched` = `full`, matching the spec's `Depth: full` /
+`Full trigger: 3`. `runs/goal-ops-hardening-iter-44/status.json` = `blocked` / `audit_qa_failed` /
+`next_action: evaluate`, with three blockers listed. Note `browser_checks_run: false` in that file is
+STALE — both browser lanes demonstrably ran: deterministic replay 19:48-19:49Z with six dated PNGs,
+LLM browser-QA 20:02-20:35Z with two failure captures and two CSVs. `ui-test-results.md` is
+authoritative over `status.json`.)
+**Journey deltas:**
+- **Newly failing: J-05 "Aggregates are precomputed at ingest, never on the fly"** — `partial` →
+  `failing`. Its own defining case ran for the FIRST TIME in this session (a day confirmed absent
+  from `/scanner-runs` beforehand) and did not work: run 272 sat at `dates_done 0/1`,
+  `snapshots_created 0` for ~10 minutes, then `failed`; no `/scanner-runs` row for 2019-02-26 was
+  ever created. `last_passing_iter` stays iter-39. Scored `failing`, NOT `regressed` — see the
+  assumption entry; the regression was declared, halted on, and acknowledged at iter-42, and
+  re-labelling it would fire a second halt for the same unrepaired journey every iteration.
+  `evidence_makeup` CLEARED (A.7 rail — the behaviour is unmet, not the artifact).
+- **Still failing: J-07 "Heavy aggregates never take the service down"** — THIRD consecutive hard
+  live FAIL (42, 43, 44); `last_passing_iter` stays iter-34 (ten iterations); `last_verified_iter`
+  advances to iter-44.
+- Re-verified `passing` with this-iteration evidence: **J-01, J-03, J-04, J-06, J-08, J-09** — six
+  dated replay rows plus six screenshots with SIX DISTINCT md5s (TC-13; iter-43/ai closed).
+  Regressed: NONE. Deferred (`DEFERRED-BUDGET`): none. No `browser-infra.json`; no
+  `journeys-changed.md`; all 8 `spec_hash`es match `goal_gate hash-journeys` run by me.
+- Anti-goal violations: **TWO RESOLVED — iter-43/ai** (duplicate evidence screenshots, closed and
+  verified by my own `md5sum`) and **iter-44/an** (the failed-job message no-op, fixed in-audit with
+  a regression test). **THREE NEW, all minor, all open: iter-44/ak** (the total outage recurred and
+  was WORSE — 20m51s, `SIGKILL` after `SIGTERM` was ignored past its own configured 120 s window),
+  **iter-44/al** (two unbounded per-row dict accumulators still raising `MemoryError` at the raised
+  8192 MB cap — found by me in the log, not reported by any lane), **iter-44/am** (the reviewer's
+  CRITICAL: a THIRD `MemoryError` escape in the abort path, test flaky across back-to-back runs).
+  Six carried items given an ITER-44 UPDATE recording what I verified rather than inherited. Ledger
+  now: **52 total, 17 unresolved, 0 critical.** scan-report CLEAN; coherence COHERENCE-PASS (zero
+  blocking, two advisories); review FAIL (1 CRITICAL); QA FAIL (revalidated); audit FAIL (1 CRITICAL,
+  4 fixes applied in-audit); browser QA FAIL 6/8; ux-regression SKIPPED.
+
+**Reasoning:** I checked the load-bearing facts myself instead of reading them off the reports.
+(1) **The outage is machine-recorded, and I counted it.** `UT-J-05-J-07-job-and-outage-timeline.csv`
+carries 51 consecutive `ERR:timed out` rows from 20:10:33Z to 20:31:24Z, then `Connection refused` at
+20:31:49Z. I opened the picture: the badge is stuck on "Checking backend…", the board says "Checking
+board status…", and the /data panels are empty grey boxes. (2) **I verified the shutdown mechanism
+independently in `logs/backend.log`.** The frozen process's last line is a caught `MemoryError` in
+`evidence.py` at 20:13:56Z; the very next line is the 20:31:51Z launch banner. There is no "Shutting
+down", no "Waiting for application shutdown" — the web server's stop handling never ran at all. That
+is why the shutdown deadline this round added could not help: it is enforced by the very machinery
+that was frozen. The fix has to sit OUTSIDE the process. (3) **The good number is real and I checked
+it too.** I recomputed `UT-J-07-health-poll-baseline.csv`: 84 of 84 health polls answered 200, worst
+1.756 s, none over 2 s, in the 7½ minutes before the incident. And the clean single-trigger
+re-measurement is 16 of 240 polls over budget (6.7%, worst 2.354 s) against last round's 63.6% and
+6.6 s — a large genuine improvement that still misses, because the promise is *every* poll.
+(4) **J-05 finally ran its own real case, and that is why it now reads worse.** Three rounds used a
+day that was already saved; this round used one confirmed absent first. The job did nothing for ten
+minutes and failed. I read every row of the timeline CSV: zeros throughout, including after the
+restart. The picture cited for it shows the coverage panel after recovery with "Gap range: 2005-05-16
+→ 2019-02-26" — the day is still a gap. I say plainly that this frame does not show the failed job
+row, so the CSV is the load-bearing artifact here, not the image. (5) **The stuck step is NAMED for
+the first time in this session, and I confirmed the dump is real** — the verbatim all-thread output
+is in `logs/backend.log` at line 167759+, and it reads `resolve_with_reasons` ← `_excluded_counts_by_date`
+← `_membership_timeline` ← `membership_timeline_cached` ← `_refresh_ingest_aggregates`. Ingesting one
+day recomputes ~2,860 dates × ~591 symbols because the saved copy is invalidated wholesale. After
+seven rounds of hypotheses, this is a fact with two corroborating live samples ~888 s apart.
+(6) **I checked the six passing frames' timing rather than presenting them as proof of stability.**
+They were taken 19:48-19:49Z on the process launched 19:42:01Z; the process that froze was launched
+19:51:08Z. Same build, different instance, 21 minutes earlier. I opened two of them: J-08 shows
+/backtest at "Viewing as-of 2026-07-31 (latest)" with a Ready badge, and J-09 shows the live
+"background compute running (1)" chip — which is the very calculation that was still stuck at 0 of 5
+when the browser lane started. J-09's job is to report it; surviving it is J-07's job. (7) **AG-10
+checked at the source, not assumed:** I read the launch-script diff — the three new uvicorn flags are
+additive, `ulimit -v` is still at `:56`, `MALLOC_ARENA_MAX` at `:60`, and the marked HOST-GUARD block
+is intact at `:76-101`; no cap value changed anywhere. (8) **I found one thing no lane reported:**
+`MemoryError` still fires at the RAISED 8192 MB cap, and the two sites in the frozen process's final
+traceback are unbounded per-row dictionaries on the evidence path (`research.py:777`,
+`forward_testing.py:2343`), both caught by their isolation handlers. That is where the long-standing
+"no unbounded loads" promise should be worked next, not at the price cache for a sixth time.
+Rejected REGRESSION (C.1): no journey moved `passing` → `failing` this iteration — J-05's prior
+recorded status was `partial`; scan-report CLEAN; all 17 open ledger items are `minor`. I weighed
+calling iter-44/ak critical and decided against it on stated grounds — the iteration did not
+introduce or widen the defect (its whole product diff is a 503 mapping, a message fix, two exception
+guards and additive launcher flags), the trigger was a background compute already stalled before the
+tester acted, the UI degraded honestly rather than breaking, and the same availability family has
+been carried as minor since iter-35/k. I also weighed re-labelling J-05 `regressed` under the schema's
+"was passing in a prior iteration" wording and declined, because that regression was already declared,
+halted on, and acknowledged by the owner at iter-42, and it would re-halt every iteration until the
+journey passes — the exact infinite-loop shape the framework names as its first anti-pattern.
+Rejected STALLED (C.2): for the first time in seven rounds NOT every path needs a person — there are
+two concrete, named, agent-actionable leads (an out-of-process shutdown deadline in the launcher, and
+incremental membership-timeline invalidation), plus the reviewer's third-escape trace; and nothing is
+outstanding on the owner. Rejected GOAL_ACHIEVED (C.3): J-05 and J-07 are both `failing`.
+**Chose ESCALATE (C.4):** the SAME journey (J-07) has now failed three consecutive iterations, and
+the second clause fires independently — the review lane returned FAIL with a CRITICAL finding on this
+build. Both trigger the same tree branch.
+**FIVE THINGS I STATE PLAINLY RATHER THAN ROUND AWAY:** (i) **this round produced the single most
+valuable artifact of the session and an eighth ESCALATE must not be read as saying otherwise.** Seven
+rounds guessed at this freeze; this one caught it live, twice, and printed the exact call it is stuck
+in. Every prior recommendation to "go look at the live stack" was finally executed, and it worked.
+(ii) **the honesty across the lanes was the best it has been.** The developer's own handoff withdraws
+his earlier claims in place — "that last sentence was wrong as a general claim and is withdrawn" —
+rather than appending a footnote; the audit refuted two of its own iteration's DoD claims and fixed
+three real defects while doing it; the QA report, having written PASS at 20:52, was revalidated to
+FAIL. This is the first round where a lane corrected itself in public. (iii) **the reviewer, not the
+auditor, found the residual this time, and that matters after seven rounds of "only the auditor
+catches it".** He re-ran the audit's own proof test a second time — something neither the audit nor
+the dev did — and it failed, exposing a third escape. A single green run is not a passing test for a
+memory-pressure guard. (iv) **the shutdown flag this round shipped is correct AND cannot help.**
+Wiring `--timeout-graceful-shutdown` was the right, previously-undiscovered gap to close, it is
+live-verified on the process's own command line, and it is enforced by the exact machinery that
+freezes. Anyone reading "the shutdown deadline is now wired" as "a stuck app will now stop itself" is
+reading more than the data carries. (v) **the app is currently unusable for its own headline
+operation.** Adding one day of history takes the whole service offline for twenty minutes. Six
+journeys passing does not soften that, and the next round should spend itself on exactly this.
+
+**Next-step recommendation:** FULL depth (mandatory via ESCALATE). In order: (1) **make the app
+unable to stay silent when it freezes inside itself** — a watchdog OUTSIDE the process: the launch
+script starts the web server in the background, waits its own deadline, then force-stops it. Small,
+mechanical, and it turns a 21-minute silence into a short one; give it its own round and its own
+name rather than folding it into other work. (2) **fix the freeze itself, now that we know what it
+is** — ingesting ONE day currently rebuilds the entire membership history (~2,860 days × ~591
+companies) because the saved copy is discarded wholesale on any data change; make it update for the
+new day instead, and prove the output is identical to today's. This is the highest-value item on the
+board and deserves a round of its own. (3) **re-run all eight journey checks afterwards**, including
+the six that passed — their pictures were taken 21 minutes before the app went silent. (4) SMALL AND
+ALREADY WRITTEN DOWN: run the memory-pressure safety test three to five times in a row before anyone
+calls it fixed (the reviewer's third escape, inside the error-logging path itself); refresh J-07's
+stale test text (`n=8878`, `3508`) which no longer matches the grown dataset; correct the stale
+comment at `data_manager.py:4730`. (5) CARRIED, untouched: iter-29/b + the badge wording after a
+permanently failed warm-up (SIXTEEN rounds unmade); iter-31/e; iter-32/f — now partly answered, the
+cost is inside the membership recompute, not the forward-aggregate loop; iter-35/k; iter-36/n;
+iter-37/o; iter-37/q. NEW: iter-44/al's two unbounded accumulators on the evidence path
+(`research.py:777`, `forward_testing.py:2343`) are where the "no unbounded loads" promise should be
+worked next — not a sixth pass at the price cache. (6) DEFERRED a TENTH time: iter-33/g, Regime Lab's
+cold pooled view. (7) CAPTURE ONLY, never a round's goal: J-07's `[NEW]` walkthrough (fourteenth
+round unrecorded) and J-05's acceptance frames. (8) OWNER: nothing outstanding — both standing owner
+items closed at iter-43, and nothing this round needs a decision only he can make.

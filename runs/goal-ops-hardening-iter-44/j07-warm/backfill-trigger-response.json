@@ -1,0 +1,9 @@
+{
+  "job_id": "9e4827f405a94dab9617052fff604778",
+  "kind": "backfill",
+  "start": "2019-02-28",
+  "end": "2019-02-28",
+  "source": "yahoo",
+  "symbols": null,
+  "status": "running"
+}

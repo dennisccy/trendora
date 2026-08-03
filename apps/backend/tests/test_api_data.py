@@ -811,6 +811,37 @@ def test_retry_needs_key_source_without_key_is_400(data_api_engine, monkeypatch)
     assert "requires a key" in str(exc.value.detail)
 
 
+@pytest.mark.parametrize("launch_exc", [RuntimeError("can't start new thread"), MemoryError()])
+def test_retry_thread_launch_failure_is_503(data_api_engine, monkeypatch, launch_exc):
+    """TC-9 (ops-hardening iter-44, audit B4) — a `data_manager.retry_run` thread-launch failure
+    (`RuntimeError`/`MemoryError`, the same two exits `threading.Thread.start()` takes under the
+    `ulimit -v` ceiling — see `start_job`'s iter-43 AUDIT B3 comment) must return an explicit 503, never a
+    bare 500 or a fabricated 200 `"status": "running"`, matching `start_job`/`resume_job`'s existing
+    contract so all three job-launch endpoints share one honest-error contract."""
+    from app.api.data import retry_job
+    with Session(data_api_engine) as session:
+        run = DataProviderRun(
+            provider="yahoo", started_at=datetime(2024, 1, 3), finished_at=datetime(2024, 1, 3),
+            symbols_ok=1, symbols_failed=1, status="partial",
+            message=json.dumps({"kind": "fetch", "start": "2024-01-02", "end": "2024-01-03", "summary": "partial"}),
+        )
+        session.add(run)
+        session.commit()
+        session.refresh(run)
+        run_id = run.id
+
+    def _raise(*_a, **_k):
+        raise launch_exc
+
+    monkeypatch.setattr(data_manager, "retry_run", _raise)
+
+    with Session(data_api_engine) as session:
+        with pytest.raises(HTTPException) as exc:
+            retry_job(run_id, payload=ResumeRequest(), session=session)
+    assert exc.value.status_code == 503
+    assert "retry" in str(exc.value.detail).lower()
+
+
 def test_dismiss_run_endpoint_soft_dismisses(data_api_engine):
     """POST /api/data/jobs/{id}/dismiss (record_type=run) soft-dismisses; the run leaves unfinished_imports
     but stays in Run history."""

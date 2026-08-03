@@ -1,0 +1,36 @@
+{
+  "phase": "goal-ops-hardening-iter-44",
+  "status": "blocked",
+  "current_step": "audit_qa_failed",
+  "updated_at": "2026-08-03T21:52:28.173564Z",
+  "started_at": "2026-08-03T18:27:41.725765Z",
+  "cli": "claude",
+  "blockers": [
+    "TC-2/TC-7 NOT MET (audit B3, CRITICAL, unfixed by design): the service went fully unreachable for 20m51s on this build and required SIGKILL; SIGTERM was not honored within the configured 120s window. Root cause is a wedged asyncio event loop, which no in-process mechanism can escape. The evidenced fix is an out-of-process supervisor deadline -- a NEW mechanism that must be specified as its own iteration, not smuggled in as launcher wiring.",
+    "TC-5 NOT MET (audit B4): 16/240 health polls (6.7%) exceeded the 2s bounded-compute-window budget, max 2.354s. Real improvement over 70.9% but the criterion is every poll.",
+    "TC-4 disclosed unresolved (option b): the O(dates x pool) membership-timeline recompute is named with live corroborating stacks but not fixed -- both candidate fixes exceed this iteration's evidenced reach."
+  ],
+  "changed_files": [
+    "incredible_auto_dev/scripts/start-backend.sh",
+    "apps/backend/app/api/data.py",
+    "apps/backend/app/engine/data_manager.py",
+    "apps/backend/tests/test_start_backend_script.py",
+    "apps/backend/tests/test_api_data.py",
+    "apps/backend/tests/test_data_manager.py",
+    "reports/perf-budgets.md",
+    "docs/handoffs/goal-ops-hardening-iter-44-dev.md",
+    "reports/phase-goal-ops-hardening-iter-44-implementation-summary.md"
+  ],
+  "tests_run": true,
+  "browser_checks_run": false,
+  "fix_pass": {
+    "trigger": "audit FAIL (docs/handoffs/goal-ops-hardening-iter-44-audit.md)",
+    "product_code_changed": false,
+    "note": "Audit findings B1, B2 (two sites) and T1 were fixed during the audit itself; this pass verified all four are present in the working tree and re-ran their tests. B3 is unfixed by the audit's own explicit disposition. B4 was an accuracy defect in the record and is corrected in the handoff and perf-budgets.md. B5, T2 and T3 are observations the audit marked not-to-fix here and are recorded in the handoff.",
+    "verification": [
+      "pytest tests/test_api_data.py tests/test_ingest_finalize_memory_pressure.py tests/test_ingest_finalize_fault_injection.py -q -> 57 passed in 159.02s (memory-pressure file now 2/2, was 1 failed 1 passed)",
+      "pytest tests/test_data_manager.py -q -k 'run_job or final_summary' -> 3 passed, 150 deselected in 0.67s (includes the new textless-MemoryError regression test)"
+    ]
+  },
+  "next_action": "evaluate"
+}

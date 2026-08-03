@@ -377,3 +377,36 @@ human who reads "give up and say so" as requiring an ACTIVE stall-detector shipp
 regardless of what the diagnostic finds would commit to option (a)/(b) upfront rather than making it
 conditional.
 **Reversible:** yes
+
+## iter-44 — goal-evaluator
+
+**Ambiguity:** my agent file's journey-history schema defines `regressed` as "was passing in a
+**prior iteration**, now failing", and methodology E.1 makes any `regressed` status force REGRESSION.
+J-05 was passing at iter-39 and is failing here, so the literal wording matches — but decision tree
+C.1's own clause is narrower ("any journey moved `passing`/`already_passing` → `failing`") and J-05's
+IMMEDIATE prior recorded status was `partial`, not `passing`. The two readings give different
+verdicts (REGRESSION vs ESCALATE), and `docs/goal.md` does not say which controls. The iter-42
+evaluator faced the same fork with `unknown` as the intervening status, chose `regressed`, and the
+session halted; the owner acknowledged it, raised the memory envelope, and resumed. J-05 has not
+reached `passing` since.
+**We chose:** `failing`, and therefore not REGRESSION. Grounds stated rather than assumed: (1) the
+`regressed` label exists to fire a halt at the TRANSITION from working to broken, and that halt
+already fired at iter-42 for this exact journey and was acknowledged by the owner — re-firing it
+every iteration until J-05 passes is an unbounded halt loop, which is the failure shape the framework
+names as its first anti-pattern; (2) nothing is laundered by the narrower reading: `last_passing_iter`
+stays at iter-39 in journey-history, the note records the full arc (iter-39 passing → iter-42
+regressed/halt → iter-43 partial → iter-44 failing), and the achievement gate still blocks on a
+`failing` journey exactly as it would on a `regressed` one; (3) iter-43 already set this precedent by
+recording `partial` rather than carrying `regressed` forward; (4) the product did not newly break
+here — this iteration ran J-05's defining case (an unsnapshotted day) for the FIRST time in the
+session and discovered a long-standing defect whose root cause (`_excluded_counts_by_date`'s
+O(dates × pool) recompute) predates every line of this iteration's diff; (5) the practical purpose of
+a halt is to obtain something only the owner can give, and unlike iter-42 (where AG-10 forbade any
+agent from raising `memory_cap_mb`) there is no owner-only lever here — the audit names two concrete
+agent-actionable fixes and both standing owner items closed at iter-43. Cost recorded honestly: the
+narrower reading means the owner is NOT stopped to look at a product that currently goes offline for
+twenty minutes when you add one day of history, and a reader who wants that decision in his hands
+this round is not wrong to want it. A human who reads the schema's "a prior iteration" literally — or
+who holds that any 21-minute total outage is a critical AG-8 breach regardless of authorship — would
+score J-05 `regressed`, return REGRESSION, and halt.
+**Reversible:** yes

@@ -5890,3 +5890,310 @@ visibility alongside the honest incompleteness above.
   the accidental second-dispatch confound (a clean single-trigger repeat, no manual probing mid-run), or
   addressing T2 directly (an `_SymbolColumns`-aware bounded-window accessor for `bars_asof`, avoiding a
   full `Bar` reconstruction per element) — owner/evaluator disposition, not decided here.
+
+## Iteration 44 — launcher-flag wiring (TC-1), live SIGUSR1 diagnosis of the `horizons_done: 0/5` stall
+## (TC-3/TC-4), clean single-trigger re-measurement (TC-5/TC-6/TC-7), and job-launch-parity/message-honesty
+## fixes (2026-08-03, developer)
+
+### 1. `start-backend.sh` — `ServerOpsCfg` launcher-flag wiring — TC-1: **CLOSED**
+
+`limit_concurrency` / `timeout_keep_alive_seconds` / `graceful_timeout_seconds` — declared in
+`ServerOpsCfg` since the mcp-loop session (J-100) but never enforced by any launch script (confirmed by a
+direct read of the pre-iteration `exec` line: only `--host`/`--port`/`--app-dir`) — now reach the launched
+uvicorn process as `--limit-concurrency` / `--timeout-keep-alive` / `--timeout-graceful-shutdown`, read
+from `get_config().server` via the same inline venv-python pattern the `memory_cap_mb`/`malloc_arena_max`
+block already used. Verified against the REAL launched process's own `/proc/<pid>/cmdline` (a subprocess
+test, `test_start_backend_wires_server_ops_cfg_flags_into_uvicorn_cmdline`), not the script's source text:
+
+```
+--limit-concurrency 64 --timeout-keep-alive 65 --timeout-graceful-shutdown 120
+```
+
+matching `get_config().server`'s defaults exactly. `scripts/dev.sh` is untouched (out of scope, per the
+iter-44 spec).
+
+### 2. Live SIGUSR1 diagnostic — TC-3: **CLOSED** (the exact blocked calls are named, live, twice); TC-4:
+### **disclosed as unresolved** (option b — no fix applied; see rationale below)
+
+**Methodology.** `scripts/start-backend.sh` launched against the real committed-seed DB with
+`TRENDORA_DIAG_FAULTHANDLER_SIGUSR1=1` (PID 203235, boot `2026-08-03T18:47:02Z`). ONE backfill trigger
+(`2019-02-28`, confirmed absent from `/scanner-runs` — 2,860 runs checked — before the run) was POSTed to
+`/api/data/jobs`; the moment its snapshot-creation stage confirmed (`snapshots_created: 1` at t≈15s,
+proving the global `dataset_version` had bumped), ONE `GET /api/backtest?as_of=2026-07-30` request was
+fired (the near-latest historical identity, maximizing accumulated-history depth) to dispatch the
+observable, `background_compute.active[]`-tracked historical forward-aggregate warm — the only code path
+that carries a live `horizons_done` counter (confirmed by direct read: the ingest-triggered synchronous
+warm inside `_refresh_ingest_aggregates` has NO per-horizon counter anywhere on `JobProgress`). Both the
+job's own heartbeat (`last_progress_at`) and `background_compute.active[].horizons_done` were polled at
+1 Hz (`runs/goal-ops-hardening-iter-44/j07-warm/drill.py`).
+
+**Stall confirmed on BOTH signals.** The job's `last_progress_at` froze at `18:54:39.806239Z` (≈15 s into
+the run) and never advanced again; `background_compute.active[].horizons_done` stayed at `0/5` for the
+entire observed window. At t=77.9s (61.6 s past the last heartbeat move, past the 60 s bounded-stall
+window), `kill -USR1 203235` was sent — the process remained alive and an all-thread `faulthandler` dump
+landed in `logs/backend.log` verbatim. **A SECOND, corroborating dump was captured at t≈966s** (a fresh
+`kill -USR1` sent manually, ~888 s later) to confirm the same call sites were still active (ruling out a
+transient stack sample) and to observe whether either thread had progressed.
+
+**Dump 1 (t=77.9s) — three live threads:**
+```
+Thread A (my /api/backtest-triggered historical dispatch):
+  sqlalchemy/engine/result.py:1826 in all()
+  app/engine/forward_testing.py:1196 in compute_forward_aggregates   # run_rows = session.exec(...).all()
+  app/engine/forward_testing.py:1504 in forward_aggregates_ingest_cached
+  app/engine/forward_testing.py:1616 in _run_historical_forward_aggregates_dispatch
+
+Thread B (the ingest job's own finalize-tail worker thread):
+  app/engine/universe_resolver.py:194 in resolve_with_reasons
+  app/engine/data_manager.py:612 in _excluded_counts_by_date
+  app/engine/data_manager.py:559 in _membership_timeline
+  app/engine/data_manager.py:675 in membership_timeline_cached
+  app/engine/data_manager.py:963 in _compute_coverage_body
+  app/engine/data_manager.py:3495 in _refresh_ingest_aggregates
+  app/engine/data_manager.py:4487 in _run_job
+```
+
+**Dump 2 (t≈966s) — the SAME two threads, each having progressed to a LATER call site (proof of real,
+non-deadlocked work, not a wedge):**
+```
+Thread A: MOVED from the small run_rows query into the bounded-slice streaming read —
+  app/engine/forward_testing.py:1107 in _forward_agg_slice_map (chunked .fetchmany()/yield_per())
+  app/engine/forward_testing.py:1225 in compute_forward_aggregates
+
+Thread B: MOVED deeper into the SAME resolve_with_reasons call, now inside a bar lookup —
+  app/engine/prices.py:397/620 in bars_asof -> prices.py:116 in _SymbolColumns.__getitem__
+
+Thread C (NEW — a live GET /api/health request itself, caught mid-query):
+  app/engine/readiness.py:188 in compute_readiness (a bounded, memoized existence query)
+  app/engine/readiness.py:323 in compute_preflight
+  app/api/health.py:75 in health
+```
+
+**Named finding.** The root driver is `_excluded_counts_by_date`'s own documented **O(dates × pool)**
+loop (`data_manager.py`'s own comment: "the O(dates × pool) `resolve_with_reasons` loop") — every ingest
+that bumps the global `dataset_version` invalidates `membership_timeline_cache`'s ALL-OR-NOTHING cache
+(keyed only by that one global stamp, never incrementally), forcing a full recompute over **every**
+`ScannerRun.asof_date` ever created (2,860+ on this DB) × the ~591-symbol candidate pool (batched) — even
+for a single-date backfill. This runs INSIDE `_refresh_ingest_aggregates`, BEFORE its forward-aggregates
+loop, which is why `horizons_done` (observed via the separate request-triggered path) never advances: the
+finalize tail's own worker thread has not yet reached that loop. Dump 2 additionally CONFIRMS, for the
+first time live (closing the iter-42/43 "unconfirmed candidate" status), that T2
+(`_SymbolColumns.__getitem__`/`bars_asof`'s previously-measured 70-80× slicing cost) is a real contributor
+— but it manifests INSIDE `resolve_with_reasons`'s per-date/per-batch bar lookups during the
+membership-timeline scan, not directly inside the forward-aggregate warm loop as earlier iterations
+hypothesized.
+
+**Why TC-4 is disclosed unresolved (option b), not fixed:** two candidate fixes exist and BOTH are
+materially larger, unevidenced work, not "the smallest correct fix" this iteration's scope allows:
+(a) an incremental (per-date-merge) redesign of `membership_timeline_cached`/`_excluded_counts_by_date`,
+replacing its all-or-nothing `dataset_version` cache key — a real design change to a function whose
+`entries`/`exits` fields are ORDER-DEPENDENT on the full prior timeline, not a small patch; (b) a SIXTH
+`_SymbolColumns`/`bars_asof` bound attempt — goal.md's own OUT OF SCOPE list defers this "UNLESS the live
+diagnostic in this iteration directly implicates it," which dump 2 now does, but this session's own
+history already has FIVE prior attempts at exactly this class of fix, the most recent (iter-42) MEASURED
+as a +5.1% VmPeak REGRESSION and reverted by owner amendment — attempting a sixth here would not be
+proportional to what a two-thread, multi-factor slowdown diagnostic actually supports. Per the binding
+iter-38/39/42 lessons ("no speculative rewrite absent a proven mechanism… kept proportional to what the
+diagnostic actually finds"), both are recorded as next-iteration candidates (see below), not attempted.
+
+**Important methodology caveat, disclosed honestly:** this diagnostic run deliberately combined the J-05
+ingest trigger with a J-07 historical-dispatch trigger (to obtain an observable `horizons_done` signal at
+all) — reproducing a two-concurrent-heavy-compute scenario similar in class to the iter-43 dev's own
+disclosed confound. The CLEAN, single-trigger re-measurement in §3 below shows meaningfully better latency
+compliance, indicating this diagnostic run's own severity is partly an artifact of that confound, not
+purely the algorithmic cost in isolation.
+
+**Availability held throughout THIS run — but NOT as a general claim; see the correction below.** Across
+the full ~1,058 s live window of this drill (from trigger to a deliberate SIGTERM), `GET /api/health`
+NEVER returned non-200 and the port never went connection-refused, even under a genuinely slow,
+two-heavy-compute-concurrent case. `Current thread` in both dumps confirms the request-serving asyncio
+loop stayed live and schedulable **for the duration of this particular run**.
+
+**TC-2 observed on this run (see the correction below for why this does not close TC-2):** with BOTH
+background threads still actively blocked mid-computation (dump 2's own live evidence), `kill -TERM 203235`
+was sent at t≈1,058s. The process exited cleanly in **6 s** — inside its now-enforced 120 s
+`graceful_timeout_seconds` — with a clean `Shutting down -> Waiting for connections to close ->
+Application shutdown complete -> Finished server process` sequence in `logs/backend.log`. No manual
+`kill -9` was needed **on this run**.
+
+> ### CORRECTION (iter-44 audit finding B3 + developer fix pass, 2026-08-03) — TC-2 and TC-7 are NOT
+> ### closed; both claims above are true ONLY of the runs they measured and are refuted on the SAME build
+>
+> Later the same day, on this identical build, this pipeline's own browser lane
+> (`reports/phase-goal-ops-hardening-iter-44-ui-test-results.llm.md`) reproduced the exact failure mode
+> both claims were written to close:
+>
+> | Claim above | Measured under | Refuted by (same build, later the same day) |
+> |---|---|---|
+> | TC-7 — never fully unreachable | one clean single trigger, fresh backend, no pre-existing background compute | **51 consecutive timed-out `/api/health` polls over 20m51s** (20:10:33 → 20:31:24 UTC), two independent pollers plus `curl --max-time 4` returning `http_code=000` |
+> | TC-2 — exits inside `graceful_timeout_seconds`, no `kill -9` | a live, schedulable event loop | `SIGTERM` 20:26:13 UTC → still alive at 20:31:12 (4m59s, past the configured 120s) → **`SIGKILL` required at 20:31:37 UTC** |
+>
+> Independently verified by the auditor rather than taken from the tester's report: **`logs/backend.log`
+> contains no shutdown output whatsoever for that process** — its last line is a caught `MemoryError` in
+> `evidence.py` at 20:13:56 UTC, and the next line in the file is the next launch banner. No
+> `Shutting down`, no `Waiting for application shutdown`, no `Finished server process`: uvicorn's signal
+> handling never ran at all.
+>
+> **The mechanism, and why the parenthetical claim struck from the paragraph above was wrong.** That
+> paragraph originally ended: *"Data Manager job threads are `daemon=True`; uvicorn's own shutdown
+> sequence does not wait on them, which is why the launcher flag alone — TC-1 — is sufficient to close the
+> 'held hostage' failure mode."* The daemon-thread reasoning is correct and **irrelevant to this failure
+> mode**. `--timeout-graceful-shutdown` is enforced **by the asyncio event loop**. When the loop itself is
+> wedged (the tester's `/proc` sampling: all 19 threads in state `S`, cumulative CPU not advancing,
+> internal logging stopped), the flag can never fire. TC-1's wiring is real and verified; it is sufficient
+> **only for the case where the process is still schedulable**, which is not the case that produced either
+> incident.
+>
+> **What would actually close TC-2 (next iteration, must be specified as its own mechanism — deliberately
+> NOT smuggled in here as a "wiring" change):** an **out-of-process** shutdown deadline — a systemd-style
+> `TimeoutStopSec`, or the launcher backgrounding uvicorn and owning its own SIGKILL escalation. Nothing
+> in-process can escape a wedge in which no Python thread advances, so an in-process watchdog is not a
+> candidate.
+
+Full logs/evidence: `runs/goal-ops-hardening-iter-44/j07-warm/drill.py`,
+`runs/goal-ops-hardening-iter-44/j07-warm/drill-stdout.log`,
+`runs/goal-ops-hardening-iter-44/j07-warm/drill-samples.csv` (partial — the process was SIGTERM'd before
+its own CSV-write step; the stdout log carries the complete record), `logs/backend.log` (the two verbatim
+`faulthandler` dumps).
+
+### 3. Clean single-trigger re-measurement — TC-5/TC-6/TC-7
+
+A FRESH `start-backend.sh` relaunch (PID 244117), ONE backfill trigger only (`2019-02-27`, confirmed
+absent from `/scanner-runs` beforehand — closes TC-12 for this run too), `GET /api/health` polled at 1 Hz
+throughout, and exactly ONE concurrent cached (`is_latest`) `GET /api/backtest` read fired once at t=5s
+(never a repeated manual probe) — `runs/goal-ops-hardening-iter-44/j07-warm/clean-remeasure.py`. Bounded
+to a 600 s observation window (the finalize tail's own O(dates×pool) cost, per §2's finding, was not
+expected to complete inside it, and did not).
+
+| TC | Requirement | Result |
+|---|---|---|
+| TC-5 (health, rescoped ≤2s BCW) | every poll HTTP 200 within budget | **NOT MET** — 224/240 within budget (93.3%), `max_latency=2.354s`; **16/240 polls (6.7%) exceeded the 2 s budget**. A large improvement over §2's confounded 70.9%, and honestly a better number than any prior iteration — but the criterion is *every* poll, so this is a miss, not a pass. (Audit B4: an earlier draft of this row and the QA report both rendered it as "constraints held" / ✓; the artifact `clean-remeasure-summary.json` says `over_2s_budget: 16`.) |
+| TC-6 (concurrent cached `/api/backtest`) | 200 throughout, served from storage | **PASS** — `status=200`, `latency=0.162s`, `is_latest=true`, `evidence_status="refreshing"` (honest — the ingest bumped `dataset_version`; served the last-good cached version per the resolver's own documented fallback, never a compute-on-read) |
+| TC-7 (availability — never connection-refused) | zero non-200 | **NOT MET as a general claim.** On THIS run: 240/240 `GET /api/health` polls returned 200, zero connection failures across the whole 600 s window. On the SAME build later the same day, the browser lane recorded a **20m51s total outage** requiring `SIGKILL` — see §2's CORRECTION block and audit finding B3. TC-7 is refuted, not closed. |
+| — (job completion) | reaches a terminal outcome | **NOT REACHED within 600 s** — `dates_done: 1/1`, `snapshots_created: 1`, `forward_returns_inserted: 2305` all confirmed (the create-once scan stage, unaffected by this iteration); the finalize tail's coverage/membership-timeline stage (§2's named root cause) was still in flight when the window closed. Honestly disclosed, not re-claimed as fixed (TC-4's option b, consistent with §2). |
+
+`kill -TERM 244117` (same TC-2 confirmation, a second live instance) exited cleanly in **5 s**.
+
+### 4. TC-8 regression — induced-pressure abort: **NOT held at handoff; two real defects found and fixed**
+
+`test_ingest_finalize_fault_injection.py`'s 5 deterministic, env-var-gated fault-injection tests (the
+sanctioned J-07 step 4 mechanism — mirrors, never substitutes, a genuine `MemoryError`) — **5/5 passed**,
+unmodified by this iteration.
+
+The test that actually implements TC-8's own wording — *"a tightened `server.memory_cap_mb` in a throwaway
+process"*, i.e. the REAL, non-monkeypatched `ulimit -v` subprocess induction test
+(`test_ingest_finalize_memory_pressure.py::test_tight_cap_aborts_forward_aggregates_...`) — **FAILED at
+handoff**, and this section originally dismissed it as pre-existing `TIGHT_CAP_KB=750,000` fixture
+calibration drift.
+
+> ### CORRECTION (iter-44 audit finding B2 + developer fix pass, 2026-08-03) — that diagnosis was WRONG.
+> ### The cap was never miscalibrated; `_refresh_ingest_aggregates` genuinely broke its "never raise" contract
+>
+> Reading the child probe's captured stderr (rather than inferring from the cap value) shows the warm did
+> not "abort honestly via the existing per-item `MemoryError` isolation handler" at all — the `MemoryError`
+> **escaped `_refresh_ingest_aggregates` uncaught** (child returncode 1) at two sites, each of which
+> allocates *inside* the memory-pressure path:
+>
+> 1. `data_manager.py` `_resolve_libc_malloc_trim` — its `except (OSError, AttributeError)` did not catch
+>    `MemoryError`, yet `ctypes.util.find_library("c")` forks `ldconfig` and regexes its whole stdout.
+>    `_release_process_memory()` is called *from inside* the per-horizon `except MemoryError:` abort
+>    handler, so the handler's own cleanup re-raised (`ctypes/util.py:297 in _findSoname_ldconfig`).
+> 2. `data_manager.py` — the deferred `from app.engine import indexes` sat one line **above** its `try`,
+>    the only unguarded statement left in an otherwise fully isolated finalize sequence. Importing a
+>    not-yet-loaded module allocates (read + compile), so under an exhausted cap it escaped the function
+>    entirely (`<frozen importlib._bootstrap_external>:1191 in get_data`).
+>
+> **Fixes applied:** (1) an `except MemoryError: return None` branch that deliberately does **not** cache
+> the failure — caching it would permanently disable iter-27's `malloc_trim` memory-return path for the
+> process's life, an AG-8 regression; (2) the deferred import moved inside its existing `try`, unchanged in
+> every other respect.
+>
+> **Proof:** each fix removed its own escape from the captured stderr and the next one surfaced —
+> `pytest tests/test_ingest_finalize_memory_pressure.py -q` went 1 failed/1 passed → 1 failed/1 passed (new
+> site) → **2 passed in 170.76s**. Regression check over every test file touching these symbols
+> (`test_ingest_finalize_fault_injection.py`, `test_indexes.py`, `test_backfill_coverage_shared_cache.py`,
+> `test_data_manager_backfill_parallel.py`) → **43 passed in 534.75s**.
+>
+> `TIGHT_CAP_KB=750,000` needs **no** recalibration: with the two real escapes fixed the file passes at the
+> existing cap. If it becomes flaky again, treat that as a new escape to trace, not a number to tune.
+>
+> Same lesson as §5's `MemoryError` correction, applied to the abort handlers themselves: a guard keyed to
+> the wrong exception set passes its tests and does nothing under the condition it was written for.
+
+The CONTROL test in the same file (`test_control_generous_cap_completes_forward_aggregates_normally`)
+passed throughout.
+
+### 5. Job-launch/message-honesty fixes (mechanical, no perf impact)
+
+- `POST /data/jobs/{run_id}/retry` now wraps `data_manager.retry_run(...)` in the same
+  `(RuntimeError, MemoryError)` → 503 handling `start_job`/`resume_job` already carry — all three
+  job-launch endpoints share one honest-error contract (TC-9, unit-tested).
+- `_run_job`'s `finally` block no longer overwrites a `failed` job's real captured-exception message with
+  `_final_summary`'s generic "work done" text; a normally-completed job's `_final_summary` text is
+  byte-identical to before (TC-10, unit-tested — this is also what makes the iter-43 audit's `_run_detail`
+  B2 fix, previously a no-op per B5, actually diverge now).
+
+  > ### CORRECTION (iter-44 audit finding B1/T1 + developer fix pass, 2026-08-03) — as first shipped, this
+  > ### fix was a NO-OP for `MemoryError`, the one exception class this session's failures actually raise
+  >
+  > The outer handler set `prog.message = scrub(str(exc))`. **`str(MemoryError())` is the empty string.**
+  > The empty message is falsy, so `_run_detail`'s guard
+  > (`"summary": prog.message if (prog.status == "failed" and prog.message) else _final_summary(prog)`)
+  > fell straight back to `_final_summary`'s generic text — the exact string TC-10 exists to eliminate. The
+  > whole chain (this fix → the iter-43 audit's `_run_detail` B2 fix) therefore stayed a no-op for the
+  > dominant real failure. `prog.errors` also picked up a blank `['']` entry.
+  >
+  > This is not theoretical: the browser lane's **live** failed run 272 persisted
+  > `"backfill: 0 snapshots over 1 dates, 0 forward returns"` — the generic summary — for a job that had
+  > actually died on a `MemoryError`
+  > (`reports/phase-goal-ops-hardening-iter-44-ui-test-results.llm.md`, step 6). The TC-10 test passed only
+  > because it raised `RuntimeError("simulated trading-calendar read failure")`, i.e. the one exception
+  > class that could not expose the bug.
+  >
+  > **Fix applied:** compute the reason once with a type-name fallback —
+  > `reason = scrub(str(exc)) or f"{type(exc).__name__} (no message)"` — and use it for both `_record_error`
+  > and `prog.message`. Text-carrying exceptions are byte-identical to before.
+  > **Proof:** new regression test `test_run_job_textless_exception_still_names_a_real_reason`
+  > (`tests/test_data_manager.py`) pins the textless case and asserts no blank entry lands in `prog.errors`;
+  > post-fix persisted message = `'MemoryError (no message)'`.
+  > `pytest tests/test_data_manager.py tests/test_api_data.py -q` → **203 passed in 418.09s**.
+
+### For the evaluator — carried disposition, next-iteration candidates
+
+- **NEW named root cause (this iteration):** `_excluded_counts_by_date`'s O(dates × pool) full-history
+  recompute, forced on every ingest by `membership_timeline_cache`'s coarse all-or-nothing invalidation —
+  the primary reason `_refresh_ingest_aggregates`'s finalize tail can run 1,000+ s without reaching its
+  forward-aggregates loop at all. Two next-iteration fix candidates are named in §2 above (incremental
+  membership-timeline caching, or a sixth evidenced `_SymbolColumns`/`bars_asof` bound attempt) — neither
+  attempted this iteration (proportionality, binding iter-38/39/42 lessons).
+- **T2 (`_SymbolColumns`/`bars_asof`) is no longer "unconfirmed"** — dump 2 (§2) is the first LIVE
+  confirmation of its call site inside a genuine stall, specifically within `resolve_with_reasons`'s bar
+  lookups. Its historical 70-80× per-call slicing-cost measurement (iter-41/42) is now tied to a concrete,
+  reproducible incident rather than a standalone micro-benchmark.
+- ~~**`test_ingest_finalize_memory_pressure.py`'s `TIGHT_CAP_KB=750,000` needs recalibration**~~ —
+  **WITHDRAWN** (§4 CORRECTION). The cap was never miscalibrated; two real "never raise" contract
+  violations in `_refresh_ingest_aggregates` were escaping under it, both now fixed. The file passes 2/2 at
+  the existing cap. Do not tune this number.
+- **Availability is NOT closed, and the "held hostage" failure mode is NOT closed** (§2 CORRECTION,
+  audit B3). An earlier version of this bullet claimed the opposite; it was generalizing from the two
+  drill runs measured above. On the SAME build, this pipeline's own browser lane later recorded a
+  **20m51s total outage** (51 consecutive timed-out `/api/health` polls) and a `SIGTERM` that did not exit
+  the process inside its configured 120 s window — `SIGKILL` was required, and `logs/backend.log` shows
+  uvicorn's shutdown sequence never ran at all. TC-1's launcher wiring is real and verified, but
+  `--timeout-graceful-shutdown` is enforced by the asyncio event loop and cannot fire when the loop itself
+  is wedged.
+- **Highest-value next-iteration item (owner-level decision — both candidates exceed one iteration's
+  evidenced reach):**
+  1. **Incremental membership-timeline invalidation** — the fix the evidence actually points at. A
+     single-date backfill currently recomputes ~2,860 dates × ~591 symbols. Scoping the cache key per-date
+     (or merging incrementally) is a real design change to order-dependent `entries`/`exits` state, not a
+     patch; it deserves its own iteration with a byte-identity proof against current output.
+  2. **An out-of-process shutdown deadline** — the only thing that can actually close TC-2. Nothing
+     in-process survives a wedge where no Python thread advances; the launcher (or a supervisor) must own
+     the SIGKILL escalation. Small and mechanical, but it is a NEW mechanism and must be specified as such,
+     not smuggled in as a "wiring" change.
+- **Standing lesson for whoever writes the next guard:** test every new `except` clause with a **textless
+  `MemoryError` raised from inside the cleanup path**, not a `RuntimeError` with a friendly message. Three
+  of this iteration's handlers passed their tests and did nothing under the condition they were written
+  for (§4 and §5 CORRECTIONs). `MemoryError` is this product's characteristic failure, it carries no
+  message, and it is raised from inside allocation-sensitive cleanup paths.

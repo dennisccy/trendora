@@ -5396,3 +5396,100 @@ def test_retry_run_unknown_and_non_retryable(tmp_path):
         ok_id = run.id
     with pytest.raises(ValueError):
         retry_run(ok_id, config=cfg, engine=engine)
+
+
+# ==================================================================================================
+# ops-hardening iter-44 (reviewer MINOR, carried from iter-43 B5) — TC-10: `_run_job`'s `finally` block
+# must not clobber a `failed` job's real captured-exception message with `_final_summary`'s generic
+# "work done" text; a normally-completed job's `_final_summary` text is unaffected.
+# ==================================================================================================
+def test_run_job_outer_exception_preserves_real_message_not_final_summary(tmp_path, monkeypatch):
+    """TC-10 — a job that fails via `_run_job`'s OUTER exception handler (a whole-stage exception, not a
+    per-date J-67-isolated one) must persist a `message` naming the REAL captured exception text, not
+    `_final_summary`'s generic "no work performed"/all-zeros summary. `_trading_days` is monkeypatched to
+    raise: it is the very first call `_do_backfill` makes (`data_manager.py`'s own docstring names it as
+    the canonical "whole-stage exception" example), well before any per-date failure isolation engages —
+    so this genuinely exercises the OUTER handler, not a graded `partial`. Before this iteration,
+    `_run_job`'s `finally` unconditionally set `prog.message = _final_summary(prog)`, so this assertion
+    would have failed (iter-43 audit B5: the two expressions were byte-identical on every path)."""
+    engine = make_engine(f"sqlite:///{tmp_path / 'run_job_failed.db'}")
+    create_db_and_tables(engine)
+    cfg = load_config()
+
+    def _boom(_session, _cfg):
+        raise RuntimeError("simulated trading-calendar read failure")
+
+    monkeypatch.setattr(data_manager, "_trading_days", _boom)
+
+    job = create_job("backfill", date(2024, 1, 2), date(2024, 1, 2))
+    summary = run_data_job(job.job_id, config=cfg, engine=engine, sleep_fn=_noop_sleep, seed_dir=tmp_path)
+
+    assert summary["status"] == "failed"
+    assert "simulated trading-calendar read failure" in summary["message"]
+    assert "no work performed" not in summary["message"]
+
+    with Session(engine) as session:
+        row = session.exec(select(DataProviderRun).where(DataProviderRun.job_id == job.job_id)).one()
+    assert row.status == "failed"
+    persisted_message = summarize_provider_run(row)["message"]
+    assert "simulated trading-calendar read failure" in persisted_message
+    assert "no work performed" not in persisted_message
+
+
+def test_run_job_normal_completion_still_gets_final_summary(tmp_path):
+    """TC-10 (unchanged half) — a job that completes normally (status `ok`) still gets `_final_summary`'s
+    descriptive summary, byte-identical to before this iteration's `finally`-block change (the conditional
+    only skips the assignment on the `failed` path)."""
+    engine = make_engine(f"sqlite:///{tmp_path / 'run_job_ok.db'}")
+    create_db_and_tables(engine)
+    with Session(engine) as session:
+        session.add(DailyPrice(
+            symbol="SPY", date=date(2024, 1, 2), open=1.0, high=1.0, low=1.0, close=1.0, volume=1.0,
+        ))
+        session.commit()
+    cfg = load_config()
+    _sc = cfg.scanner.model_copy(update={"snapshot_cadence": cfg.scanner.snapshot_cadence.model_copy(update={"daily_start": None})})
+    cfg = cfg.model_copy(update={"scanner": _sc})
+
+    job = create_job("backfill", date(2024, 1, 2), date(2024, 1, 2))
+    summary = run_data_job(job.job_id, config=cfg, engine=engine, sleep_fn=_noop_sleep, seed_dir=tmp_path)
+
+    assert summary["status"] == "ok"
+    from app.engine.data_manager import _final_summary as _fs
+
+    prog = data_manager._JOBS[job.job_id]
+    assert summary["message"] == _fs(prog)
+
+
+def test_run_job_textless_exception_still_names_a_real_reason(tmp_path, monkeypatch):
+    """ops-hardening iter-44 AUDIT (B1) — TC-10 for the exception class this session's failures ACTUALLY
+    raise. `str(MemoryError())` is the EMPTY STRING, so the iteration's original `prog.message =
+    scrub(str(exc))` produced `""`, whose falsiness sent `_run_detail`'s `prog.message if (prog.status ==
+    "failed" and prog.message)` guard straight back to `_final_summary`'s generic text — reproducing the
+    EXACT "backfill: 0 snapshots over N dates, 0 forward returns" message the browser lane observed on
+    the live failed run 272 (2026-08-03), i.e. TC-10's fix was a no-op for MemoryError. A textless
+    exception must still persist a reason naming the exception TYPE, never the generic work summary and
+    never a blank error entry."""
+    engine = make_engine(f"sqlite:///{tmp_path / 'run_job_textless.db'}")
+    create_db_and_tables(engine)
+    cfg = load_config()
+
+    def _boom(_session, _cfg):
+        raise MemoryError()  # noqa: RSE102 — the textless-exception case under test
+
+    monkeypatch.setattr(data_manager, "_trading_days", _boom)
+
+    job = create_job("backfill", date(2024, 1, 2), date(2024, 1, 2))
+    summary = run_data_job(job.job_id, config=cfg, engine=engine, sleep_fn=_noop_sleep, seed_dir=tmp_path)
+
+    assert summary["status"] == "failed"
+    assert "MemoryError" in summary["message"]
+    assert "snapshots over" not in summary["message"]  # never `_final_summary`'s generic text
+    assert summary["errors"] and all(e.strip() for e in summary["errors"])  # never a blank error entry
+
+    with Session(engine) as session:
+        row = session.exec(select(DataProviderRun).where(DataProviderRun.job_id == job.job_id)).one()
+    assert row.status == "failed"
+    persisted_message = summarize_provider_run(row)["message"]
+    assert "MemoryError" in persisted_message
+    assert "snapshots over" not in persisted_message

@@ -1,0 +1,138 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-ops-hardening-iter-44",
+  "base_url": "http://localhost:3255",
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Open the home page",
+      "narration": "Let's start by opening the application home page. You should see the dashboard with a ready badge at the top.",
+      "point_out": "The badge in the top right reads 'Ready' with a green dot, and the page displays 'provider: seed'.",
+      "journey": "",
+      "new": false,
+      "verified": false,
+      "section": "highlights",
+      "action": {"type": "goto", "url": "/"},
+      "expect": {"text": "provider: seed"}
+    },
+    {
+      "n": 2,
+      "title": "Navigate to the Data Manager",
+      "narration": "The Data Manager is where you run backfill jobs to ingest historical data. Navigate there to see the job controls.",
+      "point_out": "The page shows 'Data Manager' and includes a 'Start a fetch / backfill job' section with date input fields and a 'Run history' section below.",
+      "journey": "J-01",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {"type": "goto", "url": "/data"},
+      "expect": {"text": "Data Manager"}
+    },
+    {
+      "n": 3,
+      "title": "Start a focused backfill job",
+      "narration": "We'll run a small backfill for a single day to show how the system accepts and processes these requests quickly.",
+      "point_out": "After clicking Start, the Job progress panel shows the job moving through its lifecycle. The badge at the top stays 'Ready' throughout.",
+      "journey": "J-01",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {"type": "fill", "target": {"testid": "job-start-date"}, "text": "2026-05-02"},
+      "expect": {"text": "Data Manager"}
+    },
+    {
+      "n": 4,
+      "title": "Set the end date and start the job",
+      "narration": "We're setting both the start and end date to the same day (May 2nd, 2026) to show a focused, single-day backfill.",
+      "point_out": "The 'Start' button becomes active once both dates are filled in. The job begins executing immediately when you click it.",
+      "journey": "J-01",
+      "new": false,
+      "verified": true,
+      "section": "full_tour",
+      "action": {"type": "fill", "target": {"testid": "job-end-date"}, "text": "2026-05-02"}
+    },
+    {
+      "n": 5,
+      "title": "Click the Start button",
+      "narration": "Now we start the job. The system will fetch or compute the data for that date range.",
+      "point_out": "The Job progress panel updates as the job runs. You can see the badge staying 'Ready' and available the whole time.",
+      "journey": "J-01",
+      "new": false,
+      "verified": true,
+      "section": "full_tour",
+      "action": {"type": "click", "target": {"role": "button", "name": "Start"}}
+    },
+    {
+      "n": 6,
+      "title": "Show pages load efficiently",
+      "narration": "One of this iteration's focuses is making sure every page in the application loads only the data it needs. Let's tour the main pages.",
+      "point_out": "The home page, Stocks list, and individual stock pages all load promptly with their expected content.",
+      "journey": "J-06",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {"type": "goto", "url": "/stocks"},
+      "expect": {"text": "Stocks"}
+    },
+    {
+      "n": 7,
+      "title": "View a specific stock",
+      "narration": "We can drill down into individual stocks. Here's Apple (AAPL) as an example—the page loads with all the stock information.",
+      "point_out": "The page heading shows 'AAPL' and the data loads efficiently.",
+      "journey": "J-06",
+      "new": false,
+      "verified": true,
+      "section": "full_tour",
+      "action": {"type": "goto", "url": "/stocks/AAPL"},
+      "expect": {"text": "AAPL"}
+    },
+    {
+      "n": 8,
+      "title": "View the Sectors page",
+      "narration": "The Sectors page shows how stocks are organized by sector. Each page loads only the data needed to display that view.",
+      "point_out": "The page title shows 'Sectors' and the page renders promptly without loading unnecessary data.",
+      "journey": "J-06",
+      "new": false,
+      "verified": true,
+      "section": "full_tour",
+      "action": {"type": "goto", "url": "/sectors"},
+      "expect": {"text": "Sectors"}
+    },
+    {
+      "n": 9,
+      "title": "View the Backtest evidence page",
+      "narration": "The Backtest page shows the forward-tested evidence from our backtesting system. This page always serves pre-computed results, never makes you wait for fresh computation.",
+      "point_out": "The page shows 'Forward-tested evidence' and displays the backtesting results.",
+      "journey": "J-08",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {"type": "goto", "url": "/backtest"},
+      "expect": {"text": "Forward-tested evidence"}
+    },
+    {
+      "n": 10,
+      "title": "Check background compute disclosure",
+      "narration": "When heavy data processing happens in the background, the application tells you about it. Let's see the Background Compute panel on the Data Manager page.",
+      "point_out": "The Background Compute panel on the /data page explains what background work is happening and notes that it is process-lifetime only—it clears on restart.",
+      "journey": "J-09",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {"type": "goto", "url": "/data"},
+      "expect": {"text": "Background compute"}
+    },
+    {
+      "n": 11,
+      "title": "Confirm the badge stays responsive",
+      "narration": "Even while backfills and background work run, the top-right readiness badge stays responsive and honest. It shows 'Ready' for a healthy backend, 'Checking backend…' while verifying, or 'Backend unavailable' if the service is down.",
+      "point_out": "The badge at the top right consistently shows a clear status—either 'Ready', initializing, or explicitly 'Backend unavailable', never a blank or confusing header.",
+      "journey": "J-04",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {"type": "goto", "url": "/"},
+      "expect": {"text": "Ready"}
+    }
+  ]
+}

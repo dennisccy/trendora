@@ -34,11 +34,19 @@ fi
 # anywhere in it) — do not trust reports/perf-budgets.md's or config.yaml's prose claiming otherwise; this
 # is where the enforcement actually lives now. Values come from config.yaml via the venv Python (No magic
 # numbers — the same `app.config.get_config()` every engine reads).
-read -r MEMORY_CAP_MB MALLOC_ARENA_MAX_VALUE <<< "$(
+#
+# ops-hardening iter-44 — same read now also pulls `ServerOpsCfg`'s three uvicorn-facing values
+# (`limit_concurrency` / `timeout_keep_alive_seconds` / `graceful_timeout_seconds`), declared since the
+# mcp-loop session (J-100) but never enforced by any launch script until now (a direct read of the `exec`
+# line below, prior to this change, passed only --host/--port/--app-dir). Wiring these gives a stuck
+# in-flight task's shutdown a deadline (`--timeout-graceful-shutdown`) instead of holding the process
+# hostage forever, and bounds concurrent connections/idle keep-alive the same way the memory cap bounds
+# RAM — additive to, never a replacement for, the ulimit/host-guard enforcement below (AG-10).
+read -r MEMORY_CAP_MB MALLOC_ARENA_MAX_VALUE LIMIT_CONCURRENCY TIMEOUT_KEEP_ALIVE GRACEFUL_TIMEOUT <<< "$(
   "$REPO_ROOT/apps/backend/.venv/bin/python" -c '
 from app.config import get_config
 cfg = get_config()
-print(cfg.server.memory_cap_mb, cfg.server.malloc_arena_max)
+print(cfg.server.memory_cap_mb, cfg.server.malloc_arena_max, cfg.server.limit_concurrency, cfg.server.timeout_keep_alive_seconds, cfg.server.graceful_timeout_seconds)
 '
 )"
 
@@ -96,4 +104,7 @@ exec "${HOST_GUARD_CMD_PREFIX[@]}" "$REPO_ROOT/apps/backend/.venv/bin/uvicorn" m
   --host 0.0.0.0 \
   --port "$PORT" \
   --app-dir "$REPO_ROOT/apps/backend" \
+  --limit-concurrency "$LIMIT_CONCURRENCY" \
+  --timeout-keep-alive "$TIMEOUT_KEEP_ALIVE" \
+  --timeout-graceful-shutdown "$GRACEFUL_TIMEOUT" \
   >> "$LOG_FILE" 2>&1
