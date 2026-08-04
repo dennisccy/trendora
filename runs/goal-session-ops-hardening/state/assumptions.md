@@ -594,3 +594,30 @@ Cost recorded honestly: a reader who treats the UI test plan's merged UT-J-07 ro
 over the journey text would keep J-07 `failing` for a fifth consecutive round, and would lose the
 signal that the availability failure mode actually stopped.
 **Reversible:** yes
+
+## iter-47 — goal-decomposer
+
+**Ambiguity:** `docs/goal.md` does not rank J-05 (the session's sole `failing` journey, 3 consecutive
+rounds) above J-06/J-07 (both `partial`, sharing one already-diagnosed Evidence-page serving-path
+defect cluster). The priority rubric's rule 1 (regressed first — none this round) and rule 3 (prefer a
+failing journey that unblocks others) do not by themselves resolve which single risky change to take
+this round, and the iter-46 evaluator's own next-step recommendation lists the Evidence-page fix as
+item (2) and J-05's old-day case as item (4) — an explicit but non-binding ordering, not a mandate.
+
+**We chose:** target J-06/J-07 this iteration (the `/api/evidence` cache-thrash fix plus the
+`samples.py:145/156` bound), deferring J-05's old-day-insert fix to a later iteration. Grounds stated
+rather than assumed: (1) the Evidence-page fix is the evaluator's own explicitly-named "one real job"
+for this round, and it closes a defect on the SAME serving path (`/evidence`) implicated in BOTH J-06's
+acceptance and J-07's "no unbounded whole-table ORM materialization remains on the warm or serving
+path" acceptance clause — a genuine two-journey unblocker (rule 3), unlike J-05's fix, which only moves
+J-05 itself; (2) J-05's remaining case is a separate, riskier change to a different subsystem
+(`_membership_timeline`'s order-dependent recompute, per iter-45's own scoping note on
+entries/exits correctness for a historical gap-fill) — bundling it with the Evidence-page work would
+violate rule 5's "never bundle two risky journeys/changes in one iteration"; (3) this iteration's full
+8-journey re-verification (driven by the evaluator's item (1) and by the prior ESCALATE) gives J-05 its
+first dedicated live capture in 3 rounds regardless of whether its own code changes this round, closing
+part of its standing evidence gap at zero extra risk. Cost recorded honestly: J-05 will very likely still
+read `failing` after this iteration (a 4th consecutive round) since its root-cause fix is not attempted
+here. A reader who weighs "the sole failing Must-have journey" above "an evaluator-labeled unblocker for
+two partial journeys sharing one defect cluster" would target J-05 instead this round.
+**Reversible:** yes
