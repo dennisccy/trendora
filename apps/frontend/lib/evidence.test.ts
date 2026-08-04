@@ -1037,4 +1037,63 @@ check(
   },
 );
 
+// --- ops-hardening iter-47 (audit B2, TC-3): a FOURTH state — "refreshing" — a resolved, REAL last-good
+// prior-generation `expectations` payload served while a newer generation (an unrelated ingest bumped the
+// shared dataset-version stamp) computes in the background. Distinct from BOTH "present" (current
+// generation, no status field) and "unavailable" (no expectations at all).
+check(
+  "resolveDrawdownExpectationsPanelState: expectations + expectations_status='refreshing' => 'refreshing', " +
+    "carrying the served (last-good) payload verbatim (TC-3)",
+  () => {
+    const claim: CertifiedClaim = {
+      ...provenRow("leadership_score"),
+      expectations: SAMPLE_EXPECTATIONS,
+      expectations_status: "refreshing",
+    };
+    const state = resolveDrawdownExpectationsPanelState(claim);
+    assert.strictEqual(state.kind, "refreshing");
+    if (state.kind === "refreshing") {
+      assert.strictEqual(state.expectations, SAMPLE_EXPECTATIONS); // read verbatim, never recomputed
+    }
+  },
+);
+
+check(
+  "resolveDrawdownExpectationsPanelState: 'refreshing' is DISTINCT from 'present' and from 'unavailable' (TC-3)",
+  () => {
+    const refreshing = resolveDrawdownExpectationsPanelState({
+      ...provenRow("leadership_score"),
+      expectations: SAMPLE_EXPECTATIONS,
+      expectations_status: "refreshing",
+    });
+    const present = resolveDrawdownExpectationsPanelState({
+      ...provenRow("leadership_score"),
+      expectations: SAMPLE_EXPECTATIONS,
+    });
+    const unavailable = resolveDrawdownExpectationsPanelState({
+      ...provenRow("leadership_score"),
+      expectations_status: "unavailable",
+    });
+    assert.strictEqual(refreshing.kind, "refreshing");
+    assert.strictEqual(present.kind, "present");
+    assert.strictEqual(unavailable.kind, "unavailable");
+    assert.notStrictEqual(refreshing.kind, present.kind);
+    assert.notStrictEqual(refreshing.kind, unavailable.kind);
+  },
+);
+
+check(
+  "resolveDrawdownExpectationsPanelState: no expectations but expectations_status='refreshing' (an " +
+    "impossible-in-practice payload shape) resolves to 'absent', never 'refreshing' without a payload to " +
+    "show — the resolver checks `claim.expectations` FIRST",
+  () => {
+    const claim: CertifiedClaim = {
+      ...provenRow("leadership_score"),
+      expectations_status: "refreshing",
+    };
+    const state = resolveDrawdownExpectationsPanelState(claim);
+    assert.strictEqual(state.kind, "absent");
+  },
+);
+
 console.log(`\n${passed} evidence-badge resolver checks passed.`);

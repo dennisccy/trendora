@@ -202,14 +202,18 @@ def _warm_drawdown_expectations(engine: Engine, cfg: Config) -> None:
                 # distinctly from the generic per-claim continue below, and tested against a TEXTLESS
                 # `MemoryError` (`str(MemoryError())` is `""`).
                 except MemoryError as exc:
-                    logger.exception(
+                    # ops-hardening iter-47 (carried from iter-44/45/46): `_log_isolation_failure`, NOT a
+                    # bare `logger.exception` — under the SAME exhausted `ulimit -v` cap that raised this
+                    # `MemoryError`, rendering the full traceback can itself allocate and raise a SECOND
+                    # exception that would escape this handler before `_release_process_memory()` runs.
+                    data_manager._log_isolation_failure(
                         "evidence drawdown-expectations warm aborted — memory pressure, stopping remaining "
                         "claims: %r", exc,
                     )
                     data_manager._release_process_memory()
                     break
                 except Exception as exc:  # NON-FATAL: one bad claim never blocks the others
-                    logger.exception(
+                    data_manager._log_isolation_failure(
                         "evidence drawdown-expectations warm failed for one claim (non-fatal): %r", exc
                     )
         logger.info("evidence drawdown-expectations cache warmed (%d claim panels)", warmed)

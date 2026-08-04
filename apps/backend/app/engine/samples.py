@@ -56,6 +56,7 @@ from app.engine.research import (
     _downtrend_member_dimension_value,
     _downtrend_opportunity_observation_set,
     _event_study_observation_set,
+    _factor_decile_observations,
     _factor_observations,
     _assign_triple_deciles,
     _phase_severity_lab_observation_set,
@@ -142,26 +143,29 @@ def _factor_samples(
             f"unknown factor {factor_key!r}; valid factors are {[f.key for f in fl.factors]}"
         )
 
-    observations = _factor_observations(session, factor, horizon, as_of)
-
-    if slice_kind == "total":
-        members = observations
-    elif slice_kind == "decile":
+    if slice_kind == "decile":
         if decile is None or not (1 <= decile <= fl.deciles):
             raise ValueError(
                 f"decile {decile!r} out of range [1, {fl.deciles}] for a factor decile cohort"
             )
-        # the SAME ascending-by-factor ordering + deterministic tie-break compute_factor_lab uses, then
-        # the SAME quantile-edge slice — so this decile's member list reproduces the aggregate's n exactly.
-        ordered = sorted(observations, key=lambda o: (o["factor"], o["ticker"], o["run_id"]))
-        members = _decile_member_slice(ordered, fl.deciles, decile)
+        # ops-hardening iter-47 (AG-8, iter-46 audit B3): bounded two-pass decile resolution — see
+        # `research._factor_decile_observations`'s docstring. Byte-identical to
+        # `_decile_member_slice(sorted(_factor_observations(...), key=lambda o: (o["factor"], o["ticker"],
+        # o["run_id"])), fl.deciles, decile)` (proven by a pinned-reference test), without ever
+        # materializing the population's full per-observation dict list — this is the decile-scoped
+        # branch every drawdown-expectations factor claim (5 of 7 live certified claims) exercises via
+        # `compute_drawdown_expectations`, and the ONLY branch the iter-46 audit's live `MemoryError`
+        # traced through.
+        members = _factor_decile_observations(session, factor, horizon, as_of, fl.deciles, decile, cfg=cfg)
+    elif slice_kind == "total":
+        members = _factor_observations(session, factor, horizon, as_of)
     elif slice_kind == "regime":
         if regime is None or regime not in cfg.regime.labels:
             raise ValueError(
                 f"regime {regime!r} is not a configured regime label {list(cfg.regime.labels)}"
             )
         # the SAME stored-regime grouping `_regime_effectiveness` uses (regime read verbatim, never recomputed)
-        members = [o for o in observations if o["regime"] == regime]
+        members = [o for o in _factor_observations(session, factor, horizon, as_of) if o["regime"] == regime]
     else:
         raise ValueError(f"unknown factor slice {slice_kind!r}; valid slices are {list(_FACTOR_SLICES)}")
 

@@ -326,6 +326,236 @@ def _factor_observations(
     return observations
 
 
+def _decile_population_upper_bound(session: Session, runs_with_fr: list[int], run_chunk: int) -> int:
+    """ops-hardening iter-47 FIX PASS (audit B3): a PROVEN upper bound on the number of observations
+    `_factor_decile_observations`' PASS 1 can produce, read with COUNT-only queries (no row is
+    materialized, no factor is extracted).
+
+    The bound is the number of `ScannerResult` rows in the SAME runs PASS 1 walks. It is airtight by
+    construction rather than by a data property: PASS 1 iterates exactly those rows and appends AT MOST
+    one key per row (it can only skip — no forward return at this horizon, or a factor-NULL value), so
+    `n <= this count` always holds, whatever the join multiplicity or the null density. Measured on the
+    live basis (h=20, all history): 1,260,994 vs an actual population of 1,251,211 — 0.8 % slack, 0.03 s.
+
+    Chunked over the SAME `run_chunk` width the two data passes use, so the `IN (…)` bind-parameter count
+    per query stays exactly as bounded as theirs (audit B7)."""
+    total = 0
+    for start in range(0, len(runs_with_fr), run_chunk):
+        slice_run_ids = runs_with_fr[start:start + run_chunk]
+        total += int(session.exec(
+            select(func.count()).select_from(ScannerResult).where(ScannerResult.run_id.in_(slice_run_ids))
+        ).one())
+    return total
+
+
+class _BoundedRankWindow:
+    """ops-hardening iter-47 FIX PASS (audit B3): the bounded retention window `_factor_decile_observations`
+    PASS 1 streams into, replacing its whole-population `sort_keys` list + whole-population sort.
+
+    The final answer is `all_keys_sorted[lo:hi]` with `lo = (d-1)*n//count`, `hi = d*n//count`. Only two
+    prefixes of the total order can contain that slice: the `hi` SMALLEST keys, or the `n - lo` LARGEST.
+    Both are computable from an UPPER bound on `n` alone, because both are non-decreasing in `n`:
+    `hi(n) <= hi(n_max)` and `n - lo(n) <= n_max - lo(n_max)`. So the narrower of the two is a capacity
+    this window can commit to BEFORE the first key arrives, and every key outside it is provably
+    non-surviving and is dropped during the walk.
+
+    Retention is bounded by `2 x capacity` (a sort-and-truncate buffer, trimmed back to `capacity`
+    whenever it doubles — amortized O(n log capacity), the same total comparison count the single
+    whole-population sort paid). For the live decile-10 claims that is ~252 K tuples at peak instead of
+    ~1.25 M, and the bound now scales with the REQUESTED DECILE's own member count — the size of the value
+    the caller must return anyway — not with the population.
+
+    Byte-identical by construction: the retained keys are ordered with the IDENTICAL plain tuple ordering
+    (`(factor, ticker, run_id)`, the same key `sorted()` used), and (ticker, run_id) is unique per
+    observation, so the total order is strict and "the k smallest/largest" is a unique set — the surviving
+    window contains the target slice with the same members in the same order the whole-population sort
+    produced."""
+
+    __slots__ = ("_capacity", "_keep_smallest", "_buf", "_trim_at")
+
+    def __init__(self, n_max: int, deciles_count: int, decile: int) -> None:
+        lo_max = (decile - 1) * n_max // deciles_count
+        hi_max = decile * n_max // deciles_count
+        keep_smallest_cap = hi_max
+        keep_largest_cap = n_max - lo_max
+        self._keep_smallest = keep_smallest_cap <= keep_largest_cap
+        self._capacity = max(1, min(keep_smallest_cap, keep_largest_cap))
+        self._buf: list[tuple[float, str, int]] = []
+        self._trim_at = 2 * self._capacity
+
+    def add(self, key: tuple[float, str, int]) -> None:
+        self._buf.append(key)
+        if len(self._buf) >= self._trim_at:
+            self._trim()
+
+    def _trim(self) -> None:
+        self._buf.sort()
+        if self._keep_smallest:
+            del self._buf[self._capacity:]
+        else:
+            del self._buf[: max(0, len(self._buf) - self._capacity)]
+
+    def slice(self, n: int, lo: int, hi: int) -> "Optional[list[tuple[float, str, int]]]":
+        """The retained keys occupying global ranks `[lo, hi)`, or None when the requested window is not
+        fully inside what was retained (the caller then degrades to the exact unbounded computation —
+        unreachable when `n <= n_max`, see the class docstring's monotonicity argument)."""
+        self._trim()
+        base = 0 if self._keep_smallest else n - len(self._buf)
+        if lo < base or hi - base > len(self._buf) or lo > hi:
+            return None
+        return self._buf[lo - base: hi - base]
+
+
+def _factor_decile_observations(
+    session: Session, factor, horizon: int, as_of: Optional[date_cls], deciles_count: int, decile: int,
+    *, cfg: Optional[Config] = None,
+) -> list[dict]:
+    """ops-hardening iter-47 (AG-8, iter-46 audit B3): bounded ONE-decile member resolution for
+    `app.engine.samples._factor_samples`'s "decile" branch — the SAME result
+    `_decile_member_slice(sorted(_factor_observations(session, factor, horizon, as_of), key=lambda o:
+    (o["factor"], o["ticker"], o["run_id"])), deciles_count, decile)` would produce, without ever holding
+    the FULL population's per-observation dicts in memory at once.
+
+    WHY: correctly ranking a decile needs every observation's factor value (a population-wide rank), but
+    does NOT need retaining every observation's OTHER fields (ticker/return/max_drawdown/regime) for the
+    ~(deciles_count-1)/deciles_count of the population that lands OUTSIDE the requested decile. The
+    pre-fix `_factor_samples` built the FULL 6-field dict for every observation at a horizon (up to
+    ~800K-observation pools measured live) just to discard 9/10 of them after sorting — reached via
+    `evidence.py` -> `compute_drawdown_expectations_cached` -> `compute_drawdown_expectations` ->
+    `compute_samples` -> `_factor_samples` for every decile-scoped certified claim (5 of the 7 live
+    claims), and independently caught `MemoryError`-ing at `logs/backend.log` 2026-08-04 02:20:31.
+
+    TWO bounded passes over the SAME chunked `_runs_with_fr` / `_fr_slice_map` join `_factor_observations`
+    (its unbounded sibling) uses — byte-identical row discovery, same fr/factor-NULL exclusion rules:
+
+      PASS 1 (lightweight): walks the SAME `runs_with_fr` chunk loop, but accumulates ONLY the
+        `(factor_value, ticker, run_id)` triple per observation — the exact three fields the tie-break
+        sort key reads — discarding each chunk's join map before the next (same bound
+        `_factor_observations` already applies to the join map; this ALSO avoids ever building the
+        heavier 6-field dict for the ~90% of observations that will not survive the decile slice). Sorting
+        this lightweight list with the IDENTICAL key, then slicing with the IDENTICAL
+        `_decile_member_slice` boundary arithmetic (`lo = (decile-1)*n//deciles_count`,
+        `hi = decile*n//deciles_count`, `n` = the total observation count — identical by construction,
+        since this pass walks the SAME chunk loop under the SAME exclusion rules), yields the EXACT
+        `(run_id, ticker)` key set the unbounded computation would have selected for this decile.
+      PASS 2 (bounded): re-walks the SAME chunk loop, rebuilding the FULL `_factor_observations`-shaped
+        dict per observation, but KEEPS it only when its `(ticker, run_id)` is in PASS 1's target-decile
+        key set — every other observation is discarded immediately, before the next chunk's query even
+        starts. Peak live size is bounded by (one chunk's join map + the target decile's member count),
+        never by the population.
+
+    Two DB passes trade CPU/IO for bounded memory — the SAME trade-off `compute_drawdown_expectations`'s
+    iter-46 fix already accepted for its own by-phase accumulators. Returns the SAME dict shape
+    `_factor_observations` returns (`run_id`, `ticker`, `factor`, `return`, `max_drawdown`, `regime`),
+    already restricted to ONE decile, sorted by the SAME ascending-by-factor tie-break so iterating this
+    return value in order reproduces the SAME sequence `_decile_member_slice` would have handed back
+    (byte-identical, TC-4).
+
+    ops-hardening iter-47 FIX PASS (audit finding B3): PASS 1's own `sort_keys` accumulator used to retain
+    ONE tuple per observation for the WHOLE population (~1.25 M tuples ≈ 155 MB on today's basis) and then
+    sort it whole — a bounded READ with unbounded RETENTION, the exact shape iter-40's lesson names, and
+    the reason the audit judged `samples.py:156` "reduced, not bounded". PASS 1 now retains a bounded
+    WINDOW instead (`_BoundedRankWindow` below): the only keys that can survive the final `[lo:hi]` slice
+    are either the `hi` smallest or the `n - lo` largest, whichever side is narrower, so everything else
+    can be discarded DURING the walk. Peak retention is therefore O(the requested decile's own member
+    count) — the size of the value this function must return anyway — instead of O(population)."""
+    parsed = parse_factor_source(factor.source)
+    research_cfg = (cfg or get_config()).research
+    batch = research_cfg.read_batch_size
+    run_chunk = research_cfg.factor_join_run_chunk
+
+    runs_with_fr = _runs_with_fr(session, [horizon], as_of)
+
+    # PASS 0 (count-only, no rows materialized) — the retention window PASS 1 may size itself against.
+    # See `_decile_population_upper_bound`: provably >= the observation count, measured at 0.03 s / 0.8%
+    # slack on the live basis.
+    n_max = _decile_population_upper_bound(session, runs_with_fr, run_chunk)
+    window = _BoundedRankWindow(n_max, deciles_count, decile)
+
+    # PASS 1 — lightweight (factor, ticker, run_id) sort keys only; the join map + ScannerResult stream are
+    # chunk-and-discarded exactly like `_factor_observations`, and the accumulator here never carries the
+    # heavier return/max_drawdown/regime fields a non-surviving 9/10 of the population would otherwise pay.
+    # `window.add` additionally discards, as it walks, every key that cannot land in the target decile.
+    n = 0
+    for start in range(0, len(runs_with_fr), run_chunk):
+        slice_run_ids = runs_with_fr[start:start + run_chunk]
+        ret_by_run_symbol = _fr_slice_map(session, horizon, slice_run_ids, batch)
+        res_stmt = (
+            select(ScannerResult)
+            .where(ScannerResult.run_id.in_(slice_run_ids))
+            .order_by(ScannerResult.run_id, ScannerResult.id)
+        )
+        for res in session.exec(res_stmt).yield_per(batch):
+            if (res.run_id, res.ticker) not in ret_by_run_symbol:
+                continue
+            value = _extract_factor_value(res, parsed)
+            if value is None:
+                continue  # factor-NULL observation EXCLUDED (never bucketed) — mirrors _factor_observations
+            n += 1
+            window.add((float(value), res.ticker, res.run_id))
+
+    lo = (decile - 1) * n // deciles_count
+    hi = decile * n // deciles_count
+    ranked = window.slice(n, lo, hi)
+    if ranked is None:
+        # UNREACHABLE by construction (`_decile_population_upper_bound` returns a proven upper bound, and
+        # `_BoundedRankWindow` sizes its capacity from it) — but a wrong slice would be a WRONG SERVED
+        # NUMBER (AG-3), so if the invariant is ever violated this degrades to the exact unbounded
+        # computation instead of returning a silently-truncated decile. Covered by a dedicated test that
+        # forces the violation with a deliberately too-small upper bound.
+        logger.warning(
+            "factor decile window underflow (n=%s lo=%s decile=%s/%s, upper bound %s) — "
+            "falling back to the unbounded exact computation",
+            n, lo, decile, deciles_count, n_max,
+        )
+        ordered = sorted(
+            _factor_observations(session, factor, horizon, as_of, cfg=cfg),
+            key=lambda o: (o["factor"], o["ticker"], o["run_id"]),
+        )
+        return _decile_member_slice(ordered, deciles_count, decile)
+    target_keys = {(ticker, run_id) for _factor_val, ticker, run_id in ranked}
+
+    if not target_keys:
+        return []
+
+    run_rows = (
+        session.exec(select(ScannerRun).where(ScannerRun.id.in_(runs_with_fr))).all()
+        if runs_with_fr else []
+    )
+    regime_by_run = {run.id: run.regime_label for run in run_rows}
+
+    # PASS 2 — bounded: rebuild the FULL observation dict only for this decile's (ticker, run_id) keys.
+    members: list[dict] = []
+    for start in range(0, len(runs_with_fr), run_chunk):
+        slice_run_ids = runs_with_fr[start:start + run_chunk]
+        ret_by_run_symbol = _fr_slice_map(session, horizon, slice_run_ids, batch)
+        res_stmt = (
+            select(ScannerResult)
+            .where(ScannerResult.run_id.in_(slice_run_ids))
+            .order_by(ScannerResult.run_id, ScannerResult.id)
+        )
+        for res in session.exec(res_stmt).yield_per(batch):
+            if (res.ticker, res.run_id) not in target_keys:
+                continue  # not a member of the target decile — discarded immediately, never retained
+            fr = ret_by_run_symbol.get((res.run_id, res.ticker))
+            if fr is None:
+                continue
+            realized, max_drawdown = fr
+            value = _extract_factor_value(res, parsed)
+            if value is None:
+                continue
+            members.append({
+                "run_id": res.run_id, "ticker": res.ticker, "factor": float(value), "return": realized,
+                "max_drawdown": max_drawdown,
+                "regime": regime_by_run.get(res.run_id),
+            })
+
+    # sort the bounded members by the SAME ascending-by-factor tie-break (pass-2's own chunk order is
+    # (run_id, id) — NOT the factor-ascending order the decile slice is defined in).
+    members.sort(key=lambda o: (o["factor"], o["ticker"], o["run_id"]))
+    return members
+
+
 def _decile_member_slice(ordered: list[dict], count: int, decile: int) -> list[dict]:
     """The EXACT `ordered[lo:hi]` member slice the `_deciles` aggregate assigns to a 1-based `decile`
     (D1…D`count`). The lo/hi quantile edges are the SAME integer-arithmetic boundaries `_deciles` uses

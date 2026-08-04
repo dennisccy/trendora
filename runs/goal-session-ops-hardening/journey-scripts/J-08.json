@@ -1,9 +1,12 @@
 {
   "schema_version": 1,
   "journey": "J-08",
-  "name": "Backtest evidence serves from storage only — never a cold recompute on request",
-  "default_timeout_ms": 8000,
+  "name": "Backtest evidence serves from storage only — never a cold recompute on request (payload-gated)",
+  "default_timeout_ms": 20000,
   "steps": [
-    {"n": 1, "journey": "J-08", "action": {"type": "goto", "url": "/backtest"}, "expect": {"text": "Forward-tested evidence"}}
+    {"n": 1, "journey": "J-08", "action": {"type": "goto", "url": "/backtest"}, "expect": {"text": "Backtest"}},
+    {"n": 2, "journey": "J-08", "action": {"type": "expect", "target": {"testid": "evidence-aggregate"}}, "expect": {"target": {"testid": "evidence-aggregate"}}},
+    {"n": 3, "journey": "J-08", "action": {"type": "expect", "target": {"testid": "evidence-summary"}}, "expect": {"target": {"testid": "evidence-summary"}}},
+    {"n": 4, "journey": "J-08", "action": {"type": "expect", "text": "Snapshots contributing"}, "expect": {"text": "Snapshots contributing"}}
   ]
 }

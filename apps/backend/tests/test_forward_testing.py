@@ -32,6 +32,7 @@ from app.engine.forward_testing import (
     backfill_forward_returns,
     compute_drawdown_expectations,
     compute_drawdown_expectations_cached,
+    compute_drawdown_expectations_cached_with_status,
     compute_forward_aggregates,
     forward_aggregates_ingest_cached,
     forward_excursions,
@@ -1731,6 +1732,231 @@ def test_compute_drawdown_expectations_cached_none_when_horizon_outside_scope_sk
 
 
 # ==================================================================================================
+# compute_drawdown_expectations_cached_with_status — the /api/evidence SERVING wrapper (ops-hardening
+# iter-47, audit B2): serve-stale-behind-a-label. `_dataset_version` folds in EVERY forward_returns row in
+# the DB, so ANY ingest anywhere invalidates every claim's cache row at once; this wrapper closes the TC-2
+# scenario (an unrelated new row must never force the page onto the multi-minute cold-recompute tail) by
+# serving the LAST-GOOD generation immediately (labeled "refreshing") while a single-flight background
+# thread re-warms the current version, instead of blocking the request on the cold compute.
+#
+# A synchronous stand-in for `threading.Thread` makes the background re-warm deterministic in these tests
+# (runs inline, on its OWN session against the SAME test engine via `app.db.set_engine`) — it still
+# exercises the real `_run` body (compute + persist + prune), so these are NOT a mocked-out no-op proof.
+# ==================================================================================================
+class _SyncThread:
+    """A `threading.Thread` stand-in whose `start()` runs the target INLINE, synchronously — makes the
+    background re-warm's effects observable immediately within a test, while still exercising the real
+    `_run` closure (compute + persist + prune), not a mocked-out no-op."""
+
+    def __init__(self, target=None, args=(), kwargs=None, daemon=None, name=None):
+        self._target = target
+
+    def start(self):
+        self._target()
+
+    def join(self, timeout=None):
+        pass
+
+
+def test_cached_with_status_cold_start_falls_back_to_synchronous_ready(dd_expectations_engine):
+    """TC-1/first-ever resolution: with NO prior generation cached at all (normally pre-empted by the boot
+    warm), the wrapper falls back to the synchronous cached compute exactly as before this iteration —
+    `(payload, "ready")`, byte-identical to calling `compute_drawdown_expectations_cached` directly."""
+    cfg = _dd_cfg()
+    with Session(dd_expectations_engine) as session:
+        direct = compute_drawdown_expectations_cached(session, _FACTOR_CLAIM, cfg)
+    with Session(dd_expectations_engine) as session:
+        payload, status = compute_drawdown_expectations_cached_with_status(session, _FACTOR_CLAIM, cfg)
+    assert status == "ready"
+    assert json.dumps(payload, sort_keys=True) == json.dumps(direct, sort_keys=True)
+
+
+def test_cached_with_status_hit_is_ready_with_no_recompute(dd_expectations_engine, monkeypatch):
+    """TC-1: a HIT for the CURRENT dataset version returns `(payload, "ready")` without ever re-invoking
+    the uncached `compute_drawdown_expectations` (a call-count proof, not just a byte-match)."""
+    import app.engine.forward_testing as forward_testing_module
+
+    cfg = _dd_cfg()
+    with Session(dd_expectations_engine) as session:
+        compute_drawdown_expectations_cached(session, _FACTOR_CLAIM, cfg)  # warm the current-version row
+
+    call_count = {"n": 0}
+    real = forward_testing_module.compute_drawdown_expectations
+
+    def _counting(*args, **kwargs):
+        call_count["n"] += 1
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(forward_testing_module, "compute_drawdown_expectations", _counting)
+    with Session(dd_expectations_engine) as session:
+        payload, status = compute_drawdown_expectations_cached_with_status(session, _FACTOR_CLAIM, cfg)
+    assert status == "ready"
+    assert payload is not None
+    assert call_count["n"] == 0, "a current-version HIT must never recompute"
+
+
+def test_cached_with_status_dataset_change_serves_stale_refreshing_then_settles_ready(
+    dd_expectations_engine, monkeypatch,
+):
+    """TC-2/TC-3: after the dataset changes (bumping `_dataset_version`, exactly like an unrelated ingest
+    landing a new forward_returns row), the wrapper serves the LAST-GOOD (pre-change) payload IMMEDIATELY
+    as `(payload, "refreshing")` — byte-identical to the pre-change value, never blocking on the cold
+    recompute — while a single-flight background re-warm computes+persists the new generation. Once that
+    re-warm has settled, the NEXT call is a genuine HIT: `(new_payload, "ready")`, matching a fresh
+    uncached compute of the CHANGED cohort — proving no two generations' fields were ever mixed in one
+    response (each response is exactly ONE EventStudyCache row's payload, deserialized whole)."""
+    import app.db as db_module
+    import app.engine.forward_testing as forward_testing_module
+    from app.engine import warmup as warmup_module
+
+    # the GLOBAL background worker (`_spawn_drawdown_expectations_rewarm`) re-warms EVERY claim on the
+    # EVIDENCE LEDGER via `warmup._warm_drawdown_expectations` — stub the ledger to hold exactly this
+    # test's `_FACTOR_CLAIM` (mirrors test_warmup.py's `_stub_ledger` convention) so the worker actually
+    # re-warms the subject this test observes, instead of the real production ledger's unrelated claims.
+    monkeypatch.setattr(warmup_module, "read_entries", lambda _path: [{"type": "claim", "claim": _FACTOR_CLAIM}])
+    monkeypatch.setattr(warmup_module.evidence, "resolve_ledger_path", lambda *_a, **_k: "unused.jsonl")
+
+    cfg = _dd_cfg()
+    with Session(dd_expectations_engine) as session:
+        before = compute_drawdown_expectations_cached(session, _FACTOR_CLAIM, cfg)  # warm v_before
+
+        # change the dataset: one more leadership_score observation on the FIRST Expansion date (mirrors
+        # `test_compute_drawdown_expectations_cached_refreshes_on_dataset_version_change` exactly).
+        existing_run = session.exec(
+            select(ScannerRun).where(ScannerRun.asof_date == _EXP_DATES[0])
+        ).one()
+        _add_result(session, existing_run.id, "ZZZ", "A", "Actionable", "Technology", 2)
+        _add_dd_fr(session, existing_run, "ZZZ", DD_H, 0.05, mdd=-0.01, uw=1, ttr=1)
+        session.commit()
+
+    with Session(dd_expectations_engine) as session:
+        fresh_after = compute_drawdown_expectations(session, _FACTOR_CLAIM, cfg)  # the true post-change value
+    assert _by_phase(fresh_after, "Expansion")["n"] == 5  # sanity: the dataset genuinely changed
+
+    prev_engine = db_module._engine
+    db_module.set_engine(dd_expectations_engine)  # the background re-warm resolves its OWN session via get_engine()
+    monkeypatch.setattr(forward_testing_module.threading, "Thread", _SyncThread)
+    try:
+        with Session(dd_expectations_engine) as session:
+            payload, status = compute_drawdown_expectations_cached_with_status(session, _FACTOR_CLAIM, cfg)
+    finally:
+        db_module.set_engine(prev_engine)
+
+    assert status == "refreshing"
+    assert json.dumps(payload, sort_keys=True) == json.dumps(before, sort_keys=True), (
+        "a refreshing response must serve the LAST-GOOD (pre-change) generation verbatim — never a mix"
+    )
+
+    # the single-flight background re-warm (run synchronously via _SyncThread above) has now settled —
+    # the NEXT call must be a genuine HIT on the NEW generation.
+    with Session(dd_expectations_engine) as session:
+        payload2, status2 = compute_drawdown_expectations_cached_with_status(session, _FACTOR_CLAIM, cfg)
+        subject = _drawdown_expectations_cache_subject(_FACTOR_CLAIM)
+        rows = session.exec(select(EventStudyCache).where(EventStudyCache.subject == subject)).all()
+    assert status2 == "ready"
+    assert json.dumps(payload2, sort_keys=True) == json.dumps(fresh_after, sort_keys=True)
+    assert len(rows) == 1, "the stale pre-change row must be pruned once the re-warm lands the new one"
+
+
+def test_cached_with_status_single_flight_no_duplicate_rewarm(dd_expectations_engine, monkeypatch):
+    """A re-warm already in flight (the GLOBAL single-flight guard — one worker re-warms EVERY stale
+    claim, not one per claim; see the module note above `_spawn_drawdown_expectations_rewarm`) is never
+    duplicated — a second concurrent MISS for ANY claim while one worker is already running must not spawn
+    a second background thread."""
+    import app.engine.forward_testing as forward_testing_module
+
+    cfg = _dd_cfg()
+    with Session(dd_expectations_engine) as session:
+        compute_drawdown_expectations_cached(session, _FACTOR_CLAIM, cfg)  # warm v_before
+        existing_run = session.exec(
+            select(ScannerRun).where(ScannerRun.asof_date == _EXP_DATES[0])
+        ).one()
+        _add_result(session, existing_run.id, "ZZZ", "A", "Actionable", "Technology", 2)
+        _add_dd_fr(session, existing_run, "ZZZ", DD_H, 0.05, mdd=-0.01, uw=1, ttr=1)
+        session.commit()
+
+    thread_starts = {"n": 0}
+
+    class _CountingSyncThread(_SyncThread):
+        def start(self):
+            thread_starts["n"] += 1
+            super().start()
+
+    monkeypatch.setattr(forward_testing_module.threading, "Thread", _CountingSyncThread)
+    # pre-mark a re-warm as already in-flight — simulates a concurrent request's own worker still running
+    # when a second request (for the SAME or a DIFFERENT claim) lands.
+    forward_testing_module._REWARM_IN_FLIGHT = True
+    try:
+        with Session(dd_expectations_engine) as session:
+            payload, status = compute_drawdown_expectations_cached_with_status(session, _FACTOR_CLAIM, cfg)
+    finally:
+        forward_testing_module._REWARM_IN_FLIGHT = False
+
+    assert status == "refreshing"
+    assert payload is not None
+    assert thread_starts["n"] == 0, "a re-warm already in flight must never be duplicated by a second stale claim"
+
+
+def test_cached_with_status_no_rewarm_while_boot_warm_thread_is_alive(dd_expectations_engine, monkeypatch):
+    """ops-hardening iter-47 AUDIT (finding B1): the request-triggered re-warm must ALSO stand down while
+    the BOOT warm is running — `warmup._run_warmup` ends by running the identical
+    `_warm_drawdown_expectations` ledger loop, so spawning here would put a SECOND full-ledger warm
+    alongside it for its whole (~7-26 min measured) duration, doubling peak concurrent heavy compute in
+    exactly the window this iteration exists to protect (AG-8). The stale generation is still served
+    behind its honest "refreshing" label — only the duplicate worker is suppressed. Once the boot thread
+    has exited, the NEXT miss spawns normally (asserted below in the same test, so a guard that
+    permanently wedges the re-warm cannot pass)."""
+    import app.engine.forward_testing as forward_testing_module
+    import app.engine.warmup as warmup_module
+
+    cfg = _dd_cfg()
+    with Session(dd_expectations_engine) as session:
+        compute_drawdown_expectations_cached(session, _FACTOR_CLAIM, cfg)  # warm v_before
+        existing_run = session.exec(
+            select(ScannerRun).where(ScannerRun.asof_date == _EXP_DATES[0])
+        ).one()
+        _add_result(session, existing_run.id, "ZZY", "A", "Actionable", "Technology", 2)
+        _add_dd_fr(session, existing_run, "ZZY", DD_H, 0.05, mdd=-0.01, uw=1, ttr=1)
+        session.commit()
+
+    thread_starts = {"n": 0}
+
+    class _CountingSyncThread(_SyncThread):
+        def start(self):
+            thread_starts["n"] += 1
+            # do NOT run the body: this test only counts spawns (the re-warm itself is covered elsewhere)
+
+    monkeypatch.setattr(forward_testing_module.threading, "Thread", _CountingSyncThread)
+
+    class _AliveThread:
+        def is_alive(self):
+            return True
+
+    class _DeadThread:
+        def is_alive(self):
+            return False
+
+    monkeypatch.setattr(warmup_module, "_WARMUP_THREAD", _AliveThread(), raising=False)
+    with Session(dd_expectations_engine) as session:
+        payload, status = compute_drawdown_expectations_cached_with_status(session, _FACTOR_CLAIM, cfg)
+    assert status == "refreshing", "the stale generation must still be served behind its honest label"
+    assert payload is not None
+    assert thread_starts["n"] == 0, (
+        "a second full-ledger warm must never run alongside the boot warm (audit B1)"
+    )
+
+    # …and the guard must not be a permanent wedge: once the boot warm's thread is gone, the next miss
+    # spawns the re-warm exactly as before.
+    monkeypatch.setattr(warmup_module, "_WARMUP_THREAD", _DeadThread(), raising=False)
+    with Session(dd_expectations_engine) as session:
+        payload2, status2 = compute_drawdown_expectations_cached_with_status(session, _FACTOR_CLAIM, cfg)
+    assert status2 == "refreshing"
+    assert payload2 is not None
+    assert thread_starts["n"] == 1, "with no boot warm in flight the re-warm must still be spawned"
+    forward_testing_module._REWARM_IN_FLIGHT = False  # the counting thread never ran the body's finally
+
+
+# ==================================================================================================
 # ops-hardening iter-36 (J-07 evidence-serving-path memory bound, ledger finding iter-35/k) —
 # `compute_drawdown_expectations`'s `stored_by_key` `ForwardReturn` read (forward_testing.py:2320-2333)
 # is now partitioned into `research.drawdown_expectations_ticker_chunk`-wide ticker chunks, each
@@ -1898,8 +2124,8 @@ def test_drawdown_expectations_stored_by_key_accumulator_is_chunk_bounded(dd_exp
     observed_sizes: list[int] = []
     real_slice_map = forward_testing_module._drawdown_ticker_slice_map
 
-    def _wrapped(session, horizon, slice_tickers, batch):
-        result = real_slice_map(session, horizon, slice_tickers, batch)
+    def _wrapped(session, horizon, slice_tickers, batch, dates_by_ticker=None):
+        result = real_slice_map(session, horizon, slice_tickers, batch, dates_by_ticker)
         observed_sizes.append(len(result))
         return result
 
@@ -1921,3 +2147,128 @@ def test_drawdown_expectations_stored_by_key_accumulator_is_chunk_bounded(dd_exp
         f"the live accumulator must never hold the whole cohort's rows at once — got {observed_sizes!r}"
     )
     assert max(observed_sizes) <= 4, f"a single ticker's own slice must not exceed its own row count, got {observed_sizes!r}"
+
+
+# ==================================================================================================
+# ops-hardening iter-47 (AG-8, iter-46 audit B4): `_drawdown_ticker_slice_map`'s query was
+# `(horizon, symbol)`-filtered only — never on the cohort's own snapshot dates — so it read every stored
+# ForwardReturn for the chunk's tickers at this horizon, INCLUDING dates the claim's cohort never resolved
+# (a ticker can carry forward returns on many more snapshot dates than any one claim's cohort ever uses).
+# The iter-46 audit measured this at 7,994,388 rows across 71 calls to serve 7 live claims. The filter
+# narrows the query to exactly the (symbol, date) pairs the caller's lookup loop will ever ask for —
+# provably byte-identical (an excluded row's key is never queried either way) with a measured, real
+# row-count reduction (TC-5).
+#
+# ops-hardening iter-47 FIX PASS (audit finding B2): the filter first shipped scoped by the per-CHUNK
+# UNION of the chunk's cohort dates, which on a real all-history cohort removed only 4.4 % of rows — and
+# the test below could not see that, because it ran at chunk width 1 (where a chunk IS one ticker, so the
+# union is trivially the right axis). It now runs at chunk width 2 with AAA and BBB in the SAME chunk and
+# noise rows placed on the OTHER ticker's cohort date: the per-chunk-union implementation passes those
+# rows through, the per-ticker implementation excludes them. This test FAILS against the union version.
+# ==================================================================================================
+def test_drawdown_ticker_slice_map_date_filter_reduces_rows_and_stays_byte_identical(
+    dd_expectations_engine, monkeypatch,
+):
+    """TC-5: extra ForwardReturn rows for an existing cohort ticker (AAA) at dates OUTSIDE its own resolved
+    cohort (no matching ScannerResult, so `compute_samples` never surfaces them) prove the date filter
+    (a) EXCLUDES those rows from the query — a measured row-count reduction, INCLUDING a noise row sitting
+    on a CHUNK-SIBLING's cohort date, which only per-ticker scoping can exclude — and (b) leaves
+    `compute_drawdown_expectations`'s served payload byte-identical to the pre-fix unfiltered read (the
+    excluded rows were never looked up by either implementation)."""
+    import app.engine.forward_testing as forward_testing_module
+
+    # `_CORR_DATES[0]` is BBB's OWN cohort date — AAA's noise row there is inside the {AAA,BBB} chunk's
+    # date UNION, so only PER-TICKER scoping can exclude it (audit B2's discriminator).
+    noise_dates = [date(2025, 8, 10), date(2025, 9, 10), _CORR_DATES[0]]
+    with Session(dd_expectations_engine) as session:
+        for i, d in enumerate(noise_dates):
+            # a bare ForwardReturn row for AAA at a date with NO ScannerResult for AAA -> never enters the
+            # claim's cohort (compute_samples never surfaces it), but WOULD be read by an unfiltered
+            # `_drawdown_ticker_slice_map` query (same symbol + horizon, no date scope).
+            session.add(ForwardReturn(
+                run_id=999_000 + i, symbol="AAA", horizon=DD_H, asof_date=d,
+                entry_close=100.0, measured_date=d + timedelta(days=DD_H * 2),
+                realized_return=0.01, max_drawdown=-0.5, underwater_days=99, time_to_recover_days=1,
+            ))
+        session.commit()
+
+    cfg = load_config()
+    real_slice_map = forward_testing_module._drawdown_ticker_slice_map
+
+    # baseline sanity: an UNFILTERED read (dates_by_ticker=None, the pre-iter-47 behavior) sees the noise
+    # rows too — proves the fixture actually exercises the reduction this test measures.
+    with Session(dd_expectations_engine) as session:
+        unfiltered = real_slice_map(session, DD_H, ["AAA"], cfg.research.read_batch_size, None)
+    assert len(unfiltered) == 4 + len(noise_dates), "sanity: the noise rows must be visible to an unfiltered read"
+
+    observed_sizes: list[int] = []
+
+    def _wrapped(session, horizon, slice_tickers, batch, dates_by_ticker=None):
+        result = real_slice_map(session, horizon, slice_tickers, batch, dates_by_ticker)
+        observed_sizes.append(len(result))
+        return result
+
+    monkeypatch.setattr(forward_testing_module, "_drawdown_ticker_slice_map", _wrapped)
+    # chunk width 2 -> tickers sort AAA/BBB/CCC/DDD, so chunk 1 is {AAA, BBB}: AAA's noise row on BBB's own
+    # cohort date is inside the chunk's date UNION and outside AAA's own date set.
+    research_cfg = cfg.research.model_copy(update={"drawdown_expectations_ticker_chunk": 2})
+    filtered_cfg = cfg.model_copy(update={"research": research_cfg})
+    with Session(dd_expectations_engine) as session:
+        filtered_payload = compute_drawdown_expectations(session, _FACTOR_CLAIM, filtered_cfg)
+
+    assert filtered_payload is not None
+    # chunk 1 = {AAA (4 cohort dates), BBB (1)} -> exactly 5 rows when each ticker is scoped to its OWN
+    # dates; 6 under the per-chunk-union scoping (AAA's noise row on BBB's date survives the union).
+    assert observed_sizes[0] == 5, (
+        f"expected the {{AAA,BBB}} chunk to read exactly each ticker's OWN cohort dates (5 rows), got "
+        f"{observed_sizes[0]} — a per-chunk-union date scope reads 6 (audit B2)"
+    )
+    assert observed_sizes[0] < len(unfiltered), (
+        f"the date filter must reduce the read's row count vs the unfiltered read "
+        f"({observed_sizes[0]} !< {len(unfiltered)})"
+    )
+
+    # byte-identity: recompute forcing dates_by_ticker=None at every call (the exact pre-iter-47 behavior),
+    # then diff the served payloads.
+    def _reference_unfiltered(session, horizon, slice_tickers, batch, dates_by_ticker=None):
+        return real_slice_map(session, horizon, slice_tickers, batch, None)
+
+    monkeypatch.setattr(forward_testing_module, "_drawdown_ticker_slice_map", _reference_unfiltered)
+    with Session(dd_expectations_engine) as session:
+        reference_payload = compute_drawdown_expectations(session, _FACTOR_CLAIM, filtered_cfg)
+
+    assert json.dumps(filtered_payload, sort_keys=True, default=str) == json.dumps(
+        reference_payload, sort_keys=True, default=str
+    ), "date-filtered payload must be byte-identical to the unfiltered pre-fix reference"
+
+
+def test_drawdown_ticker_slice_map_batches_date_binds_and_keeps_every_row(dd_expectations_engine, monkeypatch):
+    """ops-hardening iter-47 FIX PASS (audit finding B7): a ticker's date IN-list is emitted in
+    `_MAX_IN_PARAMS`-sized batches, so the query never depends on this host's SQLite variable limit
+    (32,766 on 3.53.1, but 999 on builds predating 3.32 — and the list is sized by the DATA, growing as
+    history deepens). Proven by shrinking the batch to 2 against AAA's 4 cohort dates: MORE THAN ONE query
+    is issued and the returned map still holds ALL FOUR rows (no row silently dropped at a batch seam)."""
+    import app.engine.forward_testing as forward_testing_module
+
+    monkeypatch.setattr(forward_testing_module, "_MAX_IN_PARAMS", 2)
+    cfg = load_config()
+    dates_by_ticker = {"AAA": frozenset(_EXP_DATES)}
+
+    query_count = {"n": 0}
+    with Session(dd_expectations_engine) as session:
+        orig_exec = session.exec
+
+        def _counting_exec(stmt, *a, **kw):
+            if "forward_returns" in str(stmt):
+                query_count["n"] += 1
+            return orig_exec(stmt, *a, **kw)
+
+        session.exec = _counting_exec  # type: ignore[assignment]
+        batched = forward_testing_module._drawdown_ticker_slice_map(
+            session, DD_H, ["AAA"], cfg.research.read_batch_size, dates_by_ticker
+        )
+
+    assert query_count["n"] == 2, f"4 dates at a 2-bind batch must issue 2 queries, got {query_count['n']}"
+    assert sorted(batched) == sorted((("AAA", d.isoformat()) for d in _EXP_DATES)), (
+        f"every batch's rows must survive into the same map, got {sorted(batched)!r}"
+    )

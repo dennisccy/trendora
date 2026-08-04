@@ -1,18 +1,189 @@
 {
   "schema_version": 1,
   "journey": "J-01",
-  "name": "Backfill honors the requested range and explains zero-work",
-  "default_timeout_ms": 15000,
+  "name": "Backfill honors the requested range and explains zero-work (live job card, not persisted history)",
+  "default_timeout_ms": 20000,
   "steps": [
-    {"n": 1, "journey": "J-01", "action": {"type": "goto", "url": "/data"}, "expect": {"text": "Data Manager"}},
-    {"n": 2, "journey": "J-01", "action": {"type": "fill", "target": {"testid": "job-start-date"}, "text": "2026-05-02"}},
-    {"n": 3, "journey": "J-01", "action": {"type": "fill", "target": {"testid": "job-end-date"}, "text": "2026-05-03"}},
-    {"n": 4, "journey": "J-01", "action": {"type": "click", "target": {"role": "button", "name": "Start"}}},
-    {"n": 5, "journey": "J-01", "action": {"type": "goto", "url": "/data"}, "expect": {"text": "2 non-trading"}},
-    {"n": 6, "journey": "J-01", "action": {"type": "fill", "target": {"testid": "job-start-date"}, "text": "2026-05-02"}},
-    {"n": 7, "journey": "J-01", "action": {"type": "fill", "target": {"testid": "job-end-date"}, "text": "2026-05-29"}},
-    {"n": 8, "journey": "J-01", "action": {"type": "click", "target": {"role": "button", "name": "Start"}}},
-    {"n": 9, "journey": "J-01", "action": {"type": "goto", "url": "/data"}, "expect": {"text": "19 already snapshotted"}},
-    {"n": 10, "journey": "J-01", "action": {"type": "goto", "url": "/scanner-runs/748"}, "expect": {"text": "as of 2026-05-29"}}
+    {
+      "n": 1,
+      "journey": "J-01",
+      "action": {
+        "type": "goto",
+        "url": "/data"
+      },
+      "expect": {
+        "text": "Data Manager"
+      }
+    },
+    {
+      "n": 2,
+      "journey": "J-01",
+      "action": {
+        "type": "fill",
+        "target": {
+          "testid": "job-start-date"
+        },
+        "text": "2026-05-02"
+      }
+    },
+    {
+      "n": 3,
+      "journey": "J-01",
+      "action": {
+        "type": "fill",
+        "target": {
+          "testid": "job-end-date"
+        },
+        "text": "2026-05-29"
+      }
+    },
+    {
+      "n": 4,
+      "journey": "J-01",
+      "action": {
+        "type": "click",
+        "target": {
+          "role": "button",
+          "name": "Start"
+        }
+      }
+    },
+    {
+      "n": 5,
+      "journey": "J-01",
+      "action": {
+        "type": "expect",
+        "text": "19/19 dates"
+      },
+      "expect": {
+        "text": "19/19 dates"
+      }
+    },
+    {
+      "n": 6,
+      "journey": "J-01",
+      "action": {
+        "type": "expect",
+        "target": {
+          "testid": "stage-timings"
+        }
+      },
+      "expect": {
+        "target": {
+          "testid": "stage-timings"
+        }
+      }
+    },
+    {
+      "n": 7,
+      "journey": "J-01",
+      "action": {
+        "type": "expect",
+        "text": "28 calendar days · 19 already snapshotted · 9 non-trading"
+      },
+      "expect": {
+        "text": "28 calendar days · 19 already snapshotted · 9 non-trading"
+      }
+    },
+    {
+      "n": 8,
+      "journey": "J-01",
+      "action": {
+        "type": "wait_for",
+        "ms": 15000
+      }
+    },
+    {
+      "n": 9,
+      "journey": "J-01",
+      "action": {
+        "type": "expect",
+        "target": {
+          "testid": "zero-work-note"
+        }
+      },
+      "expect": {
+        "target": {
+          "testid": "zero-work-note"
+        }
+      }
+    },
+    {
+      "n": 10,
+      "journey": "J-01",
+      "action": {
+        "type": "fill",
+        "target": {
+          "testid": "job-start-date"
+        },
+        "text": "2026-05-02"
+      }
+    },
+    {
+      "n": 11,
+      "journey": "J-01",
+      "action": {
+        "type": "fill",
+        "target": {
+          "testid": "job-end-date"
+        },
+        "text": "2026-05-03"
+      }
+    },
+    {
+      "n": 12,
+      "journey": "J-01",
+      "action": {
+        "type": "click",
+        "target": {
+          "role": "button",
+          "name": "Start"
+        }
+      }
+    },
+    {
+      "n": 13,
+      "journey": "J-01",
+      "action": {
+        "type": "expect",
+        "text": "0/0 dates"
+      },
+      "expect": {
+        "text": "0/0 dates"
+      }
+    },
+    {
+      "n": 14,
+      "journey": "J-01",
+      "action": {
+        "type": "expect",
+        "text": "2 calendar days · 0 already snapshotted · 2 non-trading"
+      },
+      "expect": {
+        "text": "2 calendar days · 0 already snapshotted · 2 non-trading"
+      }
+    },
+    {
+      "n": 15,
+      "journey": "J-01",
+      "action": {
+        "type": "goto",
+        "url": "/data"
+      },
+      "expect": {
+        "text": "Run history"
+      }
+    },
+    {
+      "n": 16,
+      "journey": "J-01",
+      "action": {
+        "type": "goto",
+        "url": "/scanner-runs/748"
+      },
+      "expect": {
+        "text": "as of 2026-05-29"
+      }
+    }
   ]
 }

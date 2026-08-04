@@ -2267,21 +2267,66 @@ def _loss_streak_cell(dated_returns: list[tuple], floor: int) -> dict:
     return {"value": _longest_negative_streak(ordered), "n": n, "insufficient": False}
 
 
+# ops-hardening iter-47 FIX PASS (audit finding B7): SQLite's SQLITE_LIMIT_VARIABLE_NUMBER is 32,766 on
+# this host's 3.53.1, but only 999 on builds predating 3.32 — an `IN (…)` list sized by the DATA (a
+# claim's snapshot dates, which grow as history deepens) must not silently depend on that. Every
+# date IN-list below is emitted in batches of this many binds.
+_MAX_IN_PARAMS = 900
+
+
 def _drawdown_ticker_slice_map(
     session: Session, horizon: int, slice_tickers: list[str], batch: int,
+    dates_by_ticker: Optional[dict] = None,
 ) -> dict[tuple[str, str], tuple]:
     """ops-hardening iter-46 (AG-8): the `(symbol, asof_date_iso) -> (max_drawdown, underwater_days,
     time_to_recover_days)` read for ONE bounded SLICE of tickers — `compute_drawdown_expectations`'s chunk
     axis (`research.drawdown_expectations_ticker_chunk`), mirroring `research.py`'s `_fr_slice_map`. A
     named function (not an inlined loop body) so a test can wrap/instrument it to observe the live
-    per-slice size directly (TC-2)."""
-    fr_stmt = select(
+    per-slice size directly (TC-2).
+
+    ops-hardening iter-47 (AG-8, iter-46 audit B4): `dates_by_ticker` (`{ticker: frozenset[date]}`,
+    OPTIONAL — `None` preserves the pre-iter-47 unfiltered read byte-for-byte, the default every OTHER
+    caller/test still gets) scopes the read to exactly the `(symbol, asof_date)` pairs the caller's lookup
+    loop will ever ask for via `stored_by_key.get((ticker, date_iso))`. PROVABLY byte-identical, never a
+    freshness compromise: every row this filter excludes is a pair the loop would never have queried
+    anyway (a stored ForwardReturn at this horizon/symbol on a date OUTSIDE that ticker's own resolved
+    cohort dates is simply never read), and every pair it WILL ask for is included by construction —
+    the map is built from the very rows the loop iterates.
+
+    ops-hardening iter-47 FIX PASS (audit finding B2): the filter first shipped as ONE date set per
+    50-ticker CHUNK — the UNION of the chunk's cohort dates. On an all-history decile cohort that union is
+    nearly the whole snapshot history, so the bound bound almost nothing: measured live, it removed 4.4 %
+    of rows on the flagship `leadership_score` D10 h=20 claim (2,812 of 2,869 dates survived the union).
+    That is the same "bound sized against the wrong axis" shape `_factor_observations`' own docstring
+    records from iter-29. Scoping is now PER TICKER — each ticker is read with only its OWN cohort dates,
+    the axis the lookup key is actually built on. The iter-46 audit measured the UNFILTERED read at
+    7,994,388 rows across 71 calls to serve 7 live claims; the per-ticker reduction is measured and
+    recorded in `reports/perf-budgets.md` Item P (TC-5)."""
+    stored_by_key: dict[tuple[str, str], tuple] = {}
+    cols = (
         ForwardReturn.symbol, ForwardReturn.asof_date, ForwardReturn.max_drawdown,
         ForwardReturn.underwater_days, ForwardReturn.time_to_recover_days,
-    ).where(ForwardReturn.horizon == horizon, ForwardReturn.symbol.in_(slice_tickers))
-    stored_by_key: dict[tuple[str, str], tuple] = {}
-    for symbol, asof_date, mdd, uw, ttr in session.exec(fr_stmt).yield_per(batch):
-        stored_by_key[(symbol, asof_date.isoformat())] = (mdd, uw, ttr)
+    )
+    if dates_by_ticker is None:
+        fr_stmt = select(*cols).where(
+            ForwardReturn.horizon == horizon, ForwardReturn.symbol.in_(slice_tickers)
+        )
+        for symbol, asof_date, mdd, uw, ttr in session.exec(fr_stmt).yield_per(batch):
+            stored_by_key[(symbol, asof_date.isoformat())] = (mdd, uw, ttr)
+        return stored_by_key
+    for ticker in slice_tickers:
+        ticker_dates = dates_by_ticker.get(ticker)
+        if not ticker_dates:
+            continue  # this ticker contributes no cohort row -> no key of its will ever be looked up
+        ordered_dates = sorted(ticker_dates)
+        for i in range(0, len(ordered_dates), _MAX_IN_PARAMS):
+            fr_stmt = select(*cols).where(
+                ForwardReturn.horizon == horizon,
+                ForwardReturn.symbol == ticker,
+                ForwardReturn.asof_date.in_(ordered_dates[i: i + _MAX_IN_PARAMS]),
+            )
+            for symbol, asof_date, mdd, uw, ttr in session.exec(fr_stmt).yield_per(batch):
+                stored_by_key[(symbol, asof_date.isoformat())] = (mdd, uw, ttr)
     return stored_by_key
 
 
@@ -2378,9 +2423,25 @@ def compute_drawdown_expectations(
     by_phase_ttr: dict[str, list[float]] = defaultdict(list)
     by_phase_returns: dict[str, list[tuple]] = defaultdict(list)
 
+    # ops-hardening iter-47 (AG-8, iter-46 audit B4) + FIX PASS (audit B2): scope each ticker's read to
+    # exactly ITS OWN cohort dates — the only keys `stored_by_key.get((ticker, date_iso))` below will ever
+    # ask for — narrowing `_drawdown_ticker_slice_map`'s query without touching a single served value
+    # (provably byte-identical: an excluded row's key is never looked up either way). Built ONCE here, not
+    # per chunk: the date objects are interned through `_dates` so the whole map costs one object per
+    # distinct snapshot date, not one per cohort row. The first shipped version of this filter used the
+    # per-CHUNK UNION of these sets, which on an all-history cohort is nearly the full snapshot history
+    # and removed only 4.4 % of rows (audit B2) — the union axis is not the axis the lookup key uses.
+    _dates: dict[str, date_cls] = {}
+    dates_by_ticker: dict[str, frozenset] = {}
+    for ticker, ticker_rows in rows_by_ticker.items():
+        dates_by_ticker[ticker] = frozenset(
+            _dates.setdefault(row["snapshot_date"], date_cls.fromisoformat(row["snapshot_date"]))
+            for row in ticker_rows
+        )
+
     for i in range(0, len(tickers), chunk_width):
         chunk = tickers[i : i + chunk_width]
-        stored_by_key = _drawdown_ticker_slice_map(session, horizon, chunk, read_batch)
+        stored_by_key = _drawdown_ticker_slice_map(session, horizon, chunk, read_batch, dates_by_ticker)
 
         # fold THIS chunk's rows into the by-phase accumulators immediately, then let `stored_by_key`
         # go out of scope (rebound next iteration) before the next chunk's query starts (TC-2's bound).
@@ -2513,3 +2574,178 @@ def compute_drawdown_expectations_cached(
     except Exception:  # a concurrent writer raced us to the same key — best-effort cache, not a source of
         session.rollback()  # truth; the freshly computed payload is still byte-identical, so return it
     return payload
+
+
+# --- serve-stale-behind-a-label (ops-hardening iter-47, audit B2) ---------------------------------------
+# The iter-46 audit's own recommended fix: `compute_drawdown_expectations_cached`'s stamp is the GLOBAL
+# `_dataset_version` (`r{max(scanner_runs.id)}-f{count(forward_returns)}`, research.py:1705), which folds
+# in EVERY forward_returns row in the DB — not only rows relevant to a given claim's own cohort. A single
+# ingest can therefore invalidate ALL 7 live claims' cache rows at once, forcing the NEXT `/api/evidence`
+# request onto the ~163s-idle / >300s-loaded cold-recompute tail this whole cache exists to avoid.
+#
+# A cohort-scoped (narrower) cache key was investigated first, per the phase spec's own preference — but a
+# claim's cohort (tickers) is data-DERIVED (5 of the 7 live claims are factor-decile cohorts: "the top
+# decile of leadership_score", not an explicit ticker list), so determining "this claim's own relevant
+# rows" requires resolving the cohort — the SAME expensive `compute_samples` call this cache exists to
+# avoid paying synchronously. A cheaper HORIZON-only-scoped stamp was also examined: it is provably safe
+# (a forward_returns row at a horizon a claim never reads genuinely cannot affect that claim's output —
+# `compute_samples(horizon=...)` and `_drawdown_ticker_slice_map(horizon=...)` both filter by horizon
+# exclusively), but it does not close the REAL production scenario this iteration must fix: every
+# `walk_forward.underwater_horizons` value (`config.yaml`) already equals every configured forward-return
+# horizon, and a single ingest day's `_do_backfill` computes forward returns across the FULL configured
+# horizon set for the tickers it touches — so a horizon-only-scoped stamp still invalidates on almost any
+# real ingest, same as the unscoped one, while adding a second stamp function to maintain. Serving the
+# previous generation behind an honest label — this iteration's shipped fix — is the ONLY option that
+# provably satisfies "answers within budget during a concurrent heavy ingest" (TC-3) regardless of which
+# rows changed, and it has a direct, already-registered precedent (`/backtest`'s
+# `evidence_status: "ready"|"refreshing"|"not_yet_computed"`, `apps/frontend/app/backtest/page.tsx`).
+#
+# CONTRACT: on a HIT for the CURRENT dataset version, behavior is UNCHANGED — `(payload, "ready")`, the
+# SAME payload `compute_drawdown_expectations_cached` alone would return. On a MISS, if a PREVIOUS
+# generation's row still exists for this exact claim, it is served IMMEDIATELY as `(payload, "refreshing")`
+# — never mixed with the incoming generation's fields (TC-3's no-generation-mixing requirement: the served
+# payload is ALWAYS exactly one EventStudyCache row's `payload_json`, deserialized whole, never merged) —
+# while a SINGLE-FLIGHT background thread (mirrors `warmup.py`'s own `_WARMUP_LOCK`/`_WARMUP_THREAD`
+# convention) re-warms EVERY claim on the ledger on its OWN session, pruning each stale row when its new
+# generation lands (the SAME prune-then-insert `compute_drawdown_expectations_cached` already does). When
+# NO prior generation exists at all (first-ever resolution for this claim — normally pre-empted by the boot
+# warm), falls back to the synchronous cached compute, unchanged, returning `(payload, "ready")` — there is
+# nothing honest to serve in its place, so the ORIGINAL cold-compute contract stands.
+#
+# ONE GLOBAL worker, not one per claim (live-drilled 2026-08-04): a single unrelated forward_returns row
+# invalidates ALL 7 live claims' cache rows at once (this is exactly the bug being fixed), so the FIRST
+# implementation spawned ONE re-warm thread PER stale claim — up to 7 concurrent CPU-bound Python threads
+# fighting over the GIL, measurably slowing `/api/evidence` and `/api/health` far more than the ORIGINAL
+# single-threaded sequential boot warm ever did (confirmed live: `/api/health` degraded from ~0.1s to
+# 0.1-0.4s under the 7-thread swarm — still within the relaxed bounded-compute-window budget, but needless
+# self-inflicted GIL contention). The single-flight key is now a GLOBAL sentinel (never per-claim), and the
+# spawned worker calls `warmup._warm_drawdown_expectations` (lazy import — `warmup.py` imports this module,
+# so a module-level import back would be circular; this mirrors the file's other lazy imports) — the SAME
+# sequential, ledger-driven, per-claim-isolated loop the boot warm already uses, so a burst of concurrent
+# MISSes across every stale claim collapses into ONE background worker doing the SAME efficient sequential
+# work the boot warm always did, instead of N threads duplicating and contending with each other.
+_REWARM_LOCK = threading.Lock()
+_REWARM_IN_FLIGHT = False
+_REWARM_WORKER_NAME = "dd-expectations-rewarm"
+
+
+def _spawn_drawdown_expectations_rewarm(cfg: Config) -> None:
+    """Single-flight background re-warm (GLOBAL, not per-claim — see the module note above): re-warms
+    EVERY claim on the evidence ledger via `warmup._warm_drawdown_expectations`, on its OWN engine/session,
+    never blocking the caller. A re-warm already in flight (from an earlier stale request, for ANY claim)
+    means a NEW stale request never spawns a second worker — it simply keeps serving its own last-good
+    generation until the one in-flight worker settles ALL claims, including this one. NON-FATAL end to end
+    — a failed re-warm (including a failure to even START the thread, mirroring `data_manager.py`'s own
+    `RuntimeError`/`MemoryError` dual-exit guard on `Thread.start()`) simply leaves every stale claim
+    serving its last-good generation until the NEXT miss retries; it never surfaces to the request that
+    triggered it (that request already returned its own response).
+
+    ops-hardening iter-47 AUDIT (finding B1): the single-flight sentinel above only excludes ANOTHER
+    request-triggered re-warm. It does NOT observe the BOOT warm, which runs this exact same
+    `_warm_drawdown_expectations` ledger loop as the last statement of `warmup._run_warmup`. After a
+    restart whose dataset version has moved on (the normal case once an ingest has landed — the boot warm
+    is precisely what is fixing that), EVERY `/api/evidence` request during the boot warm MISSes, serves
+    its stale generation, and — without this guard — spawns a SECOND full-ledger warm that runs
+    CONCURRENTLY with the boot warm for its whole ~7-26 min duration. That doubles the peak concurrent
+    heavy compute (each decile claim's resolver peaks at ~573 MB, measured iter-47) in exactly the window
+    this iteration exists to protect, on a host that has repeatedly reached its `memory_cap_mb` ceiling
+    (AG-8). Skipping the spawn while the boot warm's own thread is alive costs nothing: that thread ends
+    by running the identical loop, so every stale claim still settles, and any claim invalidated AFTER the
+    boot warm passed it is picked up by the next MISS once the thread has exited. Only the boot warm is
+    checkable from here without new cross-module state; the ingest finalize tail's own per-claim warm
+    (`data_manager._refresh_ingest_aggregates`) remains uncoordinated — documented in the audit report,
+    not closed here."""
+    global _REWARM_IN_FLIGHT
+    try:
+        from app.engine import warmup  # lazy — warmup.py imports THIS module; see the module note above
+
+        boot_warm = warmup._WARMUP_THREAD
+        if boot_warm is not None and boot_warm.is_alive():
+            return  # the boot warm owns this loop right now — never run a second copy alongside it
+    except Exception:  # noqa: BLE001 — a diagnostic guard must never break the serving path
+        pass
+    with _REWARM_LOCK:
+        if _REWARM_IN_FLIGHT:
+            return  # a re-warm is already running (for every stale claim, not just this one) — no duplicate
+        _REWARM_IN_FLIGHT = True
+
+    def _run() -> None:
+        from app.engine import data_manager  # lazy — avoids a module-load-time cycle (this module's convention)
+        global _REWARM_IN_FLIGHT
+        try:
+            from app.db import get_engine
+            from app.engine import warmup  # lazy — warmup.py imports THIS module; see the module note above
+
+            warmup._warm_drawdown_expectations(get_engine(), cfg)
+        except Exception as exc:  # noqa: BLE001 — NON-FATAL: never let a background re-warm crash the process
+            data_manager._log_isolation_failure(
+                "evidence drawdown-expectations background re-warm failed (non-fatal): %r", exc,
+            )
+        finally:
+            with _REWARM_LOCK:
+                _REWARM_IN_FLIGHT = False
+
+    try:
+        threading.Thread(target=_run, daemon=True, name=_REWARM_WORKER_NAME).start()
+    except Exception as exc:  # noqa: BLE001 — mirrors data_manager.py's Thread.start() dual-exit guard
+        from app.engine import data_manager
+
+        data_manager._log_isolation_failure(
+            "evidence drawdown-expectations background re-warm could not START: %r", exc,
+        )
+        with _REWARM_LOCK:
+            _REWARM_IN_FLIGHT = False
+
+
+def compute_drawdown_expectations_cached_with_status(
+    session: Session, claim: dict, config: Optional[Config] = None,
+) -> tuple[Optional[dict], str]:
+    """The `/api/evidence` SERVING entry point (ops-hardening iter-47, audit B2) — wraps
+    `compute_drawdown_expectations_cached` with the serve-stale-behind-a-label contract documented in the
+    module note above. Returns `(payload, status)` where `status` is `"ready"` (current-version HIT, or
+    the cold-start fallback) or `"refreshing"` (a previous generation served while a background re-warm
+    completes). `status` is a SERVING-layer concept only — it is never persisted inside
+    `EventStudyCache.payload_json`, so the underlying cached compute stays byte-identical either way."""
+    cfg = config or get_config()
+    horizon = claim.get("horizon")
+    if horizon not in cfg.walk_forward.underwater_horizons:
+        return None, "ready"
+
+    from app.engine.research import _dataset_version  # lazy — see this module's existing lazy-import note
+
+    subject = _drawdown_expectations_cache_subject(claim)
+    version = _dataset_version(session)
+
+    hit = session.exec(
+        select(EventStudyCache).where(
+            EventStudyCache.subject == subject,
+            EventStudyCache.view == _DD_EXPECTATIONS_VIEW,
+            EventStudyCache.asof_key == _DD_EXPECTATIONS_ASOF_KEY,
+            EventStudyCache.dataset_version == version,
+            EventStudyCache.horizon == horizon,
+        )
+    ).first()
+    if hit is not None:
+        return json.loads(hit.payload_json), "ready"
+
+    # MISS at the current version — serve the most recent PRIOR generation (if any) instead of paying the
+    # cold compute on this request. `created_at DESC` picks the newest stale row when more than one exists
+    # (there is normally at most one — see the module note's prune-then-insert contract).
+    stale = session.exec(
+        select(EventStudyCache)
+        .where(
+            EventStudyCache.subject == subject,
+            EventStudyCache.view == _DD_EXPECTATIONS_VIEW,
+            EventStudyCache.asof_key == _DD_EXPECTATIONS_ASOF_KEY,
+            EventStudyCache.horizon == horizon,
+        )
+        .order_by(EventStudyCache.created_at.desc())
+    ).first()
+
+    if stale is None:
+        # nothing to serve stale (first-ever resolution for this claim) — fall back to the synchronous
+        # cached compute exactly as before this iteration (normally pre-empted by the boot warm).
+        return compute_drawdown_expectations_cached(session, claim, cfg), "ready"
+
+    _spawn_drawdown_expectations_rewarm(cfg)
+    return json.loads(stale.payload_json), "refreshing"

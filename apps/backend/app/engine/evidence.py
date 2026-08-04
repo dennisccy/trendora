@@ -158,14 +158,20 @@ def build_evidence_payload(
         if session is not None:
             # lazy import — app.engine.forward_testing sits BELOW this module in the dependency graph
             # (this module never imported it before), so a module-level import is safe here; kept lazy
-            # anyway so the session-less (majority of existing) call sites pay no import cost. The CACHED
-            # entry point (not the pure `compute_drawdown_expectations`) — /api/evidence renders EVERY
-            # claim's panel on one page load, so an uncached per-claim cohort resolution multiplies the
-            # J-15 latency budget by the claim count (see the cache's own docstring for the measurement).
-            from app.engine.forward_testing import compute_drawdown_expectations_cached
+            # anyway so the session-less (majority of existing) call sites pay no import cost. The
+            # SERVING wrapper (ops-hardening iter-47, audit B2) — not the plain cached entry point —
+            # because /api/evidence renders EVERY claim's panel on one page load: an uncached per-claim
+            # cohort resolution multiplies the J-15 latency budget by the claim count, and a cache MISS
+            # caused by an UNRELATED concurrent ingest (any new forward_returns row bumps every claim's
+            # dataset-version stamp) must never fall onto that same multi-minute cold-recompute tail — the
+            # wrapper serves the last-good generation behind an honest `expectations_status: "refreshing"`
+            # label instead, while a background re-warm catches up (see the wrapper's own docstring).
+            from app.engine.forward_testing import compute_drawdown_expectations_cached_with_status
 
             try:
-                expectations = compute_drawdown_expectations_cached(session, row["claim"], config)
+                expectations, status = compute_drawdown_expectations_cached_with_status(
+                    session, row["claim"], config
+                )
             except MemoryError as exc:
                 # isolate-and-continue (AG-8): unlike the ingest warm loop's break-on-MemoryError, a live
                 # `/evidence` response must still render every OTHER claim — never abort the rest of the
@@ -184,6 +190,11 @@ def build_evidence_payload(
             else:
                 if expectations is not None:
                     row["expectations"] = expectations
+                    # additive ONLY when a previous generation is being served (ops-hardening iter-47) —
+                    # mirrors the "unavailable" convention above: a claim serving its CURRENT generation
+                    # carries no status key at all (TC-3: "expectations_status absent or 'ready'").
+                    if status == "refreshing":
+                        row["expectations_status"] = "refreshing"
         claims.append(row)
         signal = row["signal"]
         if row["proven"] and signal:

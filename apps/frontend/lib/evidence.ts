@@ -75,12 +75,16 @@ export interface DrawdownExpectations {
  *  score-to-date (null until a certified claim is monitored). `expectations` (iter-41, J-25) is ADDITIVE
  *  and OPTIONAL — the backend omits the key entirely (never a fabricated panel) when the cohort could not
  *  be resolved; a `null`/`undefined` value must render nothing for the panel section (never an error).
- *  `expectations_status` (ops-hardening iter-29, AG-8) is ALSO additive and OPTIONAL — present ONLY when
- *  this request's per-claim `expectations` compute raised an exception (`"unavailable"`, the one legal
- *  value today); absent for a successful compute AND for every pre-existing honest-None case (an
- *  out-of-scope horizon, an unresolvable cohort, a zero-observation cohort) — those keep rendering nothing,
- *  byte-unchanged. `resolveDrawdownExpectationsPanelState` below is the single place that distinguishes
- *  the three states. */
+ *  `expectations_status` is ALSO additive and OPTIONAL. `"unavailable"` (ops-hardening iter-29, AG-8) is
+ *  present ONLY when this request's per-claim `expectations` compute raised an exception; absent for a
+ *  successful compute AND for every pre-existing honest-None case (an out-of-scope horizon, an
+ *  unresolvable cohort, a zero-observation cohort) — those keep rendering nothing, byte-unchanged.
+ *  `"refreshing"` (ops-hardening iter-47, audit B2) is present ONLY when the served `expectations` payload
+ *  is the last-good PRIOR generation while a newer one (an unrelated ingest bumped the shared dataset-
+ *  version stamp) computes in the background — the values shown are still real, honest, and were never
+ *  mixed with the newer generation's fields; absent or omitted once the current generation is served
+ *  (mirrors `/backtest`'s `evidence_status: "ready"|"refreshing"|"not_yet_computed"` sibling pattern).
+ *  `resolveDrawdownExpectationsPanelState` below is the single place that distinguishes all four states. */
 export interface CertifiedClaim {
   signal: string | null;
   claim: Record<string, unknown>;
@@ -92,7 +96,7 @@ export interface CertifiedClaim {
   proven: boolean;
   forward_walk: unknown | null;
   expectations?: DrawdownExpectations | null;
-  expectations_status?: "unavailable";
+  expectations_status?: "unavailable" | "refreshing";
 }
 
 /** A proven claim row, as stored in the served `proven_signals` map (keyed by signal). Same shape as a
@@ -291,13 +295,19 @@ export function formatStreak(value: number | null | undefined): string {
 // iter-24/25 J-09). Reads `claim.expectations` / `claim.expectations_status` VERBATIM — recomputes nothing.
 
 /** Which state the drawdown-expectations panel renders for ONE claim:
- *   - "present"     — a resolved `expectations` payload exists; the table renders (pre-existing, unchanged).
+ *   - "present"     — a resolved, CURRENT-generation `expectations` payload exists; the table renders
+ *                     (pre-existing, unchanged).
+ *   - "refreshing"  — a resolved but STALE (last-good prior generation) `expectations` payload exists
+ *                     while a newer one computes in the background (NEW, ops-hardening iter-47, audit
+ *                     B2); the table STILL renders (the values are real and honest) with an additional
+ *                     calm "Refreshing" label — never silently indistinguishable from "present".
  *   - "unavailable" — this request's per-claim compute raised an exception (`expectations_status ===
  *                     "unavailable"`); a calm inline note renders instead of a table (NEW, iter-29).
  *   - "absent"      — no `expectations` and no `expectations_status` (the pre-existing honest-None cohort-
  *                     unresolvable case); the panel renders nothing (unchanged). */
 export type DrawdownExpectationsPanelState =
   | { kind: "present"; expectations: DrawdownExpectations }
+  | { kind: "refreshing"; expectations: DrawdownExpectations }
   | { kind: "unavailable" }
   | { kind: "absent" };
 
@@ -306,9 +316,14 @@ export type DrawdownExpectationsPanelState =
  * client-side recompute of anything). `"unavailable"` (a genuine per-claim compute failure THIS request)
  * is DISTINCT from `"absent"` (the pre-existing, unaffected "no expectations, no status field" case) so the
  * panel can disclose a transient failure honestly instead of rendering it identically to "not applicable".
+ * `"refreshing"` (ops-hardening iter-47) is DISTINCT from `"present"` for the SAME reason — a claim serving
+ * its last-good prior generation must never look identical to one serving its current generation.
  */
 export function resolveDrawdownExpectationsPanelState(claim: CertifiedClaim): DrawdownExpectationsPanelState {
   if (claim.expectations) {
+    if (claim.expectations_status === "refreshing") {
+      return { kind: "refreshing", expectations: claim.expectations };
+    }
     return { kind: "present", expectations: claim.expectations };
   }
   if (claim.expectations_status === "unavailable") {

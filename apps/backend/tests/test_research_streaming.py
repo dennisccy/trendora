@@ -977,3 +977,191 @@ def test_combination_observations_chunked_as_of_excludes_runs_after_cutoff(combi
     assert observations, "sanity: the early-group runs (Jan-Mar) must still contribute observations"
     for obs in observations:
         assert run_dates[obs["run_id"]] <= d, f"observation from run {obs['run_id']} dated after {d}"
+
+
+# ==================================================================================================
+# ops-hardening iter-47 (AG-8, iter-46 audit B3): `app.engine.samples._factor_samples`'s "decile" branch
+# used to build the FULL `_factor_observations` list (whole horizon population, up to ~800K observations
+# measured live) and `sorted()` it WHOLE just to discard 9/10 of it after slicing one decile — the third
+# unbounded whole-cohort materialization on the `/api/evidence` serving path (5 of the 7 live certified
+# claims are decile-scoped factor claims; `logs/backend.log` caught it `MemoryError`-ing at 02:20:31 on
+# 2026-08-04, reached via `evidence.py` -> `compute_drawdown_expectations_cached` -> `compute_samples` ->
+# `_factor_samples`). `research._factor_decile_observations` (new) resolves the SAME decile membership in
+# two BOUNDED passes (a lightweight population-wide sort-key pass, then a bounded rebuild restricted to the
+# target decile's keys) instead of materializing + sorting the whole population's full dicts. These proofs
+# pin byte-identity against the PRE-FIX approach (the exact `_factor_samples` decile branch used to run) —
+# the memory-BOUND claim itself is proven live by `test_samples_memory_pressure.py`'s real subprocess
+# induction (this repo's established convention for a boundedness claim, mirroring
+# `test_evidence_drawdown_memory_pressure.py`).
+# ==================================================================================================
+def _factor_decile_observations_reference(session, factor, horizon, as_of, deciles_count, decile, cfg):
+    """The PRE-FIX `_factor_samples` decile branch, pinned verbatim: the FULL `_factor_observations` list,
+    sorted whole by the SAME tie-break key, then `_decile_member_slice`d — the regression oracle for the
+    iter-47 two-pass bounded rewrite."""
+    from app.engine.research import _decile_member_slice, _factor_observations
+
+    observations = _factor_observations(session, factor, horizon, as_of, cfg=cfg)
+    ordered = sorted(observations, key=lambda o: (o["factor"], o["ticker"], o["run_id"]))
+    return _decile_member_slice(ordered, deciles_count, decile)
+
+
+@pytest.mark.parametrize("as_of", [None, date(2025, 3, 15)])
+@pytest.mark.parametrize("decile", [1, 5, 10])
+def test_factor_decile_observations_equals_pre_fix_reference(chunked_accumulator_engine, as_of, decile):
+    """TC-4 (byte-identity leg): the bounded two-pass `_factor_decile_observations` is byte-identical to
+    the pinned pre-fix (whole-population sort + slice) reference — across the first/middle/last decile and
+    both all-history and a historical as_of that splits the 5-run fixture into an early/late group — under
+    a chunk width small enough to force multiple slices in BOTH passes."""
+    cfg = _cfg_batch(2)
+    deciles_count = cfg.research.factor_lab.deciles
+    factor = next(f for f in cfg.research.factor_lab.factors if f.key == "leadership_score")
+    with Session(chunked_accumulator_engine) as session:
+        bounded = research_module._factor_decile_observations(
+            session, factor, H, as_of, deciles_count, decile, cfg=cfg
+        )
+        reference = _factor_decile_observations_reference(
+            session, factor, H, as_of, deciles_count, decile, cfg
+        )
+    assert _eq(bounded, reference), (
+        f"bounded decile {decile} (as_of={as_of}) != pre-fix whole-population reference"
+    )
+
+
+def test_factor_decile_observations_union_covers_whole_pool_no_double_count(chunked_accumulator_engine):
+    """Sanity/coherence companion to the byte-identity leg: the union of every D1..D10 bounded call's
+    members equals the whole 15-pair fixture pool exactly once each — no member dropped, none duplicated,
+    across the decile boundary arithmetic."""
+    cfg = _cfg_batch(2)
+    deciles_count = cfg.research.factor_lab.deciles
+    factor = next(f for f in cfg.research.factor_lab.factors if f.key == "leadership_score")
+    seen: list[tuple[int, str]] = []
+    with Session(chunked_accumulator_engine) as session:
+        for d in range(1, deciles_count + 1):
+            members = research_module._factor_decile_observations(
+                session, factor, H, None, deciles_count, d, cfg=cfg
+            )
+            seen.extend((m["run_id"], m["ticker"]) for m in members)
+    assert len(seen) == 15, f"expected all 15 fixture pairs covered exactly once, got {len(seen)}"
+    assert len(set(seen)) == 15, "a (run_id, ticker) pair was double-counted across deciles"
+
+
+def test_factor_decile_observations_chunk_independent(chunked_accumulator_engine):
+    """The bounded decile resolution is batch/chunk-independent — read_batch_size AND
+    factor_join_run_chunk both varied — never a value/order change, only a memory-shape change."""
+    factor = next(f for f in load_config().research.factor_lab.factors if f.key == "leadership_score")
+    with Session(chunked_accumulator_engine) as session:
+        small = research_module._factor_decile_observations(
+            session, factor, H, None, 10, 10, cfg=_cfg_batch(1, run_chunk=1)
+        )
+        big = research_module._factor_decile_observations(
+            session, factor, H, None, 10, 10, cfg=_cfg_batch(1_000_000, run_chunk=1_000_000)
+        )
+    assert small, "sanity: decile 10 must be non-empty on this fixture"
+    assert _eq(small, big), "bounded decile resolution differs by chunk width"
+
+
+def test_factor_decile_pass1_retention_is_bounded_not_whole_population(chunked_accumulator_engine, monkeypatch):
+    """ops-hardening iter-47 FIX PASS (audit finding B3): PASS 1 must not RETAIN one sort key per
+    observation for the whole population (~1.25 M tuples ≈ 155 MB live) just to sort it whole — the
+    "bounded READ, unbounded RETENTION" shape iter-40's lesson names, and the reason the audit judged
+    `samples.py:156` reduced rather than bounded. Instrumenting the real `_BoundedRankWindow` records the
+    live buffer length at every trim (its true momentary peak): the peak must stay inside `2 x capacity`
+    and STRICTLY below the population, and `capacity` itself must be derived from the requested decile's
+    own share — for D10 of 10 that is ~1/10 of the population, not the population."""
+    cfg = _cfg_batch(2)
+    deciles_count = cfg.research.factor_lab.deciles
+    factor = next(f for f in cfg.research.factor_lab.factors if f.key == "leadership_score")
+
+    peaks: list[int] = []
+    caps: list[int] = []
+    real_window = research_module._BoundedRankWindow
+
+    class _ObservingWindow(real_window):
+        def __init__(self, n_max, dc, d):
+            super().__init__(n_max, dc, d)
+            caps.append(self._capacity)
+
+        def _trim(self):
+            peaks.append(len(self._buf))  # the momentary peak: `add` trims the instant it is reached
+            super()._trim()
+
+    monkeypatch.setattr(research_module, "_BoundedRankWindow", _ObservingWindow)
+    with Session(chunked_accumulator_engine) as session:
+        members = research_module._factor_decile_observations(
+            session, factor, H, None, deciles_count, deciles_count, cfg=cfg
+        )
+        population = len(_factor_observations(session, factor, H, None, cfg=cfg))
+
+    assert members, "sanity: the top decile must be non-empty on this fixture"
+    assert population == 15, f"sanity: this fixture's population is 15 observations, got {population}"
+    assert caps == [2], (
+        f"D10 of 10 over a 15-observation population must commit to a ~1/10 capacity, got {caps!r}"
+    )
+    assert peaks, "the window must actually trim (otherwise nothing is bounded)"
+    assert max(peaks) <= 2 * caps[0], (
+        f"peak retention {max(peaks)} exceeded the 2x-capacity bound ({2 * caps[0]})"
+    )
+    assert max(peaks) < population, (
+        f"peak retention {max(peaks)} is not below the population {population} — this is the unbounded "
+        f"whole-population accumulator the fix removes"
+    )
+
+
+def test_factor_decile_window_underflow_degrades_to_exact_computation(chunked_accumulator_engine, monkeypatch):
+    """ops-hardening iter-47 FIX PASS (audit finding B3): the retention window is sized from a PROVEN
+    upper bound, so it cannot underflow — but a truncated decile would be a WRONG SERVED NUMBER (AG-3),
+    so the underflow branch degrades to the exact unbounded computation instead. Forced here with a
+    deliberately too-small upper bound (1 against a 15-observation pool): the returned members must still
+    be byte-identical to the pinned pre-fix reference, and the degrade must be logged, never silent."""
+    cfg = _cfg_batch(2)
+    deciles_count = cfg.research.factor_lab.deciles
+    factor = next(f for f in cfg.research.factor_lab.factors if f.key == "leadership_score")
+    monkeypatch.setattr(research_module, "_decile_population_upper_bound", lambda *a, **kw: 1)
+
+    records: list[str] = []
+    monkeypatch.setattr(
+        research_module.logger, "warning",
+        lambda msg, *args, **kw: records.append(str(msg) % args if args else str(msg)),
+    )
+    with Session(chunked_accumulator_engine) as session:
+        members = research_module._factor_decile_observations(
+            session, factor, H, None, deciles_count, deciles_count, cfg=cfg
+        )
+        reference = _factor_decile_observations_reference(
+            session, factor, H, None, deciles_count, deciles_count, cfg
+        )
+    assert members, "the degrade path must still return the decile's real members"
+    assert _eq(members, reference), "the degraded (exact) path must stay byte-identical to the reference"
+    assert any("window underflow" in r for r in records), (
+        f"the degrade must be logged, never silent — got {records!r}"
+    )
+
+
+def test_factor_decile_population_upper_bound_is_never_below_the_real_population(chunked_accumulator_engine):
+    """The window's capacity is only sound while `_decile_population_upper_bound(...) >= n`. Pinned
+    directly against the real population this fixture produces (and against the as_of-scoped one, which
+    the bound must track because it reads the SAME as_of-filtered run set)."""
+    cfg = _cfg_batch(2)
+    factor = next(f for f in cfg.research.factor_lab.factors if f.key == "leadership_score")
+    run_chunk = cfg.research.factor_join_run_chunk
+    with Session(chunked_accumulator_engine) as session:
+        for as_of in (None, date(2025, 3, 15)):
+            runs = research_module._runs_with_fr(session, [H], as_of)
+            bound = research_module._decile_population_upper_bound(session, runs, run_chunk)
+            population = len(_factor_observations(session, factor, H, as_of, cfg=cfg))
+            assert bound >= population, (
+                f"upper bound {bound} < real population {population} at as_of={as_of} — the bounded "
+                f"window could then discard a genuine decile member"
+            )
+
+
+def test_factor_decile_observations_zero_n_cohort_is_honest_empty(chunked_accumulator_engine):
+    """An as_of before any snapshot resolves an honest empty decile — never a crash, never a fabricated
+    member — under the two-pass bounded path (PASS 1's empty `sort_keys` short-circuits before PASS 2)."""
+    cfg = _cfg_batch(2)
+    factor = next(f for f in cfg.research.factor_lab.factors if f.key == "leadership_score")
+    with Session(chunked_accumulator_engine) as session:
+        members = research_module._factor_decile_observations(
+            session, factor, H, date(2024, 1, 1), cfg.research.factor_lab.deciles, 10, cfg=cfg
+        )
+    assert members == []

@@ -3878,3 +3878,150 @@ new) and J-05's acceptance frames. (9) OWNER: nothing needs his decision, but th
 front of him — the app no longer goes dark and no longer runs out of memory, which is the first good
 news in five rounds; adding one old day of history still never finishes; and the Evidence page still
 takes about three minutes after any data job.
+
+## Iteration 47 — goal-ops-hardening-iter-47
+
+**Date:** 2026-08-04T17:30:00Z
+**Verdict:** ESCALATE
+**Depth dispatched:** full (`iter-47/depth-dispatched` = `full`, matching the spec's `Depth: full` /
+`Full trigger: 3`. `runs/goal-ops-hardening-iter-47/status.json` = `blocked` / `closure_failed` /
+`next_action: browser_qa`, `browser_checks_run: false` — and this time that flag is TRUE, not stale:
+the browser lane genuinely never re-ran after the fix passes. The closure gate returned
+CLOSURE-FAIL for exactly this reason.)
+
+**Journey deltas:**
+- **THE FACT THAT GOVERNS EVERY ROW, measured by me with `stat` and stated independently by the
+  auditor (P1), the closure gate, `status.json` and the developer himself: the only browser-lane
+  artifact ran at 13:05-14:21Z and the build then changed THREE times** — `research.py` 15:00:21,
+  `forward_testing.py` 15:03 (fix pass) and 16:50:03 (the auditor's own B1 fix). The merged results
+  file's verdict line reads **`Browser QA Verdict: BLOCKED`** and its own Missing-Target-Journeys
+  section names **`UT-J-06` and `UT-J-07` — this iteration's two TARGET journeys — as having no
+  executed test case in any lane.** This is the iter-46 lesson recurring one round later, and the
+  whole pipeline said so before it ended.
+- **I did not inherit the "null test" claim — I read the six scripts the 13:05 replay actually ran**
+  (`git show HEAD:runs/.../journey-scripts/*.json`). J-08's is ONE step (load `/backtest`, assert the
+  text "Forward-tested evidence"). J-04's is two static page loads. J-05's clicks Start and then
+  navigates straight to the PRE-EXISTING `/scanner-runs/1882`. J-01's and J-03's assert page-wide
+  text ("2 non-trading", "19 already snapshotted", "412 calendar days") that persisted Run-history
+  rows already satisfy. The 6/6 PASS headline is therefore not evidence. Rebuilt goldens landed
+  15:46-16:05 and have never been executed.
+- Newly passing: **none**. Newly failing: **none**. **Regressed: NONE.**
+- **J-05 "Aggregates are precomputed at ingest"** — `failing`, FOURTH consecutive (44, 45, 46, 47);
+  `last_passing_iter` stays iter-39. Deliberately out of scope this round (spec + `assumptions.md`
+  iter-47), so this is a disclosed outcome, not a surprise. I opened `J-05-verify.png`: it shows a
+  run "as of 2005-04-12 · Scanned 2026-07-30 13:24:15" — a snapshot stored four days before this
+  iteration. DB read by me: `scanner_runs` holds 0 rows for 2011-01-05 (the rebuilt script's target)
+  and runs 299-303 are all `interrupted`.
+- **J-06, J-07** stay `partial` with `last_verified_iter` = iter-47, scored on evidence I gathered
+  myself because no lane produced a row for either.
+- **J-01, J-03, J-04** stay `partial`, `last_verified_iter` deliberately left at iter-46 — nothing
+  this round verified them and their own code (`data_manager.py`) is unchanged.
+- **J-08, J-09 KEPT `passing`** on evidence durability (A.6) plus my own live spot-checks, NOT on
+  their null-test rows: both journeys' own producers are untouched by this diff (I read
+  `get_background_compute_status` and confirmed every `forward_testing.py` edit sits on the
+  drawdown-expectations path, not on `compute_forward_aggregates` /
+  `resolved_forward_aggregate_evidence`).
+- Deferred (`DEFERRED-BUDGET`): none. No `browser-infra.json`; no `journeys-changed.md`; all 8
+  `spec_hash`es match `goal_gate hash-journeys` run by me. `pending_infra` / `evidence_makeup`:
+  cleared everywhere.
+- Anti-goal violations: **THREE CARRIED ITEMS CLOSED — iter-46/av** (the Evidence-page cold tail,
+  closed and measured by me at 0.012 s), **iter-46/aw** (the two bare log calls, TC-6),
+  and **iter-46/au updated to PARTLY closed rather than resolved** (the decile branch is bounded;
+  `samples.py:161`/`:168` are not). **SEVEN NEW: iter-47/bc** (minor, **RESOLVED in-audit** — the new
+  re-warm ran a second full-ledger warm alongside the boot warm), **iter-47/bd** (minor, open — the
+  same gap versus the ingest finalize tail), **iter-47/be** (minor, open — `/research/regime-lab`
+  reached the 8192 MB wall), **iter-47/bf** (minor, open — 8 of 20 health polls over the 2 s
+  ceiling), **iter-47/bg** (minor, open — the un-re-run browser lane), **iter-47/bh** (minor, open —
+  a live-network `provider='yahoo'` ingest), **iter-47/bi** (minor, open — the new background worker
+  is invisible to J-09's disclosure surface). Ledger now: **71 total, 24 unresolved, 0 unresolved
+  critical.** scan CLEAN; coherence COHERENCE-PASS; review PASS_WITH_NOTES; QA PASS; audit
+  PASS_WITH_GAPS; browser QA BLOCKED; closure CLOSURE-FAIL; ux-regression SKIPPED; demo
+  RECORDED_WITH_NOTES.
+
+**Reasoning:** I checked every load-bearing fact myself instead of reading it off a report.
+(1) **The headline fix is real and I measured it on the running app**, not in a handoff:
+`GET /api/evidence` answered HTTP 200 in **0.012 s** with all seven claims populated and no
+`expectations_status` (ready), against iter-46's 163.3 s idle / >300 s loaded. The dev's own drill
+(12-58 ms; every one of ~15 polls under 110 ms through a 7-8 minute re-warm) and the auditor's
+independent ~50 ms agree. That closes iter-46/av, the item the previous evaluator called this
+round's "one real job". (2) **The build changed three times after the only browser lane ran, and I
+proved it with file times.** Results 14:21:39; `research.py` 15:00:21; `forward_testing.py` 16:50:03.
+That single fact decides how every row is scored. (3) **I read the replay scripts rather than
+trusting the 6/6 PASS**, and they are null tests — see the delta section. J-08's is literally one
+page-text assertion. (4) **The two new MemoryErrors are mine, not a report's**: `logs/backend.log`
+now holds 7,077 against iter-46's 7,075, and the two new ones at lines 180945 and 181041 have top
+frames `app/api/research.py:421 → research.py:3665 → :3552` — a REQUEST to `/research/regime-lab`,
+which is J-06's own step 11, with VmPeak 8,388,524 kB against an 8,388,608 kB cap. Health kept
+answering 200 in 0.98 s (no wedge — J-07 step 4's promise held), but the boot warm stalled at 3 of 7
+claims for ~20 minutes. (5) **There was no blackout this round**: I probed the live services (health
+200 in 0.092 s, evidence 200 in 0.012 s, backtest 200 in 0.023 s) and found no silent access-log
+window — the failure mode that dominated iters 44-45 has not returned for a second consecutive
+round. (6) **I checked AG-10 at the source**: `git diff` versus the snapshot SHA over `config.yaml`,
+`project-extensions/`, `scripts/` and `incredible_auto_dev/scripts/` is EMPTY, and every launch
+banner reads `memory_cap_mb=8192 malloc_arena_max=2`, `host-guard: cpu_list=0-15 blas_threads=8`.
+(7) **I found something four lanes missed**: `data_provider_runs` id=297 is a `both` job for
+2026-08-03 with `provider='yahoo'` — a real HTTP client (`yahoo_provider.py`,
+`query1.finance.yahoo.com`) — and it is what moved this DB's latest bar from 2026-07-31 to
+2026-08-03. The audit's "AG-9 intact" check cited runs 299-303 (all `seed`) and never reached row
+297. I scored it minor with stated grounds and filed the opposite reading in `assumptions.md`.
+(8) **I verified the one downgrade candidate at the source before declining to make it**: audit B3
+is correct — `get_background_compute_status` reads only `_HIST_DISPATCH_INFLIGHT`, and the new
+`dd-expectations-rewarm` worker (`forward_testing.py:2628-2689`) registers nowhere — but J-09's own
+acceptance names the historical-dispatch registry as its single producer, so I filed it as
+iter-47/bi rather than failing the journey.
+Rejected **REGRESSION (C.1)**: no journey moved `passing`/`already_passing` → `failing` (J-05 was
+already failing; nothing else moved), and there is no unresolved critical violation — the scan is
+CLEAN, AG-10 is untouched, AG-3 byte-identity was proven at live scale with SHA-256, and the one
+genuinely new AG-8-class path (bc) was found and closed inside the same iteration with a
+mutation-verified test. Rejected **STALLED (C.2)**: not one unblock path is human-owned — the top
+one is "re-run the lane the engine's own `next_action` already names", and the rest are named with
+file and line. Rejected **GOAL_ACHIEVED (C.3)**: J-05 is failing and five journeys are `partial` or
+unverified; coherence is PASS but the closure gate is FAIL. **Chose ESCALATE (C.4):** the first
+clause fires plainly — J-05 has now failed FOUR consecutive iterations — and full depth is right on
+the merits, because this round's auditor again produced the load-bearing findings (the duplicate
+warm nobody else saw, and the P1 sequencing proof).
+**FIVE THINGS I STATE PLAINLY RATHER THAN ROUND AWAY:** (i) **the product work this round was
+excellent and the journey table shows none of it.** A page that took 163 seconds now takes 12
+milliseconds, proven byte-identical at live scale by an auditor who built his own neutralised
+reference. Not one journey moved up, because nobody re-ran the checks. (ii) **the same process
+failure happened twice in a row, and this time everyone saw it coming.** The dev wrote "a
+browser-qa re-run is mandatory" in his handoff, the reviewer's prior MINOR said it, `status.json`
+said it, the closure gate failed on it, and the auditor measured it to the second — and the round
+still ended without the lane. A rule that every lane restates and nobody executes is not a rule yet.
+(iii) **the replay lane has been scoring this session on scripts that assert nothing**, and I can
+now put a number on it: J-08's script has ONE step. Six journeys have been carried on that basis for
+several rounds. The rebuild is the right fix and it must actually run. (iv) **the app can still be
+taken to its memory ceiling by opening a page** — the Regime Lab, deferred twelve times, measured
+twice this round at 84 kB of headroom, and it starved the evidence warm for twenty minutes
+afterwards. That is now evidence, not a worry. (v) **a data job in this round fetched real prices
+over the internet.** It is the product's own sanctioned import path and nothing was committed, but a
+session whose premise is "local-first, deterministic, offline against the committed seed" should
+know that its own test lanes reach the network, and the audit's AG-9 check looked at the wrong rows.
+
+**Next-step recommendation:** FULL depth (mandatory via ESCALATE). Give the next round this order.
+(1) **Run the eight journey checks FIRST, before writing any new code** — the services are up and
+healthy, and the app has not been checked since three code changes ago. Two journeys, "Pages load
+only what they need" (J-06) and "Heavy aggregates never take the service down" (J-07), have no
+check and no picture at all. Do not start a data job while another one is still finishing.
+(2) **Add one line to the J-05 check before running it** so it cannot pass by accident — require
+"1 snapshots" on the job card; the auditor wrote the exact fix, and today that check passes even
+when the job does nothing. (3) **Then make adding one old day of history finish**: the snapshot is
+written in about twelve seconds, but the clean-up work after it never ends, so the job row sits on
+"running" forever. Fourth failing round; the only remaining product fault on a must-have journey.
+(4) **Stop one page from eating the whole machine** — the Regime Lab took the app to its 8 GB limit
+twice this round and left the background warm-up stuck at three of seven panels for twenty minutes.
+(5) SMALL AND ALREADY WRITTEN DOWN: two more whole-cohort reads on the same Evidence page
+(`samples.py:161`, `:168`); one shared "warm in progress" flag so a finishing data job and a page
+view cannot run two identical warm-ups (audit B2); the health check answered slower than its
+2-second promise on 8 of 20 tries while a job was finishing; the new background worker does not
+appear on the page that lists background work. (6) CARRIED, untouched: iter-29/b + the badge wording
+after a permanently failed warm-up (NINETEEN rounds unmade); iter-31/e; iter-32/f; iter-35/k;
+iter-36/n; iter-37/o; iter-37/q; iter-39/u; iter-46/az; iter-46/ba. (7) DEFERRED a THIRTEENTH time,
+but no longer theoretical: iter-33/g, Regime Lab's cold pooled view — see item 4. (8) CAPTURE ONLY,
+never a round's goal: J-07's `[NEW]` walkthrough (seventeenth round unrecorded) and J-05's
+acceptance frames. (9) OWNER: nothing needs his decision, but three facts belong in front of him —
+the Evidence page went from about three minutes to about one hundredth of a second, which is the
+best result in several rounds; the app was never checked end to end after that landed, for the
+second round running; and one data job this round pulled real prices from Yahoo over the internet
+rather than from the committed offline copy (long-standing product behaviour, nothing saved into
+version control, but this session's promise is to run offline).

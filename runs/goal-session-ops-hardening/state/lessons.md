@@ -523,3 +523,18 @@ without re-running it — the note is not self-executing.
 **Applies to:** any iteration that enters fix-mode or audit-fix after browser-qa has run; the
 orchestrator should treat "product code changed after `ui-test-results.md` was written" as a hard
 re-run trigger, not an advisory note.
+
+## iter-47 — 2026-08-04T17:30:00Z
+
+**Verdict:** ESCALATE
+**Lesson:** A golden replay script can be a null test in a way that is invisible from its PASS row —
+read the script, not the verdict. The six scripts that produced this round's "6/6 PASS" include one
+with a SINGLE step (J-08: load `/backtest`, assert the text "Forward-tested evidence") and one that
+clicks Start and then navigates straight to a PRE-EXISTING run page (J-05 → `/scanner-runs/1882`),
+so both pass on a build where the feature is entirely broken. `git show HEAD:runs/.../journey-scripts/<J>.json`
+costs one command and settles it. Second half of the same lesson: a rebuilt script that is never
+executed buys nothing — this round rebuilt five goldens at 15:46-16:05 and ran none of them.
+**Applies to:** any iteration that reads a `regression-replay-results.md` PASS as journey evidence,
+and any iteration whose spec mandates re-running a lane after a fix pass (the TC-7 shape) — check
+the results-file mtime against the newest product-code mtime before scoring, because iter-46 and
+iter-47 both ended with every lane naming the requirement and nobody executing it.

@@ -19,7 +19,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 import app.engine.forward_testing as forward_testing
 import app.engine.market_phase as market_phase
@@ -695,14 +695,17 @@ def test_build_payload_per_claim_compute_failure_is_isolated(
     append_entry(str(ledger), _pass_entry("leadership_score"))
     append_entry(str(ledger), _pass_entry("entry_quality_score", factor="entry_quality_score"))
 
-    real_cached = forward_testing.compute_drawdown_expectations_cached
+    # ops-hardening iter-47: `build_evidence_payload` now calls the SERVING wrapper
+    # `compute_drawdown_expectations_cached_with_status` (audit B2, serve-stale-behind-a-label), not the
+    # plain cached function directly — the monkeypatch target moves with it.
+    real_cached = forward_testing.compute_drawdown_expectations_cached_with_status
 
     def _flaky_cached(session, claim, config=None):
         if claim.get("factor") == "leadership_score":
             raise MemoryError("synthetic TC-4 failure")
         return real_cached(session, claim, config)
 
-    monkeypatch.setattr(forward_testing, "compute_drawdown_expectations_cached", _flaky_cached)
+    monkeypatch.setattr(forward_testing, "compute_drawdown_expectations_cached_with_status", _flaky_cached)
 
     with Session(evidence_dd_two_claims_engine) as session:
         payload = build_evidence_payload(str(ledger), session=session, config=load_config())
@@ -720,6 +723,89 @@ def test_build_payload_per_claim_compute_failure_is_isolated(
     assert ok_row["expectations"]["horizon"] == 20
     exp_phase = next(p for p in ok_row["expectations"]["by_phase"] if p["phase"] == "Expansion")
     assert exp_phase["n"] == 1
+
+
+# ==================================================================================================
+# ops-hardening iter-47 (audit B2) — the serve-stale-behind-a-label fix: `GET /api/evidence` must survive
+# an UNRELATED concurrent ingest (any new forward_returns row bumps every claim's dataset-version stamp)
+# without falling onto the multi-minute cold-recompute tail. `build_evidence_payload` now calls
+# `compute_drawdown_expectations_cached_with_status`; a claim serving a stale (last-good) generation
+# additively carries `expectations_status: "refreshing"` alongside its (real, honest) `expectations` —
+# never mixed with the newer generation's fields.
+# ==================================================================================================
+def test_build_payload_serves_stale_expectations_as_refreshing_after_dataset_change(
+    tmp_path, evidence_dd_engine, monkeypatch,
+):
+    """TC-3: after the dataset changes (an unrelated new forward_returns row lands, exactly like a
+    concurrent ingest), the row's `expectations` still renders — the LAST-GOOD pre-change payload,
+    byte-identical to what was served before the change — with an ADDITIVE `expectations_status:
+    "refreshing"` label. The pre-existing 'ready' shape (no status key at all) is unaffected when there is
+    no dataset change."""
+    import app.db as db_module
+    import app.engine.forward_testing as forward_testing_module
+
+    ledger = tmp_path / "certified-claims.jsonl"
+    append_entry(str(ledger), _pass_entry("leadership_score"))
+    cfg = load_config()
+
+    with Session(evidence_dd_engine) as session:
+        before = build_evidence_payload(str(ledger), session=session, config=cfg)
+    before_row = before["claims"][0]
+    assert "expectations_status" not in before_row  # the pre-existing 'ready' shape: no status key at all
+
+    # change the dataset: a second, UNRELATED symbol's forward return on the SAME run (mirrors a concurrent
+    # ingest landing a new row that has nothing to do with this claim's own cohort membership).
+    with Session(evidence_dd_engine) as session:
+        run = session.exec(select(ScannerRun)).one()
+        session.add(ScannerResult(
+            run_id=run.id, ticker="ZZZ", name="ZZZ", sector="Technology",
+            leadership_score=10.0, leadership_bucket="C",
+            entry_quality_score=50.0, entry_quality_bucket="C",
+            risk_score=50.0, risk_bucket="C",
+            setup_status="Actionable", rank=2, record_json="{}",
+        ))
+        session.add(ForwardReturn(
+            run_id=run.id, symbol="ZZZ", horizon=20, asof_date=run.asof_date, entry_close=100.0,
+            measured_date=run.asof_date + timedelta(days=40), realized_return=-0.01,
+            max_drawdown=-0.09, underwater_days=7, time_to_recover_days=None,
+        ))
+        session.commit()
+
+    prev_engine = db_module._engine
+    db_module.set_engine(evidence_dd_engine)
+    monkeypatch.setattr(forward_testing_module.threading, "Thread", _NoOpThread)
+    # iter-47 AUDIT (T1): `_NoOpThread.start()` never runs `_spawn_drawdown_expectations_rewarm`'s worker
+    # body, so its `finally: _REWARM_IN_FLIGHT = False` never fires and the module GLOBAL would stay True
+    # for the rest of the pytest process — poisoning the single-flight guard for every later test in the
+    # SAME session (proven: with this line absent, running this file before
+    # `test_forward_testing.py::test_cached_with_status_dataset_change_serves_stale_refreshing_then_settles_ready`
+    # makes that test fail with `assert 'refreshing' == 'ready'`). `monkeypatch.setattr` records the
+    # pre-test value and restores it at teardown, so the guard is always left as it was found.
+    monkeypatch.setattr(forward_testing_module, "_REWARM_IN_FLIGHT", False)
+    try:
+        with Session(evidence_dd_engine) as session:
+            after = build_evidence_payload(str(ledger), session=session, config=cfg)
+    finally:
+        db_module.set_engine(prev_engine)
+
+    after_row = after["claims"][0]
+    assert after_row.get("expectations_status") == "refreshing"
+    assert "expectations" in after_row
+    assert after_row["expectations"] == before_row["expectations"], (
+        "a refreshing row must serve the LAST-GOOD pre-change generation verbatim — never a mix"
+    )
+
+
+class _NoOpThread:
+    """A `threading.Thread` stand-in whose `start()` does NOTHING — this test only needs to prove the
+    REQUEST-PATH behavior (immediate stale-serve + label), not the background re-warm's own eventual-
+    consistency mechanics (already proven directly in test_forward_testing.py)."""
+
+    def __init__(self, target=None, args=(), kwargs=None, daemon=None, name=None):
+        pass
+
+    def start(self):
+        pass
 
 
 def test_resolve_ledger_path_env_override(tmp_path, monkeypatch):

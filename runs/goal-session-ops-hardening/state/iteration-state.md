@@ -1,40 +1,40 @@
 # Iteration State — ops-hardening
 
-**After iteration:** 46 · **Date:** 2026-08-04 · **Verdict:** ESCALATE
+**After iteration:** 47 · **Date:** 2026-08-04 · **Verdict:** ESCALATE
 
 ## Journeys
 
-2 passing (J-08 J-09) · 5 partial (J-01 J-03 J-04 J-06 J-07) · 1 failing (J-05) — 8 total.
+2 passing (J-08 J-09 — durability + evaluator live spot-check, NO lane row) · 5 partial (J-01 J-03
+J-04 J-06 J-07) · 1 failing (J-05, 4th consecutive) — 8 total. **No journey was verified by any lane
+against the shipped build**; the only browser artifact reads BLOCKED, zero rows for J-06 and J-07.
 
 ## Active blockers
 
-- **NO journey has browser evidence against the build that SHIPPED** (dev/QA lane). Lane ran 05:49Z;
-  `warmup.py` changed 06:17Z, `data_manager.py` 08:38Z. `status.json` `next_action:
-  rerun_browser_lane_then_audit`; audit T1; review MINOR #2. **Re-run the lane BEFORE new code.**
-- **dev — `GET /api/evidence` 163.3 s idle / >300 s loaded.** Cache key
-  `r{max(scanner_runs.id)}-f{count(forward_returns)}` (`forward_testing.py:2475`): ONE new row misses
-  all 7 claims, and only the slow finalize tail re-warms them. TC-4 unmet. iter-46/av.
-- **dev — third unbounded site, same page:** `samples.py:145`/`:156`. Audit B3. iter-46/au.
-- **dev — J-05 cannot finish ONE old day** (all remaining gaps predate the newest snapshot — the shape
-  iter-45's path excluded; run 284: 0/1 in 21 min), **no J-05 screenshot, 3rd round** (iter-45/ar).
-  **No owner blockers.**
+- **Re-run browser-qa BEFORE any new code** (dev): lane ran 13:05-14:21Z, then code changed 15:00
+  (`research.py`), 15:03 + 16:50 (`forward_testing.py`). `status.json` blocked / `next_action:
+  browser_qa`; closure CLOSURE-FAIL. Services up and healthy. **No owner blockers.**
+- **Five rebuilt goldens never executed** (dev): `journey-scripts/{J-01,J-03,J-05,J-08,J-09}.json`
+  (15:46-16:05). J-04 + J-07 retired to `retired-journey-scripts/`, need the LLM lane.
+- **J-05's rebuilt golden decays into a null test after one productive run** (dev): add the audit's
+  `"1 snapshots"` assertion (`app/data/page.tsx:2785`) BEFORE running it.
+- **J-05's real defect** (dev): snapshot written in ~12 s, then the finalize tail runs for minutes and
+  the run row never leaves `running`. 4 rounds failing; the only product fault left.
+- **`/research/regime-lab` hits the 8192 MB cap on one request** (dev): `research.py:3552`
+  (iter-33/g, 13x deferred); starved the boot warm at 3/7 claims ~20 min.
 
 ## Last 2 verdicts
 
-- iter 46: ESCALATE — J-05 failing 3 rounds; outage + OOM modes closed, but the browser lane predates
-  the shipped build so nothing could score on it.
-- iter 45: ESCALATE — the membership fix never ran live; ~42-min outage; review FAIL (CRITICAL).
+- iter 47: ESCALATE — J-05 failed a 4th round; the mandatory lane never re-ran, so the round's real
+  win (Evidence page 163 s → 0.012 s) has no journey-level proof.
+- iter 46: ESCALATE — J-05 failing 3 rounds; the browser lane predated the shipped build.
 
 ## Do not redo
 
-- **Both evidence-path accumulators are BOUNDED and proven** (`research.py:783-818`,
-  `forward_testing.py:2270-2286`/`:2381-2404`): byte-identity + size-bound tests green, reviewer AND
-  auditor re-derived it, zero MemoryErrors since. iter-44/al closed.
-- **Zero-work ingest tail FIXED** — gate `data_manager.py:3768-3820` + audit B1's
-  `not prog.new_snapshot_dates` at `:3803`. Verified in sqlite: 29 min → 0.19 s (runs 280 vs 290).
-- **`data_manager.py:5058`/`:5091` guards DONE** (TC-5), only `warmup.py:205`/`:212` remain; **health
-  budget CLOSED** (iter-43/ag: 34/34 loaded, 120/120 max 104 ms; VmPeak 3,123 MB vs the 8192 MB cap,
-  perf-budgets Item O). **AG-10 intact**, never re-tune caps. No sixth `_BarCache.prefill`.
-- **The golden replay is a NULL TEST for J-01/J-03** — it asserts page-wide text that persisted Run
-  History already satisfies, and created no job at all at iter-45. `J-07.json` anchors verified live.
-  Capture-only: J-07 `[NEW]` walkthrough, J-05 frames. iter-33/g deferred 12x.
+- **Evidence-page cache thrash FIXED** (iter-46/av): `/api/evidence` 0.012 s live; serve-stale behind
+  `expectations_status:"refreshing"` (`forward_testing.py:2694-2748`); byte-identity SHA-256-proven.
+- **`samples.py` decile branch BOUNDED** (`_factor_decile_observations`, 5/5 pressure runs); STILL
+  OPEN `samples.py:161`/`:168`. **`warmup.py:205`/`:212` guarded**; **date filter done** (TC-5).
+- **Duplicate re-warm vs BOOT warm fixed** (audit B1, mutation-verified) — NOT fixed vs the ingest
+  finalize tail (audit B2: one process-wide sentinel). **AG-10 caps intact, never re-tune.**
+- **Replay goldens were NULL TESTS session-wide** (J-08's had ONE step) — never score a replay PASS
+  without reading the script. Capture-only: J-07 `[NEW]` walkthrough, J-05 frames.

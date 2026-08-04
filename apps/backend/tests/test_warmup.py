@@ -805,6 +805,77 @@ def test_warmup_drawdown_expectations_failure_is_nonfatal_on_textless_memoryerro
     warmup_mod._WARMUP_THREAD = None
 
 
+# ==================================================================================================
+# ops-hardening iter-47 (TC-6, carried from iter-44/45/46): `_warm_drawdown_expectations`'s two per-claim
+# exception handlers (warmup.py:205 MemoryError, :212 generic Exception) called a BARE `logger.exception`
+# — under the SAME exhausted `ulimit -v` cap that raised the original exception, rendering the full
+# traceback can itself allocate and raise a SECOND exception that escapes the handler before
+# `_release_process_memory()` runs (the module-wide isolation convention 19+ other sites already apply).
+# These proofs are DIRECT: they monkeypatch `_log_isolation_failure` itself and assert it was invoked — a
+# caplog text check cannot discriminate a guarded call from a bare one, because `_log_isolation_failure`
+# ALSO calls `logger.exception` internally on its own happy path.
+# ==================================================================================================
+def test_warmup_drawdown_memoryerror_calls_log_isolation_failure_not_bare_exception(early_engine, monkeypatch):
+    """TC-6 (warmup.py:205): the per-claim `MemoryError` handler calls `data_manager._log_isolation_failure`
+    — proven directly, not inferred from a log message — on a TEXTLESS `MemoryError`
+    (`str(MemoryError())` is `""`, this session's standing honesty rule for every new handler)."""
+    engine, cfg = early_engine
+    _stub_ledger(monkeypatch, [{"type": "claim", "claim": {"signal": "boom", "horizon": 20}}])
+
+    def _boom(*_args, **_kwargs):
+        raise MemoryError()  # TEXTLESS on purpose
+
+    monkeypatch.setattr(warmup_mod.forward_testing, "compute_drawdown_expectations_cached", _boom)
+    monkeypatch.setattr(warmup_mod.data_manager, "_release_process_memory", lambda: None)
+    calls: list[tuple] = []
+    monkeypatch.setattr(
+        warmup_mod.data_manager, "_log_isolation_failure",
+        lambda msg, *args, **kwargs: calls.append((msg, args)),
+    )
+
+    warmup_mod._warm_drawdown_expectations(engine, cfg)
+
+    assert len(calls) == 1, f"expected exactly one _log_isolation_failure call, got {calls}"
+    assert "memory pressure" in calls[0][0].lower(), calls[0]
+
+
+def test_warmup_drawdown_generic_exception_calls_log_isolation_failure_not_bare_exception(
+    early_engine, monkeypatch,
+):
+    """TC-6 (warmup.py:212): the per-claim GENERIC exception handler (one bad claim never blocks the
+    others) also calls `data_manager._log_isolation_failure` — proven directly — and, unlike the
+    `MemoryError` branch, must NOT abort the loop: a second, healthy claim after the failing one still
+    warms."""
+    engine, cfg = early_engine
+    claim_bad = {"signal": "bad-claim", "horizon": 20}
+    claim_good = {"signal": "good-claim", "horizon": 60}
+    _stub_ledger(monkeypatch, [
+        {"type": "claim", "claim": claim_bad},
+        {"type": "claim", "claim": claim_good},
+    ])
+
+    warmed: list[dict] = []
+
+    def _per_claim(_session, claim, _cfg):
+        if claim is claim_bad:
+            raise RuntimeError("boom")
+        warmed.append(claim)
+        return {"by_phase": []}
+
+    monkeypatch.setattr(warmup_mod.forward_testing, "compute_drawdown_expectations_cached", _per_claim)
+    calls: list[tuple] = []
+    monkeypatch.setattr(
+        warmup_mod.data_manager, "_log_isolation_failure",
+        lambda msg, *args, **kwargs: calls.append((msg, args)),
+    )
+
+    warmup_mod._warm_drawdown_expectations(engine, cfg)
+
+    assert len(calls) == 1, f"expected exactly one _log_isolation_failure call, got {calls}"
+    assert "non-fatal" in calls[0][0].lower(), calls[0]
+    assert warmed == [claim_good], "a generic per-claim failure must not block the NEXT claim from warming"
+
+
 def test_warmup_evidence_warm_runs_only_after_readiness_reaches_ok(early_engine, monkeypatch):
     """SEQUENCING PROOF (protects J-04 and J-07 step 1): the evidence warm is expensive (163.3s measured
     live for 7 claims), so it must run strictly AFTER the warm-up record has settled `ok` — the readiness

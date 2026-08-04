@@ -250,7 +250,13 @@ function ClaimRow({ claim }: { claim: CertifiedClaim }) {
  *  ops-hardening iter-29 (AG-8): branches on `resolveDrawdownExpectationsPanelState` (the single, pure
  *  authority) so a genuine per-claim compute failure THIS request (`expectations_status === "unavailable"`)
  *  renders a calm inline note instead of being indistinguishable from the pre-existing "not applicable"
- *  (absent) case. */
+ *  (absent) case.
+ *
+ *  ops-hardening iter-47 (audit B2): the SAME resolver also distinguishes `"refreshing"` — a resolved,
+ *  real, honest table (the last-good prior generation) is still rendered in full, with an ADDITIVE calm
+ *  warn-toned `Badge` beside the heading (mirrors `/backtest`'s `evidence_status: "refreshing"` pattern —
+ *  no new component). Never a blank/loading placeholder: the values shown are genuine and were never
+ *  mixed with a newer generation's fields (a single `EventStudyCache` row, deserialized whole). */
 function DrawdownExpectationsPanel({ claim }: { claim: CertifiedClaim }) {
   const state = resolveDrawdownExpectationsPanelState(claim);
   if (state.kind === "absent") {
@@ -271,15 +277,26 @@ function DrawdownExpectationsPanel({ claim }: { claim: CertifiedClaim }) {
     );
   }
   const { expectations } = state;
+  const isRefreshing = state.kind === "refreshing";
   return (
     <div className="space-y-2 border-t border-border pt-3" data-testid="evidence-expectations-panel">
       <div>
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-text-faint">
-          Historical drawdown &amp; dry-spell expectations ({expectations.horizon}-day hold)
-        </h3>
+        <div className="flex flex-wrap items-center gap-2">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-text-faint">
+            Historical drawdown &amp; dry-spell expectations ({expectations.horizon}-day hold)
+          </h3>
+          {isRefreshing ? (
+            <Badge variant="warn" data-testid="evidence-expectations-refreshing">
+              Refreshing
+            </Badge>
+          ) : null}
+        </div>
         <p className="mt-0.5 text-xs text-text-faint">
           What following this cohort&rsquo;s methodology has historically felt like, by market phase at
           entry — descriptive history only, never a forecast or a promise.
+          {isRefreshing
+            ? " A newer version is computing in the background after a recent data update — the table below is the last complete version, not a partial or fabricated one."
+            : null}
         </p>
       </div>
       <div className="overflow-x-auto">
