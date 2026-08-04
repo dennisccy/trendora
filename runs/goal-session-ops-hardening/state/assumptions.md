@@ -678,3 +678,44 @@ one iteration. A reader who holds that "no lane ran, therefore nothing is verifi
 `unknown`, which changes no gate (GOAL_ACHIEVED is blocked either way) but would show 0 of 8 journeys
 green rather than 2.
 **Reversible:** yes
+
+## iter-48 — goal-decomposer
+
+**Ambiguity:** the iter-47 evaluator's next-step gives a NUMBERED order — (1) re-run all eight journey
+checks, (2) harden J-05's golden assertion, (3) fix the historical-gap-insert finalize-tail (J-05's own
+remaining defect, 4 consecutive failing rounds), (4) bound the Regime Lab's separate 8192MB-cap hit
+(deferred 13 times already), (5) several small items (`samples.py:161`/`:168`, a shared warm-in-progress
+flag, health-poll slowness, J-09's background-worker visibility gap). `docs/goal.md` does not say whether
+a numbered evaluator order is a single iteration's checklist or a multi-iteration sequence, and the
+priority rubric's rule 5 ("never bundle two risky journeys/changes... a joint failure is undiagnosable")
+does not by itself say which items in a 5-item list count as "risky."
+
+**We chose:** this iteration (iter-48) takes items (1) and (3) as its PRIMARY scope (full 8-journey
+re-verification + the J-05 finalize-tail fix), takes the FIRST bullet of item (5) (`samples.py:161`/
+`:168`) as a bundled TRIVIAL addition since it is the mechanical continuation of an already-proven
+pattern (the iter-47 decile-branch bound, 5/5 pressure runs) on the SAME already-registered Data
+Contract row, and explicitly DEFERS item (4) (Regime Lab) and the remainder of item (5) (the shared
+warm-in-progress flag, health-poll slowness re-measurement, J-09 background-worker visibility) to a
+later iteration. Grounds stated rather than assumed: (1) J-05's finalize-tail fix is a genuine
+correctness-adjacent change to `_membership_timeline`'s recompute path — the ONLY subsystem in this
+5-item list that risks changing computed values (entries/exits) if scoped wrong, which is exactly rule
+5's "risky change" category; the Regime Lab fix is a SEPARATE, not-yet-diagnosed memory investigation
+(VmPeak hit the 8192MB cap even though the read feeding it is already column-projected/streamed, per
+the iter-47 evaluator's own measurement, meaning the true culprit is still unknown) — bundling a second
+undiagnosed memory investigation alongside an order-dependent correctness fix is exactly the "joint
+failure is undiagnosable" case rule 5 warns against; (2) `samples.py:161`/`:168` carries none of that
+risk — it is the SAME function family, SAME already-registered row, SAME proven two-pass bounding
+pattern applied a third time, so treating it as "trivial" (rule 5's other bucket: "several trivial
+journeys OR one risky journey") rather than a second risky change is consistent with how this session
+already treated the decile-branch fix at iter-47; (3) the evaluator's own numbering already sequences
+item (4) AFTER item (3) rather than presenting them as co-equal, and iter-47's own decomposer precedent
+(assumptions.md, iter-47) made the identical call in the other direction — deferring J-05's own fix
+that round to avoid bundling it with the Evidence-page work, citing the same rule 5; this iteration
+completes that deferred pairing without repeating the risk it was designed to avoid. Cost recorded
+honestly: J-07 stays `partial` after this iteration (the Regime Lab's own acceptance-relevant defect is
+untouched), and item (4) becomes a 14th deferral of the SAME named item (iter-33/g) — a number the next
+evaluator should read as a standing cost, not a clean bill. A reader who holds that "the evaluator's
+numbered order is the round's mandate in full" would target J-05 AND the Regime Lab together this
+round, accepting the risk of an undiagnosable joint failure if the browser lane comes back with a new
+regression neither fix's own tests explain.
+**Reversible:** yes
