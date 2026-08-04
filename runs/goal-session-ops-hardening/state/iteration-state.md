@@ -1,40 +1,40 @@
 # Iteration State — ops-hardening
 
-**After iteration:** 45 · **Date:** 2026-08-04 · **Verdict:** ESCALATE
+**After iteration:** 46 · **Date:** 2026-08-04 · **Verdict:** ESCALATE
 
 ## Journeys
 
-6 passing (J-01 J-03 J-04 J-06 J-08 J-09) · 2 failing (J-05 J-07) — 8 total. Nothing changed status
-this round; J-07 failing 4 rounds (last passed iter-34), J-05 2 rounds (last iter-39).
+2 passing (J-08 J-09) · 5 partial (J-01 J-03 J-04 J-06 J-07) · 1 failing (J-05) — 8 total.
 
 ## Active blockers
 
-- **dev — memory exhaustion is reachable from ORDINARY PAGE BROWSING, not just an ingest; this is
-  the next round's ONE job.** 16 of 24 wedge-window `MemoryError`s entered via `evidence.py:168` →
-  unbounded RETAINED accumulators at `research.py:777` / `forward_testing.py:2343`. Drove a ~42-min
-  outage (`logs/backend.log` :172574 → :172965, zero access lines). Blocks BOTH targets. iter-45/ap.
-- **dev — a fatal job logs nothing.** Run 281 died `"MemoryError (no message)"` with no log line;
-  `_run_job`'s outer handler makes no logging call and `data_manager.py:3451` is unguarded.
-- **dev — no out-of-process watchdog** (an in-process deadline provably cannot help: AnyIO
-  worker-thread CREATION failed). **TC-11 re-opened:** `J-03-verify.png` == `J-04-verify.png`;
-  `demo_runner.py` fixed at source, those files predate it. **No owner blockers.**
+- **NO journey has browser evidence against the build that SHIPPED** (dev/QA lane). Lane ran 05:49Z;
+  `warmup.py` changed 06:17Z, `data_manager.py` 08:38Z. `status.json` `next_action:
+  rerun_browser_lane_then_audit`; audit T1; review MINOR #2. **Re-run the lane BEFORE new code.**
+- **dev — `GET /api/evidence` 163.3 s idle / >300 s loaded.** Cache key
+  `r{max(scanner_runs.id)}-f{count(forward_returns)}` (`forward_testing.py:2475`): ONE new row misses
+  all 7 claims, and only the slow finalize tail re-warms them. TC-4 unmet. iter-46/av.
+- **dev — third unbounded site, same page:** `samples.py:145`/`:156`. Audit B3. iter-46/au.
+- **dev — J-05 cannot finish ONE old day** (all remaining gaps predate the newest snapshot — the shape
+  iter-45's path excluded; run 284: 0/1 in 21 min), **no J-05 screenshot, 3rd round** (iter-45/ar).
+  **No owner blockers.**
 
 ## Last 2 verdicts
 
-- iter 45: ESCALATE — the membership fix is correct but NEVER ran live (`grep` → 0 matches) and
-  neither target moved; review FAIL (CRITICAL), audit FAIL (2 CRITICAL gaps).
-- iter 44: ESCALATE — J-07 failed a 3rd consecutive round, J-05 failed its own defining case; the
-  live stack dump first named the membership-timeline storm.
+- iter 46: ESCALATE — J-05 failing 3 rounds; outage + OOM modes closed, but the browser lane predates
+  the shipped build so nothing could score on it.
+- iter 45: ESCALATE — the membership fix never ran live; ~42-min outage; review FAIL (CRITICAL).
 
 ## Do not redo
 
-- **The append-forward fast path is BUILT, audit-guarded, byte-identity tested. Keep it; it needs one
-  live drill, never a rewrite. Do NOT chase the membership-timeline storm again** — named for 2
-  rounds, now fixed, NOT the binding constraint. No sixth `_BarCache.prefill` attempt.
-- **No append-forward live drill can be planned:** `gap_last = 2019-02-25` vs latest snapshot
-  `2026-07-31` (= the seed horizon); AG-9 forbids making one. Closing J-05 needs the gap-fill fast.
-- **The third `MemoryError`-in-logging escape is CLOSED** (`_log_isolation_failure`, 19 sites,
-  deterministic fallback tests; iter-44/am resolved). Only `data_manager.py:5058`/`:5091` remain.
-- **AG-10 verified intact** (`start-backend.sh:56/:60/:76-101`, `config.yaml:1363` = 8192) — never
-  re-tune caps. `J-07.json` step 3 = 2532 ok, `n=8991` unverified. **Capture-only, never a round's
-  goal:** J-07's `[NEW]` walkthrough, J-05's frames. iter-33/g deferred 11×.
+- **Both evidence-path accumulators are BOUNDED and proven** (`research.py:783-818`,
+  `forward_testing.py:2270-2286`/`:2381-2404`): byte-identity + size-bound tests green, reviewer AND
+  auditor re-derived it, zero MemoryErrors since. iter-44/al closed.
+- **Zero-work ingest tail FIXED** — gate `data_manager.py:3768-3820` + audit B1's
+  `not prog.new_snapshot_dates` at `:3803`. Verified in sqlite: 29 min → 0.19 s (runs 280 vs 290).
+- **`data_manager.py:5058`/`:5091` guards DONE** (TC-5), only `warmup.py:205`/`:212` remain; **health
+  budget CLOSED** (iter-43/ag: 34/34 loaded, 120/120 max 104 ms; VmPeak 3,123 MB vs the 8192 MB cap,
+  perf-budgets Item O). **AG-10 intact**, never re-tune caps. No sixth `_BarCache.prefill`.
+- **The golden replay is a NULL TEST for J-01/J-03** — it asserts page-wide text that persisted Run
+  History already satisfies, and created no job at all at iter-45. `J-07.json` anchors verified live.
+  Capture-only: J-07 `[NEW]` walkthrough, J-05 frames. iter-33/g deferred 12x.

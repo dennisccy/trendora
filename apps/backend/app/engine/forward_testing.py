@@ -2267,6 +2267,24 @@ def _loss_streak_cell(dated_returns: list[tuple], floor: int) -> dict:
     return {"value": _longest_negative_streak(ordered), "n": n, "insufficient": False}
 
 
+def _drawdown_ticker_slice_map(
+    session: Session, horizon: int, slice_tickers: list[str], batch: int,
+) -> dict[tuple[str, str], tuple]:
+    """ops-hardening iter-46 (AG-8): the `(symbol, asof_date_iso) -> (max_drawdown, underwater_days,
+    time_to_recover_days)` read for ONE bounded SLICE of tickers — `compute_drawdown_expectations`'s chunk
+    axis (`research.drawdown_expectations_ticker_chunk`), mirroring `research.py`'s `_fr_slice_map`. A
+    named function (not an inlined loop body) so a test can wrap/instrument it to observe the live
+    per-slice size directly (TC-2)."""
+    fr_stmt = select(
+        ForwardReturn.symbol, ForwardReturn.asof_date, ForwardReturn.max_drawdown,
+        ForwardReturn.underwater_days, ForwardReturn.time_to_recover_days,
+    ).where(ForwardReturn.horizon == horizon, ForwardReturn.symbol.in_(slice_tickers))
+    stored_by_key: dict[tuple[str, str], tuple] = {}
+    for symbol, asof_date, mdd, uw, ttr in session.exec(fr_stmt).yield_per(batch):
+        stored_by_key[(symbol, asof_date.isoformat())] = (mdd, uw, ttr)
+    return stored_by_key
+
+
 def compute_drawdown_expectations(
     session: Session, claim: dict, config: Optional[Config] = None
 ) -> Optional[dict]:
@@ -2329,18 +2347,27 @@ def compute_drawdown_expectations(
     # designed purpose, the per-query row-stream size, never as the chunk width). The chunks partition
     # `tickers` disjointly, so the built dict is byte-identical to the single-query version (same keys,
     # same values — chunking only changes how many rows are in flight from the DB at once).
+    #
+    # ops-hardening iter-46 (AG-8, TC-2): the QUERY above was already ticker-chunked and `yield_per`-
+    # streamed, but every chunk's rows used to land in the SAME `stored_by_key` dict, retained WHOLE until
+    # the separate phase-aggregation loop ran afterward over the full `rows` list — a bounded READ,
+    # unbounded RETENTION (the exact shape iter-40's lesson names; `forward_testing.py:2343` pre-fix, the
+    # evidence-serving path's other named `MemoryError` site). Each chunk's `stored_by_key` slice is now
+    # folded into the by-phase accumulators immediately below and discarded before the next chunk's query
+    # starts, so peak live size is bounded by (chunk width tickers x their forward-returns rows), never by
+    # the claim's whole cohort. This requires indexing the already-in-memory `rows` list (the
+    # `compute_samples` cohort resolved above — bounded by claim resolution already, NOT the accumulator
+    # being bounded here) by ticker ONCE, so each chunk's aggregation pass only touches that chunk's own
+    # rows. `by_phase_mdd`/`by_phase_uw`/`by_phase_ttr`/`by_phase_returns` are order-insensitive
+    # accumulators (`_median_p90` sorts internally; `_loss_streak_cell` collapses-by-date and sorts
+    # chronologically internally — see their own docstrings), so folding per chunk instead of in the
+    # original `rows` order changes nothing about the emitted `by_phase` payload — byte-identical (TC-3).
     tickers = sorted({r["ticker"] for r in rows})
     chunk_width = max(1, cfg.research.drawdown_expectations_ticker_chunk)
     read_batch = cfg.research.read_batch_size
-    stored_by_key: dict[tuple[str, str], tuple] = {}
-    for i in range(0, len(tickers), chunk_width):
-        chunk = tickers[i : i + chunk_width]
-        fr_stmt = select(
-            ForwardReturn.symbol, ForwardReturn.asof_date, ForwardReturn.max_drawdown,
-            ForwardReturn.underwater_days, ForwardReturn.time_to_recover_days,
-        ).where(ForwardReturn.horizon == horizon, ForwardReturn.symbol.in_(chunk))
-        for symbol, asof_date, mdd, uw, ttr in session.exec(fr_stmt).yield_per(read_batch):
-            stored_by_key[(symbol, asof_date.isoformat())] = (mdd, uw, ttr)
+    rows_by_ticker: dict[str, list[dict]] = defaultdict(list)
+    for row in rows:
+        rows_by_ticker[row["ticker"]].append(row)
 
     # the SAME causal timeline `compute_market_phase` reads (all-history — the expectations panel is
     # descriptive over the claim's WHOLE tested cohort, not scoped to a single "today" as-of).
@@ -2351,23 +2378,30 @@ def compute_drawdown_expectations(
     by_phase_ttr: dict[str, list[float]] = defaultdict(list)
     by_phase_returns: dict[str, list[tuple]] = defaultdict(list)
 
-    for row in rows:
-        date_iso = row["snapshot_date"]
-        ctx = phases.get(date_iso)
-        if ctx is None:
-            continue  # no causal phase classification for this date (short benchmark window) -> excluded
-        phase = ctx["phase"]
-        by_phase_returns[phase].append((date_iso, row["forward_return"]))
-        stored = stored_by_key.get((row["ticker"], date_iso))
-        if stored is None:
-            continue
-        mdd, uw, ttr = stored
-        if mdd is not None:
-            by_phase_mdd[phase].append(mdd)
-        if uw is not None:
-            by_phase_uw[phase].append(uw)
-        if ttr is not None:
-            by_phase_ttr[phase].append(ttr)
+    for i in range(0, len(tickers), chunk_width):
+        chunk = tickers[i : i + chunk_width]
+        stored_by_key = _drawdown_ticker_slice_map(session, horizon, chunk, read_batch)
+
+        # fold THIS chunk's rows into the by-phase accumulators immediately, then let `stored_by_key`
+        # go out of scope (rebound next iteration) before the next chunk's query starts (TC-2's bound).
+        for ticker in chunk:
+            for row in rows_by_ticker.get(ticker, []):
+                date_iso = row["snapshot_date"]
+                ctx = phases.get(date_iso)
+                if ctx is None:
+                    continue  # no causal phase classification for this date (short window) -> excluded
+                phase = ctx["phase"]
+                by_phase_returns[phase].append((date_iso, row["forward_return"]))
+                stored = stored_by_key.get((row["ticker"], date_iso))
+                if stored is None:
+                    continue
+                mdd, uw, ttr = stored
+                if mdd is not None:
+                    by_phase_mdd[phase].append(mdd)
+                if uw is not None:
+                    by_phase_uw[phase].append(uw)
+                if ttr is not None:
+                    by_phase_ttr[phase].append(ttr)
 
     by_phase = [
         {

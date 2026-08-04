@@ -1,0 +1,81 @@
+{
+  "phase": "goal-ops-hardening-iter-46",
+  "status": "blocked",
+  "current_step": "audit_qa_failed",
+  "qa_verdict": "FAIL",
+  "audit_verdict": "FAIL",
+  "dev_pass": "audit_fix",
+  "updated_at": "2026-08-04T08:59:24.090247Z",
+  "started_at": "2026-08-04T03:32:06.809159Z",
+  "cli": "claude",
+  "audit_fix_pass_summary": "Deliberately small pass. The audit's own section 5 says 'keep the code' and assigns its two open IMPORTANT gaps (B2 evidence-cache invalidation -> TC-4; B3 the third unbounded site at samples.py:145/156) plus B4 to the NEXT iteration as outside this phase's IN SCOPE list. I did not override that -- reopening the Evidence serving path a second time in one iteration would be a second risky change (rule 5) and would make the re-review diff unreviewable. Fixed what was listed AND in scope: B5 (the docstring the previous fix pass falsified) and T4 (the VmPeak margin record TC-8 requires, freshly measured live). Verified the auditor's own B1 repair against the running app rather than trusting the unit test alone. TC-4 remains UNMET and is reported as such.",
+  "fixes_applied": [
+    "B5 (OBSERVATION) FIXED -- apps/backend/app/engine/data_manager.py:1312-1323: refresh_coverage_snapshot's docstring claimed the ingest finalize hook calls it 'unconditionally, on every successful backfill/both/rebuild -- including a zero-work re-run', which the previous fix pass made false. It now states the real contract (every fetch/expand and every backfill/both/rebuild that _coverage_snapshot_is_current finds STALE or that created a new snapshot date; only a genuinely zero-work re-run skips) plus a note that this is the ingest tail's ONE uncached heavy call so the gate is load-bearing. Docstring text only -- zero behavior change.",
+    "T4 (GAP) FIXED -- reports/perf-budgets.md Item O: the dated VmPeak margin record TC-8 step 3 requires and the iteration never wrote. Freshly measured on the audit-fixed build, 120 consecutive 1Hz samples over 120.03s of /proc/1761825/status + GET /api/health: VmPeak FLAT at 3,197,988 kB = 3,123.0 MB against the 8192 MB ulimit -v cap confirmed on /proc/<pid>/limits => margin 5,190,620 kB = 5,069.0 MB, 61.9% headroom, 38.1% utilized; VmHWM 2,604.6 MB; health 120/120 HTTP 200, mean 96.4ms, max 104.0ms, zero polls over 2s. Item O states explicitly that this is a steady-state reading and does NOT re-verify TC-8 steps 1/2/4."
+  ],
+  "verified_not_rebuilt": [
+    "B1 (the auditor's own in-audit fix) verified in the tree AND live: the `not prog.new_snapshot_dates` clause is present at data_manager.py:3803 and test_ingest_finalize_zero_work_coverage.py carries TC-A1/TC-A2/TC-A3 (3 passed in 0.61s). Live re-drill on the audit-fixed build: zero-work backfill 2026-07-25->26 (Sat/Sun) reached status ok in 2 SECONDS, dates_total 0, aggregates_refreshed ['forward_aggregates','research_hot_keys','drawdown_expectations'] with coverage/membership_timeline honestly ABSENT. The J-01/J-03 improvement survives the added clause.",
+    "TC-6 re-verified live at fix time (it is a derived aggregate that moves with every ingest): /api/data coverage.gap_count = 2526 matches journey-scripts/J-07.json step 3; /api/backtest contains 14647 matching step 2. No correction needed. The zero-work drill inserted zero forward returns so it moved neither anchor.",
+    "Live build health on handover: /api/health 200 (0.12s, readiness ready, warmup 89/89 ok, preflight GO); /api/evidence 200 in 0.013-0.022s with 7/7 claims and expectations populated on every one; /api/backtest 200 (0.02-0.05s); /api/data 200 (0.06s); frontend :3255 200. ZERO MemoryError entries since this process booted (7,075 in the whole file, all historical).",
+    "AG-10 confirmed on the process itself, not assumed: uvicorn PID 1761825 launched 09:05:06 via scripts/start-backend.sh, banner 'memory_cap_mb=8192 malloc_arena_max=2' + 'host-guard: cpu_list=0-15 blas_threads=8', /proc/1761825/limits Max address space = 8589934592 bytes = 8192 MB."
+  ],
+  "remaining_unmet": [
+    "TC-4 UNMET (audit B2) -- the headline DoD item. compute_drawdown_expectations_cached keys on _dataset_version = r{max(scanner_runs.id)}-f{count(forward_returns)}, so a single inserted forward return misses all 7 claims and the next /api/evidence pays the full cold recompute (163.3s measured idle). I evaluated the audit's option (a) (re-warm right after the backfill stage commits) concretely and rejected it: the warm itself costs ~163s idle / 385s live-in-background against a <=3s DoD budget, so it does not satisfy the acceptance wording while changing finalize-tail ordering and its correctness surface. Option (b) (serve the previous stamp behind a 'recomputing' marker) is a new serving mechanism with a UI-visible marker in an iteration whose spec says 'Frontend: None' and 'UI surface changes: None'. Both are the audit's next-iteration item 2.",
+    "Audit B3 -- the third unbounded whole-cohort materialization on the same /api/evidence path (samples.py:145 builds the whole-history observation list, :156 sorts it whole) is untouched and was observed MemoryError-ing at 2026-08-04 02:20:31. Two of three evidenced sites are closed, so the GOAL's first clause is TWO-THIRDS delivered, not delivered. Audit's next-iteration item 3; needs its own pinned byte-identity oracle.",
+    "Audit B4 -- _drawdown_ticker_slice_map still filters only on (horizon, symbol), reading 7,994,388 rows across 71 calls to serve 7 claims. Provably byte-identical to fix; audit's next-iteration item 4. I accept the audit's correction that the query is character-identical to the pre-fix inline query (an iter-36 characteristic the extracted helper inherited), not something this diff introduced.",
+    "T1/T2 -- no browser journey has yet executed against the fixed build, and there is still no J-05 capture at all. Not closable by a developer pass; the lane must re-run.",
+    "J-05 / TC-7 -- unchanged and out of scope: every live-testable gap (gap_first 2005-05-24, gap_last 2019-02-25) predates the latest snapshot (2026-07-31), so this DB cannot present an append-forward case to drill.",
+    "GOAL clause 2 (J-05's append-forward fast path gets its first genuine live proof) -- not achieved and not achievable on this data basis."
+  ],
+  "browser_lane_prerequisites": [
+    "ORDERING HAZARD (the practical face of B2): the evidence cache is warm right now. Any journey that lands forward returns invalidates all 7 claim panels and hands the next Evidence step a ~163s cold read. J-01's and J-03's shapes insert nothing (re-confirmed live this pass); J-05's inserted 840 forward returns last time. Run J-05 LAST, after J-06/J-07's evidence steps, or re-warm before scoring them.",
+    "Do NOT restart the backend immediately before the sweep without letting the boot warm finish (~385s) -- that is exactly the trap the pre-fix lane fell into twice (UT-J-06 step 7, UT-J-07 step 4/8).",
+    "TC-9: capture a DISTINCT screenshot per journey, including a real J-05 capture (there is none on record). The audit's own recommendation is an md5sum + journey->file injectivity gate inside the runner; that is a framework change, out of this product phase's scope."
+  ],
+  "qa_test_node_ids": [
+    "tests/test_warmup.py::test_warmup_warms_every_ledger_claim_and_skips_forward_walk_records",
+    "tests/test_warmup.py::test_warmup_evidence_warm_runs_only_after_readiness_reaches_ok",
+    "tests/test_warmup.py -k \"nonfatal or single_flight or drawdown\"",
+    "tests/test_ingest_finalize_zero_work_coverage.py",
+    "tests/test_data_manager.py -k \"fail_unlaunched or log_isolation_failure or fatal_job_failure\"",
+    "tests/test_research_streaming.py",
+    "tests/test_forward_testing.py -k drawdown"
+  ],
+  "qa_test_node_ids_note": "Closes audit T3: the first two do NOT match nonfatal/single_flight/drawdown and must be named explicitly -- QA's previous -k selection collected only 5 of test_warmup.py's 20 tests and only one of the three new warm-up tests.",
+  "changed_files": [
+    "apps/backend/app/engine/data_manager.py",
+    "reports/perf-budgets.md",
+    "docs/handoffs/goal-ops-hardening-iter-46-dev.md",
+    "reports/phase-goal-ops-hardening-iter-46-implementation-summary.md"
+  ],
+  "changed_files_qa_fix_pass": [
+    "apps/backend/app/engine/warmup.py",
+    "apps/backend/app/engine/data_manager.py",
+    "apps/backend/tests/test_ingest_finalize_zero_work_coverage.py",
+    "apps/backend/tests/test_warmup.py",
+    "runs/goal-session-ops-hardening/journey-scripts/J-07.json",
+    "reports/perf-budgets.md"
+  ],
+  "changed_files_original_pass": [
+    "apps/backend/app/engine/research.py",
+    "apps/backend/app/engine/forward_testing.py",
+    "apps/backend/app/engine/data_manager.py",
+    "apps/backend/tests/test_research_streaming.py",
+    "apps/backend/tests/test_forward_testing.py",
+    "apps/backend/tests/test_data_manager.py"
+  ],
+  "tests_run": true,
+  "tests_summary": "This pass: 10 test executions, 0 failures, 0 regressions -- tests/test_ingest_finalize_zero_work_coverage.py (3 passed in 0.61s, TC-A1/A2/A3 incl. the auditor's new TC-A3) and tests/test_data_manager.py -k 'fail_unlaunched or log_isolation_failure or fatal_job_failure' (7 passed, 162 deselected, 0.78s, TC-5). Full suite never run (~10-11h on this 30-year basis). The auditor independently ran 88 executions with 0 failures, including the two new warm-up tests QA's selection missed.",
+  "new_finding_this_pass": "None -- no new defect was discovered during this pass, so nothing is being carried silently.",
+  "browser_checks_run": false,
+  "browser_qa_report": "reports/phase-goal-ops-hardening-iter-46-ui-test-results.md (ENTIRELY PRE-FIX -- written 06:49:05, newest PNG 06:46:36, whereas the first live restart carrying the fixes is 07:44:49; its 3 PASS / 5 FAIL verdict cannot speak to this build)",
+  "services_left_running": {
+    "backend": "http://localhost:8255/api/health 200 (0.12s) -- PID 1761825, warm, readiness ready",
+    "frontend": "http://localhost:3255 200",
+    "evidence": "http://localhost:8255/api/evidence 200 (0.022s), 7/7 claims warm"
+  },
+  "next_action": "rerun_browser_lane_then_audit",
+  "blockers": [
+    "TC-4 cannot be met inside this phase's IN SCOPE list (audit B2). This is an evaluator-level call, not a developer one: either the DoD item is carried to the next iteration with B2/B3 as its named work, or the iteration is scored with the headline promise unmet."
+  ]
+}

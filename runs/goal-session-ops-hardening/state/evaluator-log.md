@@ -3703,3 +3703,178 @@ round's goal: J-07's `[NEW]` walkthrough (fifteenth round unrecorded) and J-05's
 for about 42 minutes, twice as long as last round, and ordinary browsing can trigger it; and J-05
 asks for a day with no snapshot, while every such day left in this database sits before dates
 already stored, so closing J-05 means making that older-day case fast.
+
+## Iteration 46 — goal-ops-hardening-iter-46
+
+**Date:** 2026-08-04T09:15:00Z
+**Verdict:** ESCALATE
+**Depth dispatched:** full (`iter-46/depth-dispatched` = `full`, matching the spec's `Depth: full` /
+`Full trigger: 3`. `runs/goal-ops-hardening-iter-46/status.json` = `blocked` / `audit_qa_failed` /
+`next_action: rerun_browser_lane_then_audit`, one blocker listed. `browser_checks_run: false` is STALE
+for the FOURTH iteration running — the LLM browser lane demonstrably ran 05:45-05:49Z with 11 dated
+PNGs. There was NO deterministic replay lane this iteration: no
+`reports/phase-goal-ops-hardening-iter-46-regression-replay-results.md` exists, so all eight journeys
+rode the LLM lane, which drilled them far harder than the replay ever has.)
+
+**Journey deltas:**
+- **THE FACT THAT GOVERNS EVERY ROW, measured by me with `stat` and independently found by the auditor
+  (T1): the only browser lane on record ran at 05:45-05:49Z, and the build then changed TWICE inside
+  the same iteration** — `warmup.py` at 06:17:39Z (QA-fix pass) and `data_manager.py` at 08:38:10Z
+  (audit-fix pass), both aimed squarely at the rows that failed. **No journey has browser evidence
+  against the build this iteration shipped.** The engine says so itself in `next_action`, the auditor
+  says so in T1, and the reviewer's second MINOR asks that the lane be re-run "before the iteration is
+  scored complete".
+- Newly passing: **none**. Newly failing: **none**. **Regressed: NONE.**
+- **J-01 "Backfill honors the requested range and explains zero-work"** — `passing` → **`partial`**.
+  The lane's FAIL is real on the build it tested (run 287, two weekend days, resolved
+  `dates_total: 0` in 0.087 s at job-detail level yet never left `running` in 15+ min). On the
+  SHIPPED build the same shape completes: `data_provider_runs` id=289 **0.22 s, status `ok`**,
+  id=291 repeats it after the audit-fix pass. Read by me in sqlite, not taken from a handoff.
+- **J-03 "No per-run range cap"** — `passing` → **`partial`**. Its core claim HELD (412-day span
+  accepted, no cap rejection anywhere); step 3 ("at least the first chunk completes") did not. Same
+  repair verified: id=280 ran that identical range on the iter-45 build in **29 minutes**; id=290 ran
+  it on the shipped build in **0.19 s**.
+- **J-04 "Non-blocking boot with visible status"** — `passing` → **`partial`**, and this downgrade is
+  MINE, against the lane's own PASS. Five of six steps are strongly evidenced (including all four
+  mid-flight runs correctly reading `interrupted`, which I confirmed in sqlite). Step 2's "first
+  HTTP 200 within 5 seconds" was measured at **~29 s**, and the lane justified its PASS with a test-plan
+  disclosure (`ui-test-plan.md:259-262`) that I read and which covers the badge, not the first-200.
+- **J-06 "Pages load only what they need"** — `passing` → **`partial`**. 10 of 11 routes passed in
+  2-5 s. `GET /api/evidence` did not answer inside 300 s. Not merely a load artefact: 163.3 s cold on a
+  fully IDLE backend, and one inserted forward return invalidates all 7 claims.
+- **J-05 "Aggregates are precomputed at ingest"** — `failing`, THIRD consecutive (44, 45, 46);
+  `last_passing_iter` stays iter-39. Run 284 (2019-02-25, confirmed absent first) sat at
+  `dates_done 0/1`, `snapshots_created 0` for ~21 minutes. **The failure mode changed: no MemoryError,
+  no failure at all — it simply never progressed.**
+- **J-07 "Heavy aggregates never take the service down"** — `failing` → **`partial`**, ending four
+  consecutive hard live FAILs (42, 43, 44, 45). Its own step 2 and step 3 were MET. The lane's FAIL was
+  driven by `/api/evidence`, which belongs to TC-4, not to any of J-07's four steps.
+- Re-verified `passing` with this-iteration evidence: **J-08, J-09** (both spot-checked by me, A.4).
+  Deferred (`DEFERRED-BUDGET`): none. No `browser-infra.json`; no `journeys-changed.md`; all 8
+  `spec_hash`es match `goal_gate hash-journeys` run by me. `evidence_makeup` CLEARED everywhere
+  (J-03/J-04 carried it from iter-45 and now have fresh distinct captures).
+- Anti-goal violations: **FIVE RESOLVED — iter-44/al** (the two unbounded accumulators, this
+  iteration's one risky change), **iter-44/ak** and **iter-45/ao** (the 20m51s and ~42-minute total
+  outages), **iter-45/at** (the last two unguarded log calls), **iter-43/ag** (the health-poll budget,
+  breached at 63.6% when filed, now 34/34 and 120/120 clean). **SEVEN NEW: iter-46/au** (minor, open —
+  the THIRD unbounded site, `samples.py:145/156`), **iter-46/av** (minor, open — `/api/evidence` 163 s
+  idle / >300 s loaded; TC-4 unmet), **iter-46/aw** (minor, open — the new warm's two bare log calls),
+  **iter-46/az** (minor, open — the ~29 s first-200), **iter-46/ba** (minor, open — QueuePool
+  exhaustion on `/api/backtest`), **iter-46/ay** (minor, **RESOLVED in-iteration** — the unconditional
+  zero-work coverage recompute), **iter-46/bb** (minor, **RESOLVED in-iteration** — QA's first PASS).
+  Five carried items given an ITER-46 UPDATE recording what I verified rather than inherited. Ledger
+  now: **64 total, 20 unresolved, 0 unresolved critical.** scan-report CLEAN; coherence COHERENCE-WARN
+  (zero blocking, three advisories); review **PASS_WITH_NOTES** (2 MINOR); QA FAIL (re-validated from
+  an earlier PASS); audit FAIL (1 IMPORTANT fixed in-audit, 3 open); browser QA FAIL 3 PASS / 5 FAIL
+  (its own header miscounts this as 4/4 — the auditor caught it and I confirmed the table);
+  ux-regression SKIPPED (wall-clock trim).
+
+**Reasoning:** I checked every load-bearing fact myself rather than reading it off a report.
+(1) **The build changed after the only browser lane ran, and I proved it with file times rather than
+accepting the coordinator's note.** Evidence PNGs 05:45-05:46Z, results file 05:49Z, `warmup.py`
+06:17Z, `data_manager.py` 08:38Z. That single fact decides how every row is scored.
+(2) **The two rows I downgraded to `partial` for a hang are machine-recorded as repaired, and I read
+the machine record.** In `apps/backend/data/trendora.db`, `data_provider_runs` id=289 and id=291 are
+zero-work weekend backfills that reach `ok` in 0.22 s with a complete breakdown (`calendar_days 2`,
+`non_trading_days 2`, `dates_total 0`), and id=290 is the SAME 412-day range that hung, finishing in
+0.19 s. The pre-fix comparison is in the same table: id=280, that identical range on the iter-45
+build, took **29 minutes**. So the finalize tail's unconditional heavy recompute is real, was
+discovered by this round's own testing, and was fixed inside this round.
+(3) **The outage did not recur, and I did not take anyone's word for it.** I walked every timestamped
+line of `logs/backend.log` after the 03:55Z launch and counted API access lines inside every gap
+longer than five minutes: each one holds between 48 and 199 `GET /api/health 200` responses. There is
+no silent window anywhere. iter-44 measured 20m51s of zero access lines; iter-45 measured ~42 minutes.
+This round, under **heavier** load (up to four concurrent backfills plus a background compute), zero.
+(4) **Zero MemoryErrors, counted rather than claimed.** The whole 178,613-line log holds 7,075
+`MemoryError` lines; the LAST one is at line 172956, immediately before the 01:34:45Z launch banner at
+172958 — i.e. nothing since iter-45. The two accumulators this round bounded are the ones named in
+iter-45's wedged traceback. This is the first round in five where the memory failure mode did not
+appear at all.
+(5) **The headline promise is still not delivered, and I say so plainly.** `GET /api/evidence` costs
+163.3 s on an idle backend and did not answer inside 300 s under load, because its per-claim cache key
+contains `count(forward_returns)`, so one inserted row misses all seven claims. TC-4 is UNMET. I
+opened `UT-J-06-evidence-slow.png`: three grey skeleton bars, no claim rows. The page degrades
+honestly; it does not work.
+(6) **A third unbounded site remains on the same page and I checked its trace.** `samples.py:145`
+builds the whole-history observation list and `:156` sorts it whole; the log carries a `MemoryError`
+at exactly that line at 02:20:31, entering via `evidence.py:168`, six minutes after the
+`research.py:777` trace this round fixed. Two of three doors are shut.
+(7) **J-05's remaining case may not exist in this database, and that is now a fact, not a worry.**
+Every gap left (`gap_first 2005-05-24`, `gap_last 2019-02-25`) sits BEFORE the newest snapshot
+(2026-07-31), so only the historical-INSERT shape can be drilled — the exact shape iter-45's
+append-forward path was deliberately scoped to exclude. The developer states this himself.
+(8) **I re-read the iter-45 evidence and found why these journeys looked healthy for so long.** J-01's
+golden replay asserts page-wide text ("2 non-trading", "412 calendar days") that pre-existing Run
+History rows already satisfy, and there is **no `data_provider_runs` row at all at 01:23-01:24Z**, when
+that replay ran — so it submitted no job. The replay lane has been scoring these journeys on stale
+text. This round's lane is the first genuine end-to-end drill of them in many iterations, which is why
+the numbers look worse and are actually better understood.
+(9) **I downgraded J-04 against the lane's own PASS and I say why.** ~29 s to first health 200 versus
+the goal's own ≤5 s. The lane cited a test-plan disclosure that I opened and which covers something
+else. I also record the mitigation: the restart happened while GIL-bound work was in flight.
+(10) **AG-10 checked at the source:** every launch banner in the log reads `memory_cap_mb=8192
+malloc_arena_max=2` with `host-guard: cpu_list=0-15 blas_threads=8`, `/proc/<pid>/limits` confirms
+8589934592 bytes, and the scan-report is CLEAN.
+Rejected **REGRESSION (C.1)**: no journey moved `passing` → `failing` — four moved `passing` →
+`partial`, one moved `failing` → `partial` — and there is no unresolved critical anti-goal violation
+(scan CLEAN; the one genuine critical-class defect, the auditor's B1 stale-coverage AG-3 risk, was
+caught and closed inside the same iteration with before/after proof). The full reasoning for
+`partial` rather than `failing` is in `assumptions.md`. Rejected **STALLED (C.2)**: not one unblock
+path is human-owned — five are named with file and line (`samples.py:145/156`; the evidence cache key
+in `forward_testing.py:2475`; `warmup.py:205/212`; `_drawdown_ticker_slice_map`'s missing snapshot-date
+filter; extending the fast path to historical inserts) — and nothing is outstanding on the owner.
+Rejected **GOAL_ACHIEVED (C.3)**: J-05 is `failing` and four journeys are `partial`.
+**Chose ESCALATE (C.4):** the first clause fires — J-05 has now failed THREE consecutive iterations.
+The second clause does not (review returned PASS_WITH_NOTES, not FAIL). Full depth is also plainly
+right on the merits: the browser lane must re-run, and this round's auditor again produced the
+load-bearing findings.
+**FIVE THINGS I STATE PLAINLY RATHER THAN ROUND AWAY:** (i) **this was the best engineering round of
+the session and the journey table hides it.** For five rounds the app died under its own weight; this
+round it stayed up under the heaviest load anyone has thrown at it, with zero memory errors. Four
+journeys moved DOWN the table not because the product got worse but because it was finally tested
+properly. (ii) **the round found a defect nobody was looking for and fixed it inside the same round.**
+Adding zero days of history used to take 29 minutes. It now takes a fifth of a second. That was not on
+anyone's list; the browser lane stumbled into it, the QA-fix pass fixed it, and the auditor caught a
+real correctness bug in the fix (a clear-and-recreate rebuild would have kept serving pre-rebuild
+coverage numbers) before it shipped. (iii) **the process failure of this round is that nobody re-ran
+the browser lane.** Every lane after 05:49Z knew the evidence was stale — the auditor wrote it as T1,
+the reviewer wrote it as a MINOR, the engine wrote it into `next_action` — and the iteration still
+ended without it. That is why I can score no journey `passing` on this round's own work except the two
+I spot-checked. (iv) **the QA lane wrote PASS before it was true, and the system caught it.** TC-4 was
+recorded as "ADDRESSED BY FIX PASS" — a rewording of the acceptance, not a satisfaction of it — and a
+test suite was called green that the report itself records as still running. It was revalidated to
+FAIL. Worth naming because it is the second round in a row where a lane's first answer was wrong and
+the correction was public. (v) **the app's headline page is still broken in the ordinary case.** After
+any data job, opening the Evidence page costs about 163 seconds. Six of eight journeys looking healthy
+does not soften that, and it is the one thing the next round should spend itself on.
+
+**Next-step recommendation:** FULL depth (mandatory via ESCALATE). Give the next round this order.
+(1) **Re-run all eight journey checks FIRST, before writing any new code** — the current pictures were
+taken on a build that changed twice afterwards, so nobody actually knows what today's app does. Give
+every journey its own picture; "Aggregates are precomputed at ingest" (J-05) has none at all and is
+borrowing another journey's file for the third round running. (2) **Then fix the Evidence page, which
+is the round's one real job.** Today any data job that adds a single row of forward returns throws
+away all seven stored evidence panels, and the next person to open that page waits about 163 seconds
+on an idle machine and more than 300 seconds while a job runs. Either re-build those panels
+immediately after the job saves its data (before the slow tail starts), or keep serving the previous
+ones behind an honest "recomputing" label. (3) **Put a firm limit on the third memory-hungry place on
+that same page** — `apps/backend/app/engine/samples.py:145` builds the whole history at once and `:156`
+sorts it whole; bound it the same way the two sites just fixed were bounded, and prove the output is
+identical. (4) **Make adding one OLD day of history finish.** Every day left to fill in this database
+sits before dates already stored, which is exactly the case last round's shortcut skipped, so the app
+still rebuilds the entire membership history for one day and never finishes. Either extend the
+shortcut to that case or make the rebuild incremental. (5) SMALL AND ALREADY WRITTEN DOWN: measure how
+long the backend takes to answer for the first time on an idle machine (this round read ~29 s against
+a promise of 5 s, but under heavy congestion — a clean number may simply restore that journey);
+protect the two unguarded log calls in the new warm-up code (`warmup.py:205`, `:212`); add the
+snapshot-date filter to `_drawdown_ticker_slice_map`, which the auditor proved is safe and which today
+reads 7,994,388 rows to serve 7 claims; give the database connection pool room, or handle its
+exhaustion, so a page cannot be left spinning with no error. (6) CARRIED, untouched: iter-29/b + the
+badge wording after a permanently failed warm-up (EIGHTEEN rounds unmade); iter-31/e; iter-32/f;
+iter-35/k; iter-36/n; iter-37/o; iter-37/q; iter-39/u. iter-43/ag is now CLOSED. (7) DEFERRED a
+TWELFTH time: iter-33/g, Regime Lab's cold pooled view. (8) CAPTURE ONLY, never a round's goal: J-07's
+`[NEW]` walkthrough (sixteenth round unrecorded — this round's demo captured four steps, none flagged
+new) and J-05's acceptance frames. (9) OWNER: nothing needs his decision, but three facts belong in
+front of him — the app no longer goes dark and no longer runs out of memory, which is the first good
+news in five rounds; adding one old day of history still never finishes; and the Evidence page still
+takes about three minutes after any data job.

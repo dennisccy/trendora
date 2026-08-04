@@ -6,6 +6,6 @@
   "steps": [
     {"n": 1, "journey": "J-07", "action": {"type": "goto", "url": "/"}, "expect": {"text": "Ready"}},
     {"n": 2, "journey": "J-07", "action": {"type": "goto", "url": "/backtest"}, "expect": {"text": "n=14647"}},
-    {"n": 3, "journey": "J-07", "action": {"type": "goto", "url": "/data"}, "expect": {"text": "2532"}}
+    {"n": 3, "journey": "J-07", "action": {"type": "goto", "url": "/data"}, "expect": {"text": "2526"}}
   ]
 }

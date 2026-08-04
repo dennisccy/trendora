@@ -6087,3 +6087,79 @@ def test_fatal_job_failure_log_never_leaks_the_provider_key(tmp_path, monkeypatc
     assert "data_manager.py" in caplog.text, (
         "the frames must survive the scrub — a traceback is the whole reason B6 asked for this record"
     )
+
+
+# ==================================================================================================
+# ops-hardening iter-46 (TC-5) — the LAST two bare `logger.exception` sites in this module,
+# `_fail_unlaunched_job` (`:5058`, its own `_finalize_run_record` persistence failure) and
+# `_fail_unlaunched_resume` (`:5091`, its own checkpoint-rebuild failure), disclosed as a "Known Issues"
+# carry-forward by the iter-45 dev handoff (not on the audit's own T4 list, so left alone under fix-mode
+# scope discipline that pass). Same class as B3/B5/B6: a logging allocation inside a failure handler that
+# runs under memory pressure. Both are now guarded by `_log_isolation_failure`, proven here with the SAME
+# TEXTLESS `MemoryError()` convention every other guard in this module is tested with.
+# ==================================================================================================
+def test_fail_unlaunched_job_persistence_failure_survives_a_raising_logging_call(tmp_path, monkeypatch):
+    """`data_manager.py:5058` — `_fail_unlaunched_job`'s own `_finalize_run_record` call fails (any
+    persistence error), and the guard's first (fuller) logging attempt ALSO raises a textless
+    `MemoryError` (the induced pressure this guard exists for). `_fail_unlaunched_job` must still return
+    normally (never propagate the logging failure out past the launch-failure path it is already on), and
+    the traceback-free fallback record must still name the unlaunched job."""
+    engine = make_engine(f"sqlite:///{tmp_path / 'fail_unlaunched_job_logging.db'}")
+    create_db_and_tables(engine)
+    cfg = load_config()
+
+    def _boom_finalize(*_a, **_k):
+        raise MemoryError()  # noqa: RSE102 — textless: the persistence failure under test
+
+    def _boom_exception(*_a, **_k):
+        raise MemoryError()  # noqa: RSE102 — the logging allocation failing under the same cap
+
+    monkeypatch.setattr(data_manager, "_finalize_run_record", _boom_finalize)
+    monkeypatch.setattr(data_manager.logger, "exception", _boom_exception)
+    fallback = _record_log_calls(monkeypatch, "error")
+
+    prog = JobProgress(job_id="iter46-fail-unlaunched-job-probe", kind="backfill",
+                        start=date(2024, 1, 2), end=date(2024, 1, 2))
+    launch_exc = RuntimeError("can't start new thread")
+
+    data_manager._fail_unlaunched_job(prog, cfg, engine, launch_exc)  # must NOT raise
+
+    assert prog.status == "failed", "the guard's own job bookkeeping must be unaffected by the log failure"
+    naming_this_job = [rec for rec in fallback if prog.job_id in rec]
+    assert len(naming_this_job) == 1, (
+        f"the traceback-free fallback must name the unlaunched job exactly once — got {fallback!r}"
+    )
+    assert "traceback omitted" in naming_this_job[0]
+
+
+def test_fail_unlaunched_resume_checkpoint_rebuild_failure_survives_a_raising_logging_call(tmp_path, monkeypatch):
+    """`data_manager.py:5091` — `_fail_unlaunched_resume`'s own checkpoint-rebuild step fails (any error
+    loading/seeding the progress from the durable checkpoint), and the guard's first (fuller) logging
+    attempt ALSO raises a textless `MemoryError`. `_fail_unlaunched_resume` must still return normally
+    (the bookkeeping-failure handler's own documented contract), and the traceback-free fallback record
+    must still name the unlaunched resume's import id."""
+    engine = make_engine(f"sqlite:///{tmp_path / 'fail_unlaunched_resume_logging.db'}")
+    create_db_and_tables(engine)
+    cfg = load_config()
+
+    def _boom_load_checkpoint(*_a, **_k):
+        raise MemoryError()  # noqa: RSE102 — textless: the checkpoint-rebuild failure under test
+
+    def _boom_exception(*_a, **_k):
+        raise MemoryError()  # noqa: RSE102 — the logging allocation failing under the same cap
+
+    monkeypatch.setattr(data_manager, "_load_checkpoint", _boom_load_checkpoint)
+    monkeypatch.setattr(data_manager.logger, "exception", _boom_exception)
+    fallback = _record_log_calls(monkeypatch, "error")
+
+    import_id = "iter46-fail-unlaunched-resume-probe"
+    launch_exc = RuntimeError("can't start new thread")
+
+    data_manager._fail_unlaunched_resume(import_id, cfg, engine, launch_exc)  # must NOT raise
+
+    naming_this_import = [rec for rec in fallback if import_id in rec]
+    assert len(naming_this_import) == 1, (
+        f"the traceback-free fallback must name the unlaunched resume's import id exactly once — got "
+        f"{fallback!r}"
+    )
+    assert "traceback omitted" in naming_this_import[0]

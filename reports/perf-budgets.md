@@ -6197,3 +6197,120 @@ passed throughout.
   of this iteration's handlers passed their tests and did nothing under the condition they were written
   for (§4 and §5 CORRECTIONs). `MemoryError` is this product's characteristic failure, it carries no
   message, and it is raised from inside allocation-sensitive cleanup paths.
+
+---
+
+## Item N — `GET /api/evidence`'s cold miss is a BOOT-WARM GAP, not GIL contention (ops-hardening iter-46 FIX PASS, 2026-08-04, J-06/J-07)
+
+**Correction of record.** The iter-46 dev handoff and the iter-46 QA report both attributed `/api/evidence`
+exceeding its budget (QA measured `HTTP 000, time_total=300.000568s`) to *"GIL/CPU contention from the long
+synchronous finalize/coverage-refresh recompute"* of a concurrently-running backfill. **That attribution was
+wrong**, and this fix pass measured it directly rather than reasoning about it.
+
+**Measurement (2026-08-04, host idle, prod-mode `scripts/start-backend.sh`, NO ingest job running at all):**
+
+| Condition | `GET /api/evidence` | Notes |
+|---|---|---|
+| Cold cache, fully idle backend | **163.3 s**, HTTP 200 | 100% CPU, exactly ONE runnable thread, ~1.0 GB RSS |
+| Immediately after (same process) | **11 / 47 / 53 ms** | the committed warm budget is ≤3 s — held with ~60× margin |
+
+So the endpoint is not slow and it is not memory-bound (the iter-46 accumulator bounds hold — RSS never
+approached the 8192 MB cap). Its **cold miss** is expensive, and the committed budget (Item I) is explicitly
+the WARM steady-state one. A concurrent job was never required to blow the budget.
+
+**Root cause.** The per-claim `drawdown_expectations` `EventStudyCache` is warmed by the INGEST finalize tail
+(`data_manager._refresh_ingest_aggregates`, iter-7/audit B1) but was **never warmed after a plain restart**.
+Every backend restart therefore left the next Evidence viewer paying the full 7-claim cold compute
+*synchronously, on the request path*. The QA run restarted the backend immediately before its browser sweep,
+which is exactly why it hit it — twice (UT-J-06 step 7 and UT-J-07 step 4/8), and why "in isolation" did not
+help.
+
+**Where the 163 s actually goes** (capped instrumented run, same host caps as the launcher):
+
+| Component | Cost | Share |
+|---|---|---|
+| `compute_samples` (per-claim cohort resolution, ×7) | 272.5 s | **85%** |
+| `_drawdown_ticker_slice_map` (71 calls, **7,994,388 rows read**) | 40.0 s | 12% |
+| `phase_context_by_date` (uncached, ×7 — 0.60 s each) | 4.2 s | 1% |
+
+**Fix shipped this pass:** `warmup._warm_drawdown_expectations` — the boot-warm counterpart of the finalize
+tail's existing loop, mirroring `_warm_membership_timeline`/`_warm_coverage_snapshot` (own session,
+idempotent, non-fatal at both the ledger-read and per-claim levels). It is sequenced **after** the warm-up
+record settles `ok`, so readiness is not delayed.
+
+**Live verification (2026-08-04, cache rows deleted to force a genuine cold path, then restart):**
+
+| Signal | Before this fix | After |
+|---|---|---|
+| `/api/health` 200 | 28-35 s | **35 s** (unchanged) |
+| readiness `ready` (the J-04 / J-07-step-1 badge) | 41 s | **41 s** (unchanged — warm is off the readiness path) |
+| evidence warm completes | never (no boot warm existed) | **385 s**, fully in background |
+| first `/api/evidence` a user can hit after warm | **163.3 s** | **17-64 ms** |
+
+**Remaining, disclosed honestly:** an Evidence view landing in the window between `ready` (41 s) and warm
+completion (385 s) still pays the cold miss. Closing that window means attacking the 85% `compute_samples`
+share — a separate, larger piece of work (see below), not a boot-warm question.
+
+**Highest-value follow-up this measurement newly identifies (NOT fixed here — out of this fix pass's scope):**
+`_drawdown_ticker_slice_map` filters only on `(horizon, symbol)`, never on the cohort's snapshot dates, so it
+reads **~8 M forward-return rows to serve 7 claims** when only the cohort's `(ticker, snapshot_date)` keys are
+ever looked up. A date filter would be provably byte-identical (the extra rows are never read) and would
+further tighten the very AG-8 accumulator bound iter-46 set out to establish.
+
+---
+
+## Item O — TC-8 step 3: the VmPeak margin record (ops-hardening iter-46 AUDIT FIX PASS, 2026-08-04, audit T4, J-07)
+
+**Why this entry exists.** The iter-46 audit's finding **T4** is correct: TC-8 requires "VmPeak stays under the
+8192 MB cap **with its margin recorded in `reports/perf-budgets.md`**", and Item N above recorded only RSS
+figures in prose. No dated VmPeak margin entry for iter-46 existed. This is that record. It is a
+**measurement**, not a re-argument of the earlier prose.
+
+**Provenance (AG-10 — prod-mode launch script only, caps confirmed on the live process, not assumed):**
+
+| | Value |
+|---|---|
+| Process | uvicorn PID **1761825**, started **2026-08-04 09:05:06** via `scripts/start-backend.sh` |
+| Launch banner (`logs/backend.log`) | `port=8255 memory_cap_mb=8192 malloc_arena_max=2` · `host-guard: cpu_list=0-15 blas_threads=8` |
+| Cap as ENFORCED on the process | `/proc/1761825/limits` → `Max address space 8589934592` bytes = **8192 MB** (`ulimit -v`, set by the launcher before `exec` — the cap VmPeak is measured against) |
+| Build under measurement | the post-audit iter-46 tree: both accumulator bounds, `warmup._warm_drawdown_expectations`, the gated coverage refresh incl. audit B1's `not prog.new_snapshot_dates` clause |
+| Warm state at measurement | **fully warmed** — `warmup 89/89 "ok"`, `readiness: "ready"`, `membership-timeline cache warmed (2869 snapshot dates)` 09:05:49, `evidence drawdown-expectations cache warmed (7 claim panels)` 09:05:49 |
+| Sampler | `/proc/<pid>/status` + `GET /api/health` at 1 Hz, **120 consecutive samples over 120.03 s** |
+
+**Memory axis — PASS, wide margin:**
+
+| | Value |
+|---|---|
+| `server.memory_cap_mb` (owner-set envelope, unchanged) | 8192 MB = 8,388,608 kB |
+| **`VmPeak` — flat across all 120 samples, zero growth** | **3,197,988 kB = 3,123.0 MB** |
+| **Margin under the cap** | **5,190,620 kB ≈ 5,069.0 MB — 61.9% headroom (38.1% utilized)** |
+| `VmHWM` (peak RSS since boot) | 2,667,120 kB = 2,604.6 MB |
+| `VmRSS` at sample max | 1,504,428 kB = 1,469.2 MB |
+| Threads | 14 |
+
+**Availability/latency axis over the same 120 samples (steady state):** `GET /api/health` **120/120 HTTP 200**,
+mean **96.4 ms**, max **104.0 ms**, **zero** polls over the ≤2 s bounded-compute-window ceiling. A warm
+`GET /api/evidence` in the same window returned **HTTP 200 in 0.013 s** (7/7 claims, all `expectations`
+populated) and `GET /api/backtest` **HTTP 200 in 0.020 s**.
+
+**What this number does and does NOT cover — read before citing it:**
+
+- It covers the **fixed build's full boot warm plus steady-state serving**: this process's whole life since
+  09:05:06 includes the 89/89 history warm-up, the 2,869-date membership-timeline warm, the new 7-claim
+  evidence warm, and the Evidence/Backtest/Data reads issued against it. VmPeak is a high-water mark, so the
+  3,123.0 MB figure already contains every one of those peaks.
+- It does **NOT** cover a concurrent heavy ingest. No ingest was run during this pass, deliberately: any job
+  that lands forward returns moves `count(forward_returns)`, which is folded into the evidence cache stamp
+  (`research.py:1705-1720`), so it would invalidate all 7 warmed claim panels — the audit's finding **B2** —
+  and hand the pending browser re-verification lane the 163 s cold path the fix pass just closed. Sampling
+  VmPeak under load was not worth sabotaging the lane the audit named as the cheapest outstanding item.
+- The closest **under-load** figures on record, cited as what they are and not upgraded:
+  - iter-46's own original TC-7 backfill drill recorded **`VmRSS` 6,045,344 → 6,057,560 kB** (≈5,915.6 MB,
+    72.2% of the 8192 MB cap) during a historical gap-fill — **RSS, not VmPeak**; no VmPeak sample was taken
+    then, so it is a lower bound on that run's VmPeak, not a margin record.
+  - iter-43 §5 above holds the only clean under-load VmPeak on record: **2,720,636 kB flat across 272 samples
+    over 1,001 s** of a live full-basis warm, 67.6% margin.
+- Consequently TC-8 step 3 is **MET and recorded** (VmPeak under cap, margin here, dated, with provenance);
+  TC-8 steps 1, 2 and 4 (`horizons_done` advancing, the ≤2 s BCW poll *under a running warm*, and the
+  induced-pressure abort) are **not** re-verified by this entry — the 120-sample poll above is a steady-state
+  reading on an idle host and must not be quoted as the bounded-compute-window measurement.

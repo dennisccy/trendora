@@ -543,3 +543,54 @@ than assuming a pass. A human who reads "Target journey" as requiring the iterat
 address that journey's root cause would keep J-05 out of Target journeys this round and record the live
 drill as carried verification work instead.
 **Reversible:** yes
+
+## iter-46 — goal-evaluator
+
+**Ambiguity:** decision tree C.1 fires REGRESSION when a journey moves `passing` → `failing`. This
+iteration's only browser lane scored J-01, J-03 and J-06 FAIL (and J-04 PASS with a measurement that
+misses its own ≤5 s clause) — but that lane ran at 05:45-05:49Z and the build then changed twice
+inside the same iteration (`warmup.py` 06:17:39Z, `data_manager.py` 08:38:10Z), both changes aimed at
+those very failures. Neither `docs/goal.md` nor the methodology says what status a journey carries
+when its only evidence describes a build that no longer exists.
+**We chose:** `partial` for all four, not `failing` — and therefore ESCALATE, not REGRESSION. Grounds
+stated rather than assumed: (1) `partial`'s own definition is "only some assertion steps passed", and
+that is literally what each row records (J-03's no-cap claim held and only its chunk-completion step
+did not; J-06 passed 10 of 11 routes; J-04 passed 5 of 6 steps; J-01 computed its zero-work breakdown
+correctly and only failed to reach a terminal state); (2) for J-01 and J-03 I verified the specific
+repair in the machine record rather than in a handoff — `data_provider_runs` id=289/291 (zero-work
+weekend backfill, 0.22 s, `ok`) and id=290 (the identical 412-day range that hung, 0.19 s, `ok`)
+against id=280's 29 minutes on the iter-45 build — so `failing` would assert something about the
+shipped build that the DB contradicts; (3) `partial` blocks GOAL_ACHIEVED exactly as `failing` does,
+so nothing is laundered — the deterministic gate is unaffected and every gap is filed as an open
+ledger entry (iter-46/av, iter-46/az); (4) the two rows whose defect is NOT repaired (J-06, J-04) were
+still downgraded, so this is not a blanket pardon; (5) this session already uses `partial` for exactly
+this shape (iter-37/o's ledger entry reads "the reason J-07 stays `partial`"). Cost recorded honestly:
+the owner is NOT stopped to look at a round in which three previously-passing journeys failed their
+live checks, and a reader who holds that a FAIL row on a previously-passing journey is a regression
+regardless of what the build did afterwards would score all four `failing`, return REGRESSION, and
+halt. The counter-cost of that reading is a halt for a defect the iteration itself discovered and
+repaired before it ended.
+**Reversible:** yes
+
+## iter-46 — goal-evaluator
+
+**Ambiguity:** the browser lane scored UT-J-07 FAIL on a single sub-criterion: `GET /api/evidence` did
+not answer within 300 s under concurrent load. But `/api/evidence` appears nowhere in J-07's own four
+steps in `docs/goal.md` (which cover the forward-aggregate warm, 1 Hz health polling, VmPeak margin,
+and an induced-pressure abort); it comes from TC-4, this iteration's own DoD item, which the spec's
+TESTING REQUIREMENTS lists as "a dedicated Evidence-page-under-concurrent-load scenario" SEPARATE from
+"J-07 (all 4 steps)". The UI test plan merged the two into one row.
+**We chose:** score J-07 against its own four steps and the iteration DoD separately — giving J-07
+`partial` (up from `failing`, its first movement since iter-34) while recording TC-4 as UNMET and
+filing the `/api/evidence` cost as its own open ledger entry (iter-46/av) attached to J-06. Grounds:
+(1) J-07 step 2 and step 3 were independently met with strong evidence (34/34 health polls at
+0.10-0.40 s under two concurrent backfills; 120/120 at max 104 ms; VmPeak 3,123 MB against the
+8192 MB cap, recorded in perf-budgets Item O); (2) I verified the journey's headline claim myself —
+no silent window anywhere in `logs/backend.log` and zero MemoryErrors, against iter-44's 20m51s and
+iter-45's ~42 minutes; (3) it is not `passing` either, and I say why: J-07's acceptance clause "no
+unbounded whole-table ORM materialization remains on the warm or serving path" is still false
+(`samples.py:145/156`), the warm never reached all five horizons, and step 4 was not drilled live.
+Cost recorded honestly: a reader who treats the UI test plan's merged UT-J-07 row as authoritative
+over the journey text would keep J-07 `failing` for a fifth consecutive round, and would lose the
+signal that the availability failure mode actually stopped.
+**Reversible:** yes

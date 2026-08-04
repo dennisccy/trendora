@@ -708,3 +708,125 @@ def _forward_return_fingerprint(session: Session) -> dict:
         )
         for fr in frs
     }
+
+
+# ==================================================================================================
+# ops-hardening iter-46 FIX PASS (QA blockers 3 — J-06 / J-07) — the evidence (per-claim
+# drawdown-expectations) cache boot warm.
+#
+# WHAT THE QA RUN MEASURED: `GET /api/evidence` did not return inside a 300s budget, both in isolation
+# (UT-J-06 step 7) and under concurrent load (UT-J-07). The dev handoff and the QA report both attributed
+# this to GIL contention from a concurrent backfill's finalize tail.
+#
+# THAT ATTRIBUTION WAS WRONG, and this fix pass measured it directly: on a FULLY IDLE, freshly-restarted
+# backend with no ingest job running at all, a cold `GET /api/evidence` took **163.3s** (HTTP 200, 100%
+# CPU, one runnable thread, ~1 GB RSS — never a memory problem). Immediately afterwards the SAME endpoint
+# served in **11-52ms**. So the endpoint is not slow; its COLD MISS is expensive, and the committed budget
+# (`reports/perf-budgets.md` Item I) is explicitly the WARM steady-state one (≤3s).
+#
+# ROOT CAUSE: the per-claim `drawdown_expectations` EventStudyCache is warmed by the INGEST finalize tail
+# (`data_manager._refresh_ingest_aggregates`) but NOT by the boot warm-up — so every backend restart left
+# the first `/evidence` viewer paying the full 7-claim cold compute synchronously, on the request path.
+# The QA run restarted the backend immediately before the browser sweep, which is exactly why it hit it.
+#
+# THE FIX MIRRORS THE TWO WARM STEPS ALREADY BESIDE IT (`_warm_membership_timeline`, iter-36;
+# `_warm_coverage_snapshot`, iter-2): own session on the engine, idempotent (a cache HIT is a cheap no-op),
+# NON-FATAL, and — critically — sequenced AFTER the warm-up record reaches `ok` so the readiness badge
+# (J-04, and J-07 step 1's "Ready") is never delayed by it.
+# ==================================================================================================
+def _stub_ledger(monkeypatch, entries):
+    """Pin the ledger the warm loop iterates — the committed ledger's real contents are not the subject
+    of these proofs, only which of its entries get warmed."""
+    monkeypatch.setattr(warmup_mod, "read_entries", lambda _path: entries)
+    monkeypatch.setattr(warmup_mod.evidence, "resolve_ledger_path", lambda *_a, **_k: "unused.jsonl")
+
+
+def test_warmup_warms_every_ledger_claim_and_skips_forward_walk_records(early_engine, monkeypatch):
+    """The boot warm must warm the SAME per-claim cache `GET /api/evidence` looks up lazily — once per
+    ORIGINAL claim — and must skip `forward_walk` MONITORING records, applying the exact filter
+    `build_evidence_payload` and the ingest finalize tail already apply (a forward-walk record re-scores an
+    existing claim; it is not itself a claim with a panel to warm)."""
+    engine, cfg = early_engine
+    claim_a = {"signal": "claim-a", "horizon": 20}
+    claim_b = {"signal": "claim-b", "horizon": 60}
+    _stub_ledger(monkeypatch, [
+        {"type": "claim", "claim": claim_a},
+        {"type": "forward_walk", "claim": {"signal": "monitoring-record", "horizon": 20}},
+        {"type": "claim", "claim": claim_b},
+        "a malformed non-dict ledger line",
+    ])
+    warmed: list[dict] = []
+    monkeypatch.setattr(
+        warmup_mod.forward_testing, "compute_drawdown_expectations_cached",
+        lambda _session, claim, _cfg: warmed.append(claim) or {"by_phase": []},
+    )
+
+    warmup_mod._warm_drawdown_expectations(engine, cfg)
+
+    assert warmed == [claim_a, claim_b], (
+        "the boot warm must warm exactly the ORIGINAL claims, in ledger order, skipping forward-walk "
+        f"monitoring records and malformed lines; warmed={warmed}"
+    )
+
+
+def test_warmup_drawdown_expectations_failure_is_nonfatal_on_textless_memoryerror(
+    early_engine, monkeypatch, caplog
+):
+    """A `MemoryError` — raised TEXTLESS, the shape this session's honesty rule requires every new handler
+    to be tested against (`str(MemoryError())` is `""`, so any handler that relies on the message degrades
+    silently) — during the evidence warm is CAUGHT + logged and does NOT flip an otherwise-successful
+    warm-up to `failed`. Mirrors the membership-timeline / coverage-snapshot non-fatal proofs above."""
+    engine, cfg = early_engine
+    ensure_latest_snapshot(engine, cfg)  # latest servable before the warm-up
+    _clear_warmup_registry()
+    warmup_mod._WARMUP_THREAD = None
+    _stub_ledger(monkeypatch, [{"type": "claim", "claim": {"signal": "boom", "horizon": 20}}])
+
+    def _boom(*_args, **_kwargs):
+        raise MemoryError()  # TEXTLESS on purpose — see docstring
+
+    monkeypatch.setattr(warmup_mod.forward_testing, "compute_drawdown_expectations_cached", _boom)
+    with caplog.at_level("ERROR"):
+        job_id = start_warmup(engine, cfg)
+        _join_warmup(job_id)
+
+    rec = data_manager.get_job(job_id)
+    assert rec is not None and rec["status"] == "ok", (
+        f"an evidence-cache warm failure must be non-fatal to the warm-up; record={rec}"
+    )
+    assert any(
+        "drawdown-expectations" in r.message.lower() or "drawdown_expectations" in r.message.lower()
+        for r in caplog.records
+    ), (
+        "the textless MemoryError must still be logged honestly (never swallowed silently); "
+        f"captured={[r.message for r in caplog.records]}"
+    )
+    _clear_warmup_registry()
+    warmup_mod._WARMUP_THREAD = None
+
+
+def test_warmup_evidence_warm_runs_only_after_readiness_reaches_ok(early_engine, monkeypatch):
+    """SEQUENCING PROOF (protects J-04 and J-07 step 1): the evidence warm is expensive (163.3s measured
+    live for 7 claims), so it must run strictly AFTER the warm-up record has settled `ok` — the readiness
+    badge must flip `Ready` on exactly the same schedule as before this fix. Asserted by reading the job's
+    OWN status at the moment the warm is invoked, never inferred from ordering in the source."""
+    engine, cfg = early_engine
+    ensure_latest_snapshot(engine, cfg)
+    _clear_warmup_registry()
+    warmup_mod._WARMUP_THREAD = None
+
+    status_when_warmed: list[object] = []
+
+    def _record_status(_engine, _cfg):
+        rec = data_manager.get_job(WARMUP_JOB_ID)
+        status_when_warmed.append(rec["status"] if rec else None)
+
+    monkeypatch.setattr(warmup_mod, "_warm_drawdown_expectations", _record_status)
+    job_id = start_warmup(engine, cfg)
+    _join_warmup(job_id)
+
+    assert status_when_warmed == ["ok"], (
+        "the evidence warm must be invoked exactly once, and only after the warm-up already reported `ok` "
+        "(otherwise it delays the readiness badge J-04/J-07 depend on); "
+        f"status at warm time={status_when_warmed}"
+    )

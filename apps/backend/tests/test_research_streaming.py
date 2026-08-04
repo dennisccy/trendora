@@ -806,3 +806,174 @@ def test_factor_observations_chunks_at_the_shipped_config(tmp_path, monkeypatch)
     assert max(observed_sizes) < total_pairs, (
         "the live accumulator must never hold the WHOLE fixture's pairs at once under the shipped config"
     )
+
+
+# ==================================================================================================
+# ops-hardening iter-46 (AG-8): `_combination_observations`'s join accumulator (`ret_by_run_symbol`) used
+# to hold ONE entry per distinct (run_id, symbol) pair across the FULL horizon's `forward_returns` history
+# for as_of=None (1,285,609 rows measured live at horizon=20) — the evidence-serving path's OTHER named
+# `MemoryError` site (`research.py:777` pre-fix), `_factor_observations`'s own iter-29 sibling gap. The fix
+# mirrors iter-29 exactly: `_runs_with_fr` discovers run ids once, `_fr_slice_map` (the SAME helper
+# `_factor_observations` already uses) builds each bounded slice's join map, discarded before the next.
+# These proofs pin, for `_combination_observations` specifically:
+#   1. TC-1: the live accumulator (`_fr_slice_map`'s return value) never holds more than one chunk's worth
+#      of entries at any point during a call.
+#   2. TC-3: the chunked rewrite is byte-identical to a pinned copy of the PRE-FIX (single-accumulator)
+#      implementation, for as_of=None AND a historical as_of=D — reproducing the live certified-claims
+#      ledger's one `kind == "combination"` claim (`condition: ["rs_spy_3m:top:quintile",
+#      "high_proximity:top:tertile"]`, `horizon: 20` — `runs/goal-session-mcp-loop/state/
+#      certified-claims.jsonl`), both `leadership.components` factors read from `record_json`.
+# ==================================================================================================
+def _leadership_component_record_json(ticker: str, rs_spy_3m: float, high_proximity: float) -> str:
+    """A `record_json` blob carrying the TWO component factors the live ledger's one `combination`-kind
+    claim actually references (`leadership.components.rs_spy_3m.raw` and
+    `leadership.components.high_proximity.raw`, `config.yaml:935/937`) — the exact shape
+    `_extract_factor_value` reads for a `component` factor."""
+    return json.dumps({
+        "ticker": ticker, "name": ticker,
+        "leadership": {"components": [
+            {"name": "rs_spy_3m", "raw": rs_spy_3m},
+            {"name": "high_proximity", "raw": high_proximity},
+        ]},
+    })
+
+
+@pytest.fixture()
+def combination_chunked_engine(tmp_path):
+    """The SAME 5-run / 3-ticker-per-run shape as `chunked_accumulator_engine` (15 distinct (run_id,
+    symbol) pairs spanning 5 distinct run ids — enough to force multiple slices at a small run-chunk
+    width), but with `record_json` carrying real `rs_spy_3m` / `high_proximity` component values so the
+    live ledger's one `combination`-kind claim can be reproduced exactly (TC-3)."""
+    engine = make_engine(f"sqlite:///{tmp_path / 'combination_chunked.db'}")
+    create_db_and_tables(engine)
+    with Session(engine) as session:
+        runs = [
+            _add_run(session, date(2025, m, 10), regime_label="Risk-on" if m % 2 else "Risk-off")
+            for m in range(1, 6)  # r0=Jan .. r4=May 2025
+        ]
+        session.flush()
+        for i, run in enumerate(runs):
+            for j, base in enumerate(("AA", "BB", "CC")):
+                ticker = f"{base}{i}"  # distinct symbol per run -> 15 genuinely distinct (run_id, symbol) pairs
+                session.add(ScannerResult(
+                    run_id=run.id, ticker=ticker, name=ticker, sector="Technology",
+                    leadership_score=50.0 + i + j, leadership_bucket="C",
+                    entry_quality_score=50.0, entry_quality_bucket="C",
+                    risk_score=50.0, risk_bucket="C",
+                    setup_status="Actionable", rank=j + 1,
+                    record_json=_leadership_component_record_json(
+                        ticker, rs_spy_3m=0.10 * (i + 1) + 0.01 * j, high_proximity=-0.05 * (i + 1) - 0.01 * j,
+                    ),
+                ))
+                _add_fr(session, run.id, ticker, 0.01 * (i + 1) + 0.001 * j, horizon=H,
+                        mae=-0.02, mfe=0.05, mdd=-0.03 - 0.001 * j)
+        session.commit()
+    return engine
+
+
+def _combination_observations_reference_unchunked(session, factors, horizon, as_of, cfg):
+    """A pinned copy of the PRE-iter-46 `_combination_observations` body: ONE unbounded
+    `ret_by_run_symbol` accumulator built from a SINGLE un-sliced `fr_stmt` covering the FULL
+    `runs_with_fr` set at once (no `_fr_slice_map`, no chunk loop) — the regression oracle for TC-3. Calls
+    the SAME unchanged helpers (`parse_factor_source`, `_extract_factor_value`) the real, rewritten
+    function still uses, so any divergence can only come from the chunking itself."""
+    from app.engine.research import _extract_factor_value, parse_factor_source
+    parsed_by_key = {f.key: parse_factor_source(f.source) for f in factors}
+    batch = cfg.research.read_batch_size
+    fr_stmt = select(
+        ForwardReturn.run_id, ForwardReturn.symbol, ForwardReturn.realized_return
+    ).where(ForwardReturn.horizon == horizon)
+    if as_of is not None:
+        fr_stmt = fr_stmt.join(ScannerRun, ScannerRun.id == ForwardReturn.run_id).where(
+            ScannerRun.asof_date <= as_of
+        )
+    ret_by_run_symbol: dict[tuple[int, str], float] = {}
+    runs_with_fr_set: set[int] = set()
+    for run_id, symbol, realized_return in session.exec(fr_stmt).yield_per(batch):
+        ret_by_run_symbol[(run_id, symbol)] = realized_return
+        runs_with_fr_set.add(run_id)
+    runs_with_fr = sorted(runs_with_fr_set)
+    res_stmt = (
+        select(ScannerResult)
+        .where(ScannerResult.run_id.in_(runs_with_fr))
+        .order_by(ScannerResult.run_id, ScannerResult.id)
+    )
+    results = session.exec(res_stmt).yield_per(batch) if runs_with_fr else []
+    observations = []
+    for res in results:
+        realized = ret_by_run_symbol.get((res.run_id, res.ticker))
+        if realized is None:
+            continue
+        values: dict[str, float] = {}
+        for key, parsed in parsed_by_key.items():
+            value = _extract_factor_value(res, parsed)
+            if value is None:
+                break
+            values[key] = float(value)
+        else:
+            observations.append({
+                "run_id": res.run_id, "ticker": res.ticker, "return": realized, "values": values,
+            })
+    return observations
+
+
+def test_combination_observations_accumulator_is_chunk_bounded(combination_chunked_engine, monkeypatch):
+    """TC-1: `_combination_observations`'s join accumulator (`_fr_slice_map`'s return value, wrapped via
+    monkeypatch) never holds more entries than ONE bounded chunk at any point during the call — never one
+    entry per distinct (run_id, symbol) pair in the whole fixture (15 pairs across 5 run ids)."""
+    cfg = load_config()
+    factors = [f for f in cfg.research.factor_lab.factors if f.key in ("rs_spy_3m", "high_proximity")]
+    assert len(factors) == 2, "sanity: the live claim's two factors must resolve from the shipped catalog"
+    observed_sizes: list[int] = []
+    real_fr_slice_map = research_module._fr_slice_map
+
+    def _wrapped(session, horizon, slice_run_ids, batch):
+        result = real_fr_slice_map(session, horizon, slice_run_ids, batch)
+        observed_sizes.append(len(result))
+        return result
+
+    monkeypatch.setattr(research_module, "_fr_slice_map", _wrapped)
+    with Session(combination_chunked_engine) as session:
+        # chunk width = 2 run ids/slice over 5 distinct run ids -> 3 slices (2, 2, 1 run ids each)
+        observations = research_module._combination_observations(
+            session, factors, H, None, cfg=_cfg_batch(2)
+        )
+
+    total_pairs = 15  # 5 runs x 3 tickers, by fixture construction
+    assert len(observations) == total_pairs, "sanity: every fixture pair must surface as an observation"
+    assert len(observed_sizes) == 3, f"expected 3 chunks (5 run ids at width 2), got {len(observed_sizes)}"
+    assert max(observed_sizes) <= 6, (
+        f"a single slice must never exceed 2 run ids x 3 tickers = 6 entries, got {max(observed_sizes)}"
+    )
+    assert max(observed_sizes) < total_pairs, (
+        "the live accumulator must never hold the WHOLE fixture's pairs at once"
+    )
+
+
+@pytest.mark.parametrize("as_of", [None, date(2025, 3, 15)])
+def test_combination_observations_chunked_equals_unchunked_reference(combination_chunked_engine, as_of):
+    """TC-3: the iter-46 chunked `_combination_observations` is byte-identical to the pinned pre-fix
+    (single-accumulator) reference — for as_of=None (all-history) AND a historical as_of=D (2025-03-15)
+    that splits the 5-run fixture into an early (Jan-Mar) / late (Apr-May) group. Uses the live certified-
+    claims ledger's own two-factor combination (`rs_spy_3m`, `high_proximity`) at its own horizon (20)."""
+    cfg = _cfg_batch(2)
+    factors = [f for f in cfg.research.factor_lab.factors if f.key in ("rs_spy_3m", "high_proximity")]
+    with Session(combination_chunked_engine) as session:
+        chunked = research_module._combination_observations(session, factors, H, as_of, cfg=cfg)
+        reference = _combination_observations_reference_unchunked(session, factors, H, as_of, cfg)
+    assert chunked, "sanity: the fixture must produce at least one observation"
+    assert _eq(chunked, reference), f"chunked output != pinned pre-fix reference (as_of={as_of})"
+
+
+def test_combination_observations_chunked_as_of_excludes_runs_after_cutoff(combination_chunked_engine):
+    """No-lookahead guard: for the as_of=D-scoped chunked call, zero returned observations reference a run
+    dated after D."""
+    d = date(2025, 3, 15)  # between run r2 (Mar 10) and run r3 (Apr 10)
+    cfg = load_config()
+    factors = [f for f in cfg.research.factor_lab.factors if f.key in ("rs_spy_3m", "high_proximity")]
+    with Session(combination_chunked_engine) as session:
+        observations = research_module._combination_observations(session, factors, H, d, cfg=_cfg_batch(2))
+        run_dates = {run.id: run.asof_date for run in session.exec(select(ScannerRun)).all()}
+    assert observations, "sanity: the early-group runs (Jan-Mar) must still contribute observations"
+    for obs in observations:
+        assert run_dates[obs["run_id"]] <= d, f"observation from run {obs['run_id']} dated after {d}"

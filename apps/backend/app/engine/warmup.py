@@ -31,8 +31,9 @@ from sqlalchemy.engine import Engine
 from sqlmodel import Session, select
 
 from app.config import Config, get_config
-from app.engine import data_manager
+from app.engine import data_manager, evidence, forward_testing
 from app.engine.forward_testing import backfill_forward_returns, walk_forward_asof_dates
+from app.engine.ledger import FORWARD_WALK_TYPE, read_entries
 from app.engine.prices import bar_cache, latest_data_date
 from app.engine.scanner import get_run_for_date, run_scan
 from app.models import ScannerRun
@@ -149,6 +150,73 @@ def _warm_coverage_snapshot(engine: Engine, cfg: Config) -> None:
         logger.exception("coverage snapshot warm failed (non-fatal): %s", exc)
 
 
+def _warm_drawdown_expectations(engine: Engine, cfg: Config) -> None:
+    """ops-hardening iter-46 FIX PASS (QA blocker 3 — J-06/J-07): precompute the per-claim
+    `drawdown_expectations` EventStudyCache rows `GET /api/evidence` looks up lazily, so the FIRST Evidence
+    page view after a BOOT is a cache hit instead of a multi-minute synchronous cold compute on the request
+    path.
+
+    WHY THIS EXISTS: the ingest finalize tail already warms exactly this cache
+    (`data_manager._refresh_ingest_aggregates`'s ledger loop, iter-7/audit B1), but nothing warmed it after
+    a plain RESTART — so every backend restart left the next Evidence viewer paying the full cold miss.
+    Measured on this host against the live DB, with the backend idle and NO ingest job running: a cold
+    `GET /api/evidence` returned HTTP 200 in **163.3s**; the immediately-following requests served in
+    **11-52ms**. The committed budget (`reports/perf-budgets.md` Item I) is the WARM steady-state ≤3s, so
+    closing the post-restart cold window is what makes that budget real for a user who simply opens the
+    page after a restart.
+
+    CONTRACT — mirrors `_warm_membership_timeline` / `_warm_coverage_snapshot` verbatim: opens its OWN
+    session on `engine` (never a request session); is IDEMPOTENT (each claim's call is
+    `compute_drawdown_expectations_cached`, so an already-warm row is a cheap HIT, never a recompute);
+    computes no canonical value (the cached payload IS the canonical compute, persisted); and is NON-FATAL
+    at BOTH levels — one unresolvable/erroring claim never blocks the others, and no failure here can flip
+    an otherwise-successful warm-up to `failed`.
+
+    Applies the SAME two filters `evidence.build_evidence_payload` and the finalize tail already apply, so
+    the warmed cache subjects match exactly what a live `/api/evidence` request looks up: skip
+    `type == FORWARD_WALK_TYPE` monitoring records (they re-score an existing claim — not a claim with a
+    panel of its own), and take the claim via `entry.get("claim")`.
+
+    SEQUENCING (load-bearing): `_run_warmup` calls this only AFTER it has set `prog.status = "ok"`. This
+    step is expensive, and the readiness badge J-04 and J-07 step 1 depend on must flip `Ready` on exactly
+    the schedule it did before this fix — so this warm is deliberately OUTSIDE the readiness path. The
+    consequence is disclosed honestly: an Evidence view landing inside the short window between `ok` and
+    this warm's completion still pays the cold miss."""
+    try:
+        entries = read_entries(evidence.resolve_ledger_path())
+    except Exception as exc:  # NON-FATAL: a missing/corrupt ledger degrades to zero warm calls
+        logger.exception("evidence drawdown-expectations ledger read failed (non-fatal): %s", exc)
+        return
+    warmed = 0
+    try:
+        with Session(engine) as session:
+            for entry in entries:
+                if not isinstance(entry, dict) or entry.get("type") == FORWARD_WALK_TYPE:
+                    continue
+                claim = entry.get("claim") if isinstance(entry.get("claim"), dict) else {}
+                try:
+                    if forward_testing.compute_drawdown_expectations_cached(session, claim, cfg) is not None:
+                        warmed += 1
+                # A `MemoryError` stops THIS loop immediately rather than hammering the next claim's
+                # allocation under real pressure — the module-wide iter-8 isolation convention. Caught
+                # distinctly from the generic per-claim continue below, and tested against a TEXTLESS
+                # `MemoryError` (`str(MemoryError())` is `""`).
+                except MemoryError as exc:
+                    logger.exception(
+                        "evidence drawdown-expectations warm aborted — memory pressure, stopping remaining "
+                        "claims: %r", exc,
+                    )
+                    data_manager._release_process_memory()
+                    break
+                except Exception as exc:  # NON-FATAL: one bad claim never blocks the others
+                    logger.exception(
+                        "evidence drawdown-expectations warm failed for one claim (non-fatal): %r", exc
+                    )
+        logger.info("evidence drawdown-expectations cache warmed (%d claim panels)", warmed)
+    except Exception as exc:  # NON-FATAL: must never fail the otherwise-successful warm-up
+        logger.exception("evidence drawdown-expectations cache warm failed (non-fatal): %s", exc)
+
+
 def _run_warmup(engine: Engine, cfg: Config, prog: "data_manager.JobProgress") -> None:
     """The warm-up worker body (runs in the daemon thread). Persists each remaining cadence snapshot via
     the canonical `run_scan` (batched by `config.startup.warmup_batch_size` for progress ticks), then runs
@@ -219,6 +287,16 @@ def _run_warmup(engine: Engine, cfg: Config, prog: "data_manager.JobProgress") -
         logger.exception("background warm-up failed (non-fatal): %s", exc)
     finally:
         prog.finished_at = data_manager._utcnow()
+    # ops-hardening iter-46 FIX PASS (QA blocker 3 — J-06/J-07): warm the per-claim evidence
+    # (drawdown-expectations) cache LAST, strictly AFTER the warm-up record has fully settled above — this
+    # step is expensive (163.3s measured live for the 7 committed claims) and the readiness badge J-04 and
+    # J-07 step 1 depend on must flip `Ready` on exactly the schedule it did before this fix. Placed after
+    # the `finally` (not inside the `try`) so it can never influence the warm-up's own status/timing, and
+    # gated on a SUCCESSFUL warm-up: a failed warm-up leaves the basis partial, and the ingest finalize
+    # tail already owns the post-ingest warm for that path. `_warm_drawdown_expectations` never raises (it
+    # is fully guarded at both the ledger-read and per-claim levels), so this call cannot break the thread.
+    if prog.status == "ok":
+        _warm_drawdown_expectations(engine, cfg)
 
 
 def start_warmup(engine: Engine, config: Optional[Config] = None) -> str:

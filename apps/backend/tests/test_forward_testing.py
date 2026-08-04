@@ -1877,3 +1877,47 @@ def test_drawdown_expectations_chunk_width_one_issues_multiple_queries(dd_expect
         f"expected multiple chunked ForwardReturn queries at chunk_width=1 over 4 distinct tickers, "
         f"got {query_count['n']}"
     )
+
+
+# ==================================================================================================
+# ops-hardening iter-46 (AG-8, TC-2): the QUERY into `stored_by_key` was already ticker-chunked
+# (iter-36), but every chunk's rows used to land in the SAME dict, RETAINED WHOLE until the separate
+# phase-aggregation loop ran afterward over the full `rows` list — a bounded READ, unbounded RETENTION
+# (the exact shape iter-40's lesson names; `forward_testing.py:2343` pre-fix, the evidence-serving path's
+# other named `MemoryError` site). Each chunk's `stored_by_key` slice (now built by the named
+# `_drawdown_ticker_slice_map` helper, mirroring `research.py`'s `_fr_slice_map`) is folded into the
+# by-phase accumulators immediately and discarded before the next chunk starts.
+# ==================================================================================================
+def test_drawdown_expectations_stored_by_key_accumulator_is_chunk_bounded(dd_expectations_engine, monkeypatch):
+    """TC-2: the live `stored_by_key` slice (`_drawdown_ticker_slice_map`'s return value, wrapped via
+    monkeypatch) never holds more than ONE chunk's worth of (symbol, date) entries at any point during a
+    call — never the claim's whole cohort (this fixture's 4 distinct tickers x their forward-returns
+    rows) all at once."""
+    import app.engine.forward_testing as forward_testing_module
+
+    observed_sizes: list[int] = []
+    real_slice_map = forward_testing_module._drawdown_ticker_slice_map
+
+    def _wrapped(session, horizon, slice_tickers, batch):
+        result = real_slice_map(session, horizon, slice_tickers, batch)
+        observed_sizes.append(len(result))
+        return result
+
+    monkeypatch.setattr(forward_testing_module, "_drawdown_ticker_slice_map", _wrapped)
+    cfg = load_config()
+    research_cfg = cfg.research.model_copy(update={"drawdown_expectations_ticker_chunk": 1})
+    cfg = cfg.model_copy(update={"research": research_cfg})
+
+    with Session(dd_expectations_engine) as session:
+        payload = compute_drawdown_expectations(session, _FACTOR_CLAIM, cfg)
+
+    assert payload is not None
+    # this fixture carries 4 distinct tickers (AAA/BBB/CCC/DDD) — at chunk width 1, one slice per ticker.
+    assert len(observed_sizes) == 4, f"expected 4 per-ticker chunks, got {len(observed_sizes)}"
+    # AAA alone contributes 4 dated rows (the widest single ticker in this fixture) — every OTHER ticker
+    # contributes fewer, so the live slice never holds all 7 rows across all 4 tickers at once.
+    total_rows = 7  # 4 (AAA) + 1 (BBB) + 1 (DDD) + 1 (CCC, unclassified but still a stored ForwardReturn row)
+    assert max(observed_sizes) < total_rows, (
+        f"the live accumulator must never hold the whole cohort's rows at once — got {observed_sizes!r}"
+    )
+    assert max(observed_sizes) <= 4, f"a single ticker's own slice must not exceed its own row count, got {observed_sizes!r}"

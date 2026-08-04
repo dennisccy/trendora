@@ -759,51 +759,60 @@ def _combination_observations(
 
     `as_of` (iter-19, J-32) optionally scopes the pool to snapshots with `ScannerRun.asof_date <= as_of`
     (the SAME single membership filter as `_factor_observations` / `forward_testing`); `as_of=None` adds
-    NO clause → byte-identical all-history."""
+    NO clause → byte-identical all-history.
+
+    ops-hardening iter-46 (AG-8): this sibling of `_factor_observations` used to build ONE
+    `ret_by_run_symbol` dict over the ENTIRE horizon's `forward_returns` population in a single pass —
+    1,285,609 rows measured live at horizon=20 (the evidence-serving path's other named `MemoryError`
+    site, `research.py:777` pre-fix) — even though the source query was already `yield_per`-streamed (a
+    bounded READ, unbounded RETENTION, the exact shape iter-40's lesson names). Now mirrors
+    `_factor_observations`'s already-audited iter-29 fix exactly: `_runs_with_fr` discovers the distinct
+    run ids ONCE (bounded by run count, never by pair count), walked in bounded SLICES of
+    `research.factor_join_run_chunk`; each slice reuses the SAME `_fr_slice_map` join-map builder
+    `_factor_observations` already uses (its `max_drawdown` half is simply unused here), then that slice's
+    matching `ScannerResult`s are streamed ordered `(run_id, id)` and `observations` extended, before the
+    slice's dict is rebound (not accumulated into) on the next iteration — eligible for GC before the next
+    chunk's query starts. Slices walk the sorted `runs_with_fr` list in non-overlapping increasing ranges,
+    so concatenating each slice's `(run_id, id)`-ordered output reproduces the SAME global order the prior
+    single-pass implementation produced — byte-identical (TC-3), never re-derived. No new config knob."""
     parsed_by_key = {f.key: parse_factor_source(f.source) for f in factors}
-    # iter-47 (J-105): column-project + stream the forward-return scan (run_id, symbol, realized_return),
-    # bounded by config — same byte-identical values as the prior full-ORM `.all()`.
-    batch = (cfg or get_config()).research.read_batch_size
-    fr_stmt = select(
-        ForwardReturn.run_id, ForwardReturn.symbol, ForwardReturn.realized_return
-    ).where(ForwardReturn.horizon == horizon)
-    if as_of is not None:
-        fr_stmt = fr_stmt.join(ScannerRun, ScannerRun.id == ForwardReturn.run_id).where(
-            ScannerRun.asof_date <= as_of
-        )
-    ret_by_run_symbol: dict[tuple[int, str], float] = {}
-    runs_with_fr_set: set[int] = set()
-    for run_id, symbol, realized_return in session.exec(fr_stmt).yield_per(batch):
-        ret_by_run_symbol[(run_id, symbol)] = realized_return
-        runs_with_fr_set.add(run_id)
-    runs_with_fr = sorted(runs_with_fr_set)
-    # iter-48 (J-105): stream the ScannerResult side with `yield_per` (full ORM row — `record_json` is read
-    # by `_extract_factor_value` for component factors). Order by `(run_id, id)` — the EXACT prior implicit
-    # `.all()` order on the `run_id IN (...)` filter, which rides the `ix_scanner_results_run_id` index (no
-    # temp-B-tree sort, no disk spill). This closes the latent cold-miss OOM on the factor-combination path
-    # (masked only by the EventStudyCache hit) while keeping every composite/strict-overlap figure identical.
-    res_stmt = (
-        select(ScannerResult)
-        .where(ScannerResult.run_id.in_(runs_with_fr))
-        .order_by(ScannerResult.run_id, ScannerResult.id)
-    )
-    results = session.exec(res_stmt).yield_per(batch) if runs_with_fr else []
+    research_cfg = (cfg or get_config()).research
+    batch = research_cfg.read_batch_size
+    run_chunk = research_cfg.factor_join_run_chunk
+
+    # iter-46 (AG-8): the distinct run ids at this horizon, via the SAME shared DISTINCT-projected
+    # discovery `_factor_observations` uses — bounded by run count, never by (run, symbol) pair count.
+    runs_with_fr = _runs_with_fr(session, [horizon], as_of)
 
     observations: list[dict] = []
-    for res in results:
-        realized = ret_by_run_symbol.get((res.run_id, res.ticker))
-        if realized is None:
-            continue  # no realized return at this horizon for this stock (excluded, never fabricated)
-        values: dict[str, float] = {}
-        for key, parsed in parsed_by_key.items():
-            value = _extract_factor_value(res, parsed)
-            if value is None:
-                break  # a NULL in ANY referenced factor EXCLUDES this observation (never fabricated)
-            values[key] = float(value)
-        else:  # ran without a break -> every referenced factor was non-null
-            observations.append({
-                "run_id": res.run_id, "ticker": res.ticker, "return": realized, "values": values,
-            })
+    for start in range(0, len(runs_with_fr), run_chunk):
+        slice_run_ids = runs_with_fr[start:start + run_chunk]
+        # reuses `_fr_slice_map` (the SAME per-slice join accumulator `_factor_observations` already
+        # uses) rather than a second near-duplicate builder — this pool only reads the `realized_return`
+        # half of its `(realized_return, max_drawdown)` tuple.
+        ret_by_run_symbol = _fr_slice_map(session, horizon, slice_run_ids, batch)
+        res_stmt = (
+            select(ScannerResult)
+            .where(ScannerResult.run_id.in_(slice_run_ids))
+            .order_by(ScannerResult.run_id, ScannerResult.id)
+        )
+        for res in session.exec(res_stmt).yield_per(batch):
+            fr = ret_by_run_symbol.get((res.run_id, res.ticker))
+            if fr is None:
+                continue  # no realized return at this horizon for this stock (excluded, never fabricated)
+            realized, _max_drawdown = fr  # this pool doesn't carry max_drawdown; the shared map does
+            values: dict[str, float] = {}
+            for key, parsed in parsed_by_key.items():
+                value = _extract_factor_value(res, parsed)
+                if value is None:
+                    break  # a NULL in ANY referenced factor EXCLUDES this observation (never fabricated)
+                values[key] = float(value)
+            else:  # ran without a break -> every referenced factor was non-null
+                observations.append({
+                    "run_id": res.run_id, "ticker": res.ticker, "return": realized, "values": values,
+                })
+        # `ret_by_run_symbol` is rebound (not accumulated into) on the next iteration — this slice's dict
+        # is eligible for GC before the next chunk's query even starts (the bounded-memory guarantee, TC-1).
     return observations
 
 

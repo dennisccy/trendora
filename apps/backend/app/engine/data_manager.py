@@ -1312,10 +1312,14 @@ def refresh_coverage_snapshot_for(session: Session, cfg: Config, resolved_asof: 
 def refresh_coverage_snapshot(session: Session, cfg: Config) -> Optional[dict]:
     """Compute the CURRENT coverage payload (reusing the canonical `_compute_coverage_uncached` verbatim —
     never a second derivation) and persist it as the `CoverageSnapshot` row for the CURRENT `(asof_key,
-    dataset_version)` key, upserting idempotently. Called by the ingest finalize hook (unconditionally, on
-    every successful backfill/both/rebuild — including a zero-work re-run — AND, ops-hardening iter-3 B1,
-    on a successful fetch/expand that the cheap `_coverage_snapshot_is_current` gate below found stale) and
-    the boot warm-up safety net (only when no row exists yet for the current stamp). Returns the freshly
+    dataset_version)` key, upserting idempotently. Called by the ingest finalize hook — on every successful
+    fetch/expand (ops-hardening iter-3 B1) and every successful backfill/both/rebuild (ops-hardening iter-46
+    fix pass + audit B1) that the cheap `_coverage_snapshot_is_current` gate below finds STALE, or that
+    created at least one new snapshot date; the ONLY case that now skips it is a genuinely zero-work re-run
+    (no new snapshot date AND a stamp the gate already finds current, so a recompute would only reproduce
+    the persisted row byte-for-byte) — and by the boot warm-up safety net (only when no row exists yet for
+    the current stamp). NOTE for future edits: this is the ingest tail's ONE uncached heavy call, so the
+    gate is a load-bearing contract, not an optimization detail. Returns the freshly
     persisted payload, or `None` on a wholly-empty DB (no bars at all — `_resolve_coverage_asof` returns
     None only then; nothing to snapshot yet). The current stamp resolves `None`→latest, so this is
     `refresh_coverage_snapshot_for` at that resolved date (byte-identical: `_compute_coverage_uncached
@@ -3764,13 +3768,56 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
     try:
         with cache_ctx:
             try:
-                payload = refresh_coverage_snapshot(session, cfg)
-                if payload is not None:
-                    refreshed.append("coverage")
-                    # `_compute_coverage_uncached` (via `_compute_coverage_body`) already calls
-                    # `membership_timeline_cached` internally as part of computing the payload just persisted
-                    # above — warmed for free by that SAME call, never a second/separate derivation.
-                    refreshed.append("membership_timeline")
+                # ops-hardening iter-46 FIX PASS (QA blockers 1 + 4 — J-01/J-03): gate this refresh on the
+                # SAME cheap `_coverage_snapshot_is_current` check the fetch/expand branch has used since
+                # iter-3 (audit B1) — see that call site's own comment ("so a zero-work fetch (the common
+                # offline case) pays no extra compute/write"). Until now the backfill/both/rebuild branch
+                # called `refresh_coverage_snapshot` UNCONDITIONALLY, so a backfill that resolved to ZERO
+                # trading days still paid a full `_compute_coverage_uncached` derivation (its own
+                # `prefilled_bar_cache` whole-bar load). Every OTHER heavy step in this tail is already
+                # `dataset_version`-cached — forward-aggregates, research hot keys, index series, drawdown
+                # expectations are all cheap HITS on a zero-work job — so this was the ONE uncached heavy
+                # call left, and it is why QA run 287 (`dates_total: 0`, two weekend dates) never left
+                # `status: "running"` for 15+ minutes on an otherwise idle, freshly-restarted backend.
+                #
+                # The gate is a REDUNDANCY check, never a freshness compromise: it is true only when a
+                # `CoverageSnapshot` row already exists for THIS exact `(asof_key, dataset_version)` stamp,
+                # i.e. the persisted payload already reflects this dataset version and a recompute would
+                # reproduce it byte-for-byte. Any job that actually landed a bar or a snapshot moves
+                # `_membership_dataset_version`, so no row exists for the new stamp and the canonical
+                # refresh below still runs exactly as before (TC-A2) — J-05's `aggregates_refreshed` keeps
+                # its `membership_timeline` entry on every genuinely-working ingest.
+                #
+                # ops-hardening iter-46 AUDIT (B1): the gate ALSO requires that this job created NO new
+                # snapshot date. "Any job that actually landed a snapshot moves the stamp" does NOT hold
+                # for the J-85 clear-and-recreate REBUILD: `scanner_runs.id` is a plain
+                # `INTEGER PRIMARY KEY` (no `AUTOINCREMENT`, no `sqlite_sequence` row — verified on the
+                # live DB), so clearing every run and recomputing the SAME date set restores the SAME
+                # `max(id)` and `count(*)`; with the bars untouched, `_membership_dataset_version` is
+                # byte-identical BEFORE and AFTER the rebuild. Without this clause a full rebuild — whose
+                # documented purpose is to pick up a UNIVERSE EXPANSION, i.e. exactly a change the narrow
+                # membership stamp does not encode (`universe_count` / `candidate_universe_count` /
+                # `per_symbol` / the diagnostics all read `cfg.universe`) — would skip its coverage refresh
+                # and leave `/api/data` serving the PRE-rebuild payload while `coverage_status` still
+                # reports it fresh (AG-3), and would drop `coverage`/`membership_timeline` from that job's
+                # `aggregates_refreshed` (the field J-05 asserts on). A snapshot-creating job is never the
+                # zero-work case this gate exists for, so requiring `new_snapshot_dates == []` costs the
+                # fix nothing: QA run 287 (`dates_total: 0`) and the already-snapshotted 412-day range both
+                # still skip.
+                if not prog.new_snapshot_dates and _coverage_snapshot_is_current(session, cfg):
+                    # Honesty gate (the module's standing "actually did something" convention): nothing was
+                    # recomputed, so NEITHER category may be claimed — an honest omission, never a
+                    # fabricated refresh.
+                    pass
+                else:
+                    payload = refresh_coverage_snapshot(session, cfg)
+                    if payload is not None:
+                        refreshed.append("coverage")
+                        # `_compute_coverage_uncached` (via `_compute_coverage_body`) already calls
+                        # `membership_timeline_cached` internally as part of computing the payload just
+                        # persisted above — warmed for free by that SAME call, never a second/separate
+                        # derivation.
+                        refreshed.append("membership_timeline")
             except Exception as exc:  # noqa: BLE001 — non-fatal: log + continue to the next aggregate
                 _log_isolation_failure("ingest coverage/membership-timeline refresh failed (non-fatal): %s", exc)
 
@@ -5055,7 +5102,12 @@ def _fail_unlaunched_job(prog: JobProgress, cfg: Config, eng: Engine, exc: BaseE
     try:
         _finalize_run_record(eng, cfg, prog)
     except Exception:  # noqa: BLE001 — persistence failure must not crash the launch-failure path further
-        logger.exception("failed to persist run summary for unlaunched job %s", prog.job_id)
+        # ops-hardening iter-46 (last of the module's bare `logger.exception` sites, alongside :5091):
+        # `_log_isolation_failure`, NOT a bare `logger.exception` — SAME reason as every other isolation
+        # handler in this module (iter-44/45): rendering the live traceback itself allocates, and under the
+        # SAME exhausted `ulimit -v` cap that produced the exception being handled, that allocation can
+        # raise a second exception past this `except` clause's own protection.
+        _log_isolation_failure("failed to persist run summary for unlaunched job %s", prog.job_id)
 
 
 def _fail_unlaunched_resume(import_id: str, cfg: Config, eng: Engine, exc: BaseException) -> None:
@@ -5088,7 +5140,9 @@ def _fail_unlaunched_resume(import_id: str, cfg: Config, eng: Engine, exc: BaseE
                 return
             prog = _progress_from_checkpoint(cfg, cp)
     except Exception:  # noqa: BLE001 — never let this bookkeeping path itself crash the launch-failure path
-        logger.exception("failed to rebuild job progress for unlaunched resume %s", import_id)
+        # ops-hardening iter-46 (last of the module's bare `logger.exception` sites, alongside :5058):
+        # `_log_isolation_failure`, NOT a bare `logger.exception` — same reasoning as :5058 above.
+        _log_isolation_failure("failed to rebuild job progress for unlaunched resume %s", import_id)
         return
     _fail_unlaunched_job(prog, cfg, eng, exc)
 
