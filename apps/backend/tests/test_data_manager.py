@@ -5493,3 +5493,597 @@ def test_run_job_textless_exception_still_names_a_real_reason(tmp_path, monkeypa
     persisted_message = summarize_provider_run(row)["message"]
     assert "MemoryError" in persisted_message
     assert "snapshots over" not in persisted_message
+
+
+# ==================================================================================================
+# ops-hardening iter-45 (J-05/J-07 fix) — the membership-timeline APPEND-FORWARD fast path.
+#
+# `membership_timeline_cached`'s MISS branch previously ran `_membership_timeline`'s full O(dates × pool)
+# `resolve_with_reasons` sweep over EVERY historical snapshot date on ANY dataset-version bump — including
+# the common case of exactly ONE new trading day landing via a single-day backfill. iter-44's live SIGUSR1
+# dump named this exact call chain (`resolve_with_reasons` <- `_excluded_counts_by_date` <-
+# `_membership_timeline` <- `membership_timeline_cached`) as the shared root cause of BOTH J-05's single-day
+# backfill never reaching a terminal outcome (three attempts, longest 1,001s) and J-07's forward-aggregate
+# warm never advancing `horizons_done` past 0 (this refresh runs BEFORE the warm loop in the finalize
+# tail). `_membership_timeline_incremental` now bounds that sweep to genuinely NEW date(s) only when the
+# ingest is append-forward (every new date >= every already-cached date); a historical gap-fill (a new
+# date EARLIER than an already-cached one) still falls back to the EXISTING, UNCHANGED full recompute,
+# since `entries`/`exits` are order-dependent (binding iter-27/iter-9 lesson).
+# ==================================================================================================
+def _mk_membership_snapshot(session: Session, asof: date, tickers: list[str]) -> None:
+    run = ScannerRun(
+        asof_date=asof, created_at=datetime.now(timezone.utc), provider="seed", benchmark="SPY",
+        regime_score=50.0, regime_label="Choppy", regime_components_json="{}",
+        new_high_low_json="{}", candidate_counts_json="{}",
+    )
+    session.add(run)
+    session.commit()
+    session.refresh(run)
+    for i, t in enumerate(tickers):
+        session.add(ScannerResult(
+            run_id=run.id, ticker=t, name=t, sector="Technology",
+            leadership_score=float(100 - i), leadership_bucket="A",
+            entry_quality_score=1.0, entry_quality_bucket="A", risk_score=1.0, risk_bucket="A",
+            setup_status="Watchlist", rank=i + 1, record_json="{}",
+        ))
+    session.commit()
+
+
+def _all_scanner_run_dates(session: Session) -> list[date]:
+    return sorted(session.exec(select(ScannerRun.asof_date)).all())
+
+
+@pytest.fixture()
+def membership_fast_path_engine(tmp_path):
+    """Three already-cached historical snapshots (D1 < D2 < D3, an AAA/BBB/CCC entries/exits shape mirroring
+    the dedicated membership-cache test fixture) so each test below has a genuine prior cache row to append
+    onto."""
+    engine = make_engine(f"sqlite:///{tmp_path / 'membership_fast_path.db'}")
+    create_db_and_tables(engine)
+    with Session(engine) as session:
+        _mk_membership_snapshot(session, date(2024, 1, 3), ["AAA", "BBB"])
+        _mk_membership_snapshot(session, date(2024, 2, 1), ["AAA", "CCC"])
+        _mk_membership_snapshot(session, date(2024, 3, 1), ["AAA", "BBB", "CCC"])
+    return engine
+
+
+def test_append_forward_ingest_does_not_reinvoke_resolver_for_cached_dates(
+    membership_fast_path_engine, monkeypatch,
+):
+    """TC-1 — an append-forward ingest of exactly ONE new, later trading day does NOT re-invoke
+    `resolve_with_reasons` (directly or via `_excluded_counts_by_date`) for any date `<= D_prev`; only the
+    new date is ever resolved (the real committed pool batches `resolve_with_reasons` per
+    `research.membership_timeline_batch_symbols`-wide chunk, so a single date can see MULTIPLE calls — all
+    of them must name the new date, never an already-cached one)."""
+    engine = membership_fast_path_engine
+    cfg = load_config()
+    with Session(engine) as session:
+        dates = _all_scanner_run_dates(session)
+        assert len(dates) == 3
+        data_manager.membership_timeline_cached(session, cfg, dates)  # warm the cache under v1
+
+    d_new = date(2024, 4, 1)  # strictly LATER than every already-cached date -- append-forward
+    with Session(engine) as session:
+        _mk_membership_snapshot(session, d_new, ["AAA", "BBB", "DDD"])
+
+    resolved_dates: list[date] = []
+    orig_resolve = data_manager.universe_resolver.resolve_with_reasons
+
+    def _spy(session_arg, d, cfg_arg, **kwargs):
+        resolved_dates.append(d)
+        return orig_resolve(session_arg, d, cfg_arg, **kwargs)
+
+    monkeypatch.setattr(data_manager.universe_resolver, "resolve_with_reasons", _spy)
+
+    with Session(engine) as session:
+        dates = _all_scanner_run_dates(session)
+        assert len(dates) == 4
+        data_manager.membership_timeline_cached(session, cfg, dates)  # MISS -> the append-forward fast path
+
+    assert resolved_dates, "expected the new date's resolver sweep to actually run"
+    assert set(resolved_dates) == {d_new}, (
+        f"resolve_with_reasons must run ONLY for the new date {d_new}, never for an already-cached date "
+        f"(TC-1) -- got calls for {sorted(set(resolved_dates))}"
+    )
+
+
+def test_append_forward_reuses_cached_points_byte_for_byte(membership_fast_path_engine):
+    """TC-2 — every already-cached (`<= D_prev`) date's `size`/`entries`/`exits`/`excluded` fields are
+    byte-for-byte unchanged after an append-forward ingest, and the new stamp's payload has exactly one
+    more point than the prior stamp's (the new date, honestly reflecting its own entries/exits)."""
+    engine = membership_fast_path_engine
+    cfg = load_config()
+    with Session(engine) as session:
+        dates = _all_scanner_run_dates(session)
+        prev_payload = data_manager.membership_timeline_cached(session, cfg, dates)
+    assert len(prev_payload["points"]) == 3
+
+    d_new = date(2024, 4, 1)
+    with Session(engine) as session:
+        _mk_membership_snapshot(session, d_new, ["AAA", "BBB", "DDD"])
+
+    with Session(engine) as session:
+        dates = _all_scanner_run_dates(session)
+        new_payload = data_manager.membership_timeline_cached(session, cfg, dates)
+
+    assert len(new_payload["points"]) == len(prev_payload["points"]) + 1
+    prev_by_date = {p["date"]: p for p in prev_payload["points"]}
+    new_by_date = {p["date"]: p for p in new_payload["points"]}
+    for d_iso, point in prev_by_date.items():
+        assert new_by_date[d_iso] == point, f"{d_iso}'s cached point changed after an append-forward ingest"
+
+    fresh = new_by_date[d_new.isoformat()]
+    assert fresh["date"] == d_new.isoformat()
+    assert fresh["size"] == 3
+    assert fresh["entries"] == ["DDD"]  # AAA/BBB already seen; only DDD is a first-ever appearance
+    assert fresh["exits"] == ["CCC"]  # D3's members (AAA/BBB/CCC) minus D_new's (AAA/BBB/DDD) -> CCC exits
+
+
+def test_append_forward_fast_path_byte_identical_to_full_recompute(membership_fast_path_engine):
+    """TC-3 — the append-forward fast path's served payload is byte-identical to `_membership_timeline`'s
+    own full recompute (UNCHANGED by this iteration -- the pre-fix reference oracle) for the SAME dates and
+    DB state."""
+    engine = membership_fast_path_engine
+    cfg = load_config()
+    with Session(engine) as session:
+        dates = _all_scanner_run_dates(session)
+        data_manager.membership_timeline_cached(session, cfg, dates)  # warm v1
+
+    d_new = date(2024, 4, 1)
+    with Session(engine) as session:
+        _mk_membership_snapshot(session, d_new, ["AAA", "BBB", "DDD"])
+
+    with Session(engine) as session:
+        dates = _all_scanner_run_dates(session)
+        fast_path_payload = data_manager.membership_timeline_cached(session, cfg, dates)  # append-forward
+        oracle_payload = data_manager._membership_timeline(session, cfg, dates)  # PRE-FIX full recompute
+
+    assert fast_path_payload == oracle_payload
+
+
+def test_historical_gap_fill_falls_back_to_full_recompute_not_stale_reuse(membership_fast_path_engine):
+    """Regression — a historical gap-fill (a new date STRICTLY EARLIER than an already-cached one) must NOT
+    take the append-forward fast path: `entries`/`exits` are order-dependent on the FULL prior timeline, so
+    an earlier insertion can retroactively change a LATER cached date's entries/exits (binding
+    iter-27/iter-9 lesson). The served payload must equal a fresh full recompute -- never a stale reuse of
+    the pre-gap-fill cached points."""
+    engine = membership_fast_path_engine
+    cfg = load_config()
+    with Session(engine) as session:
+        dates = _all_scanner_run_dates(session)
+        pre_gap_payload = data_manager.membership_timeline_cached(session, cfg, dates)  # warm v1 (3 dates)
+
+    # a new date EARLIER than 2024-01-03 (the earliest already-cached date) -- AAA now first appears here,
+    # not on D1, so a correct recompute MUST change D1's entries; a stale reuse would not.
+    d_gap = date(2023, 12, 1)
+    with Session(engine) as session:
+        _mk_membership_snapshot(session, d_gap, ["AAA", "EEE"])
+
+    with Session(engine) as session:
+        dates = _all_scanner_run_dates(session)
+        assert dates[0] == d_gap  # confirms this really is EARLIER than every previously-cached date
+        served = data_manager.membership_timeline_cached(session, cfg, dates)
+        oracle = data_manager._membership_timeline(session, cfg, dates)
+
+    assert served == oracle  # the fallback path -- byte-identical to a fresh full recompute
+    served_by_date = {p["date"]: p for p in served["points"]}
+    pre_gap_by_date = {p["date"]: p for p in pre_gap_payload["points"]}
+    assert served_by_date["2024-01-03"] != pre_gap_by_date["2024-01-03"], (
+        "the gap-fill must RECOMPUTE D1's entries (AAA is no longer first-seen there) -- a stale reuse of "
+        "the pre-gap-fill point would incorrectly still show AAA as a D1 entry"
+    )
+    assert "AAA" not in served_by_date["2024-01-03"]["entries"]  # AAA is now first-seen on d_gap, not D1
+    assert served_by_date["2024-01-03"]["exits"] == ["EEE"]  # EEE (present on d_gap) is gone by D1
+
+
+# ==================================================================================================
+# ops-hardening iter-45 AUDIT — regression tests for the three fixes applied during the audit pass.
+# ==================================================================================================
+def test_log_isolation_failure_swallows_a_raising_logger_exception(monkeypatch):
+    """AUDIT B2 — DETERMINISTIC proof of `_log_isolation_failure`'s fallback branch. iter-45's own
+    evidence for closing the third `MemoryError` escape was 5 consecutive `ulimit -v` runs of
+    `test_ingest_finalize_memory_pressure.py`; those runs prove the PRIMARY (`logger.exception`) path
+    still works, but `logs/backend.log` shows the fallback's own marker string never appeared once in the
+    live incident either — so the NEW branch this iteration added was covered by nothing. Force it."""
+    calls: list[tuple] = []
+
+    def _boom_exception(*_args, **_kwargs):
+        raise MemoryError()  # noqa: RSE102 — the textless class this session's failures actually raise
+
+    def _record_error(msg, *args, **_kwargs):
+        calls.append((msg, args))
+
+    monkeypatch.setattr(data_manager.logger, "exception", _boom_exception)
+    monkeypatch.setattr(data_manager.logger, "error", _record_error)
+
+    data_manager._log_isolation_failure("some aggregate failed: %s", "detail")  # must NOT raise
+
+    assert len(calls) == 1, "the traceback-free fallback record must be emitted exactly once"
+    msg, args = calls[0]
+    assert "traceback omitted" in msg
+    assert msg.startswith("some aggregate failed: %s"), "the %s placeholders must keep their arg order"
+    assert args == ("detail",)
+
+
+def test_log_isolation_failure_swallows_even_when_the_fallback_also_raises(monkeypatch):
+    """AUDIT B2 — the last line of defence: under a truly exhausted cap even the minimal-allocation
+    fallback can raise. `_log_isolation_failure` must still return normally, or logging itself becomes the
+    reason the isolation handler's "log + continue, never raise" contract breaks."""
+    def _boom(*_args, **_kwargs):
+        raise MemoryError()  # noqa: RSE102
+
+    monkeypatch.setattr(data_manager.logger, "exception", _boom)
+    monkeypatch.setattr(data_manager.logger, "error", _boom)
+
+    data_manager._log_isolation_failure("everything is on fire: %s", "detail")  # must NOT raise
+
+
+def test_aggregate_refresh_logging_failure_never_flips_a_successful_job_to_failed(tmp_path, monkeypatch):
+    """AUDIT B3 — the SAME third-escape class, one frame OUT of `_refresh_ingest_aggregates`. A
+    `MemoryError` raised by `Session.__exit__` (SQLAlchemy `expunge_all`) lands in `_run_job`'s own
+    aggregate-refresh handler, which is OUTSIDE every per-item isolation handler iter-45 guarded —
+    live-observed in the 2026-08-04 wedge (`logs/backend.log`: a caught MemoryError whose outermost frame
+    is that `with Session(eng)` line). If the handler's own logging call then allocates and raises, the
+    second exception escapes to `_run_job`'s outer `except`, which flips `prog.status = "failed"` —
+    reporting a COMPLETED backfill as failed and breaking that branch's documented contract ("an
+    aggregate-refresh failure must never flip an otherwise-successful ingest job to failed")."""
+    engine = make_engine(f"sqlite:///{tmp_path / 'agg_refresh_logging.db'}")
+    create_db_and_tables(engine)
+    cfg = load_config()
+
+    def _boom_refresh(_session, _cfg, _prog):
+        raise MemoryError()  # noqa: RSE102 — stands in for the Session.__exit__ MemoryError
+
+    def _boom_exception(*_args, **_kwargs):
+        raise MemoryError()  # noqa: RSE102 — the logging allocation failing under the same cap
+
+    monkeypatch.setattr(data_manager, "_refresh_ingest_aggregates", _boom_refresh)
+    monkeypatch.setattr(data_manager.logger, "exception", _boom_exception)
+
+    job = create_job("backfill", date(2024, 1, 2), date(2024, 1, 2))
+    summary = run_data_job(job.job_id, config=cfg, engine=engine, sleep_fn=_noop_sleep, seed_dir=tmp_path)
+
+    assert summary["status"] == "ok", (
+        "a failure INSIDE the non-fatal aggregate-refresh handler's own logging must never flip the "
+        f"ingest job itself to failed — got {summary['status']!r} ({summary.get('message')!r})"
+    )
+
+
+def _mk_bar(session: Session, symbol: str, d: date) -> None:
+    session.add(DailyPrice(symbol=symbol, date=d, open=1.0, high=1.0, low=1.0, close=1.0, volume=1.0))
+    session.commit()
+
+
+def test_append_forward_falls_back_when_bars_land_at_or_before_a_cached_date(tmp_path, monkeypatch):
+    """AUDIT B4 — the append-forward precondition checked SNAPSHOT-DATE ordering only, which is sufficient
+    for `size`/`entries`/`exits` (pure membership) but NOT for the reused per-date `excluded` tallies: the
+    resolver derives those from BARS `<= d`, and `_membership_dataset_version` folds in the bars manifest.
+    So a `both` job whose FETCH stage lands a bar at a HISTORICAL date while its BACKFILL stage adds one
+    new LATER snapshot date satisfied "append-forward" and silently reused stale `excluded` counts for
+    every already-cached date — breaking the phase spec's "byte-identical output required" and AG-3.
+
+    Asserted through the SAME `resolve_with_reasons` spy TC-1 uses: taking the fallback means the resolver
+    IS re-invoked for the already-cached dates. The companion test below is the positive control proving
+    this guard did not simply disable the fast path."""
+    engine = make_engine(f"sqlite:///{tmp_path / 'bars_guard.db'}")
+    create_db_and_tables(engine)
+    cfg = load_config()
+    d1, d2, d3 = date(2024, 1, 3), date(2024, 2, 1), date(2024, 3, 1)
+    with Session(engine) as session:
+        _mk_membership_snapshot(session, d1, ["AAA", "BBB"])
+        _mk_membership_snapshot(session, d2, ["AAA", "CCC"])
+        _mk_membership_snapshot(session, d3, ["AAA", "BBB", "CCC"])
+        for d in (d1, d2, d3):
+            _mk_bar(session, "SPY", d)          # bars exist -> the stamp carries a real max-bar date
+        data_manager.membership_timeline_cached(session, cfg, _all_scanner_run_dates(session))
+
+    d_new = date(2024, 4, 1)
+    with Session(engine) as session:
+        _mk_membership_snapshot(session, d_new, ["AAA", "BBB", "DDD"])
+        _mk_bar(session, "AAA", d2)             # a HISTORICAL bar (<= D_prev) landing in the same bump
+
+    resolved: list[date] = []
+    orig = data_manager.universe_resolver.resolve_with_reasons
+
+    def _spy(session_arg, d, cfg_arg, **kwargs):
+        resolved.append(d)
+        return orig(session_arg, d, cfg_arg, **kwargs)
+
+    monkeypatch.setattr(data_manager.universe_resolver, "resolve_with_reasons", _spy)
+    with Session(engine) as session:
+        data_manager.membership_timeline_cached(session, cfg, _all_scanner_run_dates(session))
+
+    assert set(resolved) == {d1, d2, d3, d_new}, (
+        "a bar landing at or before an already-cached date must force the FULL recompute — the cached "
+        f"`excluded` tallies are no longer valid. Resolver saw only {sorted(set(resolved))}"
+    )
+
+
+def test_append_forward_still_used_when_bars_land_strictly_after_every_cached_date(tmp_path, monkeypatch):
+    """AUDIT B4 positive control — the guard above must NOT disable the fast path for the ordinary
+    forward flow (a `both` job fetching a new trading day's bars and snapshotting it). Bars added strictly
+    after the previous max bar date cannot change any `resolve_with_reasons` verdict for a date `<=
+    D_prev`, so the fast path must still bound the resolver to the new date alone (TC-1's property)."""
+    engine = make_engine(f"sqlite:///{tmp_path / 'bars_guard_control.db'}")
+    create_db_and_tables(engine)
+    cfg = load_config()
+    d1, d2, d3 = date(2024, 1, 3), date(2024, 2, 1), date(2024, 3, 1)
+    with Session(engine) as session:
+        _mk_membership_snapshot(session, d1, ["AAA", "BBB"])
+        _mk_membership_snapshot(session, d2, ["AAA", "CCC"])
+        _mk_membership_snapshot(session, d3, ["AAA", "BBB", "CCC"])
+        for d in (d1, d2, d3):
+            _mk_bar(session, "SPY", d)
+        data_manager.membership_timeline_cached(session, cfg, _all_scanner_run_dates(session))
+
+    d_new = date(2024, 4, 1)
+    with Session(engine) as session:
+        _mk_membership_snapshot(session, d_new, ["AAA", "BBB", "DDD"])
+        _mk_bar(session, "SPY", d_new)          # forward-only bar, strictly after every cached date
+
+    resolved: list[date] = []
+    orig = data_manager.universe_resolver.resolve_with_reasons
+
+    def _spy(session_arg, d, cfg_arg, **kwargs):
+        resolved.append(d)
+        return orig(session_arg, d, cfg_arg, **kwargs)
+
+    monkeypatch.setattr(data_manager.universe_resolver, "resolve_with_reasons", _spy)
+    with Session(engine) as session:
+        served = data_manager.membership_timeline_cached(session, cfg, _all_scanner_run_dates(session))
+
+    assert set(resolved) == {d_new}, (
+        "a forward-only bar change must keep the append-forward fast path (resolver bounded to the new "
+        f"date) — got {sorted(set(resolved))}"
+    )
+    assert len(served["points"]) == 4
+
+
+def test_per_date_coverage_warm_logging_failure_does_not_skip_the_memory_backoff(tmp_path, monkeypatch):
+    """AUDIT B5 — iter-45 guarded the 12 isolation handlers written inside `_refresh_ingest_aggregates`'s
+    own body, but NOT the per-date coverage warm loop it CALLS INTO
+    (`_persist_per_date_coverage_snapshots`) — which that function's own docstring names as one of "the
+    four per-item warm loops this function drives directly or calls into", and which is the path the
+    iter-44 review's live flake actually reproduced in. A `logger.exception` that raises there escapes the
+    per-date `except MemoryError` handler, so `_release_process_memory()` never runs and
+    `aborted_for_memory` is never latched — the memory back-off is skipped under exactly the pressure it
+    exists for."""
+    engine = make_engine(f"sqlite:///{tmp_path / 'coverage_warm_logging.db'}")
+    create_db_and_tables(engine)
+    cfg = load_config()
+    d1, d2 = date(2024, 1, 3), date(2024, 2, 1)
+    with Session(engine) as session:
+        _mk_membership_snapshot(session, d1, ["AAA", "BBB"])
+        _mk_membership_snapshot(session, d2, ["AAA", "CCC"])
+        for d in (d1, d2):
+            _mk_bar(session, "SPY", d)
+
+    def _boom_coverage(_session, _cfg, _asof):
+        raise MemoryError()  # noqa: RSE102 — the real pressure this loop's handler exists for
+
+    def _boom_exception(*_args, **_kwargs):
+        raise MemoryError()  # noqa: RSE102 — the logging allocation failing under the same cap
+
+    released: list[int] = []
+    monkeypatch.setattr(data_manager, "refresh_coverage_snapshot_for", _boom_coverage)
+    monkeypatch.setattr(data_manager.logger, "exception", _boom_exception)
+    monkeypatch.setattr(data_manager, "_release_process_memory", lambda: released.append(1))
+
+    job = create_job("backfill", d1, d1)
+    prog = data_manager._JOBS[job.job_id]
+    with Session(engine) as session:
+        data_manager._persist_per_date_coverage_snapshots(session, cfg, [d1], prog)  # must NOT raise
+
+    assert released, (
+        "the per-date MemoryError handler's `_release_process_memory()` back-off must still run when the "
+        "handler's own logging call raises — otherwise the loop aborts with no memory reclaimed"
+    )
+
+
+# ==================================================================================================
+# ops-hardening iter-45 FIX PASS (audit B6) — a fatal data job must LEAVE EVIDENCE.
+#
+# The audit's single most important live failure (run 281, `2019-02-25`) reached terminal `failed` with
+# the persisted reason `"MemoryError (no message)"` and wrote NOTHING to `logs/backend.log`:
+# `grep -n "no message" logs/backend.log` → no match, `grep -c "backfill per-date compute aborted"` → 0.
+# The audit could not even distinguish WHICH of two candidate origins raised it. Both handlers below now
+# log through `_log_isolation_failure`, and every test here induces the failure with a TEXTLESS
+# `MemoryError()` — this product's characteristic exception, whose `str()` is the empty string.
+# ==================================================================================================
+def _record_log_calls(monkeypatch, attr: str) -> list[str]:
+    """Capture the RENDERED (`msg % args`) records a logger method receives. Rendering, not raw-format
+    comparison, is deliberate: it proves the `%s` placeholders and their arg order actually line up, the
+    same property the `_log_isolation_failure` fallback tests above pin."""
+    rendered: list[str] = []
+
+    def _record(msg, *args, **_kwargs):
+        rendered.append(str(msg) % args if args else str(msg))
+
+    monkeypatch.setattr(data_manager.logger, attr, _record)
+    return rendered
+
+
+def test_fatal_job_failure_is_logged_with_job_id_kind_and_reason(tmp_path, monkeypatch):
+    """AUDIT B6 — `_run_job`'s OUTER handler recorded the failure reason onto `prog` only and made no
+    logging call at all, so a job that died there was undiagnosable after the fact: `prog` carries a
+    one-line reason but never the traceback, and `_JOBS` is process-local (gone on the next restart, and
+    the restart is exactly what a wedge forces). Live-proven on run 281. The handler must now emit ONE
+    record naming the job, its kind, and the honest reason."""
+    engine = make_engine(f"sqlite:///{tmp_path / 'fatal_job_logging.db'}")
+    create_db_and_tables(engine)
+    cfg = load_config()
+
+    def _boom_backfill(*_a, **_k):
+        raise MemoryError()  # noqa: RSE102 — textless: THE class this session's real failures raise
+
+    monkeypatch.setattr(data_manager, "_do_backfill", _boom_backfill)
+    logged = _record_log_calls(monkeypatch, "error")
+
+    job = create_job("backfill", date(2024, 1, 2), date(2024, 1, 2))
+    summary = run_data_job(job.job_id, config=cfg, engine=engine, sleep_fn=_noop_sleep, seed_dir=tmp_path)
+
+    # the pre-existing honesty contract is untouched: a textless MemoryError still names its TYPE.
+    assert summary["status"] == "failed"
+    assert summary["message"] == "MemoryError (no message)"
+
+    naming_this_job = [rec for rec in logged if job.job_id in rec]
+    assert len(naming_this_job) == 1, (
+        "the fatal-failure handler must emit exactly one record naming the job — got "
+        f"{naming_this_job!r} out of {logged!r}"
+    )
+    record = naming_this_job[0]
+    assert "backfill" in record, f"the record must name the job KIND — got {record!r}"
+    assert "MemoryError (no message)" in record, (
+        f"the record must carry the same honest reason the job persisted — got {record!r}"
+    )
+    # B6's actual purpose: name the FRAME. The audit could not tell which of two candidate origins
+    # inside the job raised run 281's MemoryError, because nothing was logged at all.
+    assert "Traceback (most recent call last)" in record and "data_manager.py" in record, (
+        f"the record must carry the (scrubbed) traceback, not just the one-line reason — got {record!r}"
+    )
+
+
+def test_fatal_job_failure_logging_never_escapes_the_outer_handler(tmp_path, monkeypatch):
+    """AUDIT B6 — the outer handler is the OUTERMOST frame of the worker, so an unguarded logging call
+    there would be strictly worse than no logging at all: under the exhausted cap that produced the
+    original `MemoryError`, emitting the record can raise a SECOND `MemoryError` inside the `except`
+    clause, past the point that clause's own `try` protects. That escapes `_run_job` entirely — killing
+    the worker thread before `return prog.to_dict()` and before the `finally` finishes persisting the run
+    row. The job must still reach its terminal `failed` state with its honest reason, AND the
+    traceback-free fallback record must still name it (the failure stays diagnosable either way).
+
+    The first (fuller) emit is forced to fail while the minimal retry is allowed through — the exact shape
+    of `_log_isolation_failure`'s two-step degrade under real pressure."""
+    engine = make_engine(f"sqlite:///{tmp_path / 'fatal_job_logging_boom.db'}")
+    create_db_and_tables(engine)
+    cfg = load_config()
+
+    def _boom_backfill(*_a, **_k):
+        raise MemoryError()  # noqa: RSE102 — textless
+
+    fallback: list[str] = []
+
+    def _flaky_error(msg, *args, **_kwargs):
+        # the FIRST attempt at this record allocates more and dies; the minimal retry gets through.
+        if str(msg).startswith("data job %s") and "traceback omitted" not in str(msg):
+            raise MemoryError()  # noqa: RSE102 — textless
+        fallback.append(str(msg) % args if args else str(msg))
+
+    monkeypatch.setattr(data_manager, "_do_backfill", _boom_backfill)
+    monkeypatch.setattr(data_manager.logger, "error", _flaky_error)
+
+    job = create_job("backfill", date(2024, 1, 2), date(2024, 1, 2))
+    summary = run_data_job(job.job_id, config=cfg, engine=engine, sleep_fn=_noop_sleep, seed_dir=tmp_path)
+
+    assert summary["status"] == "failed"
+    assert summary["message"] == "MemoryError (no message)"
+    assert summary["finished_at"] is not None, (
+        "the `finally` block must still have run — a logging escape here would kill the worker thread "
+        "before the job's terminal state was ever closed out"
+    )
+    naming_this_job = [rec for rec in fallback if job.job_id in rec]
+    assert len(naming_this_job) == 1, (
+        "the traceback-free fallback must still name the failed job — got "
+        f"{naming_this_job!r} out of {fallback!r}"
+    )
+    assert "traceback omitted" in naming_this_job[0]
+
+
+def test_backfill_per_date_memory_abort_survives_a_raising_logging_call(tmp_path, monkeypatch):
+    """AUDIT B6 (second half) — `_do_backfill`'s per-date worker handler was the ONE remaining bare
+    `logger.exception` in an isolation handler (T4 listed five; the audit fixed four). Its own docstring
+    promises `_compute_one_isolated` "never raises", and the whole per-date isolation contract rests on
+    that: a raising log call escapes the worker, so the date is never recorded as an isolated failure, the
+    run-summary invariant `snapshots_created + already_snapshotted + error_other == dates_total` breaks,
+    and a job that should end `partial` with per-date detail aborts wholesale to `failed`.
+
+    ONE target date deliberately — that pins the SERIAL arm (`workers <= 1 or len(targets) <= 1`), so the
+    assertion is deterministic rather than dependent on which worker latched the memory-pressure flag
+    first."""
+    engine = make_engine(f"sqlite:///{tmp_path / 'per_date_abort_logging.db'}")
+    create_db_and_tables(engine)
+    cfg = load_config()
+    d = date(2024, 1, 3)
+    with Session(engine) as session:
+        # the trading calendar IS the benchmark's bar dates (`_trading_days`), so one benchmark bar makes
+        # exactly one trading day — un-snapshotted, hence exactly one backfill target.
+        _mk_bar(session, cfg.etfs.index[0], d)
+
+    def _boom_compute(*_a, **_k):
+        raise MemoryError()  # noqa: RSE102 — textless, inside the per-date worker's own frame
+
+    def _boom_exception(*_a, **_k):
+        raise MemoryError()  # noqa: RSE102 — the traceback render failing under the same cap
+
+    monkeypatch.setattr(data_manager, "_compute_one_backfill_date", _boom_compute)
+    monkeypatch.setattr(data_manager.logger, "exception", _boom_exception)
+    fallback = _record_log_calls(monkeypatch, "error")
+
+    prog = JobProgress(job_id="iter45-b6-per-date-probe", kind="backfill", start=d, end=d)
+    with Session(engine) as session:
+        data_manager._do_backfill(session, cfg, prog, eng=engine)  # must NOT raise
+
+    assert prog.dates_total == 1
+    assert prog.snapshots_created == 0
+    assert prog.error_other == 1
+    assert prog.snapshots_created + prog.already_snapshotted + prog.error_other == prog.dates_total, (
+        "the run-summary breakdown invariant must survive a logging failure inside the per-date handler"
+    )
+    assert prog.date_failures[0]["date"] == d.isoformat()
+    assert "aborted for memory pressure" in prog.date_failures[0]["error"], (
+        "the date must be recorded as an honest per-date MEMORY abort, never a generic failure — got "
+        f"{prog.date_failures!r}"
+    )
+    assert any("backfill per-date compute aborted" in rec and d.isoformat() in rec for rec in fallback), (
+        "the abort must leave a traceback-free record naming the date — the very line the audit found "
+        f"absent from the live log for run 281 (`grep -c` → 0). Got {fallback!r}"
+    )
+
+
+def test_fatal_job_failure_log_never_leaks_the_provider_key(tmp_path, monkeypatch, caplog):
+    """AUDIT B6, SECURITY regression — the fatal-failure log line added above must not become a NEW key
+    leak. Only `reason` is scrubbed (`scrub(str(exc))`); `logger.exception` would ALSO attach the LIVE
+    exception, and its formatted traceback carries the exception's RAW text — which on a fetch/expand job
+    can embed the resolved provider key in a URL. That is precisely the surface
+    `test_real_httpx_error_key_scrubbed_end_to_end` pins with "absent from the logs", and
+    `_make_scrubber`'s docstring calls "defense-in-depth on top of the `_http.py` URL redaction".
+
+    So the handler renders the traceback ITSELF, scrubs it, and passes it as an argument with
+    `exc_info=False`. This test drives a WHOLESALE fetch-stage failure (not a per-symbol one, which the
+    existing isolation already handles) so the exception reaches `_run_job`'s outer handler, then asserts
+    all three properties at once: the record fired, the key is gone, and the frames survived."""
+    secret = "sk-FATAL-HANDLER-LEAK-9c4a2d"
+    leak = _real_httpx_error_str_with_key(secret)
+    assert secret in leak  # sanity: there IS a key to scrub
+
+    cfg = load_config()
+    engine = make_engine(f"sqlite:///{tmp_path / 'fatal_scrub.db'}")
+    create_db_and_tables(engine)
+    with Session(engine) as session:
+        _mk_bar(session, "SPY", date(2024, 1, 2))
+
+    def _boom_fetch(*_a, **_k):
+        raise ProviderUnavailableError(leak)  # a WHOLE-STAGE failure → the outer handler
+
+    monkeypatch.setattr(data_manager, "_run_chunked_fetch", _boom_fetch)
+
+    job = create_job("fetch", date(2024, 1, 2), date(2024, 1, 3), source="tiingo")
+    with caplog.at_level("DEBUG"):
+        summary = run_data_job(
+            job.job_id, config=cfg, engine=engine,
+            provider=_KeyLeakingProvider(secret), api_key=secret, sleep_fn=_noop_sleep,
+        )
+
+    assert summary["status"] == "failed"
+    assert job.job_id in caplog.text, (
+        "the fatal-failure record must have fired for this job — otherwise this test would pass "
+        "vacuously by logging nothing at all"
+    )
+    assert secret not in caplog.text, "the resolved provider key must never reach the log"
+    assert "***" in caplog.text, (
+        "the redaction marker must be present — proving the traceback WAS rendered and scrubbed, not "
+        "merely absent"
+    )
+    assert "data_manager.py" in caplog.text, (
+        "the frames must survive the scrub — a traceback is the whole reason B6 asked for this record"
+    )

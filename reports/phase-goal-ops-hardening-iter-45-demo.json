@@ -1,0 +1,142 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-ops-hardening-iter-45",
+  "base_url": "http://localhost:3255",
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Open the dashboard",
+      "narration": "Let's start by viewing the main dashboard and confirming the system is ready to use.",
+      "point_out": "The top-right badge should show 'Ready' in green, indicating the backend is available.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "goto",
+        "url": "/"
+      },
+      "expect": {
+        "text": "Dashboard"
+      }
+    },
+    {
+      "n": 2,
+      "title": "View the Data Manager",
+      "narration": "Now let's visit the Data Manager to see the backfill interface and current dataset status.",
+      "point_out": "You should see a 'Start a fetch / backfill job' panel with date fields and a 'Run history' section showing prior backfill attempts.",
+      "journey": "J-01",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "goto",
+        "url": "/data"
+      },
+      "expect": {
+        "text": "Data Manager"
+      }
+    },
+    {
+      "n": 3,
+      "title": "Check the dataset coverage panel",
+      "narration": "The Data Manager shows key dataset statistics. Look at the coverage metrics to understand what date ranges are already snapshotted.",
+      "point_out": "You should see numeric values for 'Backfill gaps' and other coverage metrics—not a blank or error state.",
+      "journey": "J-03",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "click",
+        "target": {
+          "css": "[data-testid='universe-count']"
+        }
+      }
+    },
+    {
+      "n": 4,
+      "title": "Navigate to the Stocks section",
+      "narration": "Let's verify that navigation between pages remains fast and responsive, even after this backend iteration.",
+      "point_out": "The page should load promptly and display the stocks list.",
+      "journey": "J-06",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "goto",
+        "url": "/stocks"
+      },
+      "expect": {
+        "text": "Stocks"
+      }
+    },
+    {
+      "n": 5,
+      "title": "View a stock detail page",
+      "narration": "Opening a specific stock's page should load quickly with only the data it needs.",
+      "point_out": "The page should show the stock symbol and relevant data within the expected load time.",
+      "journey": "J-06",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "goto",
+        "url": "/stocks/AAPL"
+      },
+      "expect": {
+        "text": "AAPL"
+      }
+    },
+    {
+      "n": 6,
+      "title": "Check the Backtest results page",
+      "narration": "The Backtest page displays pre-computed evidence. This iteration ensures it always serves from storage rather than recomputing on request.",
+      "point_out": "You should see 'Forward-tested evidence' and populated evidence values—never a blank loading screen.",
+      "journey": "J-08",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "goto",
+        "url": "/backtest"
+      },
+      "expect": {
+        "text": "Forward-tested evidence"
+      }
+    },
+    {
+      "n": 7,
+      "title": "Return to Data Manager to view background compute",
+      "narration": "Let's check the background compute panel to confirm the system properly discloses any in-flight compute activity.",
+      "point_out": "If any background processes are running, the panel should list them with elapsed time and progress—never silently omit them.",
+      "journey": "J-09",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "goto",
+        "url": "/data"
+      },
+      "expect": {
+        "text": "Background compute"
+      }
+    },
+    {
+      "n": 8,
+      "title": "Confirm the readiness badge remains stable",
+      "narration": "Throughout this tour, the top-bar badge should have stayed responsive and visible. This is the key reliability property this iteration verifies.",
+      "point_out": "The readiness badge in the top-right corner should display either 'Ready' or an explicit status—never blank or stuck on 'Checking...'.",
+      "journey": "J-04",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "click",
+        "target": {
+          "css": "[data-testid='readiness-badge']"
+        }
+      }
+    }
+  ]
+}

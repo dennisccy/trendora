@@ -468,3 +468,30 @@ luck.
 `memory_cap_mb` (`test_ingest_finalize_memory_pressure.py` and friends) — run it 3-5x consecutively
 before calling the contract closed, and treat a new flake as a new escape to trace, never a number to
 tune.
+
+## iter-45 — 2026-08-04T04:30:00Z
+
+**Verdict:** ESCALATE
+**Lesson:** A live thread dump names where a thread is BLOCKED, not necessarily what is KILLING the
+process. iter-44's SIGUSR1 dump named `_membership_timeline`'s O(dates × pool) storm; iter-45 fixed
+that storm correctly and the backend still died — because the memory pressure was arriving from a
+different, request-serving path (`evidence.py:168` → `forward_testing.py:2343` / `research.py:777`,
+16 of the 24 wedge-window `MemoryError`s). Under memory exhaustion the *slowest* stack and the
+*allocating* stack are usually different stacks; pair any stack dump with a per-site allocation
+count from the same window before choosing what to fix.
+**Applies to:** any iteration that picks its target from a stack/thread dump taken during a freeze —
+especially `apps/backend/app/engine/` memory work.
+
+## iter-45 — 2026-08-04T04:30:00Z
+
+**Verdict:** ESCALATE
+**Lesson:** Check that the live data basis can actually SATISFY a fix's precondition before
+committing an iteration to that fix. iter-45's append-forward fast path only fires when the ingested
+date is at or after every cached date, but `GET /api/data` reports `gap_last = 2019-02-25` against a
+latest snapshot of `2026-07-31` and the seed's data horizon IS that latest snapshot — so no
+append-forward target can exist in this database, AG-9 forbids fetching one, and the mechanism
+finished the iteration with zero live evidence (`grep` for it over 173k log lines → 0 matches). One
+`gap_last`-vs-latest-snapshot query at decompose time would have caught this before the round was
+spent.
+**Applies to:** any iteration whose fix is scoped to a data shape (append-forward, latest-only,
+same-version) — verify the live DB contains an instance of that shape during decomposition.

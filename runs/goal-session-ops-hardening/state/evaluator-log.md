@@ -3558,3 +3558,148 @@ worked next — not a sixth pass at the price cache. (6) DEFERRED a TENTH time: 
 cold pooled view. (7) CAPTURE ONLY, never a round's goal: J-07's `[NEW]` walkthrough (fourteenth
 round unrecorded) and J-05's acceptance frames. (8) OWNER: nothing outstanding — both standing owner
 items closed at iter-43, and nothing this round needs a decision only he can make.
+
+## Iteration 45 — goal-ops-hardening-iter-45
+
+**Date:** 2026-08-04T04:30:00Z
+**Verdict:** ESCALATE
+**Depth dispatched:** full (`iter-45/depth-dispatched` = `full`, matching the spec's `Depth: full` /
+`Full trigger: 3`. `runs/goal-ops-hardening-iter-45/status.json` = `blocked` / `audit_qa_failed` /
+`next_action: escalate`, with four blockers listed. Note `browser_checks_run: false` in that file is
+STALE for the THIRD iteration running — both browser lanes demonstrably ran: deterministic replay
+01:23-01:24Z with six dated PNGs, LLM browser-QA 01:46-02:21Z with two failure captures.
+`ui-test-results.md` is authoritative over `status.json`.)
+**Journey deltas:**
+- **NO journey changed status this iteration.** Six re-verified `passing` with this-iteration
+  evidence (**J-01, J-03, J-04, J-06, J-08, J-09**), two re-verified `failing` (**J-05, J-07**).
+  Newly passing: none. Newly failing: none. **Regressed: NONE.**
+- **J-05 "Aggregates are precomputed at ingest"** — `failing` → `failing`, second consecutive.
+  `last_passing_iter` stays iter-39; `last_verified_iter` advances to iter-45. Run 281
+  (`2019-02-25`) died at 4m46s with `"MemoryError (no message)"`, `snapshots_created: 0`,
+  `aggregates_refreshed: null`; I confirmed `scanner_runs` has 0 rows for that date.
+- **J-07 "Heavy aggregates never take the service down"** — `failing` → `failing`, FOURTH
+  consecutive hard live FAIL (42, 43, 44, 45). `last_passing_iter` stays iter-34 (eleven
+  iterations). ~42-minute total blackout, double iter-44's 20m51s.
+- **`evidence_makeup` SET on J-03 and J-04** (methodology A.7): both behaviours are confirmed by
+  their own replay rows, but they share ONE byte-identical capture file — a capture-artifact defect,
+  not a product failure. Cleared everywhere else. No `pending_infra`. Deferred
+  (`DEFERRED-BUDGET`): none. No `browser-infra.json`; no `journeys-changed.md`; all 8 `spec_hash`es
+  match `goal_gate hash-journeys` run by me.
+- Anti-goal violations: **ONE RESOLVED — iter-44/am** (the third `MemoryError` escape inside the
+  isolation handlers' own logging; closed by `_log_isolation_failure` across 19 sites, four of them
+  found by the auditor, with two DETERMINISTIC fallback tests replacing evidence that never executed
+  the new branch). **FIVE NEW: iter-45/ao** (minor, open — the ~42-minute total outage, doubled),
+  **iter-45/ap** (minor, open — the exhaustion is reachable from ordinary page browsing:
+  16 of 24 wedge-window `MemoryError`s entered via `evidence.py:168`), **iter-45/aq** (**critical,
+  RESOLVED in-audit** — the fast path would have served stale per-date `excluded` tallies on an AG-3
+  surface), **iter-45/ar** (minor, open — TC-11 re-opened, J-03/J-04 share one screenshot),
+  **iter-45/at** (minor, open — the last two unguarded `logger.exception` sites, disclosed by the
+  developer himself). Five carried items given an ITER-45 UPDATE recording what I verified rather
+  than inherited. Ledger now: **57 total, 20 unresolved, 0 unresolved critical.** scan-report
+  CRITICAL (verified false positive — see below); coherence COHERENCE-PASS (zero blocking, two
+  advisories); review FAIL (1 CRITICAL); QA FAIL (re-validated from an earlier PASS); audit FAIL
+  (2 CRITICAL gaps, 5 fixes applied in-audit); browser QA FAIL 6/8; ux-regression SKIPPED.
+
+**Reasoning:** I checked every load-bearing fact myself rather than reading it off a report.
+(1) **The outage is machine-recorded and I measured it.** `awk` over `logs/backend.log` returns ZERO
+access-log lines between `:172574` (a `GET /api/health 200` at 01:52Z) and `:172965` (02:34Z, after
+the coordinator restarted the service) — about 42 minutes — with 22 `MemoryError`s inside that
+window. The process was alive and writing to its own log the whole time ("evidence per-claim
+drawdown-expectations compute aborted" at 01:55, 02:01, ... 02:20:48) while answering nothing. I
+opened both failure pictures: the badge sits on "Checking backend…", the board on "Checking board
+status…", and the /data panels are empty grey boxes. That is honest degradation of a dead service,
+not a broken page. (2) **J-05's failure is in the database, not just in a report.** Run 281 is
+`failed` with `snapshots_created: 0`, `dates_done: 0/1`, `aggregates_refreshed: null`, summary
+`"MemoryError (no message)"`; `select count(*) from scanner_runs where asof_date like '2019-02-25%'`
+returns 0. The job ran 4m46s, well inside TC-4's 300s budget in wall-clock terms — it did not time
+out, it died. (3) **The thing this round built never ran once.** `grep` for
+`_membership_timeline_incremental`, `append-forward` and `append_forward` across 173,043 log lines
+returns **zero** matches, and the finalize hook is only reachable for a job that ends `ok`/`partial`
+(`data_manager.py:4651`). So the central mechanism has no live evidence at all; its whole proof is a
+3-4 date fixture against a ~2,860-date real basis. (4) **I read the two accumulators myself before
+accepting the audit's naming of them.** `research.py:777` and `forward_testing.py:2343` are
+column-projected and `yield_per`-streamed *in flight* but unbounded in *retention* — one dict entry
+per (run, symbol) and per (symbol, date) over all history. So the literal AG-8 clause about
+"unbounded whole-table ORM loads" is not quite what they are; the AG-8 sentence "must never …
+exhaust a service's memory" is exactly what they did. I record that distinction rather than rounding
+it either way. (5) **The scan-report's CRITICAL is a false positive and I did not fail closed on
+it.** `sk-FATAL-HANDLER-LEAK-9c4a2d` is a synthetic sentinel inside
+`test_fatal_job_failure_log_never_leaks_the_provider_key`, handed to a deliberately fake
+`_KeyLeakingProvider` to prove the key is scrubbed OUT of logs; three identical-shape fixtures
+already live at `test_api_data.py:329,487,878`. It authenticates to nothing. Recorded in
+`assumptions.md` because a reader who treats any `sk-`-prefixed literal as an AG-7 breach would
+return REGRESSION here. (6) **AG-10 checked at the source, not assumed:** `ulimit -v` at
+`start-backend.sh:56`, `MALLOC_ARENA_MAX` at `:60`, HOST-GUARD block intact `:76-101`,
+`config.yaml:1363` still 8192, and `git diff` vs the snapshot SHA over `config.yaml`,
+`project-extensions/` and `docs/goal.md` is empty. (7) **I checked the six passing frames' timing
+instead of presenting them as proof of stability.** They were captured 01:23-01:24Z; the blackout
+began 01:52Z. Same build, ~29 minutes earlier — the identical caveat as iter-44, and it should not
+be dropped. (8) **I ran `md5sum` over the evidence directory myself:** `J-03-verify.png` and
+`J-04-verify.png` collide at `9d77429b…`, so the iter-43/ai defect that iter-44 closed has
+re-opened. I opened the shared file: a generic /data coverage capture, evidencing neither journey's
+specific claim on its face — but it also independently corroborates the audit's structural finding,
+because its own footer reads "Gap range: 2005-05-16 → 2019-02-25" against a latest snapshot of
+2026-07-31.
+Rejected REGRESSION (C.1): no journey moved `passing` → `failing` — nothing moved at all — and there
+is no unresolved critical anti-goal violation. I weighed calling iter-45/ao critical and decided
+against it on stated grounds: this iteration's product diff neither introduced nor widened the
+defect (the new path provably never executed; the accumulators are pre-existing and were placed out
+of scope by the spec before this evidence existed), the UI degraded honestly, nothing was lost or
+fabricated, my methodology's CRITICAL list is secrets / unapproved paid dependency / license /
+backdoor / fabricated data, and this family has been carried as minor since iter-35/k. The AG-3
+defect (iter-45/aq) genuinely WAS critical-class, and it was caught and closed inside the same
+iteration with a negative control, so it is resolved and does not gate anything. Rejected STALLED
+(C.2): not one unblock path is human-owned. Four are named with file and line — bound
+`research.py:777` and `forward_testing.py:2343`, log the fatal handler and guard
+`data_manager.py:3451`, add the out-of-process watchdog, extend the fast path to the older-day case
+— and nothing is outstanding on the owner. Rejected GOAL_ACHIEVED (C.3): J-05 and J-07 are both
+`failing`. **Chose ESCALATE (C.4):** both clauses fire independently — J-07 has now failed FOUR
+consecutive iterations and J-05 two, and the review lane returned FAIL with a CRITICAL finding on
+this build. A lean round has no auditor, and this round's auditor applied five fixes including the
+one genuine correctness defect in the diff.
+**FIVE THINGS I STATE PLAINLY RATHER THAN ROUND AWAY:** (i) **the round's most valuable output is a
+negative result, and a ninth ESCALATE must not be read as saying the work was bad.** iter-44 named
+the membership-timeline storm as the cause of both stalls; iter-45 fixed it properly and the app
+still died. That is not a wasted round — it eliminates the leading hypothesis and hands the next one
+a mechanism with line numbers. (ii) **the failure moved from the ingest side to the browsing side,
+and that is the headline.** For four rounds this was "a heavy background job takes the app down".
+This round, 16 of 24 out-of-memory errors came in through the Evidence page's own render path. An
+operator can now take the app down by opening a page. That reframes what "available in seconds"
+requires. (iii) **the audit lane again returned the load-bearing findings, and one of them was a
+real correctness bug nobody else saw.** B4 would have served stale exclusion counts on a row feeding
+five surfaces; it was proven by removing the guard and watching the resolver skip three dates, not
+argued. That is the eighth consecutive round where the audit caught the substantive defect. (iv)
+**the developer's disclosure was the best of the session.** He ran the real drill, watched it sit at
+1,106 seconds, wrote that his own iteration's fix "will very likely still exceed its 300s budget…
+through no defect in this diff", refused to expand scope to hide it, and explicitly handed the
+judgement call to review/audit/evaluator instead of resolving it himself. He also volunteered that
+his drill mutated the shared database. (v) **J-05 may be unwinnable in its current shape and someone
+should say so out loud.** Every backfillable day left in this database sits before dates already
+stored (`gap_last = 2019-02-25` against a latest snapshot of 2026-07-31), and the seed's data
+horizon and the newest snapshot are the same date — so no "add a newer day" case can ever exist
+here. The shortcut this round built only accelerates that case. J-05 is still reachable, but only by
+making the older-day case fast, and three rounds have now bounced off it.
+
+**Next-step recommendation:** FULL depth (mandatory via ESCALATE). Give the next round ONE job:
+**stop the app running out of memory while somebody is just looking at a page.** Two places keep one
+entry in memory for every row they read — `apps/backend/app/engine/research.py:777` and
+`apps/backend/app/engine/forward_testing.py:2343` — and the Evidence page calls into them once per
+claim on a single load. Put a firm limit on both, then prove it by loading that page while a data
+job runs. Then, in order: (2) make the next failure readable — run 281 died and wrote nothing at
+all, so add a log line to the outer failure handler and guard `data_manager.py:3451`; (3) add the
+outside-the-app safety net that stops and restarts a frozen backend, now justified rather than
+assumed, because the app could no longer create the thread it needs to answer anything; (4) re-run
+all eight journey checks afterwards with a separate picture for each — J-03 "No per-run range cap"
+and J-04 "Non-blocking boot with visible status" currently share one file; (5) keep the membership
+fix, but nobody may claim it works at full scale until it has run for real once. (6) SMALL AND
+ALREADY WRITTEN DOWN: guard the last two unprotected log calls at `data_manager.py:5058` and
+`:5091`; re-check the still-unverified `n=8991` anchor in `journey-scripts/J-07.json`. (7) CARRIED,
+untouched: iter-29/b + the badge wording after a permanently failed warm-up (SEVENTEEN rounds
+unmade); iter-31/e; iter-32/f; iter-35/k; iter-36/n; iter-37/o; iter-37/q; iter-39/u; iter-43/ag,
+whose clean re-measurement was impossible because the app was unreachable for the whole window.
+(8) DEFERRED an ELEVENTH time: iter-33/g, Regime Lab's cold pooled view. (9) CAPTURE ONLY, never a
+round's goal: J-07's `[NEW]` walkthrough (fifteenth round unrecorded) and J-05's acceptance frames.
+(10) OWNER: nothing needs his decision, but two facts belong in front of him — the app now goes dark
+for about 42 minutes, twice as long as last round, and ordinary browsing can trigger it; and J-05
+asks for a day with no snapshot, while every such day left in this database sits before dates
+already stored, so closing J-05 means making that older-day case fast.

@@ -32,9 +32,11 @@ from __future__ import annotations
 import datetime
 import json
 import os
+import struct
 import sys
 import urllib.error
 import urllib.request
+import zlib
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
@@ -337,6 +339,47 @@ def render_script_md(phase_id: str, frontend_url: str, iteration, steps: list[di
         for s in full:
             _emit_script_step(lines, s)
     return "\n".join(lines)
+
+
+_PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+
+
+def _png_text_chunk(keyword: str, text: str) -> bytes:
+    """One PNG `tEXt` chunk: length + type + (keyword NUL text) + CRC32."""
+    payload = (keyword.encode("latin-1", "replace")[:79] + b"\x00"
+               + text.encode("latin-1", "replace"))
+    return (struct.pack(">I", len(payload)) + b"tEXt" + payload
+            + struct.pack(">I", zlib.crc32(b"tEXt" + payload) & 0xFFFFFFFF))
+
+
+def png_with_provenance(raw: bytes, entries: list[tuple[str, str]]) -> bytes:
+    """Return `raw` with provenance `tEXt` chunks inserted directly after IHDR.
+
+    WHY (ops-hardening iter-45, audit F1): verify mode captures ONE end-state
+    screenshot per journey, so two journeys whose last step lands on the same
+    page in the same state produce BYTE-IDENTICAL files — J-03 and J-04 both end
+    on `/data`, and both captures hashed `9d77429b…`. The regression check that
+    exists to prove every journey got its OWN capture (never one file re-cited by
+    several journeys — the iter-43 defect) then fires on evidence that is in fact
+    honest, and cannot distinguish that case from the dishonest one it targets.
+
+    Stamping the journey's own identity into the file settles it by construction:
+    each capture is unique because its provenance differs, and the PNG says which
+    journey it belongs to when read directly. `tEXt` is a standard ANCILLARY
+    chunk — decoders ignore what they don't know, so NOT ONE PIXEL changes. This
+    annotates the file, never the page: overlaying a banner on the rendered page
+    before capture would have altered the very evidence being recorded.
+
+    Returns `raw` unchanged if it is not a PNG with a leading IHDR (never raises
+    — evidence capture must not be able to fail a replay).
+    """
+    if not raw.startswith(_PNG_SIGNATURE) or len(raw) < 16 or raw[12:16] != b"IHDR":
+        return raw
+    ihdr_end = 8 + 8 + struct.unpack(">I", raw[8:12])[0] + 4  # sig + len/type + data + crc
+    if ihdr_end > len(raw):
+        return raw
+    stamped = b"".join(_png_text_chunk(k, v) for k, v in entries)
+    return raw[:ihdr_end] + stamped + raw[ihdr_end:]
 
 
 # ── self-test (written first, TDD) ───────────────────────────────────────────
@@ -705,7 +748,63 @@ def _t_derive_prefix_without_journey_key() -> None:
     assert golden["steps"][0]["action"]["type"] == "goto"
 
 
+def _png_chunks(raw: bytes) -> list[tuple[bytes, bytes]]:
+    """Parse a PNG into `[(type, data), …]` — the self-test's independent reader,
+    so the stamp is verified by decoding it, never by trusting the writer."""
+    out, i = [], len(_PNG_SIGNATURE)
+    while i + 8 <= len(raw):
+        n = struct.unpack(">I", raw[i:i + 4])[0]
+        typ, data = raw[i + 4:i + 8], raw[i + 8:i + 8 + n]
+        assert zlib.crc32(typ + data) & 0xFFFFFFFF == struct.unpack(">I", raw[i + 8 + n:i + 12 + n])[0], \
+            f"chunk {typ!r} CRC mismatch — the stamped file is not a valid PNG"
+        out.append((typ, data))
+        i += 12 + n
+    return out
+
+
+def _tiny_png() -> bytes:
+    """A minimal, valid 1x1 greyscale PNG — the fixture two 'identical captures' share."""
+    def chunk(typ: bytes, data: bytes) -> bytes:
+        return (struct.pack(">I", len(data)) + typ + data
+                + struct.pack(">I", zlib.crc32(typ + data) & 0xFFFFFFFF))
+    return (_PNG_SIGNATURE
+            + chunk(b"IHDR", struct.pack(">IIBBBBB", 1, 1, 8, 0, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(b"\x00\x00"))
+            + chunk(b"IEND", b""))
+
+
+def _t_png_provenance_makes_identical_captures_distinct() -> None:
+    """iter-45 audit F1 — the exact J-03/J-04 case: two journeys, one identical
+    end-state capture. After stamping, the files must differ, must each name their
+    OWN journey, and must still be valid PNGs whose pixel data is untouched."""
+    raw = _tiny_png()
+    a = png_with_provenance(raw, [("Journey", "J-03"), ("Phase", "iter-45")])
+    b = png_with_provenance(raw, [("Journey", "J-04"), ("Phase", "iter-45")])
+    assert a != b, "two journeys' captures must not stay byte-identical after stamping"
+
+    for stamped, jid in ((a, "J-03"), (b, "J-04")):
+        chunks = _png_chunks(stamped)                      # asserts every CRC
+        types = [t for t, _ in chunks]
+        assert types[0] == b"IHDR" and types[-1] == b"IEND", types
+        assert b"tEXt" in types
+        texts = [d for t, d in chunks if t == b"tEXt"]
+        assert any(d.startswith(b"Journey\x00") and d.endswith(jid.encode()) for d in texts), texts
+        # NOT ONE PIXEL changed: every non-tEXt chunk is byte-identical to the original.
+        assert [(t, d) for t, d in chunks if t != b"tEXt"] == _png_chunks(raw)
+
+
+def _t_png_provenance_leaves_a_non_png_untouched() -> None:
+    """Evidence capture must never be able to fail a replay: anything that is not
+    a PNG with a leading IHDR comes back byte-for-byte unchanged, never an error."""
+    assert png_with_provenance(b"", [("Journey", "J-03")]) == b""
+    assert png_with_provenance(b"not a png at all", [("Journey", "J-03")]) == b"not a png at all"
+    truncated = _tiny_png()[:12]
+    assert png_with_provenance(truncated, [("Journey", "J-03")]) == truncated
+
+
 _SELF_TEST_CHECKS = [
+    _t_png_provenance_makes_identical_captures_distinct,
+    _t_png_provenance_leaves_a_non_png_untouched,
     _t_normalize_url_relative,
     _t_normalize_url_rewrites_localhost,
     _t_normalize_url_keeps_external,
@@ -1395,6 +1494,20 @@ def run_verify(opts, base_url: str) -> int:
                     try:
                         page.screenshot(path=str(shot_abs))
                         shot_rel = _rel(str(shot_abs), opts.repo_root)
+                        # iter-45 audit F1: stamp the capture with its OWN journey so two
+                        # journeys ending on the same page in the same state can never be
+                        # byte-identical (J-03/J-04 both end on /data and both hashed
+                        # 9d77429b…). Ancillary `tEXt` only — no pixel is altered. Its own
+                        # try: a stamping failure must never fail an otherwise-passing replay.
+                        try:
+                            shot_abs.write_bytes(png_with_provenance(shot_abs.read_bytes(), [
+                                ("Journey", jid),
+                                ("Phase", str(opts.phase_id or "")),
+                                ("Created", datetime.datetime.now().isoformat(timespec="seconds")),
+                                ("Source", "demo_runner.py --mode verify"),
+                            ]))
+                        except Exception:  # noqa: BLE001
+                            pass
                     except Exception:  # noqa: BLE001
                         pass
                 results.append({"journey": jid, "name": name, "verdict": verdict,

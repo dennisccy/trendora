@@ -36,6 +36,7 @@ import logging
 import os
 import threading
 import time
+import traceback
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import nullcontext
@@ -631,6 +632,159 @@ def _excluded_counts_by_date(
     return totals
 
 
+def _parse_membership_stamp(stamp: str) -> Optional[dict]:
+    """ops-hardening iter-45 AUDIT (B4) — decompose a `research._membership_dataset_version` stamp
+    (`r{max_run_id}-rc{run_count}-b{max_bar_date|none}-bc{bar_count}-h{min_history_bars}`) into its terms.
+    Parsed right-to-left so the ISO date in the `-b` slot (which itself contains `-`) is unambiguous.
+    Returns None on ANY unrecognized shape — every caller treats None as "cannot prove it is safe" and
+    falls back to the full recompute, so a future stamp-format change degrades to the pre-iter-45
+    behavior (slow but always correct), never to a silently wrong fast path."""
+    try:
+        head, sep_h, h_part = stamp.rpartition("-h")
+        head, sep_bc, bc_part = head.rpartition("-bc")
+        _, sep_b, b_part = head.rpartition("-b")
+        if not (sep_h and sep_bc and sep_b):
+            return None
+        return {
+            "min_history_bars": int(h_part),
+            "bar_count": int(bc_part),
+            "bar_stamp": b_part,
+        }
+    except (ValueError, AttributeError):
+        return None
+
+
+def _membership_bars_are_forward_only(
+    session: Session, prev_version: str, cur_version: str,
+) -> bool:
+    """ops-hardening iter-45 AUDIT (B4) — the missing half of the append-forward precondition.
+
+    `_membership_timeline_incremental` reuses every already-cached date's `excluded` counts verbatim. Those
+    counts come from `resolve_with_reasons(session, d, cfg)`, which reads BARS `<= d` and
+    `min_history_bars` — so they are only safe to reuse if NEITHER changed for any date `<= D_prev`. The
+    original iter-45 precondition checked the SNAPSHOT-DATE ordering only, which is sufficient for
+    `size`/`entries`/`exits` (pure membership) but NOT for `excluded`: `_membership_dataset_version` folds
+    in the bars manifest, so a `both` job whose FETCH stage lands bars at a historical date (a symbol's gap
+    backfill, a newly-added pool symbol's history) while its BACKFILL stage creates one new LATER snapshot
+    date satisfies "append-forward" on dates yet silently serves stale per-date `excluded` tallies —
+    violating both the phase spec's "byte-identical output required" and AG-3 ("displayed numbers match the
+    engine's computation for the same as-of date").
+
+    Sufficient condition proven here: `min_history_bars` is unchanged AND every bar added since the cached
+    payload was computed lies STRICTLY AFTER that payload's own `max(daily_prices.date)`. Since a snapshot
+    date can only exist where bars exist, that previous max bar date is `>= D_prev`, so no bar at or before
+    any already-cached date moved — and the resolver's verdict for those dates is unchanged. Fail-safe: any
+    unparsable stamp, any bar removal, or any net count that does not match the strictly-after population
+    returns False, sending the caller to the existing full recompute."""
+    prev = _parse_membership_stamp(prev_version)
+    cur = _parse_membership_stamp(cur_version)
+    if prev is None or cur is None:
+        return False
+    if prev["min_history_bars"] != cur["min_history_bars"]:
+        return False
+    if prev["bar_stamp"] == "none":
+        # No bars existed when the cached payload was computed, yet it may still carry snapshot dates
+        # (points). Any bar added now could therefore land at or before one of them — only a still-empty
+        # bars table is provably safe.
+        return cur["bar_count"] == 0
+    try:
+        prev_max_bar_date = date_cls.fromisoformat(prev["bar_stamp"])
+    except ValueError:
+        return False
+    bars_strictly_after = session.exec(
+        select(func.count()).select_from(DailyPrice).where(DailyPrice.date > prev_max_bar_date)
+    ).one()
+    if isinstance(bars_strictly_after, tuple):
+        bars_strictly_after = bars_strictly_after[0]
+    # At the previous compute this population was empty by definition (that date WAS the max), so a
+    # forward-only bar change moves the total by exactly the number of bars now sitting after it.
+    return (cur["bar_count"] - prev["bar_count"]) == (bars_strictly_after or 0)
+
+
+def _membership_timeline_incremental(
+    session: Session, cfg: Config, snapshot_dates: list[date_cls], prev_payload: dict,
+) -> dict:
+    """ops-hardening iter-45 (J-05/J-07 fix) — the append-forward fast path `membership_timeline_cached`'s
+    MISS branch tries BEFORE falling back to `_membership_timeline`'s full O(dates × pool) sweep. Reuses
+    every previously-cached date's point UNCHANGED (byte-for-byte — TC-2) and calls
+    `_excluded_counts_by_date`/`resolve_with_reasons` (the O(dates × pool) resolver storm this fix exists
+    to bound — iter-44's live SIGUSR1 dump named this exact call chain as the block behind BOTH J-05's
+    never-completing single-day backfill and J-07's forward-aggregate warm never advancing past
+    `horizons_done: 0`) ONLY for the genuinely new date(s) — never for any date `<= D_prev` (TC-1).
+    Byte-identical to `_membership_timeline(session, cfg, snapshot_dates)` for the SAME dates (TC-3):
+    `entries`/`exits` are seeded from the SAME single membership join query `_membership_timeline` itself
+    reads unconditionally (cheap — a single JOIN, not the O(dates × pool) cost; only the resolver sweep
+    below is bounded), so the iterative seen/prev_members state the original per-date loop builds is
+    reconstructed exactly, not approximated.
+
+    Caller-enforced precondition (this function does not re-check it): every date in `snapshot_dates`
+    absent from `prev_payload`'s points is STRICTLY LATER than every already-cached date, and no
+    previously-cached date is missing from `snapshot_dates`. A historical gap-fill (a new date EARLIER
+    than an already-cached one) is NOT append-forward — `entries`/`exits` are defined relative to the FULL
+    prior timeline, so an earlier insertion can retroactively change a LATER cached date's entries/exits
+    (binding iter-27/iter-9 "order-dependent state" lesson) — the caller must use the full recompute
+    fallback for that case instead of calling this function."""
+    prev_points_by_date = {p["date"]: p for p in prev_payload.get("points", [])}
+    dates_sorted = sorted(snapshot_dates)
+    new_dates = [d for d in dates_sorted if d.isoformat() not in prev_points_by_date]
+    prev_dates = sorted(date_cls.fromisoformat(s) for s in prev_points_by_date)
+
+    pool_symbols = {row["symbol"] for row in read_pool()}
+    pool_count = len(pool_symbols)
+
+    # ONE query, same as `_membership_timeline`'s own — every (run.asof_date, ticker), read once. Cheap
+    # (a single JOIN, not the O(dates × pool) resolver sweep below); reused here to reconstruct the exact
+    # `seen`/`prev_members` state the iterative per-date loop would have built through the already-cached
+    # dates, without re-walking the resolver for any of them.
+    rows = session.exec(
+        select(ScannerRun.asof_date, ScannerResult.ticker)
+        .join(ScannerResult, ScannerResult.run_id == ScannerRun.id)
+    ).all()
+    members_by_date: dict[date_cls, set[str]] = {}
+    for asof_date, ticker in rows:
+        members_by_date.setdefault(asof_date, set()).add(ticker.upper())
+
+    seen: set[str] = set()
+    for d in prev_dates:
+        seen |= members_by_date.get(d, set())
+    prev_members = members_by_date.get(prev_dates[-1], set()) if prev_dates else set()
+
+    # THE bounded call — `resolve_with_reasons` (via `_excluded_counts_by_date`) runs ONLY for `new_dates`,
+    # never for any already-cached date (TC-1). This is the fix: J-05/J-07's shared root cause was this
+    # same call running over ALL ~2,860 historical dates on every single-date ingest.
+    excluded_by_date = _excluded_counts_by_date(session, cfg, new_dates, pool_symbols)
+
+    new_points_by_date: dict[str, dict] = {}
+    for d in new_dates:
+        members = members_by_date.get(d, set())
+        entries = sorted(m for m in members if m not in seen)
+        exits = sorted(m for m in prev_members if m not in members)
+        seen |= members
+        prev_members = members
+        new_points_by_date[d.isoformat()] = {
+            "date": d.isoformat(),
+            "size": len(members),
+            "entries": entries,
+            "exits": exits,
+            "excluded": excluded_by_date[d],
+        }
+
+    points = [
+        prev_points_by_date[d.isoformat()] if d.isoformat() in prev_points_by_date
+        else new_points_by_date[d.isoformat()]
+        for d in dates_sorted
+    ]
+
+    return {
+        "candidate_pool_count": pool_count,
+        "points": points,
+        # J-95(b)/J-96: the three honest labels carried VERBATIM beside the timeline (single source) —
+        # recomputed fresh here (cheap; unrelated to the O(dates × pool) sweep this function bounds),
+        # exactly mirroring `_membership_timeline`'s own call.
+        "labels": _membership_labels(session, cfg),
+    }
+
+
 def membership_timeline_cached(
     session: Session, cfg: Config, snapshot_dates: list[date_cls]
 ) -> dict:
@@ -662,17 +816,59 @@ def membership_timeline_cached(
     if hit is not None:
         return json.loads(hit.payload_json)
 
-    # MISS — compute once (the cold, BOUNDED compute) and persist under the current stamp.
-    # ops-hardening iter-38 (audit B7, iter-36 — stale-docstring fix): `_membership_timeline`'s per-date
-    # excluded-by-reason counts are sourced via `_excluded_counts_by_date` (above), which reuses an ACTIVE
-    # outer job-scoped bar cache when one is already open (e.g. a `_do_backfill`/`_persist_per_date_
-    # coverage_snapshots` caller), or else walks the candidate pool in `membership_timeline_batch_symbols`-
-    # wide batches — ONE `_BarCache` instance whose contents are REPLACED per batch, never a single
-    # whole-pool `prefilled_bar_cache` scan — so peak resident bar data is bounded by batch width, not by
-    # the full candidate pool's price history (the O(dates) grouped-count round-trip this replaced no
-    # longer runs either way). The warm-up daemon precomputes this off the boot path so the FIRST request
-    # after a boot/rebuild is already a hit.
-    payload = _membership_timeline(session, cfg, snapshot_dates)
+    # MISS. ops-hardening iter-45 (J-05/J-07 fix): try the append-forward fast path FIRST — reuse the most
+    # recently cached payload (any dataset_version; there is normally at most one live row at a time, since
+    # the prune below removes every OTHER version on each write) and bound the resolver sweep to genuinely
+    # new date(s) only, instead of `_membership_timeline`'s full O(dates × pool) sweep over EVERY historical
+    # date — the recompute storm that iter-44's live SIGUSR1 dump named as the shared root cause behind
+    # J-05's single-day backfill never reaching a terminal outcome (1,001s+, three attempts) and J-07's
+    # forward-aggregate warm never advancing `horizons_done` past 0 (this refresh runs BEFORE the warm loop
+    # in this function's finalize-tail caller). Falls back to the EXISTING, UNCHANGED full recompute for:
+    # the first-ever compute (no previous row), a historical gap-fill (a new date EARLIER than an
+    # already-cached one — order-dependent entries/exits, binding iter-27/iter-9 lesson), a previously-
+    # cached date now missing from `snapshot_dates`, or any OTHER dataset_version change with no new date at
+    # all (e.g. a `min_history_bars` re-basis) — none of those are append-forward, and the fast path is
+    # deliberately NOT generalized to them (`assumptions.md` iter-45).
+    prev_row = session.exec(
+        select(MembershipTimelineCache).order_by(MembershipTimelineCache.created_at.desc())
+    ).first()
+    payload = None
+    if prev_row is not None:
+        prev_payload = json.loads(prev_row.payload_json)
+        prev_dates = sorted(
+            date_cls.fromisoformat(p["date"]) for p in prev_payload.get("points", [])
+        )
+        dates_sorted = sorted(snapshot_dates)
+        dates_set = set(dates_sorted)
+        prev_dates_set = set(prev_dates)
+        new_dates = [d for d in dates_sorted if d not in prev_dates_set]
+        missing_dates = [d for d in prev_dates if d not in dates_set]
+        append_forward = bool(new_dates) and not missing_dates and (
+            not prev_dates or min(new_dates) > prev_dates[-1]
+        )
+        # ops-hardening iter-45 AUDIT (B4): the date ordering above is sufficient for the pure-membership
+        # fields (`size`/`entries`/`exits`) but NOT for the reused per-date `excluded` tallies, which the
+        # resolver derives from BARS `<= d` + `min_history_bars`. Require the bars manifest to have moved
+        # forward-only as well, or the cached `excluded` counts could be stale for already-cached dates.
+        if append_forward and not _membership_bars_are_forward_only(
+            session, prev_row.dataset_version, version,
+        ):
+            append_forward = False
+        if append_forward:
+            payload = _membership_timeline_incremental(session, cfg, dates_sorted, prev_payload)
+
+    if payload is None:
+        # the cold, BOUNDED (non-append-forward) compute — UNCHANGED from before this iteration.
+        # ops-hardening iter-38 (audit B7, iter-36 — stale-docstring fix): `_membership_timeline`'s per-date
+        # excluded-by-reason counts are sourced via `_excluded_counts_by_date` (above), which reuses an ACTIVE
+        # outer job-scoped bar cache when one is already open (e.g. a `_do_backfill`/`_persist_per_date_
+        # coverage_snapshots` caller), or else walks the candidate pool in `membership_timeline_batch_symbols`-
+        # wide batches — ONE `_BarCache` instance whose contents are REPLACED per batch, never a single
+        # whole-pool `prefilled_bar_cache` scan — so peak resident bar data is bounded by batch width, not by
+        # the full candidate pool's price history (the O(dates) grouped-count round-trip this replaced no
+        # longer runs either way). The warm-up daemon precomputes this off the boot path so the FIRST request
+        # after a boot/rebuild is already a hit.
+        payload = _membership_timeline(session, cfg, snapshot_dates)
 
     # prune stale rows (any older dataset_version) so the cache table does not grow unbounded as the
     # dataset matures; the current-version row is then inserted (idempotent upsert on the unique key).
@@ -3235,12 +3431,23 @@ def _do_backfill(session: Session, cfg: Config, prog: JobProgress, *, eng: Engin
                 a success and never silently dropped — so `snapshots_created + already_snapshotted +
                 error_other == dates_total` still holds exactly (the run-summary contract in goal.md).
 
-                Deviation from the finalize-tail loops' `logger.exception(...)`-then-`_release_process_
-                memory()` order, deliberately: formatting a traceback ALLOCATES, and this iteration's own
+                Deviation from the finalize-tail loops' log-then-`_release_process_memory()` order,
+                deliberately: formatting a traceback ALLOCATES, and this iteration's own
                 trial-3 evidence shows that failing under real exhaustion
                 (`runs/goal-ops-hardening-iter-39/mem-drill/trial3-2650mb-wedge-evidence.txt:50` —
                 "Exception ignored in thread started by: <object repr() failed>"). Freeing first buys the
-                headroom the log line needs, and the log line is what makes the abort diagnosable at all."""
+                headroom the log line needs, and the log line is what makes the abort diagnosable at all.
+
+                ops-hardening iter-45 FIX (audit B6): that log call is `_log_isolation_failure`, NOT a bare
+                `logger.exception`. Releasing first buys headroom but does not GUARANTEE it — the audit's
+                own live evidence is that the abort line this handler exists to emit
+                (`grep -c "backfill per-date compute aborted"` → 0) never appeared for run 281's fatal
+                `MemoryError`, so if the render still raises here the second exception is raised inside this
+                `except` clause, past the point its own `try` protects: it escapes `_compute_one_isolated`
+                (which the docstring above promises "never raises"), so the date is never recorded as an
+                isolated failure, the run-summary invariant `snapshots_created + already_snapshotted +
+                error_other == dates_total` breaks, and the whole job aborts to `failed` instead of ending
+                `partial` with per-date detail."""
                 if memory_pressure.is_set():
                     return d, None, 0.0, (
                         "skipped — this job already aborted a date for memory pressure "
@@ -3253,7 +3460,7 @@ def _do_backfill(session: Session, cfg: Config, prog: JobProgress, *, eng: Engin
                 except MemoryError:
                     memory_pressure.set()  # latch FIRST so in-flight siblings stop allocating immediately
                     _release_process_memory()
-                    logger.exception(
+                    _log_isolation_failure(
                         "backfill per-date compute aborted at %s — memory pressure, skipping the remaining "
                         "dates in this job", d,
                     )
@@ -3403,8 +3610,18 @@ def _persist_per_date_coverage_snapshots(
             # backing off — the confirmed root cause of iter-7's 7+ minute health hang). Caught distinctly,
             # BEFORE the generic handler: stop this loop immediately (no further dates attempted) and force
             # freed memory back to the OS before returning to the caller's next independent block.
+            # ops-hardening iter-45 AUDIT (B5): `_log_isolation_failure`, NOT a bare `logger.exception`.
+            # iter-45 applied that guard to the 12 handlers written INSIDE `_refresh_ingest_aggregates`'s
+            # own body, but this per-date coverage loop — which that function's own docstring names as one
+            # of "the four per-item warm loops this function drives directly or CALLS INTO", and which is
+            # the very path the iter-44 review's live flake reproduced in — was missed. A `logger.exception`
+            # that raises here escapes THIS per-date isolation handler, so `_release_process_memory()` never
+            # runs and `aborted_for_memory` is never latched: the memory back-off this block exists to
+            # perform is skipped under exactly the pressure it is for. (The escape is then contained by the
+            # caller's own `_log_isolation_failure` wrapper, so the "never raise" contract still holds — but
+            # the per-date isolation and the back-off do not.)
             except MemoryError as exc:
-                logger.exception(
+                _log_isolation_failure(
                     "ingest per-date coverage warm aborted at %s — memory pressure, stopping remaining "
                     "dates in this loop: %s", d, exc,
                 )
@@ -3412,7 +3629,9 @@ def _persist_per_date_coverage_snapshots(
                 aborted_for_memory = True
                 break
             except Exception as exc:  # noqa: BLE001 — non-fatal: log + continue to the next date
-                logger.exception("ingest per-date coverage warm failed for %s (non-fatal): %s", d, exc)
+                _log_isolation_failure(
+                    "ingest per-date coverage warm failed for %s (non-fatal): %s", d, exc,
+                )
     # iter-8 AUDIT (B1 fix): the `_release_process_memory()` inside the loop above necessarily runs while
     # `cache_ctx`'s cache is still referenced by the enclosing `with`, so the single largest freeable block
     # cannot be trimmed there and the caller's NEXT independent warm block (market-phase, forward-
@@ -3425,6 +3644,45 @@ def _persist_per_date_coverage_snapshots(
     # abort path only: the normal completion path keeps its pre-existing behavior byte-unchanged.
     if aborted_for_memory:
         _release_process_memory()
+
+
+def _log_isolation_failure(msg: str, *args: object, exc_info: bool = True) -> None:
+    """ops-hardening iter-45 (reviewer CRITICAL — iter-44's THIRD `MemoryError` escape): `logger.exception()`
+    formats and renders the FULL current traceback, which itself allocates — under the SAME exhausted
+    `ulimit -v` cap that produced the exception a per-item isolation handler below is trying to log, that
+    allocation can itself raise a SECOND exception. That second exception is raised INSIDE the caller's
+    `except` clause, past the point the clause's own `try` protects, so it propagates straight out of
+    `_refresh_ingest_aggregates` — breaking its documented "log + continue, never raise" contract even
+    though the ORIGINAL exception was already correctly caught. Live-reproduced by
+    `test_ingest_finalize_memory_pressure.py` (1 failed/1 passed across two consecutive runs, iter-44
+    review) inside the coverage/membership-timeline refresh path (`data_manager.py` ~3506-3517); guarded
+    here for EVERY per-item isolation handler in `_refresh_ingest_aggregates`, not only the one site the
+    flaky repro happened to land on (binding iter-43 lesson: key the guard to the WHOLE exception set an
+    incident produces, not its headline exception — an allocator-timing-dependent failure could as easily
+    land in any of the other handlers' own `logger.exception()` call).
+
+    Tries the full traceback first (unchanged behavior for every normal, non-memory-pressure failure); on
+    ANY failure while logging, falls back to a minimal-allocation, traceback-free record; if even THAT
+    raises, gives up silently — logging is diagnostic-only and must never itself be the reason a "never
+    raise" contract breaks.
+
+    ops-hardening iter-45 FIX (audit B6): `exc_info=False` suppresses the automatic traceback render for
+    the ONE caller that must not have it — `_run_job`'s outer fatal-job handler. `logger.exception`
+    attaches the LIVE exception, whose formatted traceback carries the exception's RAW text; on a fetch/
+    expand job that text can embed the resolved provider key (`_make_scrubber`'s whole reason for
+    existing: "defense-in-depth on top of the `_http.py` URL redaction"). That caller passes its own
+    ALREADY-SCRUBBED traceback string as an argument instead. Default `True` — all 16 pre-existing call
+    sites are byte-identical to before; none of them handles a key-bearing exception."""
+    try:
+        if exc_info:
+            logger.exception(msg, *args)
+        else:
+            logger.error(msg, *args)
+    except Exception:  # noqa: BLE001 — logging itself must never escape an isolation handler
+        try:
+            logger.error(msg + " (traceback omitted — logging itself hit memory pressure)", *args)
+        except Exception:  # noqa: BLE001 — even the minimal fallback must never escape
+            pass
 
 
 def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress) -> list[str]:
@@ -3514,7 +3772,7 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
                     # above — warmed for free by that SAME call, never a second/separate derivation.
                     refreshed.append("membership_timeline")
             except Exception as exc:  # noqa: BLE001 — non-fatal: log + continue to the next aggregate
-                logger.exception("ingest coverage/membership-timeline refresh failed (non-fatal): %s", exc)
+                _log_isolation_failure("ingest coverage/membership-timeline refresh failed (non-fatal): %s", exc)
 
             # iter-2 review (CRITICAL): also persist a per-date coverage_snapshot for every date THIS run
             # newly created, so the app-wide as-of switcher serves REAL coverage for each historical date
@@ -3525,7 +3783,7 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
             try:
                 _persist_per_date_coverage_snapshots(session, cfg, prog.new_snapshot_dates, prog)
             except Exception as exc:  # noqa: BLE001 — non-fatal: log + continue to the next aggregate
-                logger.exception("ingest per-date coverage warm failed (non-fatal): %s", exc)
+                _log_isolation_failure("ingest per-date coverage warm failed (non-fatal): %s", exc)
 
             market_phase_warmed = False
             for d in prog.new_snapshot_dates:
@@ -3539,14 +3797,14 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
                 # pressure. `market_phase_warmed` already honestly reflects any dates that succeeded before
                 # the abort.
                 except MemoryError as exc:
-                    logger.exception(
+                    _log_isolation_failure(
                         "ingest market-phase warm aborted at %s — memory pressure, stopping remaining dates "
                         "in this loop: %s", d, exc,
                     )
                     _release_process_memory()
                     break
                 except Exception as exc:  # noqa: BLE001 — non-fatal: log + continue to the next date/aggregate
-                    logger.exception("ingest market-phase warm failed for %s (non-fatal): %s", d, exc)
+                    _log_isolation_failure("ingest market-phase warm failed for %s (non-fatal): %s", d, exc)
             if market_phase_warmed:
                 refreshed.append("market_phase")
 
@@ -3589,7 +3847,7 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
                             )
                             forward_aggregates_warmed = True
                         except MemoryError as exc:
-                            logger.exception(
+                            _log_isolation_failure(
                                 "ingest forward-aggregate warm aborted at horizon %s — memory pressure, "
                                 "stopping remaining horizons in this loop: %s", h, exc,
                             )
@@ -3598,7 +3856,7 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
                     if forward_aggregates_warmed:
                         refreshed.append("forward_aggregates")
             except Exception as exc:  # noqa: BLE001 — non-fatal: log + continue to the next aggregate
-                logger.exception("ingest forward-aggregate warm failed (non-fatal): %s", exc)
+                _log_isolation_failure("ingest forward-aggregate warm failed (non-fatal): %s", exc)
 
             try:
                 subjects = subject_catalog(cfg)
@@ -3610,7 +3868,7 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
                     event_study_cached(session, subjects[0]["key"], cfg.walk_forward.default_horizon, cfg)
                     refreshed.append("research_hot_keys")
             except Exception as exc:  # noqa: BLE001 — non-fatal: log + continue
-                logger.exception("ingest research hot-key warm failed (non-fatal): %s", exc)
+                _log_isolation_failure("ingest research hot-key warm failed (non-fatal): %s", exc)
 
             # ops-hardening iter-13 (J-06, aggregation candidate #7): warm the SINGLE unparameterized default
             # hot key for `GET /api/indexes` (`range_key=cfg.index_chart.default_range`, `full=True` —
@@ -3647,12 +3905,12 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
                 if index_series_persisted:
                     refreshed.append("index_series")
             except MemoryError as exc:
-                logger.exception(
+                _log_isolation_failure(
                     "ingest index-series warm aborted — memory pressure: %s", exc,
                 )
                 _release_process_memory()
             except Exception as exc:  # noqa: BLE001 — non-fatal: log + continue to the next aggregate
-                logger.exception("ingest index-series warm failed (non-fatal): %s", exc)
+                _log_isolation_failure("ingest index-series warm failed (non-fatal): %s", exc)
 
             # ops-hardening iter-7 (J-06 closeout, audit B1): warm the per-claim `drawdown_expectations`
             # EventStudyCache view slot — the SAME cache slot `build_evidence_payload` looks up lazily via
@@ -3672,7 +3930,7 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
                 ledger_entries = read_entries(evidence.resolve_ledger_path())
             except Exception as exc:  # noqa: BLE001 — non-fatal: a missing/corrupt ledger degrades to zero
                                        # warm calls
-                logger.exception("ingest drawdown-expectations ledger read failed (non-fatal): %s", exc)
+                _log_isolation_failure("ingest drawdown-expectations ledger read failed (non-fatal): %s", exc)
                 ledger_entries = []
 
             drawdown_warmed = False
@@ -3698,14 +3956,14 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
                 # pressure. `drawdown_warmed` already honestly reflects any claim that succeeded before the
                 # abort.
                 except MemoryError as exc:
-                    logger.exception(
+                    _log_isolation_failure(
                         "ingest drawdown-expectations warm aborted — memory pressure, stopping remaining "
                         "claims in this loop: %s", exc,
                     )
                     _release_process_memory()
                     break
                 except Exception as exc:  # noqa: BLE001 — non-fatal: log + continue to the next claim
-                    logger.exception(
+                    _log_isolation_failure(
                         "ingest drawdown-expectations warm failed for one claim (non-fatal): %s", exc
                     )
             if drawdown_warmed:
@@ -4509,7 +4767,19 @@ def _run_job(
                     with Session(eng) as agg_session:
                         prog.aggregates_refreshed = _refresh_ingest_aggregates(agg_session, cfg, prog)
                 except Exception as exc:  # noqa: BLE001 — non-fatal: never flips a successful job to failed
-                    logger.exception("ingest aggregate refresh failed (non-fatal): %s", exc)
+                    # ops-hardening iter-45 AUDIT (B3): `_log_isolation_failure`, NOT a bare
+                    # `logger.exception`. This is the SAME third-escape class iter-45 closed one frame
+                    # in: `MemoryError` can be raised by `Session.__exit__` (SQLAlchemy's
+                    # `expunge_all()`/`identity.all_states()`), i.e. OUTSIDE every per-item isolation
+                    # handler inside `_refresh_ingest_aggregates` — live-observed in this very
+                    # incident (`logs/backend.log`, the 2026-08-04 wedge: this handler caught a
+                    # `MemoryError` whose outermost frame is this `with Session(eng)` line). If the
+                    # `logger.exception` that logs it ALSO allocates under the same exhausted cap and
+                    # raises, that second exception escapes to the outer `except` below, which flips
+                    # `prog.status = "failed"` — breaking this branch's own documented contract ("an
+                    # aggregate-refresh failure must never flip an otherwise-successful ingest job to
+                    # failed") and reporting a completed backfill as failed.
+                    _log_isolation_failure("ingest aggregate refresh failed (non-fatal): %s", exc)
             elif final_status in ("ok", "partial") and (
                 prog.kind in _FETCH_KINDS or prog.kind in _EXPAND_KINDS
             ):
@@ -4530,7 +4800,11 @@ def _run_job(
                         if not _coverage_snapshot_is_current(agg_session, cfg):
                             refresh_coverage_snapshot(agg_session, cfg)
                 except Exception as exc:  # noqa: BLE001 — non-fatal: never flips a successful job to failed
-                    logger.exception("ingest coverage refresh failed for fetch/expand (non-fatal): %s", exc)
+                    # ops-hardening iter-45 AUDIT (B3): same guard, same reason as the sibling handler
+                    # above — a logging allocation must never be what flips a successful job to failed.
+                    _log_isolation_failure(
+                        "ingest coverage refresh failed for fetch/expand (non-fatal): %s", exc,
+                    )
             prog.status = final_status
     except Exception as exc:  # noqa: BLE001 — any failure must surface as an explicit failed job (scrubbed)
         prog.status = "failed"
@@ -4557,6 +4831,38 @@ def _run_job(
         # unconditionally by this same `finally` block), so the two branches collided and always produced
         # the identical string (audit B5's finding).
         prog.message = reason
+        # ops-hardening iter-45 FIX (audit B6): LOG the fatal failure. Until now this handler recorded the
+        # reason onto `prog` ONLY and made no logging call at all, so a job that died here left NOTHING in
+        # `logs/backend.log` — live-proven by the audit on run 281, this session's single most important
+        # live failure: its persisted reason was `"MemoryError (no message)"` and
+        # `grep -n "no message" logs/backend.log` returned no match, leaving the failure undiagnosable
+        # (the audit could not even distinguish WHICH of two candidate origins inside `_do_backfill` raised
+        # it). `prog` carries the one-line reason but never the traceback, and `_JOBS` is process-local, so
+        # the log is the only artifact that can name the frame. Emitted AFTER `_record_error`/`prog.message`
+        # so the durable, operator-visible state is already set even if logging is slow or fails, and BEFORE
+        # the checkpoint bookkeeping below (which itself opens a session and can fault under the same
+        # pressure). `_log_isolation_failure`, never a bare `logger.exception`: this is the OUTERMOST
+        # handler in the worker, so a second exception raised by the traceback render would propagate out
+        # of `_run_job` itself — killing the worker thread before `return prog.to_dict()` and turning a
+        # cleanly-recorded failed job into a silent one, the exact opposite of what this line is for.
+        #
+        # The traceback is rendered HERE and SCRUBBED, then passed as an ordinary argument with
+        # `exc_info=False` — never left to `logger.exception`'s automatic render. Two reasons, both
+        # load-bearing: (1) SECRETS — the live exception's raw text can embed the resolved provider key
+        # on a fetch/expand job (`test_real_httpx_error_key_scrubbed_end_to_end` pins "absent from the
+        # logs"), and only `reason` was scrubbed above, not the traceback; (2) MEMORY — formatting a
+        # traceback allocates, and doing it in the argument list would put that allocation OUTSIDE
+        # `_log_isolation_failure`'s guard, re-opening the very escape this handler must not have. Its
+        # own try degrades to a marker: the job id / kind / reason line survives a formatting failure,
+        # which is the minimum B6 needs.
+        try:
+            tb = scrub(traceback.format_exc())
+        except Exception:  # noqa: BLE001 — a traceback we cannot render must not cost us the log line
+            tb = "(traceback unavailable — rendering it failed)"
+        _log_isolation_failure(
+            "data job %s (kind=%s) failed: %s\n%s", prog.job_id, prog.kind, reason, tb,
+            exc_info=False,
+        )
         # J-59: a `both`/`backfill` job whose FETCH completed but whose BACKFILL failed is marked
         # `failed_backfill` on its durable checkpoint, so Unfinished-imports offers it as "failed at
         # backfill — resumable from the backfill stage" (a Resume skips the completed fetch — zero
@@ -4727,12 +5033,18 @@ def _fail_unlaunched_job(prog: JobProgress, cfg: Config, eng: Engine, exc: BaseE
     reason = f"failed to launch job worker thread: {exc}"
     prog.status = "failed"
     _record_error(prog, reason)
-    # iter-43 AUDIT (B2): `_run_job`'s `finally` sets `prog.message = _final_summary(prog)` on every
-    # in-flight failure; this path must set it too, or the persisted row (and a live poller's
-    # `to_dict()["message"]`) carries an all-zeros work summary with no hint of WHY — TC-3/TC-4 ask for a
-    # message that NAMES the thread-launch failure. Prefixed to the same summary `_final_summary` would
-    # produce, mirroring that function's own "rate-limited — resumable at chunk N/M; {summary}" idiom, so
-    # the reason AND whatever work the attempt had already recorded both survive on one honest line.
+    # iter-43 AUDIT (B2), corrected ops-hardening iter-45 (TC-10 — the iter-44 review's carried NOTE):
+    # this comment used to claim "`_run_job`'s `finally` sets `prog.message = _final_summary(prog)` on
+    # every in-flight failure", which is now BACKWARDS — since iter-44's own B1 fix (`:4739-4740`),
+    # `_run_job`'s `finally` block explicitly SKIPS that assignment exactly WHEN `prog.status == "failed"`
+    # (`if prog.status != "failed": prog.message = _final_summary(prog)`), so a failed job's real captured
+    # reason (set in `_run_job`'s own `except Exception` handler) survives instead of being overwritten by
+    # the generic "work done" summary. This path is reached OUTSIDE `_run_job` entirely — before any of
+    # its except-handlers ever runs — so nothing has set an honest `prog.message` yet; it still must set
+    # one itself: TC-3/TC-4 ask for a message that NAMES the thread-launch failure. Prefixed to the same
+    # summary `_final_summary` would produce, mirroring `_run_job`'s own "rate-limited — resumable at chunk
+    # N/M; {summary}" idiom, so the reason AND whatever work the attempt had already recorded both survive
+    # on one honest line — this path's behavior is unchanged by this correction, only the comment is.
     prog.message = f"{reason}; {_final_summary(prog)}"
     prog.finished_at = _utcnow()
     with _LOCK:

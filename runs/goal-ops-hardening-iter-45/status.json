@@ -1,0 +1,24 @@
+{
+  "phase": "goal-ops-hardening-iter-45",
+  "status": "blocked",
+  "current_step": "audit_qa_failed",
+  "updated_at": "2026-08-04T03:01:05.624458Z",
+  "started_at": "2026-08-03T22:20:14.196867Z",
+  "cli": "claude",
+  "mode": "fix (audit FAIL)",
+  "blockers": [
+    "AUDIT B1 (CRITICAL, UNFIXED \u2014 out of this iteration's scope): the phase goal is not achieved. Both target journeys failed live and the backend went fully unreachable for ~42 minutes (AnyIO worker-thread creation itself failing under memory exhaustion). TC-4/TC-5/TC-6 FAILED, TC-7 never executed. The two remedies the audit points at (the out-of-process watchdog; the unbounded evidence-path accumulators at research.py:777 and forward_testing.py:2343) are both listed verbatim in this phase spec's OUT OF SCOPE section.",
+    "AUDIT B2 (CRITICAL, UNFIXABLE HERE): the append-forward fast path still has zero live evidence. Re-confirmed live this pass \u2014 GET /api/data reports gap_last=2019-02-25 against a latest snapshot of 2026-07-31, so every backfill target available in this database is a historical gap-fill, which the fast path deliberately does not accelerate. AG-9 forbids fetching newer data to manufacture an append-forward target.",
+    "AUDIT F1 / TC-11 remains UNMET for this iteration's evidence directory: J-03-verify.png and J-04-verify.png are still byte-identical (9d77429b...). The root cause is fixed at the source (demo_runner.py verify captures are now provenance-stamped, proven by a live two-journey drill), but the existing files were captured before the fix and were deliberately NOT re-stamped \u2014 that would imply the capture lane was sound during this run when it was not. Closed by construction on the next replay.",
+    "J-05's TC-4 live/browser-qa replay is very likely to still exceed its 300s budget: every currently-available backfill target in the live DB is a historical gap-fill (pre-2019-02-27), which this iteration's append-forward-only fast path does not accelerate by design."
+  ],
+  "changed_files": [
+    "apps/backend/app/engine/data_manager.py",
+    "apps/backend/tests/test_data_manager.py",
+    "runs/goal-session-ops-hardening/journey-scripts/J-07.json",
+    "incredible_auto_dev/scripts/automation/lib/demo_runner.py"
+  ],
+  "tests_run": true,
+  "browser_checks_run": false,
+  "next_action": "escalate \u2014 DoD unmet; target journeys J-05/J-07 fail live due to out-of-scope unbounded accumulator bug"
+}
