@@ -515,3 +515,31 @@ on a session whose stated purpose is "available in seconds" is a critical AG-8 b
 who authored it — or who weighs the doubling as the new fact that breaks the prior precedent — would
 score it critical, return REGRESSION, and halt.
 **Reversible:** yes
+
+## iter-46 — goal-decomposer
+
+**Ambiguity:** the iter-45 evaluator's next-step gives "the next round" ONE explicit job — bound the
+two unbounded evidence-serving-path accumulators (`research.py:777`, `forward_testing.py:2343`) — and
+that fix's own mechanism does not touch J-05's failure mode (a backfill job's OWN `MemoryError`,
+`_run_job`'s ingest path, never `evidence.py`'s request path). `docs/goal.md` does not say whether a
+journey may be listed as a `Target journey` when the iteration's code change does not directly address
+that journey's own root cause.
+
+**We chose:** list J-05 as a Target journey alongside J-07, not only in a carried/deferred note.
+Grounds: (1) `iteration-state.md`'s "Do not redo" list itself frames outstanding J-05 work as "it needs
+one live drill, never a rewrite" — the append-forward fast path (iter-45) is built and
+coherence-tagged `[TARGETED, not yet built]` pending exactly that live proof, and this iteration
+supplies the live drill (TC-7), which is real, planned, agent-actionable work aimed at J-05, not mere
+bookkeeping; (2) this iteration's two accumulator bounds reduce TOTAL system memory pressure during a
+concurrent-load window, which is the SAME class of cascading-OOM failure (AG-10's 8192MB ceiling
+shared across every concurrent compute) implicated in J-05's own recent failures, even though the two
+sites are not J-05's own code path; (3) leaving J-05 out of Target journeys entirely, given it has now
+failed 2 consecutive rounds, risks under-signaling standing work on a Must-have journey the framework's
+own `unknown`/gap lesson (iter-42) warns against. Cost recorded honestly: TC-7 may reproduce a DIFFERENT
+failure than run 281's (the true root cause of run 281's own death is still not fully diagnosed beyond
+"MemoryError, now loggable"), so J-05 may still fail this round for a reason this iteration's diff does
+not touch — the DEFINITION OF DONE and TESTING REQUIREMENTS below score that outcome honestly rather
+than assuming a pass. A human who reads "Target journey" as requiring the iteration's OWN diff to
+address that journey's root cause would keep J-05 out of Target journeys this round and record the live
+drill as carried verification work instead.
+**Reversible:** yes
