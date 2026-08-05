@@ -1,0 +1,92 @@
+{
+  "phase": "goal-ops-hardening-iter-49",
+  "status": "blocked",
+  "current_step": "audit_failed",
+  "updated_at": "2026-08-05T12:39:37.632735Z",
+  "started_at": "2026-08-05T02:09:12.225355Z",
+  "cli": "claude",
+  "blockers": [],
+  "changed_files": [
+    "apps/backend/app/engine/data_manager.py",
+    "apps/backend/app/engine/forward_testing.py",
+    "apps/backend/app/engine/research.py",
+    "apps/backend/tests/test_data_manager.py",
+    "apps/backend/tests/test_evidence.py",
+    "apps/backend/tests/test_research_streaming.py",
+    "apps/backend/tests/test_start_backend_script.py",
+    "reports/perf-budgets.md",
+    "runs/goal-session-ops-hardening/state/blueprint.md",
+    "reports/qa/goal-ops-hardening-iter-49-evidence/perf-budgets-iter49-run1.csv",
+    "reports/qa/goal-ops-hardening-iter-49-evidence/perf-budgets-iter49-run1-health.csv",
+    "reports/qa/goal-ops-hardening-iter-49-evidence/perf-budgets-iter49-run2.csv",
+    "reports/qa/goal-ops-hardening-iter-49-evidence/perf-budgets-iter49-run2-health.csv",
+    "reports/qa/goal-ops-hardening-iter-49-evidence/perf-budgets-iter49-run3.csv",
+    "reports/qa/goal-ops-hardening-iter-49-evidence/perf-budgets-iter49-run3-health.csv",
+    "docs/handoffs/goal-ops-hardening-iter-49-dev.md",
+    "reports/phase-goal-ops-hardening-iter-49-implementation-summary.md"
+  ],
+  "tests_run": true,
+  "browser_checks_run": false,
+  "audit_fix_pass": {
+    "input": "docs/handoffs/goal-ops-hardening-iter-49-audit.md (verdict FAIL)",
+    "fixed": [
+      "B3 -- the drawdown phase-context precompute's MemoryError handler now STOPS the phase (release memory + skip the per-claim loop + honest omission from aggregates_refreshed) instead of falling through to per-claim self-compute, which was the MORE allocating path under memory pressure. The TC-11 test was inverted, tightened (phase_context_by_date called exactly once) and mutation-checked.",
+      "F2 / TC-9 -- J-04's executed row reassigned from the browser-only lane (structurally forbidden from restarting services; SKIPPED three rounds running) to apps/backend/tests/test_start_backend_script.py, which already spawns and SIGKILLs real backends via scripts/start-backend.sh. Two new tests, both executed and passing: warm-DB boot to first HTTP 200 in 1.50s (budget 5.0s) with an honest pre-ready readiness payload; and crash-with-midflight-job -> restart -> the run row reads back 'interrupted' with finished_at set and its last persisted progress unchanged.",
+      "T3 -- the two suites nobody in this pipeline had run to completion (tests/test_warmup.py, tests/test_forward_testing.py) were run this pass; outcomes in the dev handoff Fix Notes and reports/perf-budgets.md Addendum 5."
+    ],
+    "carried_not_fixed": [
+      "B1 (CRITICAL) -- research.compute_factor_lab_all (research.py:1051) crashed the backend during the browser-qa lane. Untouched by this iteration's diff and explicitly out of scope; the audit's own section 5.3 assigns it to the NEXT iteration together with B2 as ONE change on the concurrency/memory axis.",
+      "B2 (IMPORTANT) -- warmup.py:198's drawdown loop has neither the phases memoization nor an interlock with the ingest loop. Carried with B1 per the same audit recommendation.",
+      "F1 / F3 / F4 -- DoD items 1-4 (lane evidence), the J-01/J-03 read-only history-panel rows, and the stale QA report are not developer-fixable; they require a clean full 8-journey lane re-run against a freshly restarted backend, run LAST."
+    ]
+  },
+  "known_gaps": [
+    "AUDIT B1 (CRITICAL, carried): during the browser-qa lane's own live backfill an uncaught MemoryError in research.compute_factor_lab_all killed the backend for ~6 minutes, falsifying J-07's 'heavy aggregates never take the service down' promise live in this round. The frame is untouched by this iteration's diff and explicitly out of scope; it is the real blocker for J-07 and is scoped to the next iteration together with B2 (warmup.py's uncoordinated concurrent drawdown loop).",
+    "ONLY REMAINING BLOCKER (audit F1/F2, DoD items 1-4): the full 8-journey lane has still not run against a healthy backend. Both preconditions are now satisfied -- the backend is UP, warm and 'ready' on 8255, and NO product code changed in this pass, so the lane can finally be the LAST product-code-adjacent event (TC-7a). Row completeness (TC-7b) is the axis that has failed four rounds running: J-08 and J-09 have zero executed rows and recorded SKIP only because the backend had crashed. Expect J-07 to fail again if the lane browses /research/factor-lab during a backfill -- that is audit B1, it is real, unfixed by design, and reproducing it is CORRECT evidence, not a lane failure.",
+    "The 1,200s termination bound is proven 3/3 on an OTHERWISE-IDLE host with ~15% margin. Under ordinary concurrent page traffic (an operator browsing /research/factor-lab and /backtest during a backfill) one claim that costs 50s in isolation had not finished after 10.5 minutes and the process then died. The bound is not yet a reliability promise under concurrency.",
+    "research._combination_observations shares the same full-entity ScannerResult read shape _factor_decile_observations had (fixed this iteration) and is now the single most expensive live drawdown-expectations claim (~252-254s live). Carried as a disclosed optimization opportunity.",
+    "TC-6: the opt-in live test (test_start_backend_historical_gap_insert_reaches_terminal_status_within_bound) stays xfail(strict=False), not un-marked -- TC-1's own 1200s termination bound is genuinely met 3/3 live runs, but the test bundles a health-poll assertion that failed on 2/3 runs. Never a loosened assertion.",
+    "NEW, PRE-EXISTING (found by the audit-fix pass while closing T3, not fixed): tests/test_warmup.py::test_warmup_loads_each_symbol_at_most_once_across_cadence_and_forward_returns fails -- the warm-up's shared bar cache holds for all ~500 equity symbols (exactly 1 load each) but the two index symbols are re-loaded once per cadence date (^VIX 8, SPY 7). Proven pre-existing by restoring the three touched product files to pristine HEAD and re-running: identical failure in 82.62s, files then restored byte-identically (md5sum + unchanged git diff --stat). Recorded for triage, not fixed -- it is new scope, not an audit-fix item.",
+    "tests/test_forward_testing.py: 95 of 96 tests run to completion and pass (760.97s). The one not run, test_walk_forward_asof_dates_are_real_trading_days_with_full_horizon, is the module's only user of the session-scoped loaded_engine fixture, whose one-time build (full seed load + full historical cadence warm on the 30y basis) is this session's known multi-hour test-infrastructure cost. Deliberately not left running: a multi-hour heavy job during the pending lane re-run is the same concurrent-load mechanism behind audit B1's crash. It covers walk_forward_asof_dates, untouched by this diff.",
+    "CORRECTED BY THE SECOND AUDIT (supersedes the earlier '~10s health timeout on 2 of 3 runs' entry): the GET /api/health <=2 s ceiling is breached 6/8/9 times per run in 3 of 3 runs, and every run has two polls over 5 s (7.931/9.724/5.174 s) that answered 200 only by finishing just inside the client's own 10 s timeout. The stalls occupy THREE sites, not one: an early cluster at the backfill/coverage-refresh boundary (both 10 s timeouts), a mid cluster of 13 slow polls inside the ~23.6 s phase_context_by_date precompute THIS iteration added, and the two largest 200-OK stalls inside the combination:composite:h20 claim this iteration deliberately left un-optimised. Full method and tables: reports/perf-budgets.md Addendum 6. Out of scope per docs/goal.md; disclosed and correctly located, not fixed.",
+    "The QA report reports/qa/goal-ops-hardening-iter-49-qa.md (mtime 12:55) asserts 'Definition of Done met', 'Frontend Present: yes' (the spec says no) and current_step 'review_passed' (it reads qa_complete), and misquotes the 12:48 review it cites (which records definition_of_done: partial and three issues, none of them the health-poll gap). It must be re-run after the lane, not read alone (audit F3)."
+  ],
+  "next_action": "review",
+  "services_left_running": {
+    "backend": "UP on port 8255 via scripts/start-backend.sh (setsid-detached); readiness='ready', warmup 89/89 status=ok, GET /api/health 200 in 0.588s, GET /api/data 200 in 0.446s, RSS 1.69 GB / VSZ 2.25 GB (21% of the 8192 MB cap). Caps banner for this boot: port=8255 memory_cap_mb=8192 malloc_arena_max=2, host-guard cpu_list=0-15 blas_threads=8. LEFT RUNNING DELIBERATELY -- it is the audit's own blocker #1 for the pending 8-journey lane.",
+    "frontend": "NOT running. The lane must start it: bash scripts/start-frontend.sh (port 3255)."
+  },
+  "audit_fix_pass_2": {
+    "input": "docs/handoffs/goal-ops-hardening-iter-49-audit.md (second audit, mtime 13:10, verdict FAIL)",
+    "product_code_changed": false,
+    "product_code_mtime_preserved": "2026-08-05T12:34:46 -- data_manager.py/forward_testing.py/research.py untouched by this pass ON PURPOSE so TC-7(a) is satisfiable by the next lane run; the audit's own section 5 opens 'Do not send this back for another developer fix pass on this diff.'",
+    "fixed": [
+      "T4 -- apps/backend/tests/test_evidence.py (+45 lines, two new `phases` byte-identity tests at both the uncached and cached entry points) was missing from the previous pass's 'Files changed in this pass' list in the dev handoff. Added, with what the tests pin. It was already correctly present in status.json changed_files and in that pass's own test commands -- bookkeeping only. This was the ONLY finding on the second audit's list still open to a developer."
+    ],
+    "unblocked_not_closed": [
+      "F1 blocker 1 -- 'the backend is DOWN and must be restarted before any lane runs'. Restarted via the real scripts/start-backend.sh and LEFT RUNNING, healthy and warm. Both prior lanes this round died on availability (deterministic replay: BLOCKED 0/5 'backend unreachable'; browser lane: crashed mid-drill). The lane itself is not developer work and must not be produced by whoever scores it."
+    ],
+    "reverified_not_assumed": [
+      "B3 (MemoryError handler stops the phase) + T1 (TC-11 decile test non-vacuous): grep-confirmed present in data_manager.py / test_data_manager.py:2035, and re-run green -- 3 passed in 0.64s.",
+      "B4 (perf-budgets.md Addendum 6 + the xfail-reason correction): grep-confirmed present; test_start_backend_script.py --collect-only -> 14 tests collected, 0 errors, no assertion touched.",
+      "TC-3 byte-identity suites incl. the test_evidence.py tests: 146 passed in 24.49s.",
+      "TC-9/J-04 rows RE-EXECUTED in this pass, after the newest product-code mtime: 2 passed in 4.09s -- warm-DB boot first HTTP 200 in 1.29s (budget 5.0s) with an honest pre-ready readiness payload; crash/restart -> the mid-flight run row reads back status='interrupted' with finished_at set and progress 2/5 unchanged.",
+      "TC-10/AG-10: git diff over config.yaml, host-guard.env, start-backend.sh, dev.sh -- EMPTY, before and after every edit in this pass; launch banner still reports memory_cap_mb=8192 malloc_arena_max=2."
+    ],
+    "carried_not_fixed": [
+      "B1 (CRITICAL) -- uncaught MemoryError in research.compute_factor_lab_all (research.py:1051) took the backend down 6+ minutes during the lane, falsifying J-07 live. Fourth concurring judgment to carry it (first audit section 5.3, first fix pass, reviewer MINOR-2, this audit sections 2.B1 and 4): a second risky change on the concurrency/memory axis against goal.md's binding 'one risky change per iteration'. THE REAL BLOCKER FOR J-07 AND THE NEXT ITERATION'S PRIMARY SCOPE.",
+      "B2 (IMPORTANT) -- warmup.py:198's boot drawdown loop gets no `phases` timeline and no interlock; measured ~23.6 s/call live, ~118 s of redundant boot-path reads. The audit assigns B1+B2 to the next iteration as ONE change.",
+      "B5 (OBSERVATION) -- the phase_context_by_date precompute runs even on an empty ledger. The auditor's own disposition was 'recorded, not fixed'; guarding it is an unrequested product-code edit that would re-open TC-7(a).",
+      "T2 -- test_warmup.py::test_warmup_loads_each_symbol_at_most_once_... fails; the audit confirms the previous pass's pristine-HEAD pre-existence proof and calls the disposition correct. New scope.",
+      "T3 -- test_walk_forward_asof_dates_are_real_trading_days_with_full_horizon still never run; its session-scoped loaded_engine fixture is a multi-hour build on the 30y basis, and starting one now is the same concurrent-load mechanism behind B1's crash, with a lane re-run pending.",
+      "F2 -- J-08/J-09 zero executed rows (they recorded SKIP because the backend had crashed; a healthy backend is now provided). J-01/J-03's TC-8 gap needs a frontend testid on the job card, which the phase spec's OUT OF SCOPE list excludes this iteration (Frontend Present: no).",
+      "F3 -- reports/qa/goal-ops-hardening-iter-49-qa.md (12:55) asserts a Definition of Done that its own cited review (12:48, definition_of_done: partial) and the dev handoff both contradict, and misstates Frontend Present and status.json's current_step. It is the QA agent's artifact: re-run, not patch."
+    ],
+    "tests_run": [
+      "tests/test_data_manager.py -k 'column_projected_read or phase_context_warm' -> 3 passed in 0.64s",
+      "tests/test_research_streaming.py tests/test_forward_testing_aggregates_streaming.py tests/test_ingest_finalize_fault_injection.py tests/test_evidence.py -> 146 passed in 24.49s",
+      "tests/test_start_backend_script.py --collect-only -q -> 14 tests collected in 0.03s, 0 errors",
+      "tests/test_start_backend_script.py -k j04 -> 2 passed in 4.09s"
+    ]
+  }
+}

@@ -1,40 +1,27 @@
 # Iteration State — ops-hardening
 
-**After iteration:** 48 · **Date:** 2026-08-05 · **Verdict:** ESCALATE
+**After iteration:** 49 · **Date:** 2026-08-05 · **Verdict:** ESCALATE
 
 ## Journeys
 
-4 passing (J-01 J-03 J-08 J-09) · 1 failing (J-05, 5th consecutive) · 3 partial (J-04 —
-DEFERRED-BUDGET, untested; J-06; J-07 — zero lane rows, 2nd round) — 8 total. J-01/J-03 promoted on
-REAL `data_provider_runs` rows (305/306/307) the replay itself created.
+4 passing (J-01 J-03 J-08 J-09) · 3 partial (J-04, J-05 — up from failing, J-06) · 1 failing (J-07 — the service actually went DOWN this round) — 8 total. J-01/J-03 rest on `data_provider_runs` 309/310/311, created by the replay itself at 04:40-04:41Z.
 
 ## Active blockers
 
-- **J-05 (dev):** a historical-gap backfill still never terminates — id=308 sat non-terminal 2h43m.
-  This round's fix IS proven (id=304 reached `ok` in 13m52s, full 7-category `aggregates_refreshed`);
-  the residual is two OTHER phases in `data_manager.py:3784-4127` — `forward_aggregates_warm`
-  (102s / 153s / **1334s**; worst alone over TC-1's 1200s) + `drawdown_expectations_warm`. Bound both.
-- **Regime Lab, 15th deferral (dev):** 2 new `MemoryError`s at `research.py:3630`/`:3640`
-  (`_regime_lab_members_by_horizon`) INSIDE the J-06 replay window — blocks J-06 moving up.
-- **Unrun checks (lane):** J-05's golden (rotated to 2012-01-05, confirmed unsnapshotted) never
-  executed; J-04 deferred; J-07 has no row. **No owner blockers.** Ledger: 77 total, 28 unresolved,
-  **0 unresolved critical**. scan CLEAN, coherence PASS.
+- **The backend DIED for 12m45s during this round's own lane** (`logs/backend.log:191719-191721`, restart 09:48:49Z). Owner: dev. Two halves, must land as ONE change: `research.py:1051` (`compute_factor_lab_all`, unbounded `sorted(obs,…)`, uncaught `MemoryError`, untouched 5 rounds = audit B1) + `warmup.py:198` (`_warm_drawdown_expectations`, no `phases` memoization, no interlock with the ingest loop = audit B2, proven live by its own traceback). J-07's only remaining blocker and the next round's primary scope.
+- **Three journeys have ZERO executed lane rows** (J-04, J-08, J-09 — all SKIP, app was down). Run the 8-journey lane LAST and change no code after it: 4th consecutive breach (lane 10:46 vs product-code mtime 12:34:46).
+- **`reports/qa/…-iter-49-qa.md` reads PASS while the same phase's browser lane reads FAIL** and never cites it — regenerate, do not edit. **No owner blockers.** Ledger: 85 total, 35 unresolved, **0 unresolved critical**. scan CLEAN, coherence COHERENCE-PASS.
 
 ## Last 2 verdicts
 
-- iter 48: ESCALATE — J-05 failed a 5th round; two journeys moved up on real job rows; this round's
-  own fix is proven but two older tail phases still block the job.
-- iter 47: ESCALATE — J-05 failed a 4th round; the browser lane never re-ran after two fix passes.
+- iter 49: ESCALATE — the 1,200s termination bound is genuinely met 3/3 on idle-host drills, but the service went down under ordinary concurrent use and J-07 dropped to `failing`.
+- iter 48: ESCALATE — J-01/J-03 promoted on real replay-caused job rows; J-05 failed a 5th round on two unbounded finalize-tail phases (this round's scope, now closed).
 
 ## Do not redo
 
-- **`samples.py` `total`/`regime` bound DONE** (`samples.py:159-216` + new
-  `research._factor_regime_observations`) — byte-identity pinned, 5/5 pressure runs; iter-46/au CLOSED.
-- **Gap-insert reuse branch DONE and correct** (`data_manager.py:891-917`), mutation-proven per-date
-  keying (audit T1). Do NOT touch `_membership_timeline_incremental`/`append_forward`.
-- **Finalize-tail phase timing EXISTS** (log lines) — use it. **AG-10 caps verified
-  untouched/enforced** (`config.yaml` 8192/2, launch banners) — never re-tune.
-- **J-01/J-03 goldens are genuine end-to-end drills now** — do not rewrite them; J-05's and J-06's
-  are the weak ones (J-06 asserts headings only).
-- **Evidence capture is never an iteration goal** — J-07 walkthrough (18 rounds), J-05 frames and the
-  UT-05 retake ride the showcase / `Depth: evidence` lane.
+- **Both finalize-tail phases are BOUNDED and proven** — TC-1 met 3/3 (1,012-1,048s vs 1,200s), VmPeak 45-49% margin, live in-app `forward_aggregates_warm elapsed=168.15s` (was 1,334s). `reports/perf-budgets.md` Addenda 4-6.
+- **Per-horizon/per-claim sub-phase timing EXISTS and is regression-guarded** — `data_manager.py:3978-4013`/`:4105-4199`, `test_data_manager.py:2070` (mutation-proven).
+- **J-04's boot + crash/restart halves have REAL executed rows** — `tests/test_start_backend_script.py::test_j04_*`, re-run after the final build.
+- **J-05's golden is already rotated to `2012-01-04`** (0 snapshot rows, 480 symbols with bars, verified in the DB). Never re-target 2012-01-05 — this round's lane consumed it.
+- **AG-10 values frozen, verified untouched** (`config.yaml` 8192/2) — bound the page, never raise the cap. Gap-insert reuse branch (`data_manager.py:891-917`) correct; leave byte-for-byte alone.
+- **Evidence capture is never an iteration goal** — J-07's walkthrough (19 rounds), J-05's frames and this round's 5 blank/copied screenshots ride the showcase / `Depth: evidence` lane.

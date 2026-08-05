@@ -6975,3 +6975,372 @@ as the first thing to check, so the next drift is diagnosable instead of mysteri
 **Unchanged by this pass:** the TC-1 end-to-end residual (Addendum 2 — `forward_aggregates_warm` and
 `drawdown_expectations_warm` both need bounding; that is iter-49 work, not an audit-fix), and every
 OUT OF SCOPE item.
+
+### Addendum 4 (2026-08-05, ops-hardening iter-49 developer pass) — `forward_aggregates_warm` and
+`drawdown_expectations_warm` bounded; TC-1's 1,200s termination bound now met on 3/3 independent live runs;
+one newly-surfaced, out-of-scope health-poll gap disclosed
+
+**Diagnosis, before any fix.** Direct isolated measurement against the real committed DB (`apps/backend/data/trendora.db`,
+now **7.8 GB**, up from ~811 MiB at session start 2026-07-18 — `forward_returns` 6,491,695 rows (was
+344,334, **18.9x**), `scanner_results` 1,272,903 rows (was 66,836, **19.0x**), `scanner_runs` 2,906):
+
+- **`forward_aggregates_warm`.** `cProfile` of ONE horizon (20) via `compute_forward_aggregates` direct call: **31.77s**,
+  dominated by the per-observation exact-Fraction accumulation (`_accumulate_group`/`_ExactMeanAcc.add`,
+  ~14s cumulative; `float.as_integer_ratio()` alone 24.58M calls / 5.46s tottime — ~17% of the horizon's
+  wall time) — genuine, CPU-bound Python work scaling with `forward_returns` row count (hypothesis 2,
+  confirmed), not a DB/query cost (`_forward_agg_slice_map`'s own queries: 3.17s of the 31.77s). This
+  ISOLATED, CURRENT-DB measurement (31.77s/horizon ⇒ ~150-160s for the 5-horizon loop) matches the LOWER
+  two of iter-48's three historical samples (102.48s, 153.07s), not the 1,334.13s outlier — DB growth
+  alone does not explain that outlier. **hypothesis 1 (measurement contamination)** could not be directly
+  confirmed for that specific sample via `logs/hwmon/hwmon.csv` (the sampler stopped logging 2026-07-30,
+  before the 1,334.13s sample was taken 2026-08-05); but this exact mechanism was independently
+  DEMONSTRATED live during this iteration's own testing (see "A live, direct confirmation of measurement
+  contamination" below) — a materially more direct proof than the missing hwmon window could have given.
+  **Hypothesis 3 (single-flight lock contention)** is structurally ruled out for J-07 step 1's own
+  scenario: `GET /api/backtest`'s `is_latest` (default) view calls ONLY `resolved_forward_aggregate_evidence`
+  (a pure reader), never `forward_aggregates_ingest_cached` — so it cannot race the ingest warm's own
+  per-horizon calls for the current-latest key at all. A log line was added at the lock's fall-through
+  branch (`forward_testing.py`, TC-8) so a future drill can observe directly whether it ever fires; it did
+  not fire in any of this iteration's 3 live drills (grep of `logs/backend.log` for "falling through to a
+  redundant compute" across all 3 job windows: 0 hits).
+- **`drawdown_expectations_warm`.** `cProfile` of ONE claim (`leadership_score` D10 h=20, the live ledger's
+  first factor claim) via `compute_drawdown_expectations`: **63.9s**. The plan's own leading hypothesis —
+  `phase_context_by_date` recomputed once per claim (7x) — measured separately at **0.61s per call**,
+  ruled out as the dominant driver (would save ≤ 4.2s of the 63.9s). The ACTUAL dominant cost (>40s of the
+  63.9s): `research._factor_decile_observations`'s two-pass `select(ScannerResult)` — the FULL ORM entity,
+  every score/flag/date column plus the `record_json` blob — streamed via SQLAlchemy/SQLModel, forcing
+  2.5M individual Pydantic row instantiations (`_instance`/`new_instance`/`_populate_full`/`__new__`/
+  `init_pydantic_private_attrs`) across the 2-pass decile scan, for EVERY one of the 5 (of 7) live claims
+  that are decile-scoped factor claims — never `_extract_factor_value`'s own cheap `getattr`/`json.loads`
+  work.
+
+**Fixes shipped (both provably byte-identical; every existing pinned-reference test plus new ones added
+this iteration confirm it — see Tests Run in the dev handoff).**
+
+1. `forward_aggregates_warm`: `_ExactMeanAcc`/`_GroupAcc`/`_accumulate_group` (`forward_testing.py`) gain a
+   ratio-based sibling (`add_ratio`/`_accumulate_group_ratio`) so `compute_forward_aggregates`'s hot loop
+   computes `realized.as_integer_ratio()` / `max_drawdown.as_integer_ratio()` ONCE per observation and
+   reuses the SAME ratio across all 7 accumulator adds (overall + 6 groups) instead of each accumulator
+   recomputing the IDENTICAL ratio independently — a modest, real, provably byte-identical reduction (not
+   claimed to single-handedly explain the 1,334.13s outlier, which the live evidence below attributes to
+   contamination instead).
+2. `drawdown_expectations_warm`: two changes.
+   a. `_factor_decile_observations` (`research.py`) column-projects its two `res_stmt` reads to
+      `(run_id, ticker, <value column>)` instead of the whole `ScannerResult` entity — a NEW
+      `_extract_factor_value_from_row` + `_factor_value_column` pair select the SAME single column
+      `_extract_factor_value` already read (the typed column for a "column" factor, `record_json` itself
+      for a "component" factor — never dropped, just not loaded alongside 20+ unused columns), returning
+      raw tuples (no ORM row construction at all — the SAME mechanism `_fr_slice_map`/`_forward_agg_slice_map`
+      already use elsewhere in this file). Measured: the `leadership_score` claim 63.9s → **16.34s** (3.9x);
+      `ma_stack` (a "component"-kind claim, needing `record_json`) → **50.94s** (previously did not finish
+      within a 3.5+ minute probe pre-fix).
+   b. `compute_drawdown_expectations`/`compute_drawdown_expectations_cached` gain an additive, optional
+      `phases` parameter (default `None`, self-compute — byte-identical for every existing caller); the
+      ingest finalize warm loop (`data_manager.py`) computes the all-history causal timeline ONCE before
+      the per-claim loop and threads it through, instead of once per claim (the plan's own suggested fix —
+      confirmed real but small, ~0.6s saved per finalize invocation).
+   - **All 7 live ledger claims, measured directly (uncached, phases computed once, sequential), post-fix:**
+     `leadership_score`(factor,h20)=15.7s, `Breakout-watch`(event-study,h20)=6.24s, `ma_stack`(factor,h20)=50.1s,
+     `vcp_contraction`(factor,h20)=21.26s, `vcp_contraction`(factor,h60)=21.31s, `composite`(combination,h20)=98.62s,
+     `rs_spy_3m`(factor,h60)=52.92s — **TOTAL 266.76s** (phases + all 7), down from the pre-fix baseline of
+     667.30s (the one run that completed) / 950s+ (a second, still running) / never-completed (a third, iter-48
+     Addendum 2). The "combination"/"event-study" resolvers (`_combination_observations` and the event-study
+     builders) were NOT touched this iteration — `_combination_observations` shares the SAME full-entity
+     `select(ScannerResult)` shape `_factor_decile_observations` had, and is the single most expensive claim
+     post-fix (98.62s) — disclosed as a carried optimization opportunity for a future iteration (not
+     necessary for TC-1's bound given the margin achieved; a second risky change in the SAME iteration would
+     violate goal.md's own "one risky change" loop mechanic).
+
+**A live, direct confirmation of measurement contamination (hypothesis 1), observed independently during
+this iteration's own testing.** While diagnosing the above, a full run of `tests/test_forward_testing.py`
+(96 tests, small hand-built fixtures — normally fast) was started concurrently with an unrelated background
+diagnostic script this developer pass had also launched. It stalled at the SAME test
+(`test_walk_forward_asof_dates_are_real_trading_days_with_full_horizon`, actually the SESSION-scoped
+`loaded_engine` fixture's one-time seed-load setup) for **10+ minutes** at ~100% CPU with no forward
+progress in the pytest log. Killing the concurrent script and re-running the IDENTICAL command let the SAME
+fixture complete in under a minute, and the suite then progressed normally. This is the SAME mechanism named
+as hypothesis 1 for `forward_aggregates_warm`'s 1,334.13s outlier — directly reproduced on this host, not
+merely theorized.
+
+**Live TC-1/TC-2/TC-4/TC-5 proof — 3 independent live runs**, each via
+`test_start_backend_historical_gap_insert_reaches_terminal_status_within_bound`
+(`TRENDORA_RUN_HEAVY_INGEST_TEST=1`, a FRESH throwaway copy of the real committed DB + a freshly spawned
+`scripts/start-backend.sh` process each time, never the shared committed file), run strictly sequentially
+(never concurrently — the binding iter-6/this-iteration's-own-contamination-finding lesson), full raw
+samples at `reports/qa/goal-ops-hardening-iter-49-evidence/perf-budgets-iter49-run{1,2,3}[-health].csv`:
+
+| Run | Job id | Target date | Total elapsed (job acceptance → terminal status) | Peak VmPeak | Health polls (non-200) |
+|---|---|---|---|---|---|
+| 1 | `8961bfbde04b4bb682f3ca554e1d431e` | earliest unsnapshotted trading day, run-time-picked | **1,012.71s** | 4,577,812 KB (4.47 GB) | 449 (0) |
+| 2 | `a309ee39b8b94f63baeae4e0f80cbd35` | earliest unsnapshotted trading day, run-time-picked | **1,048.22s** | 4,243,444 KB (4.14 GB) | 460 (1) |
+| 3 | `6f319704e1124c8cb60ec7519c7b39ca` | earliest unsnapshotted trading day, run-time-picked | **1,044.77s** | 4,281,968 KB (4.18 GB) | 459 (1) |
+
+All 3 runs: `status` reached `"ok"`, `snapshots_created >= 1`, `"membership_timeline" in aggregates_refreshed`
+(TC-1/TC-2 pass), and **every run's total elapsed time is comfortably inside TC-1's 1,200s bound** — a
+187-188s / 15.6-15.8% margin, the tightest of this session's live drills but a genuine, repeatable pass, not
+a lucky single sample (the binding iter-44/iter-48 "≥3 samples" lesson). Peak VmPeak stayed at **45.4-49.4%
+margin** under the declared `server.memory_cap_mb=8192` (8,388,608 KB) cap in every run (TC-5).
+
+Per-run finalize-tail phase breakdown (from `logs/backend.log`, `job=<id>`; `backfill stage` is the outer
+elapsed minus the sum of the finalize-tail phases below — the snapshot-write stage this iteration's diff
+does not touch):
+
+| Phase | Run 1 | Run 2 | Run 3 |
+|---|---|---|---|
+| backfill stage (snapshot write, unchanged by this iteration) | ~51.2s | ~45.4s | ~44.6s |
+| `coverage_membership_timeline_refresh` (iter-48's fix, unchanged this iteration) | 26.46s | 55.35s | 51.83s |
+| `per_date_coverage_warm` | 5.27s | 5.18s | 5.30s |
+| `market_phase_warm` | 0.05s | 0.04s | 0.04s |
+| `forward_aggregates_warm` (THIS iteration's fix; sub-phase h1/h5/h10/h20/h60) | 137.89s (37.39/33.56/23.06/24.06/19.82) | 138.61s (36.68/34.36/24.00/23.02/20.55) | 139.16s (37.16/34.37/23.31/23.97/20.35) |
+| `research_hot_keys_warm` | 2.54s | 2.76s | 2.51s |
+| `index_series_warm` | 0.03s | 0.08s | 0.09s |
+| `drawdown_expectations_warm` (THIS iteration's fix; per-claim sub-phase) | 789.27s | 800.83s | 801.21s |
+| **Finalize-tail total** | **961.51s** | **1,002.85s** | **1,000.14s** |
+
+`forward_aggregates_warm` is remarkably STABLE across all 3 live runs (137.89s/138.61s/139.16s, <1% spread)
+— consistent with the ratio-optimization fix and with the "genuine per-call cost, not contamination" reading
+of the two LOWER historical samples, now reproduced 3/3 under live conditions. `drawdown_expectations_warm`
+(789.27s/800.83s/801.21s) is likewise stable but noticeably HIGHER than the isolated sequential measurement
+(266.76s) above — attributed to the spawned-backend context (freshly cold OS page cache for each throwaway
+DB copy, uvicorn's own thread-pool/event-loop scheduling overhead, this iteration's own concurrently-running
+health-poll and VmPeak-sampler threads) rather than to the fix itself, since the SAME per-claim ordering and
+relative costs hold (`ma_stack`/`combination`/`rs_spy_3m` remain the three most expensive claims in every
+run, matching the isolated measurement's own ranking) — genuinely slower per-claim in this specific serving
+context, not a different code path. TC-1's bound is met with real (if narrower-than-isolated) margin despite
+this.
+
+**A newly-surfaced, out-of-scope defect: a reproducible ~10s `GET /api/health` timeout, 2 of 3 runs.**
+Runs 2 and 3 (not run 1) each logged exactly ONE health-poll timeout — `poll_index=21` (run 3) / `22` (run 2),
+`elapsed_s=10.013`/`10.014` (the httpx client's own `timeout=10.0`), i.e. the server was unresponsive for
+at least 10s at almost the identical point in both runs (~42-44s after the poller started). Correlated
+against the phase log, this window falls at the BACKFILL-STAGE-TO-`coverage_membership_timeline_refresh`
+boundary — BEFORE either phase this iteration bounds even begins, and unaffected by this iteration's diff
+(`git diff` confirms `_do_backfill`'s scoring path and `_excluded_counts_by_date` are untouched). Notably,
+`coverage_membership_timeline_refresh` itself ran slower in the SAME two runs (55.35s/51.83s) than run 1
+(26.46s) or the three iter-48 historical samples (9.18s/24.10s/21.01s) — the same two runs that also show
+the health-poll gap, suggesting a shared cause in that stretch of the sequence, not two independent flakes.
+This finding is disclosed, not fixed, in this iteration — goal.md's own OUT OF SCOPE list names exactly
+this class of issue ("Health-poll ≤2s ceiling breach re-measurement — folded into required-still-passing
+verification, no fix attempted this round"), and it sits upstream of both phases this iteration was scoped
+to bound. Every assertion BEFORE the health-poll check (status/elapsed/snapshots_created/aggregates_refreshed/
+VmPeak/VmSize) passed in both runs that hit it — pytest stops at the first failing assert, so this is the
+health-poll gap alone, isolated from every other proof. TC-6 outcome: the test stays `xfail(strict=False)`
+(never a loosened assertion) with its reason string updated to name this specific residual — see the test's
+own docstring/marker in `tests/test_start_backend_script.py`.
+
+**TC-3 (byte-identity).** New pinned-reference tests added this iteration and green: `test_forward_testing_aggregates_streaming.py`'s
+existing `test_compute_forward_aggregates_byte_identical_to_pre_rewrite_reference` (unmodified, still passes
+against the ratio-optimized implementation) plus `test_research_streaming.py`'s two new tests,
+`test_factor_decile_observations_column_projected_equals_full_entity_reference` (parametrized decile x as_of,
+"column"-kind) and `..._component_kind` ("component"-kind, `rs_spy_3m`), both against a pinned pre-iter-49
+full-entity reference — 120 tests total across the two files, all green (`apps/backend/tests/test_research_streaming.py`,
+`apps/backend/tests/test_forward_testing_aggregates_streaming.py`).
+
+**TC-11 (error isolation).** New tests in `test_data_manager.py` inject a non-memory exception and a
+`MemoryError` directly inside the NEW `phases` precompute (falls back to per-claim self-compute either way,
+the `MemoryError` path additionally calling `_release_process_memory()`) and inside the NEW column-projected
+extractor (`research._extract_factor_value_from_row`, isolated per-claim exactly like every other
+finalize-tail failure) — all pass; the pre-existing per-item MemoryError/generic-exception tests for both
+loops (patching at the `compute_drawdown_expectations_cached`/`forward_aggregates_ingest_cached` boundary)
+are unaffected by this iteration's internal changes and still pass unmodified (three of their mock
+signatures gained a `phases=None` passthrough kwarg for compatibility with the new additive parameter — no
+assertion changed).
+
+**TC-10.** `git diff` over `config.yaml`, `project-extensions/host-guard/host-guard.env`,
+`scripts/start-backend.sh`, `scripts/dev.sh` is empty this iteration (verified before and after every
+change) — `memory_cap_mb=8192`/`malloc_arena_max=2` unchanged and enforced (confirmed live: every drill's
+peak VmPeak stayed under the 8,388,608 KB cap).
+
+### Addendum 5 (2026-08-05, ops-hardening iter-49 AUDIT-FIX pass) — J-04's boot budget measured by a lane
+### permitted to restart services (audit F2/TC-9); the drawdown precompute's `MemoryError` handler aligned
+### with the iter-8 stop convention (audit B3); the two never-completed suites run (audit T3)
+
+**Why this addendum exists.** The iter-49 audit returned FAIL. Its verdict is driven by lane EVIDENCE, not
+by the product change — the audit re-traced both fixes independently and found no defect ("the FAIL verdict
+is not about the code", audit §3). During the browser-qa lane's own live backfill an uncaught `MemoryError`
+in `research.compute_factor_lab_all` (`research.py:1051` — a frame this iteration never touched and
+explicitly ruled OUT OF SCOPE) killed the backend for ~6 minutes, so J-05's journey test failed, J-07's
+availability promise was falsified live, and J-04/J-08/J-09 recorded zero executed rows. This pass closes
+only the findings a developer can close (B3, F2/TC-9, T3) and carries B1/B2 verbatim, per the audit's own
+§5.3 ("treat them as one change ... scope the next iteration at the concurrency/memory axis").
+
+**J-04's boot budget — the record its own acceptance clause requires.** J-04 acceptance: "measured
+start→first-200 ≤ 5 s on the warm DB is recorded in `reports/perf-budgets.md`". Until this pass the number
+had never been produced by an executing lane: J-04's assigned lane (the browser-qa agent) is structurally
+forbidden from restarting services, so UT-J-04 was SKIPPED for three consecutive rounds. The measurement
+now comes from `apps/backend/tests/test_start_backend_script.py`, which spawns and SIGKILLs real backends
+through the real `scripts/start-backend.sh`.
+
+| Boot | DB | first HTTP 200 | budget | readiness on that first 200 |
+|---|---|---|---|---|
+| `test_j04_boot_serves_first_health_200_within_5s_on_warm_db` | real committed (8.4 GB, warm) | **1.50 s** | 5.0 s | `initializing`, `warmup {done: 89, total: 89, message: "history 89/89"}` |
+| `test_j04_crash_...` boot 1 | tiny scratch | 1.27 s | — (not the warm-DB budget) | `initializing`, `warmup {done: 0, total: 4, message: "history 0/4"}` |
+| `test_j04_crash_...` boot 2, after a simulated crash | tiny scratch (same file) | 1.24 s | — | `initializing`, `history n/m` |
+
+Method notes, so this number is not read as better than it is:
+- The clock starts **before** `subprocess.Popen`, so each figure includes the launch script's own bash
+  startup, the `get_config()` subprocess read, `ulimit -v`/`MALLOC_ARENA_MAX` enforcement, the host-guard
+  block and `exec` — strictly MORE than "process start", never less.
+- Polling is at 200 ms (J-04 step 3 requires ≤250 ms), so the true first-200 lies within 200 ms below the
+  recorded value.
+- Measurement conditions: an unrelated single-threaded pytest suite (`tests/test_warmup.py`, the audit's
+  own T3 item) was running concurrently on this 16-CPU host, load average ≈1.5-2.4. That makes the 1.50 s
+  a CONSERVATIVE reading, not a contaminated-favourable one (iter-6's contamination precedent cuts the
+  other way here). A contention-free confirmation run is recorded at the end of this addendum.
+- Both boots served a genuine PRE-READY payload (`readiness: initializing` carrying `history n/m`) — J-04
+  step 3's own backend-side requirement, observed live rather than asserted conditionally.
+
+**J-04 step 6, live (interrupted-job detection).** A `DataProviderRun` row was written as `running` with
+its last persisted progress WHILE the first backend was alive; `GET /api/data` on that live instance served
+it as `running` with a null `finished_at` (so the row genuinely was mid-flight, not fabricated after the
+fact). The process was then SIGKILLed — `GET /api/health` stopped connecting entirely, which is what the
+UI's unreachable presentation keys off and is categorically different from `initializing` (an HTTP 200
+carrying a phase). After the restart on the SAME database, that row read back as:
+
+```
+run 1  status='interrupted'  finished_at='2026-08-05T10:36:57.745735'  dates_done=2  dates_total=5
+       snapshots_created=2      (progress fields unchanged — the boot sweep flips status/finished_at only)
+```
+
+i.e. never a still-`running` row with no living process, and never a row whose progress was reset. J-04
+step 5 (persistent logfile carries boot events; ends abruptly after a crash) was already covered by two
+pre-existing tests in the same module and is deliberately not duplicated.
+
+**Audit B3 — a correction to Addendum 4's last paragraph.** Addendum 4 recorded the new `phases` precompute
+as falling back "to per-claim self-compute either way", including on `MemoryError`. That behavior was wrong
+and is now changed: on `MemoryError` the precompute releases memory and **stops the whole
+`drawdown_expectations_warm` phase without attempting any claim**. Falling through set `phases=None`, which
+makes each of the 7 live claims self-compute its own all-history `phase_context_by_date` — i.e. under memory
+pressure the handler degraded to the MORE allocating path, the exact "hammering the next claim's allocation
+under pressure" the iter-8 convention in that same function exists to prevent. `aggregates_refreshed` stays
+honest (the category is omitted, never claimed). No timing impact in normal operation — this path runs only
+when memory is already exhausted. The TC-11 test was inverted, renamed
+(`..._memory_error_releases_and_stops_before_any_claim`), tightened to assert `phase_context_by_date` was
+called exactly ONCE, and mutation-checked (restoring the old fall-through makes it fail).
+
+**Audit T3 — the two suites nobody in this pipeline had run to completion.** Both were run this pass, in
+isolation from the live drills (no ingest job, no browser lane, no backend serving traffic):
+
+| Suite | Result | Wall time |
+|---|---|---|
+| `tests/test_forward_testing.py` (the module holding `compute_forward_aggregates` / `compute_drawdown_expectations`, i.e. the code this iteration changed) | **95 passed**, 1 deselected | 760.97 s (12 m 41 s) |
+| `tests/test_warmup.py` | **21 passed, 1 failed** | 3,762.61 s (1 h 02 m 43 s) |
+
+- The one `test_forward_testing.py` test not run is
+  `test_walk_forward_asof_dates_are_real_trading_days_with_full_horizon`, the module's ONLY user of the
+  session-scoped `loaded_engine` fixture (full seed load + `bootstrap_runs` over the whole historical
+  cadence + `backfill_forward_returns` + 5 horizons of aggregates). On the current 30-year basis that
+  one-time fixture build is the known multi-hour test-infrastructure cost of this session — it was still
+  building after 15 minutes here and after 10+ minutes in the build pass. It was deliberately NOT left
+  running: a multi-hour all-cores-adjacent job on this host during the pending lane re-run is precisely the
+  concurrent-load mechanism behind audit B1's crash. The test asserts properties of
+  `walk_forward_asof_dates` (cadence dates are real trading days, ascending, with full horizon room) — a
+  function untouched by this iteration's diff. The other **95 tests, including every direct test of both
+  functions this iteration modified, pass.**
+- `tests/test_warmup.py`'s single failure is
+  `test_warmup_loads_each_symbol_at_most_once_across_cadence_and_forward_returns`
+  (`tests/test_warmup.py:262`): every one of the ~500 equity symbols is loaded exactly once, but the two
+  INDEX symbols are not — `^VIX` is loaded 8 times and `SPY` 7 times (once per cadence date), so
+  `max(load_counts.values()) == 1` fails with `8 == 1`.
+
+  **Attribution, verified rather than argued:** the three product files this iteration touched
+  (`data_manager.py`, `forward_testing.py`, `research.py`) were restored to pristine `HEAD` content, the
+  test was re-run, and it **failed identically** (82.62 s) with the iteration's diff completely absent; the
+  three files were then restored and confirmed byte-identical by `md5sum` and by an unchanged
+  `git diff --stat` (3 files, 257 insertions / 68 deletions). **This failure is pre-existing and is not
+  caused by iter-49.** It is a genuine, previously-undetected finding — the suite had not been run to
+  completion by anyone in this pipeline, which is exactly why the audit asked for it — and it is left
+  UNFIXED here: diagnosing why the regime/phase path re-loads the index symbols per cadence date is
+  new scope, not an audit-fix, and this pass is already carrying B1/B2 forward.
+
+**Clean-host confirmation of the J-04 boot measurement.** Re-run after both T3 suites finished, host idle
+(load average 0.80):
+
+```
+[J-04] warm-DB boot -> first HTTP 200 in 1.28s after 6 poll(s) (budget 5.0s);
+       readiness='initializing' warmup={'done': 89, 'total': 89, 'status': 'running', 'message': 'history 89/89'}
+[J-04] boot 1 (scratch DB) -> first HTTP 200 in 1.24s; readiness='ready'  warmup={'done': 4, 'total': 4, ...}
+[J-04] boot 2 after crash -> first HTTP 200 in 1.04s; run 1 status='interrupted'
+       finished_at='2026-08-05T11:35:04.196855' progress=2/5
+2 passed
+```
+
+**1.28 s against the 5.0 s budget, 74% margin** — the number of record for J-04's acceptance clause. Note
+the scratch-DB boot reported `ready` on this run where it reported `initializing` on the contended one:
+that race is exactly why the test asserts the readiness payload's *contract* (one of the four honest states
++ a `history n/m` progress message + no fabricated state on a failed DB read) rather than requiring a
+pre-ready sighting, which would be flaky. The warm committed DB served `initializing` with
+`history 89/89` on both runs, so J-04 step 3's pre-ready phase+progress payload was observed live either way.
+
+**Whole-suite regression check for this fix pass** (all on the idle host, after the changes above):
+
+```
+tests/test_research_streaming.py tests/test_forward_testing_aggregates_streaming.py
+  tests/test_ingest_finalize_fault_injection.py tests/test_evidence.py   -> 146 passed in 23.45s
+tests/test_data_manager.py -k "phase_context_warm or column_projected_read or finalize_hook or
+  drawdown or forward_aggregate"                                         -> 33 passed in 197.98s
+tests/test_start_backend_script.py (whole module; 3 opt-in/heavy skipped) -> 11 passed, 3 skipped in 60.76s
+tests/test_forward_testing.py (minus the one loaded_engine test)          -> 95 passed in 760.97s
+tests/test_warmup.py                                                      -> 21 passed, 1 pre-existing fail
+```
+
+`git diff` over `config.yaml`, `project-extensions/host-guard/host-guard.env`, `scripts/start-backend.sh`
+and `scripts/dev.sh` re-confirmed EMPTY after every edit in this pass (TC-10 / AG-10).
+
+### Addendum 6 (2026-08-05, ops-hardening iter-49 AUDIT pass) — where the finalize-tail health stalls
+### ACTUALLY are: a correction to Addendum 4's attribution, derived from this iteration's own raw evidence
+
+**Why this addendum exists.** Addendum 4 characterised the health-availability finding as *one* ~10s
+timeout, in *2 of 3* runs, at the **backfill-stage-to-`coverage_membership_timeline_refresh` boundary**,
+and closes with a direction for the next investigator: *"start at the backfill/coverage-refresh boundary,
+not the two phases this iteration closed."* Re-reading the raw samples this iteration itself committed
+(`reports/qa/goal-ops-hardening-iter-49-evidence/perf-budgets-iter49-run{1,2,3}-health.csv`) against the
+per-phase/per-claim log lines this iteration itself added (`logs/backend.log`) does not support that
+direction. The non-200 count is correct; the attribution is not.
+
+**Every health poll slower than J-07's own 2 s ceiling, all 3 runs.** `_HealthPoller` polls every
+~2 s (`sleep(2.0)` + request time), so a poll's start time is the running sum of `elapsed + 2.0`; the
+`-health.csv` `poll_index` maps to that cumulative offset from poller start, and the `.csv` (VmPeak)
+sibling's first `epoch` fixes poller start on the wall clock (run 1 = 04:15:27.7, run 2 = 04:34:59.3,
+run 3 = 04:54:33.0), which is what lets each poll be placed inside a named phase.
+
+| Run | polls | >1 s | >2 s | >5 s | non-200 |
+|---|---|---|---|---|---|
+| 1 | 449 | 14 | **6** | 2 | 0 |
+| 2 | 460 | 16 | **8** | 2 | 1 (10.014 s, timeout) |
+| 3 | 459 | 13 | **9** | 2 | 1 (10.013 s, timeout) |
+
+The ≤2 s ceiling is breached 6-9 times per run in **3 of 3** runs, and every run contains **two** polls
+over 5 s — including a 7.931 s and a 9.724 s poll that answered 200 only because they finished just
+inside the client's own 10 s timeout. "Run 1 had zero non-200 polls" is true and is not the same claim as
+"run 1 was clean".
+
+**Where they fall.** Placed against the phase log, the mid-run breaches are not upstream of this
+iteration's phases — they are inside them:
+
+| Cluster | Run 1 | Run 2 | Run 3 | Phase window it falls in |
+|---|---|---|---|---|
+| early stall (incl. both timeouts) | poll 26 @ 61.2 s, 2.357 s | poll 22 @ 60.3 s, **timeout**; poll 39 @ 103.4 s, 4.197 s | poll 20 @ 47.9 s, 2.946 s; poll 21 @ 59.9 s, **timeout**; poll 37 @ 100.1 s, 3.300 s | inside `coverage_membership_timeline_refresh` (run 1 t=56.9-83.3 s; run 2 t=45.4-100.7 s; run 3 t=44.6-96.4 s) — Addendum 4's attribution, **confirmed for this cluster only** |
+| mid stall (4-5 polls, 2.2-5.6 s) | polls 102-105 @ 233.3-251.4 s | polls 107-111 @ 254.2-272.9 s | polls 105-109 @ 251.9-270.7 s | inside `drawdown_expectations_warm`'s own **new** `phase_context_by_date` precompute — the window between the `index_series_warm` phase line and the FIRST per-claim sub-phase line (run 1 t=229.1-252.8 s; run 2 t=250.5-274.4 s; run 3 t=247.3-271.0 s). Every one of the 13 polls lands inside it, 3/3 runs. |
+| late stall (>5 s) | poll 368 @ 843.3 s, **7.931 s** | poll 378 @ 873.9 s, **9.724 s** | polls 375-376 @ 865.0-870.0 s, 5.174/2.988 s | inside the `combination:composite:h20` claim (run 1 04:25:28-04:29:41 = t 601-853 s; run 2 04:45:30-04:49:44 = t 631-885 s) — the ONE claim this iteration deliberately did not optimise (`_combination_observations`, 252-254 s live, Known Issues) |
+
+**Two corrections that follow.**
+
+1. **The precompute costs ~23.6 s live, not ~0.6 s.** Addendum 4 records change 2b as "confirmed real but
+   small, ~0.6s saved per finalize invocation", from an isolated 0.61 s/call measurement. Live, the gap
+   between `index_series_warm`'s completion and the first per-claim sub-phase line is **23.6 s / 23.9 s /
+   23.8 s** (runs 1/2/3) — and `789.27 s` (run 1's whole-phase total) = `765.67 s` (sum of the 7 per-claim
+   lines) + that gap, so the arithmetic closes exactly. The isolated figure was ~39x optimistic, which
+   means the memoization is a considerably BIGGER win than claimed (5 of 7 claims MISS the cache in these
+   runs and each would otherwise pay this cost: ~118 s → ~23.6 s), and also that this single call is the
+   longest uninterrupted stretch of finalize-tail work outside a per-claim compute.
+2. **The next investigator should not be sent only to the backfill/coverage boundary.** That direction
+   holds for the two 10 s timeouts and for the early cluster. It does not hold for the other 13 slow polls
+   in the mid cluster (inside code this iteration ADDED) or for the 4 late slow polls (inside the claim
+   this iteration explicitly left un-optimised). J-07's own ceiling is breached in all three places, in
+   3/3 runs.
+
+Nothing here changes TC-1 (3/3 within 1,200 s), TC-3 (byte-identity), TC-5 (VmPeak margin 45.4-49.4 %) or
+TC-10 (frozen files still EMPTY) — those are re-confirmed from the same raw samples. It changes only the
+health-availability picture and where the follow-up work should start. This addendum is append-only; no
+earlier dated section was edited.

@@ -513,3 +513,58 @@ contemporaneous-but-unrelated memory failure, and a reader could promote it to `
 promotion wrong either way while `_regime_lab_members_by_horizon` is unbounded, but the timing claim is
 the weaker half of my reasoning and I flag it rather than present it as measured.
 **Reversible:** yes
+
+## iter-49 — goal-evaluator
+
+**Ambiguity:** during this round's own browser lane the backend process DIED for 12 m 45 s
+(uncaught `MemoryError` at `research.py:1051` → `OpenBLAS error: Memory allocation still failed
+after 10 retries, giving up.`, `logs/backend.log:191719-191721`; restart banner 09:48:49Z; run 312
+reaped to `interrupted`). `docs/goal.md`'s AG-8 is marked *(critical)* and says a service must never
+"crash an existing page or exhaust a service's memory". My own agent instructions define a
+*critical VIOLATION* — the one that forces a REGRESSION halt — by a different list: committed
+secrets, unapproved paid SaaS, license violation, security backdoor, fabricated data. Neither
+document says how to score a critical-class anti-goal breach that the iteration did NOT introduce
+and was explicitly forbidden from fixing (the phase spec's OUT OF SCOPE list, on goal.md's own "one
+risky change per iteration" mechanic, with five concurring reviews to carry it).
+**We chose:** score it as a `minor` machine-severity ledger entry (`iter-49/bp`) whose text states
+the severity plainly, and put the weight on the journey instead — J-07 "Heavy aggregates never take
+the service down" moves `partial` → `failing`. Verdict ESCALATE, not REGRESSION. Grounds stated
+rather than assumed: (1) the diff is 7 files and `compute_factor_lab_all` is provably not one of
+them — this iteration REMOVED an unbounded full-entity read rather than adding one, so no violation
+was *introduced*; (2) C.1's REGRESSION clause is otherwise unmet — no journey moved
+`passing`/`already_passing` → `failing`, J-07 has been below `passing` since iter-34; (3) a
+REGRESSION halt hands the owner a decision he does not have: both halves of the repair are named
+with file and line and are agent-owned, and the isolated warm peaks at ~4.5 GB of an 8 GB envelope,
+so nothing here needs AG-10's owner-set values changed; (4) the session's own ledger convention has
+scored the same class (iter-47/be, iter-48/bk — the Regime Lab hitting the same cap) as `minor` for
+the same reason. Cost recorded honestly: this is the first time in this session the process actually
+DIED rather than logging a caught `MemoryError`, and calling that `minor` in a machine field is the
+kind of rounding that lets a serious defect age quietly — it has now been deferred sixteen times as
+iter-33/g and its siblings. A reader who holds that "AG-8 is marked critical, the service died,
+therefore a critical anti-goal violation is unresolved" would return REGRESSION and halt the loop
+for the owner; that reading is defensible and I would not argue it is wrong, only that it buys
+nothing the next iteration cannot do itself.
+**Reversible:** yes
+
+## iter-49 — goal-evaluator (second entry)
+
+**Ambiguity:** J-05 "Aggregates are precomputed at ingest, never on the fly" has a **FAIL** row from
+its own lane (UT-02: the in-app job never reached a terminal status) and no executed row for its
+step-2 assertions (UT-03 SKIP). Against that, its binding TC-1 bound is met 3/3 on independent live
+runs — but those runs used a FRESH THROWAWAY COPY of the DB and a freshly spawned backend on an
+otherwise-idle host, i.e. not the journey's own path ("On `/data`, run a backfill…"). Neither
+`docs/goal.md` nor the methodology says whether a live integration drill that exercises the journey's
+mechanism outside the UI can move a journey off `failing`.
+**We chose:** `failing` → `partial` (not `passing`). Grounds: (1) I recomputed the drills myself from
+the committed raw samples rather than the handoff — sampler spans 1,019.6 / 1,052.5 / 1,049.2 s
+against 1,200 s, VmPeak 4,577,812 / 4,243,444 / 4,281,968 kB against 8,388,608 kB; (2) the in-app run
+(job `d5637f7c` / run 312) independently shows the tail is genuinely bounded in the product —
+`forward_aggregates_warm elapsed=168.15s` with all five per-horizon lines, against iter-48's 1,334 s
+outlier — and it wrote its snapshot (`snapshots_created: 1`); (3) it did not terminate for a reason
+that is NOT J-05's own defect (the `compute_factor_lab_all` crash). Cost recorded honestly: `partial`
+credits a bound proven on an idle host with a copied DB, which is exactly the gap that made the
+in-app run fail, and no lane has ever executed J-05's step 2 or 3. A reader who holds that "the
+journey's only executed row is a FAIL, therefore the journey is failing" would keep it `failing`,
+which changes no gate (GOAL_ACHIEVED is blocked by J-07 either way) but would show this round as
+zero upward movement on the target journey rather than one.
+**Reversible:** yes

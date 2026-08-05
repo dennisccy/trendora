@@ -1168,6 +1168,187 @@ def test_factor_decile_observations_zero_n_cohort_is_honest_empty(chunked_accumu
 
 
 # ==================================================================================================
+# ops-hardening iter-49 (J-05, drawdown_expectations_warm bound) — `_factor_decile_observations`'s two
+# `res_stmt` reads used to `select(ScannerResult)` (the FULL ORM entity, every score/flag/date column plus
+# the `record_json` blob) purely so `_extract_factor_value` could do a `getattr`/`.record_json` on a full
+# row. Live profiling (a single decile-scoped drawdown-expectations claim on the real committed DB)
+# measured >40s of a 63.9s call as SQLAlchemy/SQLModel ORM row construction alone — unrelated to
+# `_extract_factor_value`'s own cheap `getattr`/`json.loads`. `_extract_factor_value_from_row` +
+# `_factor_value_column` (new) column-project the read to `(run_id, ticker, <value column>)` instead —
+# raw tuples, no ORM row built at all — for BOTH factor kinds ("column": the typed column selected
+# directly; "component": `record_json` selected instead of the whole entity, so nothing the extractor
+# reads is dropped). These proofs pin byte-identity against the PRE-FIX full-entity approach, for both
+# kinds, mirroring `test_factor_decile_observations_equals_pre_fix_reference` above exactly.
+# ==================================================================================================
+def _factor_decile_observations_full_entity_reference(session, factor, horizon, as_of, deciles_count, decile, cfg):
+    """The PRE-iter-49 `_factor_decile_observations` body, pinned verbatim (full-entity `select(ScannerResult)`
+    in both passes, `_extract_factor_value` reading a real ORM row) — the regression oracle for the iter-49
+    column-projection rewrite. Calls the SAME unchanged `_runs_with_fr` / `_fr_slice_map` /
+    `_decile_population_upper_bound` / `_BoundedRankWindow` / `_extract_factor_value` helpers the real,
+    rewritten function still uses, so any divergence can only come from the two `res_stmt` projections."""
+    from app.engine.research import (
+        _BoundedRankWindow, _decile_population_upper_bound, _extract_factor_value, _fr_slice_map,
+        _runs_with_fr, parse_factor_source,
+    )
+
+    parsed = parse_factor_source(factor.source)
+    research_cfg = cfg.research
+    batch = research_cfg.read_batch_size
+    run_chunk = research_cfg.factor_join_run_chunk
+    runs_with_fr = _runs_with_fr(session, [horizon], as_of)
+    n_max = _decile_population_upper_bound(session, runs_with_fr, run_chunk)
+    window = _BoundedRankWindow(n_max, deciles_count, decile)
+
+    n = 0
+    for start in range(0, len(runs_with_fr), run_chunk):
+        slice_run_ids = runs_with_fr[start:start + run_chunk]
+        ret_by_run_symbol = _fr_slice_map(session, horizon, slice_run_ids, batch)
+        res_stmt = (
+            select(ScannerResult).where(ScannerResult.run_id.in_(slice_run_ids))
+            .order_by(ScannerResult.run_id, ScannerResult.id)
+        )
+        for res in session.exec(res_stmt).yield_per(batch):
+            if (res.run_id, res.ticker) not in ret_by_run_symbol:
+                continue
+            value = _extract_factor_value(res, parsed)
+            if value is None:
+                continue
+            n += 1
+            window.add((float(value), res.ticker, res.run_id))
+
+    lo = (decile - 1) * n // deciles_count
+    hi = decile * n // deciles_count
+    ranked = window.slice(n, lo, hi)
+    assert ranked is not None, "test fixture too small for the upper-bound invariant — widen it"
+    target_keys = {(ticker, run_id) for _factor_val, ticker, run_id in ranked}
+    if not target_keys:
+        return []
+
+    run_rows = (
+        session.exec(select(ScannerRun).where(ScannerRun.id.in_(runs_with_fr))).all()
+        if runs_with_fr else []
+    )
+    regime_by_run = {run.id: run.regime_label for run in run_rows}
+
+    members = []
+    for start in range(0, len(runs_with_fr), run_chunk):
+        slice_run_ids = runs_with_fr[start:start + run_chunk]
+        ret_by_run_symbol = _fr_slice_map(session, horizon, slice_run_ids, batch)
+        res_stmt = (
+            select(ScannerResult).where(ScannerResult.run_id.in_(slice_run_ids))
+            .order_by(ScannerResult.run_id, ScannerResult.id)
+        )
+        for res in session.exec(res_stmt).yield_per(batch):
+            if (res.ticker, res.run_id) not in target_keys:
+                continue
+            fr = ret_by_run_symbol.get((res.run_id, res.ticker))
+            if fr is None:
+                continue
+            realized, max_drawdown = fr
+            value = _extract_factor_value(res, parsed)
+            if value is None:
+                continue
+            members.append({
+                "run_id": res.run_id, "ticker": res.ticker, "factor": float(value), "return": realized,
+                "max_drawdown": max_drawdown,
+                "regime": regime_by_run.get(res.run_id),
+            })
+    members.sort(key=lambda o: (o["factor"], o["ticker"], o["run_id"]))
+    return members
+
+
+@pytest.mark.parametrize("as_of", [None, date(2025, 3, 15)])
+@pytest.mark.parametrize("decile", [1, 5, 10])
+def test_factor_decile_observations_column_projected_equals_full_entity_reference(
+    chunked_accumulator_engine, as_of, decile,
+):
+    """TC-3 (byte-identity leg, "column"-kind factor): the iter-49 column-projected
+    `_factor_decile_observations` is byte-identical to the pinned pre-iter-49 (full-entity `select
+    (ScannerResult)`) reference — across the first/middle/last decile and both all-history and a
+    historical as_of, under a chunk width small enough to force multiple slices in BOTH passes."""
+    cfg = _cfg_batch(2)
+    deciles_count = cfg.research.factor_lab.deciles
+    factor = next(f for f in cfg.research.factor_lab.factors if f.key == "leadership_score")
+    with Session(chunked_accumulator_engine) as session:
+        shipped = research_module._factor_decile_observations(
+            session, factor, H, as_of, deciles_count, decile, cfg=cfg
+        )
+        reference = _factor_decile_observations_full_entity_reference(
+            session, factor, H, as_of, deciles_count, decile, cfg
+        )
+    assert _eq(shipped, reference), (
+        f"column-projected decile {decile} (as_of={as_of}) != full-entity pre-iter-49 reference"
+    )
+
+
+def test_factor_decile_observations_column_projected_equals_full_entity_reference_component_kind(
+    component_engine,
+):
+    """TC-3 (byte-identity leg, "component"-kind factor): the SAME proof as above, for a factor whose value
+    lives in `record_json` (never a typed column) — the case where a naive column projection dropping
+    `record_json` would silently change figures. `_factor_value_column` selects `record_json` itself
+    (not the whole entity) for this kind, so nothing `_extract_factor_value_from_row` reads is lost.
+    `component_engine`'s 4 non-zero-FR observations (AA/BB/CC/DD) are split with a REDUCED `deciles=2` (the
+    real `factor_lab.deciles` default of 10 would make every decile a singleton on this small fixture,
+    a much weaker discriminator for the chunk-and-project rewrite)."""
+    cfg = load_config()
+    cfg = cfg.model_copy(update={"research": cfg.research.model_copy(update={
+        "read_batch_size": 1, "factor_join_run_chunk": 1,
+        "factor_lab": cfg.research.factor_lab.model_copy(update={"deciles": 2}),
+    })})
+    factor = next(f for f in cfg.research.factor_lab.factors if f.key == "rs_spy_3m")
+    assert factor is not None, "sanity: rs_spy_3m must be a configured component-kind factor"
+    with Session(component_engine) as session:
+        for decile in (1, 2):
+            shipped = research_module._factor_decile_observations(
+                session, factor, H, None, 2, decile, cfg=cfg
+            )
+            reference = _factor_decile_observations_full_entity_reference(
+                session, factor, H, None, 2, decile, cfg
+            )
+            assert _eq(shipped, reference), (
+                f"component-kind column-projected decile {decile} != full-entity pre-iter-49 reference"
+            )
+        # sanity: the fixture's component values are genuinely non-trivial (not an accidental all-None
+        # cohort that would make this proof vacuous).
+        d1 = research_module._factor_decile_observations(session, factor, H, None, 2, 1, cfg=cfg)
+        d2 = research_module._factor_decile_observations(session, factor, H, None, 2, 2, cfg=cfg)
+    assert d1 and d2, "sanity: both component-kind deciles must be non-empty on this fixture"
+
+
+def test_extract_factor_value_from_row_equals_extract_factor_value(chunked_accumulator_engine, component_engine):
+    """Direct unit proof that `_extract_factor_value_from_row` (fed the pre-selected column/record_json)
+    is byte-identical to `_extract_factor_value` (fed the full ORM row) for both factor kinds, on real
+    stored rows from both fixtures — the primitive the two decile-observation proofs above exercise only
+    indirectly through the full two-pass algorithm."""
+    from app.engine.research import (
+        _extract_factor_value, _extract_factor_value_from_row, _factor_value_column, parse_factor_source,
+    )
+
+    cfg = load_config()
+    column_factor = next(f for f in cfg.research.factor_lab.factors if f.key == "leadership_score")
+    component_factor = next(f for f in cfg.research.factor_lab.factors if f.key == "rs_spy_3m")
+    column_parsed = parse_factor_source(column_factor.source)
+    component_parsed = parse_factor_source(component_factor.source)
+    assert column_parsed["kind"] == "column"
+    assert component_parsed["kind"] == "component"
+
+    with Session(chunked_accumulator_engine) as session:
+        for res in session.exec(select(ScannerResult)).all():
+            col = _factor_value_column(column_parsed)
+            raw_value = getattr(res, col.key)
+            assert _extract_factor_value_from_row(raw_value, column_parsed) == _extract_factor_value(
+                res, column_parsed
+            )
+
+    with Session(component_engine) as session:
+        for res in session.exec(select(ScannerResult)).all():
+            assert _extract_factor_value_from_row(res.record_json, component_parsed) == _extract_factor_value(
+                res, component_parsed
+            )
+
+
+# ==================================================================================================
 # ops-hardening iter-48 (AG-8, iter-47 next-step item 5) — `app.engine.samples._factor_samples`'s
 # "regime" branch used to build the FULL `_factor_observations` list (whole horizon population) just to
 # discard every observation NOT matching the requested regime label afterward — the SAME "bounded read,

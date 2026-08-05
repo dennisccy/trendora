@@ -1480,11 +1480,11 @@ def test_finalize_hook_drawdown_expectations_isolates_claim_that_raises(
     real = forward_testing.compute_drawdown_expectations_cached
     calls = {"n": 0}
 
-    def _raise_first_then_real(session, claim, config=None):
+    def _raise_first_then_real(session, claim, config=None, *, phases=None):
         calls["n"] += 1
         if calls["n"] == 1:
             raise RuntimeError("forced claim-warm failure")
-        return real(session, claim, config)
+        return real(session, claim, config, phases=phases)
 
     monkeypatch.setattr(forward_testing, "compute_drawdown_expectations_cached", _raise_first_then_real)
     with Session(engine) as session:
@@ -1843,10 +1843,10 @@ def test_finalize_hook_drawdown_expectations_memory_error_after_partial_success_
     real = forward_testing.compute_drawdown_expectations_cached
     calls = {"n": 0}
 
-    def _succeed_then_boom(session, claim, config=None):
+    def _succeed_then_boom(session, claim, config=None, *, phases=None):
         calls["n"] += 1
         if calls["n"] == 1:
-            return real(session, claim, config)
+            return real(session, claim, config, phases=phases)
         raise MemoryError("simulated memory pressure")
 
     monkeypatch.setattr(forward_testing, "compute_drawdown_expectations_cached", _succeed_then_boom)
@@ -1890,11 +1890,11 @@ def test_finalize_hook_drawdown_expectations_isolates_claim_that_raises_non_memo
     real = forward_testing.compute_drawdown_expectations_cached
     calls = {"n": 0}
 
-    def _raise_first_then_real(session, claim, config=None):
+    def _raise_first_then_real(session, claim, config=None, *, phases=None):
         calls["n"] += 1
         if calls["n"] == 1:
             raise ValueError("forced non-memory claim-warm failure")
-        return real(session, claim, config)
+        return real(session, claim, config, phases=phases)
 
     monkeypatch.setattr(forward_testing, "compute_drawdown_expectations_cached", _raise_first_then_real)
     with Session(engine) as session:
@@ -1903,6 +1903,248 @@ def test_finalize_hook_drawdown_expectations_isolates_claim_that_raises_non_memo
         refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)  # must not raise
     assert calls["n"] == 2, "a non-memory exception must NOT abort the loop — both claims still attempted"
     assert "drawdown_expectations" in refreshed
+
+
+# ==================================================================================================
+# ops-hardening iter-49 (J-05/J-07, TC-11) — error-case coverage for THIS iteration's own new code: the
+# once-per-finalize-invocation `phase_context_by_date` precomputation in the drawdown-expectations warm
+# loop (`data_manager.py`) and the column-projected read in `_factor_decile_observations`
+# (`research.py`) — both newly added this iteration, neither exercised by the pre-existing per-claim
+# MemoryError/non-memory tests above (which patch `compute_drawdown_expectations_cached` itself, a layer
+# above where these two new pieces of code actually run).
+# ==================================================================================================
+def test_finalize_hook_drawdown_phase_context_warm_non_memory_failure_falls_back_to_per_claim_self_compute(
+    finalize_hook_drawdown_engine, tmp_path, monkeypatch,
+):
+    """A genuine non-memory exception inside the NEW once-per-invocation `phase_context_by_date` warm
+    (`data_manager._refresh_ingest_aggregates`'s `drawdown_expectations_warm` block) is caught, logged,
+    and never aborts the finalize hook — it degrades to `phases=None`, so the single claim below falls
+    back to ITS OWN self-compute (`compute_drawdown_expectations`'s pre-iter-49 default: `if phases is
+    None: phases = phase_context_by_date(...)`), which still resolves a genuine payload here. The mock
+    fails ONLY on its first invocation (a transient failure, recovering on retry) — the pre-loop
+    precompute is call 1 (fails), the single claim's own internal fallback is call 2 (succeeds via the
+    real function), so BOTH calls fire and the claim's payload is still genuine."""
+    engine, d = finalize_hook_drawdown_engine
+    cfg = load_config()
+    ledger = tmp_path / "certified-claims.jsonl"
+    append_entry(str(ledger), {
+        "claim": _DD_LEDGER_CLAIM, "register_date": "2024-06-01",
+        "verdict": {"status": "FAIL", "reason": "test fixture — not a real certification"},
+    })
+    monkeypatch.setenv(LEDGER_PATH_ENV, str(ledger))
+
+    real_phase_ctx = market_phase.phase_context_by_date
+    calls = {"n": 0}
+
+    def _boom_once_then_real(session, as_of=None, config=None):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("forced phase-context precompute failure (non-memory probe)")
+        return real_phase_ctx(session, as_of=as_of, config=config)
+
+    monkeypatch.setattr(market_phase, "phase_context_by_date", _boom_once_then_real)
+    with Session(engine) as session:
+        prog = JobProgress(job_id="dd-phase-ctx-nonmem-probe", kind="backfill", start=d, end=d)
+        prog.new_snapshot_dates = [d]
+        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)  # must not raise
+    assert calls["n"] == 2, (
+        "the pre-loop precompute (call 1, fails) plus the single claim's own internal self-compute "
+        "fallback (call 2, succeeds) must both have fired"
+    )
+    assert "drawdown_expectations" in refreshed, (
+        f"the per-claim self-compute fallback must still resolve a genuine payload; refreshed={refreshed}"
+    )
+
+
+def test_finalize_hook_drawdown_phase_context_warm_memory_error_releases_and_stops_before_any_claim(
+    finalize_hook_drawdown_engine, tmp_path, monkeypatch,
+):
+    """The SAME precompute step, but a `MemoryError` — caught by ITS OWN distinct handler applying the
+    iter-8 convention IN FULL: `_release_process_memory()` runs AND the per-claim loop is skipped entirely.
+
+    ops-hardening iter-49 AUDIT (finding B3): this test previously asserted the opposite (fall through to
+    per-claim self-compute). Falling through set `phases=None`, so every claim then self-computed its own
+    all-history timeline — under memory pressure the handler degraded to the MORE allocating path, the
+    exact behavior the iter-8 convention exists to prevent. The mock still fails only on its FIRST
+    invocation, so a fall-through would visibly succeed on call 2; asserting `calls["n"] == 1` therefore
+    proves the loop was genuinely skipped rather than merely erroring again, and `drawdown_expectations`
+    must be honestly ABSENT from the refreshed list (nothing was warmed)."""
+    engine, d = finalize_hook_drawdown_engine
+    cfg = load_config()
+    ledger = tmp_path / "certified-claims.jsonl"
+    append_entry(str(ledger), {
+        "claim": _DD_LEDGER_CLAIM, "register_date": "2024-06-01",
+        "verdict": {"status": "FAIL", "reason": "test fixture — not a real certification"},
+    })
+    monkeypatch.setenv(LEDGER_PATH_ENV, str(ledger))
+    release_calls = []
+    monkeypatch.setattr(
+        data_manager, "_release_process_memory", lambda: release_calls.append("called"),
+    )
+
+    real_phase_ctx = market_phase.phase_context_by_date
+    calls = {"n": 0}
+
+    def _boom_once_then_real(session, as_of=None, config=None):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise MemoryError("simulated memory pressure (phase-context precompute)")
+        return real_phase_ctx(session, as_of=as_of, config=config)
+
+    monkeypatch.setattr(market_phase, "phase_context_by_date", _boom_once_then_real)
+    with Session(engine) as session:
+        prog = JobProgress(job_id="dd-phase-ctx-mem-probe", kind="backfill", start=d, end=d)
+        prog.new_snapshot_dates = [d]
+        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)  # must not raise
+    assert release_calls, "the iter-8 convention requires _release_process_memory() on the MemoryError path"
+    assert calls["n"] == 1, (
+        "the per-claim loop must be skipped entirely after a memory-pressure abort in the precompute — a "
+        f"second phase_context_by_date call means a claim self-computed its own timeline anyway (calls={calls['n']})"
+    )
+    assert "drawdown_expectations" not in refreshed, (
+        f"nothing was warmed after the memory-pressure abort, so the category must be honestly omitted; "
+        f"refreshed={refreshed}"
+    )
+
+
+def test_finalize_hook_drawdown_expectations_column_projected_read_non_memory_failure_isolated(
+    finalize_hook_drawdown_engine, tmp_path, monkeypatch,
+):
+    """TC-11 — a genuine non-memory exception raised INSIDE `_factor_decile_observations`'s NEW
+    column-projected read (`research._extract_factor_value_from_row`, the iter-49 column-projection fix's
+    own new code) is caught by the SAME per-claim isolation convention every other claim-warm failure
+    already relies on: the finalize hook never raises, "drawdown_expectations" is honestly omitted for a
+    single-claim ledger, and the failure is logged.
+
+    Uses a DECILE-scoped claim (`slice_kind: "decile"`, mirroring the real live ledger's 5 decile-scoped
+    claims), NOT `_DD_LEDGER_CLAIM` (`slice_kind: "total"`, the "total"/`_factor_observations` branch this
+    iteration deliberately left untouched) — only the decile branch reaches
+    `_extract_factor_value_from_row` at all."""
+    engine, d = finalize_hook_drawdown_engine
+    cfg = load_config()
+    decile_claim = {**_DD_LEDGER_CLAIM, "slice_kind": "decile", "decile": 10}
+    ledger = tmp_path / "certified-claims.jsonl"
+    append_entry(str(ledger), {
+        "claim": decile_claim, "register_date": "2024-06-01",
+        "verdict": {"status": "FAIL", "reason": "test fixture — not a real certification"},
+    })
+    monkeypatch.setenv(LEDGER_PATH_ENV, str(ledger))
+
+    import app.engine.research as research_module
+
+    boom_calls = {"n": 0}
+
+    def _boom(*_a, **_k):
+        boom_calls["n"] += 1
+        raise RuntimeError("forced column-projected extractor failure (non-memory probe)")
+
+    monkeypatch.setattr(research_module, "_extract_factor_value_from_row", _boom)
+    with Session(engine) as session:
+        prog = JobProgress(job_id="dd-col-proj-nonmem-probe", kind="backfill", start=d, end=d)
+        prog.new_snapshot_dates = [d]
+        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)  # must not raise
+    # ops-hardening iter-49 AUDIT (T1): without this the proof is VACUOUS — "drawdown_expectations" is
+    # absent from `refreshed` for many reasons that have nothing to do with the injected fault (an
+    # unresolvable cohort, an out-of-scope horizon, a decile branch never reached on this fixture all
+    # produce the SAME observable). Asserting the injected extractor actually RAN is what makes the
+    # remaining assertion evidence of isolation rather than of a no-op.
+    assert boom_calls["n"] > 0, (
+        "the injected failure never fired — this claim never reached the new column-projected extractor, "
+        "so the isolation assertion below would pass vacuously"
+    )
+    assert "drawdown_expectations" not in refreshed, (
+        f"the single claim's own extractor failure must be honestly omitted, never fabricated; "
+        f"refreshed={refreshed}"
+    )
+
+
+# ops-hardening iter-49 AUDIT (finding T1) — TC-2's own regression guard, and the memoization guard the
+# suite was missing entirely. The phase spec's TESTING REQUIREMENTS ask for "per-horizon/per-claim
+# sub-phase timing tests"; before this test the ONLY evidence for TC-2 was three live-run log reads
+# (reports/perf-budgets.md Addendum 4/6) and nothing in the suite asserted either new log line, so a
+# refactor could silently drop the attribution this iteration exists to provide. The same gap covered the
+# iteration's actual bound: `phases` is threaded into every claim, but no test proved the timeline is
+# computed ONCE per finalize invocation rather than once per claim — and it cannot be caught by the
+# byte-identity proofs (both paths are byte-identical BY CONSTRUCTION; dropping `phases=_dd_phases`
+# restores the per-claim cost with every existing assertion still green).
+def test_finalize_hook_sub_phase_timing_names_each_horizon_and_claim_and_memoizes_phase_context(
+    finalize_hook_drawdown_engine, tmp_path, monkeypatch, caplog,
+):
+    """TC-2 + the `phases` memoization, on the SAME finalize-tail invocation.
+
+    TC-2: the per-horizon and per-claim sub-phase timing lines are emitted for EVERY configured horizon
+    and for the claim, each naming a specific horizon/claim identity (never a bare loop index, which is
+    not diagnostic across runs whose ledger order can change), and the pre-existing whole-phase lines for
+    both loops still fire unchanged alongside them.
+
+    Memoization: `phase_context_by_date` is called EXACTLY ONCE for a finalize invocation whose claim
+    genuinely computes a payload — proving the pre-loop precompute is what the claim consumed. Without
+    the threading (`phases=None` reaching `compute_drawdown_expectations`) this same fixture calls it
+    twice: once in the precompute, once in the claim's own self-compute.
+    """
+    engine, d = finalize_hook_drawdown_engine
+    cfg = load_config()
+    ledger = tmp_path / "certified-claims.jsonl"
+    append_entry(str(ledger), {
+        "claim": _DD_LEDGER_CLAIM, "register_date": "2024-06-01",
+        "verdict": {"status": "FAIL", "reason": "test fixture — not a real certification"},
+    })
+    monkeypatch.setenv(LEDGER_PATH_ENV, str(ledger))
+
+    # wrap (never replace) the fixture's own fake timeline so the payload below is still genuine.
+    fixture_phase_ctx = market_phase.phase_context_by_date
+    phase_ctx_calls = {"n": 0}
+
+    def _counting_phase_ctx(session=None, as_of=None, config=None):
+        phase_ctx_calls["n"] += 1
+        return fixture_phase_ctx(session, as_of=as_of, config=config)
+
+    monkeypatch.setattr(market_phase, "phase_context_by_date", _counting_phase_ctx)
+
+    with caplog.at_level("INFO", logger="trendora.data_manager"):
+        with Session(engine) as session:
+            prog = JobProgress(job_id="sub-phase-timing-probe", kind="backfill", start=d, end=d)
+            prog.new_snapshot_dates = [d]
+            refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)
+
+    lines = [r.getMessage() for r in caplog.records]
+    sub = [m for m in lines if m.startswith("J-05 finalize-tail sub-phase timing:")]
+    whole = [m for m in lines if m.startswith("J-05 finalize-tail phase timing:")]
+
+    # --- TC-2, forward_aggregates_warm: one line per CONFIGURED horizon, naming that horizon -------
+    for h in cfg.walk_forward.horizons:
+        assert any(
+            f"phase=forward_aggregates_warm horizon={h} elapsed=" in m for m in sub
+        ), f"no sub-phase timing line named horizon={h}; sub-phase lines seen: {sub}"
+
+    # --- TC-2, drawdown_expectations_warm: one line per claim, naming THAT claim -------------------
+    dd_lines = [m for m in sub if "phase=drawdown_expectations_warm" in m]
+    assert len(dd_lines) == 1, f"expected exactly one per-claim line for a 1-claim ledger; got {dd_lines}"
+    claim_token = dd_lines[0].split("claim=")[1].split(" elapsed=")[0]
+    assert claim_token == "factor:leadership_score:h20", (
+        f"the per-claim identity must name the claim's kind + discriminating selector + horizon; "
+        f"got {claim_token!r}"
+    )
+    # a bare loop index would satisfy "some identity" while being useless across runs (the log's own
+    # stated contract) — assert the token is not merely a number.
+    assert not claim_token.isdigit(), f"per-claim identity must never be a raw loop index: {claim_token!r}"
+    assert "elapsed=" in dd_lines[0]
+
+    # --- the pre-existing whole-phase lines are ADDITIVE-unchanged, not replaced ------------------
+    for phase in ("forward_aggregates_warm", "drawdown_expectations_warm"):
+        assert any(
+            f"phase={phase} elapsed=" in m for m in whole
+        ), f"the pre-existing whole-phase timing line for {phase} must still fire; whole-phase lines: {whole}"
+
+    # --- the memoization itself -------------------------------------------------------------------
+    assert "drawdown_expectations" in refreshed, (
+        "fixture sanity: the claim must genuinely compute a payload, otherwise the call-count assertion "
+        f"below proves nothing about a timeline that was never needed; refreshed={refreshed}"
+    )
+    assert phase_ctx_calls["n"] == 1, (
+        "the all-history timeline must be computed ONCE per finalize invocation and threaded into every "
+        f"claim; {phase_ctx_calls['n']} calls means a claim self-computed its own"
+    )
 
 
 # ==================================================================================================

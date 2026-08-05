@@ -5,14 +5,14 @@
   "default_timeout_ms": 20000,
   "steps": [
     {"n": 1, "journey": "J-05", "action": {"type": "goto", "url": "/data"}, "expect": {"text": "Data Manager"}},
-    {"n": 2, "journey": "J-05", "action": {"type": "fill", "target": {"testid": "job-start-date"}, "text": "2012-01-05"}},
-    {"n": 3, "journey": "J-05", "action": {"type": "fill", "target": {"testid": "job-end-date"}, "text": "2012-01-05"}},
+    {"n": 2, "journey": "J-05", "action": {"type": "fill", "target": {"testid": "job-start-date"}, "text": "2012-01-04"}},
+    {"n": 3, "journey": "J-05", "action": {"type": "fill", "target": {"testid": "job-end-date"}, "text": "2012-01-04"}},
     {"n": 4, "journey": "J-05", "action": {"type": "click", "target": {"role": "button", "name": "Start"}}},
     {"n": 5, "journey": "J-05", "action": {"type": "wait_for", "ms": 15000}},
     {"n": 6, "journey": "J-05", "action": {"type": "expect", "text": "1/1 dates"}, "expect": {"text": "1/1 dates"}},
     {"n": 7, "journey": "J-05", "action": {"type": "expect", "target": {"testid": "stage-timings"}}, "expect": {"target": {"testid": "stage-timings"}}},
     {"n": 8, "journey": "J-05", "action": {"type": "expect", "text": "1 snapshots"}, "expect": {"text": "1 snapshots"}},
-    {"n": 9, "journey": "J-05", "action": {"type": "goto", "url": "/scanner-runs"}, "expect": {"text": "2012-01-05"}},
-    {"n": 10, "journey": "J-05", "action": {"type": "click", "target": {"text": "2012-01-05"}}, "expect": {"text": "as of 2012-01-05"}}
+    {"n": 9, "journey": "J-05", "action": {"type": "goto", "url": "/scanner-runs"}, "expect": {"text": "2012-01-04"}},
+    {"n": 10, "journey": "J-05", "action": {"type": "click", "target": {"text": "2012-01-04"}}, "expect": {"text": "as of 2012-01-04"}}
   ]
 }

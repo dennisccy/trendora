@@ -3978,22 +3978,37 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
                         # block exactly as before (no regression to that existing behavior). On MemoryError
                         # this loop stops immediately (no further horizons attempted) and forces memory back
                         # to the OS.
+                        # ops-hardening iter-49 (J-05/J-07 TC-2): per-horizon sub-phase timing, additive to
+                        # the whole-phase log line below (byte-for-byte unchanged) — so a slow run's cost is
+                        # attributable to a SPECIFIC horizon, not just "the loop as a whole" (iter-48's own
+                        # coarser instrumentation could name only the phase, and its 102s/153s/1,334s
+                        # variance across three live runs could not be attributed further). Logged in a
+                        # `finally` so it fires whether this horizon succeeds, MemoryErrors (still logged
+                        # before the `break` takes effect), or a non-memory exception propagates to the
+                        # outer `except Exception` below (no change to that existing control flow).
+                        _horizon_t0 = time.monotonic()
                         try:
-                            # iter-39 (audit B3 / J-07 step 4): test-only injection point — a no-op unless
-                            # this process was started with the env var naming this site. See
-                            # `_fault_inject_memory_error`.
-                            _fault_inject_memory_error("forward_aggregates")
-                            forward_testing.forward_aggregates_ingest_cached(
-                                session, h, cfg, as_of=latest_run_date
+                            try:
+                                # iter-39 (audit B3 / J-07 step 4): test-only injection point — a no-op
+                                # unless this process was started with the env var naming this site. See
+                                # `_fault_inject_memory_error`.
+                                _fault_inject_memory_error("forward_aggregates")
+                                forward_testing.forward_aggregates_ingest_cached(
+                                    session, h, cfg, as_of=latest_run_date
+                                )
+                                forward_aggregates_warmed = True
+                            except MemoryError as exc:
+                                _log_isolation_failure(
+                                    "ingest forward-aggregate warm aborted at horizon %s — memory pressure, "
+                                    "stopping remaining horizons in this loop: %s", h, exc,
+                                )
+                                _release_process_memory()
+                                break
+                        finally:
+                            logger.info(
+                                "J-05 finalize-tail sub-phase timing: job=%s phase=%s horizon=%s elapsed=%.2fs",
+                                prog.job_id, "forward_aggregates_warm", h, time.monotonic() - _horizon_t0,
                             )
-                            forward_aggregates_warmed = True
-                        except MemoryError as exc:
-                            _log_isolation_failure(
-                                "ingest forward-aggregate warm aborted at horizon %s — memory pressure, "
-                                "stopping remaining horizons in this loop: %s", h, exc,
-                            )
-                            _release_process_memory()
-                            break
                     if forward_aggregates_warmed:
                         refreshed.append("forward_aggregates")
             except Exception as exc:  # noqa: BLE001 — non-fatal: log + continue to the next aggregate
@@ -4090,37 +4105,95 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
 
             _phase_t0 = time.monotonic()
             drawdown_warmed = False
-            for entry in ledger_entries:
+            # ops-hardening iter-49 (J-05, drawdown_expectations_warm bound): `phase_context_by_date`'s
+            # all-history causal timeline is invariant across every claim in this loop (`as_of=None`
+            # always, `cfg` unchanged mid-loop) — computed ONCE here and threaded through
+            # `compute_drawdown_expectations_cached`'s new `phases` parameter, instead of once per claim (7x
+            # on the live ledger). Own try/except: a NON-MEMORY failure here degrades to every claim
+            # self-computing its own timeline below (`phases=None` falls back to the SAME per-claim
+            # behavior `compute_drawdown_expectations` always had) — never a reason to abort the whole warm.
+            _dd_phases_memory_abort = False
+            try:
+                _dd_phases = market_phase.phase_context_by_date(session, as_of=None, config=cfg)
+            # ops-hardening iter-49 AUDIT (finding B3 fix): a `MemoryError` here STOPS this phase — it does
+            # NOT fall through to the per-claim loop. Falling through set `phases=None`, which makes every
+            # one of the ledger's claims self-compute its own all-history timeline: degrading under memory
+            # pressure into the MORE allocating path, i.e. exactly the "hammering the next claim's
+            # allocation under pressure" the iter-8 convention (see the per-claim handler below) exists to
+            # prevent. Now this handler matches that convention in full — stop, release memory back to the
+            # OS, and report honestly: `drawdown_warmed` stays False, so `drawdown_expectations` is omitted
+            # from `aggregates_refreshed` rather than claimed for work that never ran.
+            except MemoryError as exc:
+                _log_isolation_failure(
+                    "ingest drawdown-expectations phase-context warm aborted — memory pressure, stopping "
+                    "the drawdown-expectations warm without attempting any claim: %s", exc,
+                )
+                _release_process_memory()
+                _dd_phases = None
+                _dd_phases_memory_abort = True
+            except Exception as exc:  # noqa: BLE001 — non-fatal: fall back to per-claim self-compute
+                _log_isolation_failure(
+                    "ingest drawdown-expectations phase-context warm failed (non-fatal, falling back to "
+                    "per-claim self-compute): %s", exc,
+                )
+                _dd_phases = None
+            # `()` (never `ledger_entries`) after a memory-pressure abort above — the loop is skipped
+            # entirely, per the iter-8 stop convention. Every other outcome (success, or a non-memory
+            # precompute failure that degraded to `phases=None`) iterates the ledger exactly as before.
+            for entry in (() if _dd_phases_memory_abort else ledger_entries):
                 if not isinstance(entry, dict) or entry.get("type") == FORWARD_WALK_TYPE:
                     continue
                 claim = entry.get("claim") if isinstance(entry.get("claim"), dict) else {}
                 prog.tick()  # heartbeat stamp before each claim's warm call — see docstring above.
+                # ops-hardening iter-49 (J-05/J-07 TC-2): a stable, honest per-claim identity for the
+                # sub-phase timing log below — kind + the claim's own discriminating selector (factor /
+                # event-study subject / combination cohort) + horizon, NEVER a raw loop index (an index is
+                # not diagnostic across runs whose ledger order can change).
+                _claim_id = "{}:{}:h{}".format(
+                    claim.get("kind", "?"),
+                    claim.get("factor") or claim.get("subject") or claim.get("cohort")
+                    or claim.get("signal") or "?",
+                    claim.get("horizon", "?"),
+                )
+                _claim_t0 = time.monotonic()
                 try:
-                    # iter-39 (audit B3 / J-07 step 4): test-only injection point — see
-                    # `_fault_inject_memory_error` (a no-op unless this process names this site in the env).
-                    _fault_inject_memory_error("drawdown_expectations")
-                    result = forward_testing.compute_drawdown_expectations_cached(session, claim, cfg)
-                    # gate on an ACTUAL non-None payload (never just "the call didn't raise") — an
-                    # out-of-scope horizon or an unresolvable cohort returns None honestly and must NOT be
-                    # reported as refreshed (mirrors the `market_phase`/`research_hot_keys` "actually did
-                    # something" convention above).
-                    if result is not None:
-                        drawdown_warmed = True
-                # ops-hardening iter-8 (J-05 REGRESSION fix): distinct from the generic per-claim isolate-and-
-                # continue below — a `MemoryError` stops THIS loop immediately (no further claims attempted)
-                # and forces memory back to the OS, instead of hammering the next claim's allocation under
-                # pressure. `drawdown_warmed` already honestly reflects any claim that succeeded before the
-                # abort.
-                except MemoryError as exc:
-                    _log_isolation_failure(
-                        "ingest drawdown-expectations warm aborted — memory pressure, stopping remaining "
-                        "claims in this loop: %s", exc,
-                    )
-                    _release_process_memory()
-                    break
-                except Exception as exc:  # noqa: BLE001 — non-fatal: log + continue to the next claim
-                    _log_isolation_failure(
-                        "ingest drawdown-expectations warm failed for one claim (non-fatal): %s", exc
+                    try:
+                        # iter-39 (audit B3 / J-07 step 4): test-only injection point — see
+                        # `_fault_inject_memory_error` (a no-op unless this process names this site in the
+                        # env).
+                        _fault_inject_memory_error("drawdown_expectations")
+                        result = forward_testing.compute_drawdown_expectations_cached(
+                            session, claim, cfg, phases=_dd_phases,
+                        )
+                        # gate on an ACTUAL non-None payload (never just "the call didn't raise") — an
+                        # out-of-scope horizon or an unresolvable cohort returns None honestly and must NOT
+                        # be reported as refreshed (mirrors the `market_phase`/`research_hot_keys` "actually
+                        # did something" convention above).
+                        if result is not None:
+                            drawdown_warmed = True
+                    # ops-hardening iter-8 (J-05 REGRESSION fix): distinct from the generic per-claim
+                    # isolate-and-continue below — a `MemoryError` stops THIS loop immediately (no further
+                    # claims attempted) and forces memory back to the OS, instead of hammering the next
+                    # claim's allocation under pressure. `drawdown_warmed` already honestly reflects any
+                    # claim that succeeded before the abort.
+                    except MemoryError as exc:
+                        _log_isolation_failure(
+                            "ingest drawdown-expectations warm aborted — memory pressure, stopping "
+                            "remaining claims in this loop: %s", exc,
+                        )
+                        _release_process_memory()
+                        break
+                    except Exception as exc:  # noqa: BLE001 — non-fatal: log + continue to the next claim
+                        _log_isolation_failure(
+                            "ingest drawdown-expectations warm failed for one claim (non-fatal): %s", exc
+                        )
+                finally:
+                    # per-claim sub-phase timing (TC-2), additive to the whole-phase log line below (byte-
+                    # for-byte unchanged) — logged in a `finally` so it fires on success, MemoryError
+                    # (before the `break` takes effect), or any other isolated per-claim failure.
+                    logger.info(
+                        "J-05 finalize-tail sub-phase timing: job=%s phase=%s claim=%s elapsed=%.2fs",
+                        prog.job_id, "drawdown_expectations_warm", _claim_id, time.monotonic() - _claim_t0,
                     )
             if drawdown_warmed:
                 refreshed.append("drawdown_expectations")

@@ -15,6 +15,7 @@ fail-safe contract:
 """
 from __future__ import annotations
 
+import json
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -605,6 +606,50 @@ def test_build_payload_session_provided_attaches_expectations(tmp_path, evidence
     assert row["expectations"]["horizon"] == 20
     exp_phase = next(p for p in row["expectations"]["by_phase"] if p["phase"] == "Expansion")
     assert exp_phase["n"] == 1
+
+
+# ops-hardening iter-49 AUDIT (finding T1) — TC-3's drawdown leg covered the column-projection change
+# (`test_research_streaming.py`, `_factor_decile_observations` vs a pinned full-entity reference) but NOT
+# the OTHER change shipped in the same iteration: the new, additive `phases` parameter on
+# `compute_drawdown_expectations`/`_cached`. The ingest finalize warm loop
+# (`data_manager._refresh_ingest_aggregates`) is the ONE caller that threads a pre-computed all-history
+# timeline through it, and every `event_study_cache` payload `/api/evidence` later SERVES is written by
+# exactly that path — so a divergence between the threaded and the self-computed timeline would silently
+# persist wrong drawdown/dry-spell figures behind a "proven" claim (AG-3). Nothing in the suite asserted
+# that equivalence; these two proofs pin it at both entry points.
+def test_compute_drawdown_expectations_precomputed_phases_is_byte_identical(evidence_dd_engine):
+    """The uncached producer returns a byte-identical payload whether the caller threads a pre-computed
+    `phase_context_by_date(session, as_of=None, config=cfg)` timeline (the ingest finalize warm loop's
+    shape) or lets it self-compute (`phases=None`, every other caller's shape)."""
+    cfg = load_config()
+    claim = _pass_entry("leadership_score")["claim"]
+    with Session(evidence_dd_engine) as session:
+        self_computed = forward_testing.compute_drawdown_expectations(session, claim, cfg)
+        precomputed = market_phase.phase_context_by_date(session, as_of=None, config=cfg)
+        threaded = forward_testing.compute_drawdown_expectations(session, claim, cfg, phases=precomputed)
+    assert self_computed is not None, "fixture sanity: this claim must resolve to a real payload"
+    assert self_computed["by_phase"], "fixture sanity: the payload must carry real per-phase rows"
+    assert json.dumps(threaded, sort_keys=True) == json.dumps(self_computed, sort_keys=True)
+
+
+def test_drawdown_expectations_cached_persists_same_payload_when_phases_threaded(evidence_dd_engine):
+    """The CACHED entry point the ingest warm actually calls persists (and returns) the SAME payload a
+    fresh, `phases`-less canonical computation produces — the stored `event_study_cache` row `/api/evidence`
+    serves is not a second, divergent computation."""
+    cfg = load_config()
+    claim = _pass_entry("leadership_score")["claim"]
+    with Session(evidence_dd_engine) as session:
+        canonical = forward_testing.compute_drawdown_expectations(session, claim, cfg)
+        precomputed = market_phase.phase_context_by_date(session, as_of=None, config=cfg)
+        # MISS -> computes with the threaded timeline and persists under the current dataset version.
+        written = forward_testing.compute_drawdown_expectations_cached(
+            session, claim, cfg, phases=precomputed
+        )
+        # HIT -> re-serves the persisted row (proving what was STORED, not just what was returned).
+        served = forward_testing.compute_drawdown_expectations_cached(session, claim, cfg)
+    assert canonical is not None, "fixture sanity: this claim must resolve to a real payload"
+    assert json.dumps(written, sort_keys=True) == json.dumps(canonical, sort_keys=True)
+    assert json.dumps(served, sort_keys=True) == json.dumps(canonical, sort_keys=True)
 
 
 def test_build_payload_session_provided_unresolvable_claim_no_expectations_key(tmp_path, evidence_dd_engine):

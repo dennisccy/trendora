@@ -4188,3 +4188,169 @@ him — two more journeys now pass on real, checkable job records, which is the 
 movement in this session; the app stayed up and answered every one of 454 health checks with no
 memory failure on its own work; and adding one old day of history still does not finish, because of
 slow clean-up steps that pre-date this round's fix.
+
+## Iteration 49 — goal-ops-hardening-iter-49
+
+**Date:** 2026-08-05T12:50:00Z
+**Verdict:** ESCALATE
+**Depth dispatched:** full (`iter-49/depth-dispatched` = `full`, matching the spec's `Depth: full` /
+`Full trigger: 3`. `runs/goal-ops-hardening-iter-49/status.json` = `blocked` / `audit_failed` /
+`next_action: review`, `browser_checks_run: false`, three audit passes, 11 known_gaps.)
+
+**Journey deltas:**
+- **THE FACT I RECONSTRUCTED MYSELF, and it changes how the whole round reads: the crash was THREE
+  concurrent heavy loops, not one, and the round's own headline report named the wrong one.** At
+  10:36:03.525 `logs/backend.log` logs `evidence drawdown-expectations warm aborted — memory
+  pressure`; the traceback printed directly beneath it is **`warmup.py", line 198, in
+  _warm_drawdown_expectations`** — the BOOT/re-warm path (audit finding B2), NOT the ingest finalize
+  tail. The ingest tail's own per-claim lines for job `d5637f7c` are separately stamped 10:25:34. So
+  three heavy computations were live at once: (1) run 312's finalize tail, (2) warmup.py:198's
+  uninterlocked drawdown loop, (3) a user page load of `/research/factor-lab`. (1) and (2) aborted
+  gracefully; (3) raised an **uncaught** MemoryError at `research.py:1051` (`sorted(obs, ...)`, log
+  line 191719) and `OpenBLAS error: Memory allocation still failed after 10 retries, giving up.`
+  (line 191721) killed the process. The browser-QA report attributes that first abort to "UT-02's
+  OWN finalize-tail phase, this iteration's own target". It is not. That distinction is what turns
+  B2 from a theoretical risk into a proven live contributor (`iter-49/bu`).
+- **The outage was 12 m 45 s, not the "6+ minutes" the lane could see.** Measured by me from the
+  log's own restart banner: crash 09:36:05Z → `start-backend.sh: launching at 2026-08-05T09:48:49Z`,
+  and run 312 reaped to `interrupted` at 09:48:50. MemoryError count 7,079 → **7,083**.
+- **J-07 "Heavy aggregates never take the service down" — `partial` → `failing`.** The service went
+  down, during the exact finalize-tail window the journey is written about. Separately, and
+  independently of the crash, I recomputed the health samples from the committed raw CSVs
+  (449/460/459 polls): **6 / 8 / 9 polls over the 2 s ceiling in 3 of 3 runs**, two polls per run
+  over 5 s, and runs 2 and 3 each contain a poll that never answered (blank `http_status`, 10.01 s
+  client timeout). J-07 step 2 fails on the drills alone. `last_passing_iter` stays iter-34;
+  `evidence_makeup` CLEARED (UT-05-fail.png is a fresh, real capture of the crashed state).
+- **J-05 "Aggregates are precomputed at ingest" — `failing` → `partial`**, its first upward move in
+  six rounds, and I state exactly what it does and does not rest on. FOR: I recomputed the three
+  drills from the raw sampler files myself — spans 1,019.6 / 1,052.5 / 1,049.2 s against the 1,200 s
+  bound, VmPeak 4,577,812 / 4,243,444 / 4,281,968 kB (45.4–49.4 % margin under the 8,388,608 kB
+  cap) — and the in-app job ran a genuinely bounded tail: `forward_aggregates_warm elapsed=168.15s`
+  with all five per-horizon lines present (25.12/33.64/47.09/32.17/30.11 s), against iter-48's
+  1,334 s outlier. AGAINST: UT-02 is a **FAIL** row, UT-03/UT-08 never ran, the in-app job never
+  reached terminal, and the drills used a throwaway DB copy on an idle host. NOT a pass.
+- **J-01 and J-03 KEEP `passing` on rows the checks themselves caused** — the strongest basis this
+  session has had for them. `data_provider_runs` ids **309, 310, 311** were created 04:40:49–04:41:12Z
+  by the deterministic replay, with exactly the counts the goldens assert (28 calendar · 19 already
+  snapshotted · 9 non-trading; 2 calendar · 2 non-trading; 412 calendar · 283/283 dates) — read by
+  me in sqlite, with matching fresh screenshots `J-01-verify.png` / `J-03-verify.png` (I opened
+  J-01's: it renders the stored immutable snapshot "as of 2026-05-29").
+- **J-04 stays `partial`, but with real executed rows for the first time in three rounds** — two
+  integration tests that spawn and SIGKILL a real backend via `scripts/start-backend.sh`, re-run at
+  13:07–13:17 i.e. AFTER the newest product-code mtime: boot→first HTTP 200 in 1.29–1.50 s against a
+  5 s budget with an honest pre-ready payload, and crash→restart→the mid-flight row reads back
+  `interrupted` with `finished_at` set and progress unchanged. Step 4's UI half got live incidental
+  evidence (`UT-05-fail.png`: "Backend unavailable" + NO-GO). Step 3's badge-in-the-same-window
+  assertion is still unproven.
+- **J-06 stays `partial`.** UT-J-06 PASS (11 routes, no error cards) is real, but UT-07 FAILED on
+  `/research/factor-lab` and that page's own read is what killed the process; no fresh page-load
+  budget numbers were recorded, so its step 2 is unmet.
+- **J-08, J-09 KEPT `passing` on A.6 durability plus my own live spot-checks, not on lane rows**
+  (both are SKIP — the backend was down). Verified at the source: `resolved_forward_aggregate_evidence`,
+  `get_background_compute_status` and `_HIST_DISPATCH_INFLIGHT` have **0** mentions in this
+  iteration's diff. Live on the shipped build: `/api/backtest` 200 in 0.106 s with
+  `evidence_status: "ready"`, `n_runs: 2886` and `evidence_generated_at 09:24:52Z` (produced at
+  ingest); `/api/health` 200 in 0.091 s carrying `background_compute {active: [], recent_outcomes: []}`.
+  Both carry `evidence_makeup: true` — their lane screenshots are the blank frame.
+- Deferred (`DEFERRED-BUDGET`): none. No `browser-infra.json`; no `journeys-changed.md`; all 8
+  `spec_hash`es match `goal_gate hash-journeys` run by me. `pending_infra`: cleared everywhere.
+- Anti-goal violations: **EIGHT NEW — `iter-49/bp`** (the 12 m 45 s outage; AG-8 class, scored
+  `minor` in the machine field ONLY because the crashing frame is untouched by this diff — the
+  defect is scored on J-07 instead), **`bq`** (health ceiling breached 6/8/9 times, 3/3 runs),
+  **`br`** (TC-7 breached a FOURTH consecutive round — lane 10:07/10:46 vs product mtime 12:34:46;
+  and TC-7(b) fails with J-04/J-08/J-09 at zero executed rows), **`bs`** (four PASS rows citing one
+  byte-identical BLANK frame; UT-01's file is a stale copy of iter-48's), **`bt`** (the QA report
+  reads PASS/"DoD met" while the same phase's browser lane reads FAIL), **`bu`** (the mis-attributed
+  abort above), **`bv`** (demo captured zero steps again — 19th round without J-07's walkthrough),
+  **`bw`** (RESOLVED IN-AUDIT: J-05's golden targeted a date this round's own lane had consumed;
+  rotated to 2012-01-04, which I confirmed has 0 snapshot rows and 480 symbols with bars).
+  `iter-48/bj` amended, not closed. Ledger now: **85 total, 35 unresolved, 0 unresolved critical.**
+  scan CLEAN; coherence COHERENCE-PASS; review PASS_WITH_NOTES; QA PASS (contradicts its own cited
+  artifacts); audit FAIL; browser QA FAIL (6/15); deterministic replay BLOCKED (0/5); demo NOT_YET.
+
+**Reasoning:** I checked every load-bearing fact myself instead of reading it off a report.
+(1) **The iteration's own goal was met and I proved it from the raw samples, not the handoff.** The
+three drill CSVs give sampler spans of 1,019.6 / 1,052.5 / 1,049.2 s against a 1,200 s bound and
+VmPeak maxima of 4,577,812 / 4,243,444 / 4,281,968 kB against an 8,388,608 kB cap; the auditor
+recomputed the same numbers independently. The per-horizon and per-claim attribution TC-2 asked for
+genuinely exists — I read five `forward_aggregates_warm horizon=` lines and the whole-phase total in
+the live app's own log.
+(2) **The crash is the round's dominant fact and its published attribution was wrong.** I read the
+traceback rather than the prose: the first graceful abort is `warmup.py:198`, the boot path, not the
+ingest tail. Three heavy loops, two protected, one not.
+(3) **I measured the outage rather than accepting "6+ minutes":** 09:36:05Z → 09:48:49Z = 12 m 45 s,
+from the log's own restart banner, corroborated by run 312's `finished_at` of 09:48:50.
+(4) **I recomputed the health samples instead of quoting the summary line**, and they fail J-07 step 2
+on their own — before the crash is even considered.
+(5) **I hashed the evidence directory and five of this round's pictures are worthless.** Four PASS
+rows (UT-06, UT-09, UT-J-01, UT-J-03) cite one byte-identical file which I opened: a completely blank
+dark frame. `UT-01-result.png` is byte-identical to iter-48's `UT-01-result.png` AND `UT-05-result.png`
+— the very file iter-48 flagged as `bm`, copied forward another round. The behaviours are nonetheless
+true and I re-verified them live myself, so this is a capture defect (A.7), not a product fault.
+(6) **I did not accept the two promotions on page text.** J-01/J-03 rest on `data_provider_runs`
+309/310/311, created by the replay itself at 04:40–04:41Z with exactly the asserted counts.
+(7) **AG-10 checked at the source:** `git diff` against the snapshot over `config.yaml`,
+`start-backend.sh`, `dev.sh` and `host-guard.env` is EMPTY; `config.yaml:1363-1364` still reads
+`memory_cap_mb: 8192` / `malloc_arena_max: 2`; the banners agree.
+(8) **AG-9 checked at the row level:** every run created this round (309, 310, 311, 312) is
+`provider='seed'`.
+Rejected **REGRESSION (C.1)**: no journey moved `passing`/`already_passing` → `failing` — J-07 was
+already `partial` and has not passed since iter-34 — and no critical anti-goal violation was
+introduced. The crashing frame (`research.py:1051`) is provably untouched by a 7-file diff that
+REMOVED an unbounded read; the crash is a carried, five-times-concurred, explicitly out-of-scope
+defect, and I scored it where it belongs (J-07 = failing) rather than as a new critical violation
+that would halt the loop with nothing for the owner to decide. Filed in `assumptions.md` because a
+reader could reverse it.
+Rejected **STALLED (C.2)**: not one unblock path is human-owned. Both halves of the fix are named
+with file and line (`research.py:1051`, `warmup.py:198`), the isolated warm peaks at ~4.5 GB of an
+8 GB envelope so there is ample headroom without touching AG-10's owner-set values, and the backend
+and frontend are up right now (I probed them).
+Rejected **GOAL_ACHIEVED (C.3)**: J-07 is failing and three journeys are `partial`.
+**Chose ESCALATE (C.4):** the first clause fires plainly — J-07 has not passed for fifteen rounds and
+J-05 for ten, and neither passed this round either — and full depth is right on the merits, because
+this round's auditor again produced the load-bearing findings (the consumed-golden near-miss that
+would have manufactured a J-05 PASS, and the missing sub-phase regression guard).
+**FIVE THINGS I STATE PLAINLY RATHER THAN ROUND AWAY:** (i) **the round delivered its goal and the
+journey table still shows a loss.** Adding one old day of history now finishes in about seventeen
+minutes, three times out of three, where it previously never finished at all. That is real and I
+measured it. It is also not what the round will be remembered for. (ii) **the app died, and it died
+from the thing five reviews in a row said would kill it.** A page nobody was asked to fix, running
+next to a background job nobody was asked to coordinate, took an 8 GB process to its ceiling. The
+repair is fully specified and needs no owner input; what it needs is to actually be scheduled.
+(iii) **the round's own quality report says "pass" while the round's own browser check says "fail",**
+and the quality report never mentions the browser check at all. The auditor caught it; I confirmed
+it; it must be regenerated, not edited. (iv) **the rule that the journey checks must run last has now
+failed four rounds in a row.** This time the gap is two hours and a real product-code change, and
+three journeys ended with no check at all. A rule restated in four consecutive specs and broken four
+consecutive times is not a rule. (v) **five of this round's pictures prove nothing** — four are the
+same blank frame and one is a file copied from last round. The behaviours behind them are real and I
+re-checked them live, but the evidence trail this session runs on is quietly rotting and this is the
+second consecutive round it has done so.
+
+**Next-step recommendation:** FULL depth (mandatory via ESCALATE). Give the next round this order.
+(1) **Stop one research page from killing the whole app.** Opening the Factor Lab page while a data
+job is finishing took the backend down for nearly thirteen minutes. Two changes must land together
+as ONE job: limit what that page loads into memory, and stop the start-up warm-up from running the
+same heavy calculation at the same time as a data job. (2) **Then run the eight journey checks last,
+and change no code afterwards.** Three journeys had no check at all this round because the app was
+down: "Non-blocking boot with visible status" (J-04), "Backtest evidence serves from storage only"
+(J-08) and "The backend discloses its own background-compute activity" (J-09). The J-05 check now
+points at 2012-01-04, which I confirmed has no snapshot. (3) **Finish proving "aggregates are
+precomputed at ingest" (J-05) inside the app** — the timing promise is met on an idle machine but
+has never been shown through the app's own pages. (4) **Make the health check keep its two-second
+promise** — it was slower six, eight and nine times in the three runs, and twice per run it did not
+answer at all; one of the three slow spots is a twenty-four-second step this round itself added.
+(5) SMALL AND ALREADY WRITTEN DOWN: `_combination_observations` is now the slowest single claim
+(~250 s); the per-claim timing label can collide for two claims on the same factor and horizon; the
+new timing pre-calculation runs even when there is nothing to compute. (6) CARRIED, untouched:
+iter-29/b + the badge wording after a permanently failed warm-up (22nd round unmade); iter-31/e;
+iter-32/f; iter-35/k; iter-36/n; iter-37/o; iter-37/q; iter-39/u; iter-46/az; iter-46/ba; iter-47/bd;
+iter-47/bf; iter-47/bi; iter-48/bj (amended, still open). (7) CAPTURE ONLY, never a round's goal: the
+walkthrough recorded zero steps for the second round running, and five of this round's pictures are
+blank or copied — retake them as a passenger task. (8) OWNER: nothing needs his decision, but three
+facts belong in front of him — the twenty-minute promise for adding one old day of history is now
+genuinely met three runs out of three, which is what this round was for; the app nevertheless went
+down for nearly thirteen minutes when a research page and a background job ran out of memory
+together, the same shape as the failure that stopped this session in July, and the repair is already
+written down and does not need him; and the round's quality report says "pass" while its own browser
+check says "fail".

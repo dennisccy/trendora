@@ -73,6 +73,9 @@ _DEVSCRIPT_FRONTEND_PORT = 19700 + _offset
 _NOCAP_TEST_PORT = 18800 + _offset
 # A SIXTH port for the ops-hardening iter-44 ServerOpsCfg-flags fast-shutdown test below.
 _FAST_SHUTDOWN_TEST_PORT = 18900 + _offset
+# A SEVENTH pair for the ops-hardening iter-49 J-04 boot/crash/restart tests at the end of this module
+# (`+ 1` is the scratch-DB crash/restart test's own port; their frontend ports are `+ 1000` as usual).
+_J04_TEST_PORT = 19100 + _offset
 
 # ops-hardening iter-9 (AG-10): the real, committed host-guard config this project runs under.
 HOST_GUARD_ENV_FILE = REPO_ROOT / "project-extensions" / "host-guard" / "host-guard.env"
@@ -856,15 +859,29 @@ _HISTORICAL_GAP_INSERT_TC1_BOUND_S = 1200.0
 @pytest.mark.xfail(
     strict=False,
     reason=(
-        "ops-hardening iter-48 AUDIT (T2, reviewer MINOR note): TC-1's END-TO-END 20-minute bound is not "
-        "met on this build because of TWO pre-existing finalize-tail phases this iteration's scope "
-        "explicitly excludes -- `forward_aggregates_warm` (102.48s / 153.07s / 1334.13s across three live "
-        "runs; the 1334.13s run ALONE exceeds the whole 1200s bound) and `drawdown_expectations_warm` "
-        "(667.30s in the one run that completed, unbounded in two others). This iteration's OWN fix "
-        "target, `coverage_membership_timeline_refresh`, is fast and bounded across all three runs "
-        "(9.18s / 24.10s / 21.01s). Marked xfail(strict=False) rather than deleted so the gap keeps "
-        "signalling without failing the suite, and so it XPASSes (never errors) the moment a future "
-        "iteration bounds those two phases -- at which point delete this marker."
+        "ops-hardening iter-49 (J-05/J-07): TC-1's own 1,200s termination bound IS now reliably met -- "
+        "`forward_aggregates_warm` and `drawdown_expectations_warm` (the two phases iter-48's audit named "
+        "as the residual blocker) are both bounded this iteration and the job reaches a terminal status "
+        "in 1012.71s / 1048.22s / 1044.77s across 3 independent live runs (well inside the 1,200s bound; "
+        "`reports/perf-budgets.md` Item R Addendum 4). This test is left xfail, NOT because TC-1 itself "
+        "fails, but because it bundles a SEPARATE, newly-surfaced defect into the SAME assertion block: "
+        "a reproducible ~10s `GET /api/health` timeout (2 of 3 runs, `poll_index` 21-22, httpx "
+        "`timeout=10.0`) during the EARLY backfill/`coverage_membership_timeline_refresh` boundary -- "
+        "BEFORE either phase this iteration bounds even starts, and unrelated to this iteration's own "
+        "diff (unchanged by `git diff`: `_do_backfill`'s scoring path, `_excluded_counts_by_date`). Status/"
+        "snapshots_created/aggregates_refreshed/VmPeak all passed in every run that reached the health "
+        "assertion (pytest stops at the first failing assert, and the health check is last), so this is "
+        "the health-poll gap alone, never a loosened TC-1 assertion. goal.md's own OUT OF SCOPE list "
+        "names this class of finding explicitly ('Health-poll ceiling breach re-measurement -- folded "
+        "into required-still-passing verification, no fix attempted this round'), so it is disclosed, "
+        "not fixed, here. AUDIT CORRECTION (see reports/perf-budgets.md Addendum 6): the ~10s timeouts "
+        "are at that boundary, but they are not the whole finding -- the >=2s ceiling is breached 6-9 "
+        "times per run in 3 of 3 runs, with a mid-run cluster inside this iteration's OWN "
+        "phase_context_by_date precompute and the two largest 200-OK stalls (7.9s/9.7s) inside the "
+        "un-optimised combination:composite claim, so the follow-up must cover all three sites. "
+        "Marked xfail(strict=False) so the "
+        "gap keeps signalling without failing the suite, and so it XPASSes (never errors) the moment the "
+        "health-poll gap is closed -- at which point delete this marker."
     ),
 )
 def test_start_backend_historical_gap_insert_reaches_terminal_status_within_bound(
@@ -920,7 +937,13 @@ def test_start_backend_historical_gap_insert_reaches_terminal_status_within_boun
 
     backend = spawned_backend_throwaway_db
     cfg = get_config()
+    cap_kb = cfg.server.memory_cap_mb * 1024
 
+    # ops-hardening iter-49 (TC-5): sample /proc/<pid>/status throughout the SAME drill so this one live
+    # run also proves the VmPeak margin against the declared memory_cap_mb, mirroring the sibling
+    # back-to-back-heavy-ingest test's own pattern — no need for a second, separate drill.
+    mem = _MemSampler(backend.pid)
+    mem.start()
     health = _HealthPoller(backend.port)
     health.start()
     elapsed_s = None
@@ -931,10 +954,17 @@ def test_start_backend_historical_gap_insert_reaches_terminal_status_within_boun
         job = _poll_job_to_terminal(backend.port, job_id, timeout_s=_HISTORICAL_GAP_INSERT_TC1_BOUND_S)
         elapsed_s = time.monotonic() - t0
     finally:
+        mem.stop()
+        mem.join(timeout=5)
         health.stop()
         health.join(timeout=5)
+        sampler_csv = os.environ.get("TRENDORA_HEAVY_INGEST_SAMPLER_CSV")
+        if sampler_csv:
+            _write_run_evidence(Path(sampler_csv), mem, health)
         print(
             f"\n[historical-gap-insert] elapsed_s={elapsed_s} "
+            f"peak_VmPeak_kb={mem.peak('VmPeak')} peak_VmSize_kb={mem.peak('VmSize')} "
+            f"cap_kb={cap_kb} "
             f"health_polls={len(health.results)} "
             f"health_non_200={len([r for r in health.results if r['status'] != 200])}"
         )
@@ -947,6 +977,17 @@ def test_start_backend_historical_gap_insert_reaches_terminal_status_within_boun
         f"job reached terminal status but took {elapsed_s:.1f}s, over TC-1's "
         f"{_HISTORICAL_GAP_INSERT_TC1_BOUND_S:.0f}s bound"
     )
+    # TC-5 — process VmPeak/VmSize stay under the declared server.memory_cap_mb cap throughout the SAME
+    # drill (AG-10 — never re-tuned by this iteration; the cap value itself is asserted unchanged
+    # elsewhere, TC-10).
+    peak_vmpeak = mem.peak("VmPeak")
+    peak_vmsize = mem.peak("VmSize")
+    assert mem.samples, "expected at least one /proc/<pid>/status sample across the whole run"
+    assert peak_vmpeak < cap_kb, (
+        f"peak VmPeak {peak_vmpeak} KB ({peak_vmpeak / 1024:.1f} MB) reached/exceeded the "
+        f"{cap_kb} KB ({cfg.server.memory_cap_mb} MB) ulimit -v cap"
+    )
+    assert peak_vmsize < cap_kb, f"peak VmSize {peak_vmsize} KB reached/exceeded the {cap_kb} KB cap"
     # scenario-integrity guard (mirrors the sibling heavy-ingest test): this date was picked specifically
     # because it had no snapshot, so it MUST have created one -- a zero-work no-op here would prove
     # nothing about the finalize-tail fix this test exists to measure.
@@ -1319,3 +1360,297 @@ def test_dev_script_host_guard_disabled_backend_starts_cleanly_with_no_caps():
                 proc.wait(timeout=10)
             except (ChildProcessError, subprocess.TimeoutExpired):
                 pass
+
+
+# ==================================================================================================
+# ops-hardening iter-49 AUDIT (finding F2 / phase-spec TC-9) — J-04's own EXECUTED row, produced by a
+# lane that is PERMITTED to restart services.
+#
+# J-04 ("Non-blocking boot with visible status") produced ZERO executed rows for three consecutive
+# rounds. Its assigned lane was the browser-qa agent, which is structurally forbidden from doing what
+# J-04's own steps require: "restarting/killing the backend is out of scope for this browser-only QA
+# agent" (`reports/phase-goal-ops-hardening-iter-49-ui-test-results.md`, UT-J-04 = SKIPPED). Writing
+# "non-negotiable" into a fifth spec cannot fix a lane that is not allowed to perform the action, so
+# the audit's recommendation 2 reassigns the row here — this module already spawns and SIGKILLs real
+# backends through the real `scripts/start-backend.sh`.
+#
+# Coverage of J-04's steps (`docs/goal.md`):
+#   1-2  boot -> first HTTP 200 within 5 s on the warm committed DB ......... test_j04_boot_serves_...
+#   3    a polled pre-ready payload carries the boot phase + progress n/m ... test_j04_crash_...
+#   4    a killed backend is UNREACHABLE (connection refused), categorically
+#        distinct from `initializing` (an HTTP 200 carrying a phase) ........ test_j04_crash_...
+#   5    persistent logfile carries boot events / ends abruptly after a
+#        crash .............................................................. ALREADY covered above by
+#        `test_start_backend_writes_persistent_logfile_with_boot_events` and
+#        `test_start_backend_logfile_ends_abruptly_after_simulated_crash` — deliberately not duplicated.
+#   6    after the restart, a job that was mid-flight at the kill reads back
+#        `interrupted` WITH its last persisted progress ..................... test_j04_crash_...
+# The UI-presentation halves of steps 3-4 (top-bar badge / preflight-banner rendering) stay browser-lane
+# work; everything the backend itself owns is proven here, live, against the real launch script.
+# ==================================================================================================
+_J04_BOOT_BUDGET_S = 5.0  # docs/goal.md Success Criteria + J-04 step 2 (warm committed DB)
+_J04_POLL_INTERVAL_S = 0.2  # J-04 step 3 requires polling at <= 250 ms from process start
+# The four honest readiness states `app.engine.readiness` can return (its own module docstring) — the
+# single Data-Contract producer for this value.
+_J04_READINESS_STATES = frozenset({"ready", "initializing", "unavailable", "awaiting_snapshot"})
+
+
+def _assert_health_payload_is_honest(payload: dict) -> None:
+    """Every HTTP 200 a booting backend serves must carry the readiness Data-Contract shape: one of the
+    four honest states, plus the warm-up progress the badge renders as "history n/m" (J-04 step 3's
+    "boot phase and progress n/m"). A `db_ok: false` payload must NEVER claim anything but
+    `unavailable` (J-04 acceptance: no "Ready" before real data is servable)."""
+    assert payload.get("readiness") in _J04_READINESS_STATES, (
+        f"readiness must be one of {sorted(_J04_READINESS_STATES)}; got {payload.get('readiness')!r}"
+    )
+    warm = payload.get("warmup")
+    assert isinstance(warm, dict), f"health must carry the warmup progress block; got {warm!r}"
+    done, total = warm.get("done"), warm.get("total")
+    assert isinstance(done, int) and isinstance(total, int), f"warmup done/total must be ints: {warm}"
+    assert warm.get("message") == f"history {done}/{total}", (
+        f"warmup message must be the 'n/m' progress the badge renders; got {warm.get('message')!r} "
+        f"for done={done} total={total}"
+    )
+    if payload.get("db_ok") is not True:
+        assert payload.get("readiness") == "unavailable", (
+            f"a payload whose DB read failed must report 'unavailable', never a fabricated state: {payload}"
+        )
+
+
+def _j04_poll_until_first_200(port: int, t0: float, timeout_s: float) -> tuple[float, dict, int]:
+    """Poll `GET /api/health` at `_J04_POLL_INTERVAL_S` from `t0` (taken immediately before the launch
+    script was spawned) until the FIRST HTTP 200. Returns (elapsed_to_first_200, payload, attempts)."""
+    attempts = 0
+    deadline = t0 + timeout_s
+    while time.monotonic() < deadline:
+        attempts += 1
+        try:
+            resp = httpx.get(f"http://127.0.0.1:{port}/api/health", timeout=2.0)
+            if resp.status_code == 200:
+                return time.monotonic() - t0, resp.json(), attempts
+        except Exception:  # noqa: BLE001 — a refused connect is the expected pre-listen state
+            pass
+        time.sleep(_J04_POLL_INTERVAL_S)
+    raise AssertionError(f"backend on :{port} served no HTTP 200 within {timeout_s}s ({attempts} polls)")
+
+
+def _j04_kill_and_wait(proc: subprocess.Popen, sig: int = signal.SIGKILL) -> None:
+    """SIGKILL (a simulated crash — no chance to run any shutdown code) and reap, mirroring the
+    `spawned_backend` fixture's own teardown."""
+    if _pid_alive(proc.pid):
+        os.kill(proc.pid, sig)
+        deadline = time.monotonic() + 10.0
+        while _pid_alive(proc.pid) and time.monotonic() < deadline:
+            time.sleep(0.1)
+    try:
+        proc.wait(timeout=10)
+    except (ChildProcessError, subprocess.TimeoutExpired):
+        pass
+
+
+def test_j04_boot_serves_first_health_200_within_5s_on_warm_db():
+    """J-04 steps 1-2 — start the REAL `scripts/start-backend.sh` (prod mode, never `dev.sh`) against the
+    REAL warm committed DB and poll `GET /api/health` at 200 ms from process start: the FIRST HTTP 200
+    must arrive within 5 s (`docs/goal.md` Success Criteria), and that first payload must already carry
+    the honest readiness state + "history n/m" progress rather than a blank or fabricated one.
+
+    The clock starts before `Popen`, so the measurement INCLUDES the launch script's own bash startup,
+    ulimit/host-guard setup and `exec` — strictly more than "process start", never less."""
+    if not SCRIPT.exists():
+        pytest.skip(f"{SCRIPT} not found")
+    if not REAL_DB.exists():
+        pytest.skip(f"real committed DB not found at {REAL_DB} — J-04's budget is defined on the WARM DB")
+
+    env = dict(os.environ)
+    env["CHAIN_BACKEND_PORT"] = str(_J04_TEST_PORT)
+    env["CHAIN_FRONTEND_PORT"] = str(_J04_TEST_PORT + 1000)
+    t0 = time.monotonic()
+    proc = subprocess.Popen(
+        ["bash", str(SCRIPT)], cwd=str(REPO_ROOT), env=env,
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
+    try:
+        elapsed, payload, attempts = _j04_poll_until_first_200(_J04_TEST_PORT, t0, timeout_s=60.0)
+        print(
+            f"\n[J-04] warm-DB boot -> first HTTP 200 in {elapsed:.2f}s after {attempts} poll(s) "
+            f"(budget {_J04_BOOT_BUDGET_S}s); readiness={payload.get('readiness')!r} "
+            f"warmup={payload.get('warmup')}"
+        )
+        assert elapsed <= _J04_BOOT_BUDGET_S, (
+            f"J-04 step 2: first HTTP 200 took {elapsed:.2f}s, over the {_J04_BOOT_BUDGET_S}s budget "
+            f"recorded in reports/perf-budgets.md"
+        )
+        _assert_health_payload_is_honest(payload)
+    finally:
+        _j04_kill_and_wait(proc)
+
+
+def _j04_build_scratch_db(scratch_dir: Path) -> tuple[Path, Path]:
+    """Build a TINY scratch DB + a scratch `config.yaml` pointing at it, and return both paths.
+
+    Why not the real DB: J-04 step 6 needs a `running` job row to exist at the moment of the crash, and
+    writing job rows into the shared committed DB would leave synthetic runs in the operator's own Run
+    History. Why not an EMPTY DB: an empty `daily_prices` makes the boot's `load_seed` load the whole
+    158 MB committed seed (minutes). One `DailyPrice` row is the smallest thing that makes `load_seed`'s
+    price load a no-op (`_price_count` non-zero) while leaving every OTHER boot step — table creation,
+    reference/macro seed, the J-60 orphan sweep, `ensure_latest_snapshot`, the background warm-up — running
+    exactly as in production against the REAL committed `config.yaml` (only `database.url` is rewritten)."""
+    from datetime import date as date_cls
+
+    from sqlmodel import Session
+
+    from app.db import create_db_and_tables, make_engine
+    from app.models import DailyPrice
+
+    scratch_dir.mkdir(parents=True, exist_ok=True)
+    db_path = scratch_dir / "j04-scratch.db"
+    engine = make_engine(f"sqlite:///{db_path}")
+    create_db_and_tables(engine)
+    with Session(engine) as session:
+        session.add(DailyPrice(
+            symbol="SPY", date=date_cls(2024, 3, 4), open=1.0, high=1.0, low=1.0, close=1.0, volume=1.0,
+        ))
+        session.commit()
+    engine.dispose()
+
+    config_path = scratch_dir / "j04-config.yaml"
+    new_cfg_text, n = re.subn(
+        r'url:\s*"sqlite:///apps/backend/data/trendora\.db"',
+        f'url: "sqlite:///{db_path}"',
+        REAL_CONFIG.read_text(),
+        count=1,
+    )
+    assert n == 1, "expected exactly one database.url line to rewrite in the real config.yaml"
+    config_path.write_text(new_cfg_text)
+    return db_path, config_path
+
+
+def test_j04_crash_with_midflight_job_restarts_to_interrupted_row_with_last_progress(tmp_path):
+    """J-04 steps 3, 4 and 6, end to end through the real launch script — the sequence the browser-only
+    lane is not permitted to perform.
+
+    1. Boot a backend on a scratch DB; every polled 200 carries the honest readiness state + "history
+       n/m" progress (step 3's backend half).
+    2. Write a `running` `DataProviderRun` row with its last persisted progress WHILE that backend is
+       alive, and confirm the live instance serves it as `running` with a null `finished_at` — i.e. the
+       row genuinely is mid-flight at the moment of the kill, not fabricated afterwards.
+    3. SIGKILL the backend (simulated crash) and confirm `GET /api/health` no longer connects at all —
+       unreachable is categorically distinct from `initializing`, which answered HTTP 200 with a phase
+       (step 4's backend half).
+    4. Restart on the SAME DB and assert `GET /api/data`'s run history now shows that SAME row id as
+       `interrupted` with a non-null `finished_at` and its progress fields UNCHANGED — never a still-
+       `running` row with no living process, and never a row whose progress was overwritten (step 6).
+    """
+    if not SCRIPT.exists():
+        pytest.skip(f"{SCRIPT} not found")
+
+    from sqlmodel import Session
+
+    from app.db import make_engine
+    from app.models import DataProviderRun
+
+    db_path, config_path = _j04_build_scratch_db(tmp_path / "j04")
+    port = _J04_TEST_PORT + 1
+    env = dict(os.environ)
+    env["CHAIN_BACKEND_PORT"] = str(port)
+    env["CHAIN_FRONTEND_PORT"] = str(port + 1000)
+    env["TRENDORA_CONFIG"] = str(config_path)
+
+    # ---- 1. first boot -------------------------------------------------------------------------
+    t0 = time.monotonic()
+    proc1 = subprocess.Popen(
+        ["bash", str(SCRIPT)], cwd=str(REPO_ROOT), env=env,
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
+    try:
+        elapsed1, payload1, _ = _j04_poll_until_first_200(port, t0, timeout_s=60.0)
+        _assert_health_payload_is_honest(payload1)
+        print(
+            f"\n[J-04] boot 1 (scratch DB) -> first HTTP 200 in {elapsed1:.2f}s; "
+            f"readiness={payload1.get('readiness')!r} warmup={payload1.get('warmup')}"
+        )
+
+        # ---- 2. a job goes mid-flight, then the process dies under it --------------------------
+        # The engine is opened, used and disposed here so the row is committed (and its lock released)
+        # BEFORE the kill — the crash must find a genuinely persisted `running` row, exactly as a real
+        # job's own create-at-start record would be.
+        detail = (
+            '{"kind": "backfill", "start": "2012-01-03", "end": "2012-01-09", "dates_total": 5, '
+            '"dates_done": 2, "snapshots_created": 2, "summary": "mid-flight when the process died"}'
+        )
+        engine = make_engine(f"sqlite:///{db_path}")
+        with Session(engine) as session:
+            row = DataProviderRun(
+                provider="seed", started_at=_j04_utcnow(), status="running", message=detail,
+                job_id="j04-midflight-probe",
+            )
+            session.add(row)
+            session.commit()
+            session.refresh(row)
+            run_id = row.id
+        engine.dispose()
+
+        live = httpx.get(f"http://127.0.0.1:{port}/api/data", timeout=60.0).json()
+        before = _j04_run_by_id(live, run_id)
+        assert before["status"] == "running", f"the seeded job must be mid-flight before the kill: {before}"
+        assert before["finished_at"] is None, f"a running job carries no finished_at yet: {before}"
+        assert (before["dates_done"], before["dates_total"], before["snapshots_created"]) == (2, 5, 2), (
+            f"the live instance must serve the row's own persisted progress: {before}"
+        )
+
+        # ---- 3. simulated crash ----------------------------------------------------------------
+        _j04_kill_and_wait(proc1)
+        assert not _pid_alive(proc1.pid), "the simulated-crash process should be gone after SIGKILL"
+        with pytest.raises(httpx.HTTPError):
+            # unreachable: the socket is gone, so this raises rather than answering ANY status code —
+            # categorically different from the `initializing` HTTP 200 asserted above.
+            httpx.get(f"http://127.0.0.1:{port}/api/health", timeout=5.0)
+    finally:
+        _j04_kill_and_wait(proc1)
+
+    # ---- 4. restart: the mid-flight row must read back as interrupted, progress intact ----------
+    t1 = time.monotonic()
+    proc2 = subprocess.Popen(
+        ["bash", str(SCRIPT)], cwd=str(REPO_ROOT), env=env,
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
+    try:
+        elapsed2, payload2, _ = _j04_poll_until_first_200(port, t1, timeout_s=60.0)
+        _assert_health_payload_is_honest(payload2)
+        after = _j04_run_by_id(
+            httpx.get(f"http://127.0.0.1:{port}/api/data", timeout=60.0).json(), run_id
+        )
+        print(
+            f"[J-04] boot 2 after crash -> first HTTP 200 in {elapsed2:.2f}s; run {run_id} "
+            f"status={after['status']!r} finished_at={after['finished_at']!r} "
+            f"progress={after['dates_done']}/{after['dates_total']}"
+        )
+        assert after["status"] == "interrupted", (
+            f"J-04 step 6: a job that was mid-flight at the crash must read back as an explicit "
+            f"interrupted state after the restart, never a still-'running' row with no living process: "
+            f"{after}"
+        )
+        assert after["finished_at"] is not None, (
+            f"an interrupted run is terminal and must carry a finished_at: {after}"
+        )
+        assert (after["dates_done"], after["dates_total"], after["snapshots_created"]) == (2, 5, 2), (
+            f"J-04 step 6: the interrupted row must keep its LAST PERSISTED progress, not a reset or "
+            f"recomputed one: {after}"
+        )
+    finally:
+        _j04_kill_and_wait(proc2)
+
+
+def _j04_utcnow():
+    from datetime import datetime, timezone
+
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+def _j04_run_by_id(data_payload: dict, run_id: int) -> dict:
+    """The one run-history row with `id == run_id` from `GET /api/data`'s `runs` list (the SAME persisted
+    `data_provider_runs` history the `/data` page's Run history panel reads)."""
+    runs = data_payload.get("runs") or []
+    matches = [r for r in runs if r.get("id") == run_id]
+    assert len(matches) == 1, f"expected exactly one run row with id={run_id}; got {runs}"
+    return matches[0]

@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-ops-hardening-iter-49",
+  "base_url": "http://localhost:3255",
+  "default_timeout_ms": 8000,
+  "not_yet": true,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Open the Data Manager page",
+      "narration": "This iteration optimized the backend's finalize-tail computations so historical-date backfills complete reliably within the promised 20-minute window. The changes are server-side only.",
+      "point_out": "The page loads with the Data Manager heading and a job-start panel.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "goto",
+        "url": "/data"
+      },
+      "expect": {
+        "text": "Data Manager"
+      }
+    }
+  ]
+}

@@ -182,6 +182,51 @@ def _extract_factor_value(res: ScannerResult, parsed: dict) -> Optional[float]:
     return None
 
 
+# ops-hardening iter-49 (J-05, drawdown_expectations_warm bound): `_extract_factor_value`'s own body,
+# applied to an already COLUMN-PROJECTED raw value instead of a full `ScannerResult` ORM row.
+# `_factor_decile_observations` below used to stream whole `ScannerResult` entities (every score/flag/
+# date column plus the `record_json` blob) so `_extract_factor_value` could read ONE column or
+# `record_json` off a full row — but every OTHER field of that row goes unused for both branches. Live
+# profiling of a single decile-scoped drawdown-expectations claim (`compute_drawdown_expectations` ->
+# `compute_samples` -> `_factor_samples` -> `_factor_decile_observations`, the `leadership_score` D10 h=20
+# certified claim, on the live committed DB) measured 63.9s dominated by SQLAlchemy/SQLModel ORM row
+# construction (`_instance`/`new_instance`/`_populate_full`/pydantic `__new__`/private-attr init — >40s of
+# the 63.9s, 2.5M row instantiations across the 2-pass decile scan) — NOT by `_extract_factor_value`'s own
+# `getattr`/`json.loads` work, which is cheap. Selecting only `(run_id, ticker, <value column>)` returns
+# raw TUPLES (no ORM instance built at all — the SAME mechanism `_fr_slice_map`/`_forward_agg_slice_map`
+# already use elsewhere in this codebase for exactly this reason), eliminating that construction cost for
+# BOTH factor kinds: a "column" factor's `raw_value` IS the typed column (selected directly, e.g.
+# `ScannerResult.leadership_score`); a "component" factor's `raw_value` is `ScannerResult.record_json`
+# (selected instead of the whole entity — the `json.loads`/block lookup it still needs is unavoidable, but
+# the redundant instantiation of every OTHER column is not). Byte-identical value for value: both branches
+# are `_extract_factor_value`'s own bodies, copied verbatim, reading the pre-selected value instead of
+# `getattr(res, ...)`/`res.record_json`.
+def _extract_factor_value_from_row(raw_value, parsed: dict) -> Optional[float]:
+    if parsed["kind"] == "column":
+        return raw_value
+    try:
+        record = json.loads(raw_value)
+    except (ValueError, TypeError):
+        return None
+    block = record.get(parsed["block"]) if isinstance(record, dict) else None
+    if not isinstance(block, dict):
+        return None
+    for component in block.get("components", []):
+        if isinstance(component, dict) and component.get("name") == parsed["name"]:
+            return component.get("raw")
+    return None
+
+
+def _factor_value_column(parsed: dict):
+    """The single `ScannerResult` column `_extract_factor_value_from_row` will read for this parsed factor
+    source — the typed column itself for `kind == "column"`, `record_json` (the ONE column a `component`
+    factor needs) otherwise. A named helper (not inlined) so `_factor_decile_observations`'s two identical
+    `res_stmt` builds share one definition."""
+    if parsed["kind"] == "column":
+        return getattr(ScannerResult, parsed["column"])
+    return ScannerResult.record_json
+
+
 def _runs_with_fr(
     session: Session, horizons: list[int], as_of: Optional[date_cls],
 ) -> list[int]:
@@ -528,6 +573,11 @@ def _factor_decile_observations(
 
     runs_with_fr = _runs_with_fr(session, [horizon], as_of)
 
+    # ops-hardening iter-49 (J-05): the ONE column `_extract_factor_value_from_row` will read for THIS
+    # factor, resolved once up front — see that function's + `_factor_value_column`'s docstrings for why
+    # this replaces the full-entity `select(ScannerResult)` both passes below used to issue.
+    value_col = _factor_value_column(parsed)
+
     # PASS 0 (count-only, no rows materialized) — the retention window PASS 1 may size itself against.
     # See `_decile_population_upper_bound`: provably >= the observation count, measured at 0.03 s / 0.8%
     # slack on the live basis.
@@ -543,18 +593,18 @@ def _factor_decile_observations(
         slice_run_ids = runs_with_fr[start:start + run_chunk]
         ret_by_run_symbol = _fr_slice_map(session, horizon, slice_run_ids, batch)
         res_stmt = (
-            select(ScannerResult)
+            select(ScannerResult.run_id, ScannerResult.ticker, value_col)
             .where(ScannerResult.run_id.in_(slice_run_ids))
             .order_by(ScannerResult.run_id, ScannerResult.id)
         )
-        for res in session.exec(res_stmt).yield_per(batch):
-            if (res.run_id, res.ticker) not in ret_by_run_symbol:
+        for res_run_id, ticker, raw_value in session.exec(res_stmt).yield_per(batch):
+            if (res_run_id, ticker) not in ret_by_run_symbol:
                 continue
-            value = _extract_factor_value(res, parsed)
+            value = _extract_factor_value_from_row(raw_value, parsed)
             if value is None:
                 continue  # factor-NULL observation EXCLUDED (never bucketed) — mirrors _factor_observations
             n += 1
-            window.add((float(value), res.ticker, res.run_id))
+            window.add((float(value), ticker, res_run_id))
 
     lo = (decile - 1) * n // deciles_count
     hi = decile * n // deciles_count
@@ -592,24 +642,24 @@ def _factor_decile_observations(
         slice_run_ids = runs_with_fr[start:start + run_chunk]
         ret_by_run_symbol = _fr_slice_map(session, horizon, slice_run_ids, batch)
         res_stmt = (
-            select(ScannerResult)
+            select(ScannerResult.run_id, ScannerResult.ticker, value_col)
             .where(ScannerResult.run_id.in_(slice_run_ids))
             .order_by(ScannerResult.run_id, ScannerResult.id)
         )
-        for res in session.exec(res_stmt).yield_per(batch):
-            if (res.ticker, res.run_id) not in target_keys:
+        for res_run_id, ticker, raw_value in session.exec(res_stmt).yield_per(batch):
+            if (ticker, res_run_id) not in target_keys:
                 continue  # not a member of the target decile — discarded immediately, never retained
-            fr = ret_by_run_symbol.get((res.run_id, res.ticker))
+            fr = ret_by_run_symbol.get((res_run_id, ticker))
             if fr is None:
                 continue
             realized, max_drawdown = fr
-            value = _extract_factor_value(res, parsed)
+            value = _extract_factor_value_from_row(raw_value, parsed)
             if value is None:
                 continue
             members.append({
-                "run_id": res.run_id, "ticker": res.ticker, "factor": float(value), "return": realized,
+                "run_id": res_run_id, "ticker": ticker, "factor": float(value), "return": realized,
                 "max_drawdown": max_drawdown,
-                "regime": regime_by_run.get(res.run_id),
+                "regime": regime_by_run.get(res_run_id),
             })
 
     # sort the bounded members by the SAME ascending-by-factor tie-break (pass-2's own chunk order is

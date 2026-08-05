@@ -623,7 +623,18 @@ class _ExactMeanAcc:
         self._count = 0
 
     def add(self, value: float) -> None:
-        numerator, denominator = value.as_integer_ratio()
+        self.add_ratio(*value.as_integer_ratio())
+
+    # ops-hardening iter-49 (J-05/J-07): `add` split into "compute the ratio" + "fold it in" so a caller
+    # that already has `value.as_integer_ratio()` (this module's own `compute_forward_aggregates` hot
+    # loop, which used to call `.as_integer_ratio()` independently inside EVERY one of an observation's
+    # up-to-7 accumulator adds -- overall + 6 groups, all fed the SAME `realized`/`max_drawdown` float --
+    # profiled live at 24.58M redundant calls, ~17% of one horizon's wall time) can skip the recompute.
+    # `add(value)` above is now a thin wrapper calling this with a freshly computed ratio -- byte-identical
+    # for every existing caller/test, since `as_integer_ratio()` is a pure, deterministic IEEE-754
+    # decomposition: computing it once and reusing the SAME (numerator, denominator) pair across every
+    # accumulator is bit-for-bit identical to each accumulator recomputing it independently.
+    def add_ratio(self, numerator: int, denominator: int) -> None:
         self._partials[denominator] = self._partials.get(denominator, 0) + numerator
         self._count += 1
 
@@ -654,12 +665,31 @@ class _GroupAcc:
         if mdd_value is not None:
             self.mdds.add(mdd_value)
 
+    # ops-hardening iter-49 (J-05): ratio-based sibling of `add`, mirroring `_ExactMeanAcc.add_ratio` --
+    # see that method's docstring for why. `add(r, m)` is byte-identical to
+    # `add_ratio(r.as_integer_ratio(), m.as_integer_ratio() if m is not None else None)`.
+    def add_ratio(self, return_ratio: tuple[int, int], mdd_ratio: Optional[tuple[int, int]]) -> None:
+        self.returns.add_ratio(*return_ratio)
+        if mdd_ratio is not None:
+            self.mdds.add_ratio(*mdd_ratio)
+
 
 def _accumulate_group(accs: dict, value, return_value: float, mdd_value: Optional[float]) -> None:
     """`_group_means`'s own `if value is not None: buckets[value].append(...)` gate, applied to a
     pre-aggregated `dict[value, _GroupAcc]` instead of a per-value list of raw observations."""
     if value is not None:
         accs[value].add(return_value, mdd_value)
+
+
+# ops-hardening iter-49 (J-05): ratio-based sibling of `_accumulate_group`, taking a pre-computed
+# `(numerator, denominator)` pair instead of a raw float -- see `_ExactMeanAcc.add_ratio`'s docstring.
+# `_accumulate_group(accs, value, r, m)` is byte-identical to
+# `_accumulate_group_ratio(accs, value, r.as_integer_ratio(), m.as_integer_ratio() if m is not None else None)`.
+def _accumulate_group_ratio(
+    accs: dict, value, return_ratio: tuple[int, int], mdd_ratio: Optional[tuple[int, int]],
+) -> None:
+    if value is not None:
+        accs[value].add_ratio(return_ratio, mdd_ratio)
 
 
 def _group_means_from_accs(accs: dict, label_key: str, order, pad: bool) -> list[dict]:
@@ -1267,15 +1297,24 @@ def compute_forward_aggregates(
                 "is_pullback_to_rising_dma": is_pullback_to_rising_dma,
                 "is_flat_base_breakout": is_flat_base_breakout,
             }
-            overall_returns.add(realized)
-            if max_drawdown is not None:
-                overall_mdds.add(max_drawdown)
-            _accumulate_group(bucket_accs, obs["bucket"], realized, max_drawdown)
-            _accumulate_group(setup_accs, obs["setup"], realized, max_drawdown)
-            _accumulate_group(regime_accs, obs["regime"], realized, max_drawdown)
-            _accumulate_group(vcp_accs, obs["is_vcp"], realized, max_drawdown)
-            _accumulate_group(pullback_accs, obs["is_pullback_to_rising_dma"], realized, max_drawdown)
-            _accumulate_group(flat_base_accs, obs["is_flat_base_breakout"], realized, max_drawdown)
+            # ops-hardening iter-49 (J-05, forward_aggregates_warm bound): `realized`/`max_drawdown` are the
+            # SAME two float values fed to every one of this observation's up-to-7 accumulator adds below
+            # (overall + 6 groups) -- `.as_integer_ratio()` computed ONCE here and reused, instead of each
+            # accumulator's own `add()` recomputing the IDENTICAL ratio independently (profiled live:
+            # 24.58M redundant calls at horizon=20 on the live committed DB, ~17% of that one horizon's
+            # wall time). Byte-identical output (see `_ExactMeanAcc.add_ratio`'s docstring) -- changes only
+            # how many times an already-deterministic pure function runs, never what is computed.
+            _return_ratio = realized.as_integer_ratio()
+            _mdd_ratio = max_drawdown.as_integer_ratio() if max_drawdown is not None else None
+            overall_returns.add_ratio(*_return_ratio)
+            if _mdd_ratio is not None:
+                overall_mdds.add_ratio(*_mdd_ratio)
+            _accumulate_group_ratio(bucket_accs, obs["bucket"], _return_ratio, _mdd_ratio)
+            _accumulate_group_ratio(setup_accs, obs["setup"], _return_ratio, _mdd_ratio)
+            _accumulate_group_ratio(regime_accs, obs["regime"], _return_ratio, _mdd_ratio)
+            _accumulate_group_ratio(vcp_accs, obs["is_vcp"], _return_ratio, _mdd_ratio)
+            _accumulate_group_ratio(pullback_accs, obs["is_pullback_to_rising_dma"], _return_ratio, _mdd_ratio)
+            _accumulate_group_ratio(flat_base_accs, obs["is_flat_base_breakout"], _return_ratio, _mdd_ratio)
             attribution_acc.add(obs)
             chunk_obs_by_run[res_run_id].append(obs)
 
@@ -1498,6 +1537,17 @@ def forward_aggregates_ingest_cached(
         # the bounded wait without persisting — fall through and compute independently rather than
         # blocking indefinitely. Still byte-identical (the SAME sole producer); at worst this is one
         # redundant compute in a rare failure/timeout case, never a hang and never a second formula.
+        #
+        # ops-hardening iter-49 (J-05/J-07 diagnosis, hypothesis 3): this branch used to be silent, so a
+        # live TC-1 drill could not tell whether this fall-through ever actually fired — a concrete,
+        # checkable way to rule single-flight contention in or out as a driver of `forward_aggregates_warm`'s
+        # observed run-to-run variance (102s / 153s / 1,334s — reports/perf-budgets.md Item R). Logged, not
+        # raised: firing here is expected-rare behavior (TC-8), never a failure.
+        logger.info(
+            "forward-aggregate single-flight wait timed out — falling through to a redundant compute: "
+            "horizon=%s asof_key=%s dataset_version=%s wait_timeout_s=%.1f",
+            horizon, asof_key, version, _FORWARD_AGG_WAIT_TIMEOUT_S,
+        )
 
     # MISS (owner path, or the rare TC-8 fallback above) — compute once and persist.
     try:
@@ -2331,7 +2381,8 @@ def _drawdown_ticker_slice_map(
 
 
 def compute_drawdown_expectations(
-    session: Session, claim: dict, config: Optional[Config] = None
+    session: Session, claim: dict, config: Optional[Config] = None,
+    *, phases: Optional[dict[str, dict]] = None,
 ) -> Optional[dict]:
     """iter-41 (J-25) — the SINGLE canonical phase-conditional drawdown & dry-spell expectations payload
     for ONE certified-claims ledger `claim` (Data Contract value, additive on `GET /api/evidence`). For
@@ -2342,6 +2393,14 @@ def compute_drawdown_expectations(
     phase label a `{median, p90, n}` cell for each of the three distribution measures plus a
     walk-forward-cadence longest-losing-streak cell. EVERY configured `market_phase.labels` value is
     emitted (padded, even at n=0) so a cohort that never saw a phase still discloses that honestly.
+
+    `phases` (ops-hardening iter-49, J-05) is an OPTIONAL pre-computed `phase_context_by_date(session,
+    as_of=None, config=cfg)` result — the all-history causal timeline, invariant across every claim for a
+    fixed `(session state, config)`. `None` (the default, every OTHER caller's behavior unchanged)
+    computes it internally exactly as before. A caller warming MULTIPLE claims in the SAME finalize-tail
+    invocation (`data_manager._refresh_ingest_aggregates`'s `drawdown_expectations_warm` loop) computes it
+    ONCE and passes it to every claim instead of paying the SAME all-history read once per claim (7x on
+    the live ledger) — byte-identical either way, since `phases` is looked up by date, never mutated.
 
     Returns None — the caller (`build_evidence_payload`) then omits the `expectations` key entirely, the
     honest 'no panel' signal — when: the claim's `horizon` is missing or outside the configured
@@ -2415,8 +2474,11 @@ def compute_drawdown_expectations(
         rows_by_ticker[row["ticker"]].append(row)
 
     # the SAME causal timeline `compute_market_phase` reads (all-history — the expectations panel is
-    # descriptive over the claim's WHOLE tested cohort, not scoped to a single "today" as-of).
-    phases = phase_context_by_date(session, as_of=None, config=cfg)
+    # descriptive over the claim's WHOLE tested cohort, not scoped to a single "today" as-of). Use the
+    # caller-supplied timeline when given (see the `phases` parameter docstring above); self-compute
+    # otherwise — byte-identical either way.
+    if phases is None:
+        phases = phase_context_by_date(session, as_of=None, config=cfg)
 
     by_phase_mdd: dict[str, list[float]] = defaultdict(list)
     by_phase_uw: dict[str, list[float]] = defaultdict(list)
@@ -2513,7 +2575,8 @@ def _drawdown_expectations_cache_subject(claim: dict) -> str:
 
 
 def compute_drawdown_expectations_cached(
-    session: Session, claim: dict, config: Optional[Config] = None
+    session: Session, claim: dict, config: Optional[Config] = None,
+    *, phases: Optional[dict[str, dict]] = None,
 ) -> Optional[dict]:
     """Serve `compute_drawdown_expectations` from the shared J-72 `EventStudyCache` (a pure performance
     layer — No recompute in the read path): a HIT for the current `(subject, view, asof_key,
@@ -2522,7 +2585,10 @@ def compute_drawdown_expectations_cached(
     cohort is still a stable answer for this dataset version, and caching it avoids re-paying the SAME
     expensive miss every request), prunes stale rows for this claim, and returns it. The returned payload
     is BYTE-IDENTICAL to a fresh `compute_drawdown_expectations(...)` call. `GET /api/evidence` calls THIS
-    function, never the uncached one directly."""
+    function WITHOUT `phases` (never the uncached one directly); the ingest finalize warm loop
+    (`data_manager._refresh_ingest_aggregates`) is the one caller that passes a pre-computed `phases` (see
+    `compute_drawdown_expectations`'s own `phases` docstring) — a pure pass-through, only reached on a
+    MISS, so a HIT still costs nothing beyond the cache read either way."""
     cfg = config or get_config()
     horizon = claim.get("horizon")
     if horizon not in cfg.walk_forward.underwater_horizons:
@@ -2548,7 +2614,7 @@ def compute_drawdown_expectations_cached(
         return json.loads(hit.payload_json)
 
     # MISS — compute once and persist under the current dataset-version stamp.
-    payload = compute_drawdown_expectations(session, claim, cfg)
+    payload = compute_drawdown_expectations(session, claim, cfg, phases=phases)
 
     # prune stale rows for THIS claim (any older dataset_version) so the cache table does not grow
     # unbounded as the dataset matures; the current-version row is then inserted.

@@ -990,3 +990,36 @@ about the total. Any future memory claim in this codebase must measure a whole j
 **Applies to:** `apps/backend/app/engine/prices.py`, any `perf-budgets.md` memory claim, and any
 iteration whose DoD contains a before/after resource measurement.
 
+
+<!-- condense.sh 2026-08-05T08:58:55Z: moved 2 entries (keep-iters=5) -->
+
+## iter-43 — 2026-08-03T19:30:00Z
+
+**Verdict:** ESCALATE
+**Lesson:** Raising the memory ceiling fixed the failure it was aimed at and revealed a second,
+independent one underneath: the same heavy warm that used to die of `MemoryError` at 6144 MB now
+stalls at `horizons_done: 0/5` with 67.6% of the 8192 MB cap free, and because
+`incredible_auto_dev/scripts/start-backend.sh:95` execs uvicorn with no
+`--timeout-graceful-shutdown`, a single stuck in-flight task holds the whole process in
+`Waiting for background tasks to complete` forever — the port stops listening while the process
+stays alive at 90%+ CPU, which reads as "server crashed" from outside but is actually "server
+politely waiting". Fixing a resource ceiling never proves the work terminates; measure completion,
+not just headroom.
+**Applies to:** any iter that raises a resource cap and reads the result as "the problem is solved";
+any iter touching `compute_forward_aggregates` / the ingest finalize warm; any launcher change
+(`scripts/start-backend.sh`, `dev.sh`) — a long-running background task needs a shutdown deadline.
+
+## iter-43 — 2026-08-03T19:30:01Z
+
+**Verdict:** ESCALATE
+**Lesson:** A guard written for a specific past incident must be keyed to that incident's whole
+exception set, not its headline exception. This iteration's thread-launch guard caught
+`RuntimeError("can't start new thread")` — and iter-42's log contained `MemoryError` from the SAME
+`Thread.start()` path side by side with it (CPython's `_start_new_thread` has two exits under one
+memory ceiling). Only a live `MemoryError` parametrization, not a code reading, showed the job still
+orphaned at `running` with no run-history row at all. Reading the incident's own log for every
+exception it produced would have taken a minute.
+**Applies to:** any iter shipping a guard/except clause written against a named past failure; any
+`threading.Thread(...).start()` site (`warmup.start_warmup`, `forward_testing.py:1691` are the two
+still unguarded).
+
