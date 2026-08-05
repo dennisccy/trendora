@@ -568,3 +568,34 @@ journey's only executed row is a FAIL, therefore the journey is failing" would k
 which changes no gate (GOAL_ACHIEVED is blocked by J-07 either way) but would show this round as
 zero upward movement on the target journey rather than one.
 **Reversible:** yes
+
+
+## iter-50 — goal-decomposer
+
+**Ambiguity:** rule 5 ("never bundle two risky journeys... one iteration may carry ... one risky
+journey") does not by itself say how many CODE CHANGES may ride inside that one risky journey's fix.
+The iter-49 evaluator's next-step item (1) explicitly asks for two changes ("limit what that page
+loads into memory, and stop the start-up warm-up from running the same heavy calculation at the same
+time as a data job") to "land together as ONE job," and separately, in item (5), names a third,
+smaller defect ("the new timing pre-calculation runs even when there is nothing to compute") inside
+the SAME subsystem (`data_manager.py`'s finalize tail) that iter-49 itself just modified.
+
+**We chose:** treat all three sub-fixes — the `compute_factor_lab_all` bound (`research.py:1051`),
+the boot-re-warm/ingest-warm interlock (`warmup.py:198` vs `data_manager.py`'s
+`_refresh_ingest_aggregates`), and the `phase_context_by_date` unconditional-precompute skip — as ONE
+risky change for this iteration, not two or three. Grounds: (1) the evaluator's own words classify the
+first two as one job; (2) the third is not a new diagnosis effort — it is a one-line guard on code
+this session (iter-49) wrote and already fully characterised (`reports/perf-budgets.md` Item R
+Addendum 6 names the exact ~23.6-23.9s cost and its trigger condition), so it carries none of the
+"undiagnosed architecture" risk rule 5 exists to prevent; (3) all three touch the SAME already-registered
+Data Contract row (Membership timeline / research hot-key caches) and the SAME finalize-tail code path,
+so a joint failure would still be diagnosable to one subsystem, not undiagnosable across two unrelated
+areas (the harm rule 5 is written to avoid). Cost recorded honestly: if the browser lane comes back with
+a NEW regression, distinguishing which of the three sub-fixes caused it costs more triage time than a
+strictly single-fix iteration would have. A reader who takes rule 5 at its strictest (one CODE CHANGE
+per iteration, not one THEME) would defer the `phase_context_by_date` skip to iter-51, accepting a
+slightly slower path to J-07's full health-ceiling compliance in exchange for a cleaner failure signal
+if something regresses.
+
+**Reversible:** yes — the `phase_context_by_date` skip is a small, independent guard; if it turns out
+to be implicated in a regression, it can be reverted on its own without touching the other two fixes.
