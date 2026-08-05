@@ -6671,3 +6671,307 @@ they changed no data, so their finalize found every cache already valid and did 
 iteration's diff created this; iter-47's serve-stale fix is what stops it from being USER-visible on
 `/api/evidence`. Sizing note for whoever picks up J-05: the finalize tail's own duration is now the binding
 constraint, and it is the natural target of the next iteration.
+
+## Item R — J-05's finalize-tail non-termination root-caused and fixed; `samples.py`'s `total`/`regime` slices bounded (ops-hardening iter-48, 2026-08-04, TC-1/TC-2/TC-5/TC-6)
+
+### TC-1/TC-2 — diagnosis: why a historical-gap-insert backfill never left `status: "running"`
+
+Direct measurement against the real committed DB (`apps/backend/data/trendora.db`), reproducing the EXACT
+code path `_do_backfill`'s finalize tail takes for a historical-gap-insert (a whole-table-prefilled
+`_BarCache` already `attach_shared_cache`d on the session, so `_excluded_counts_by_date` takes its
+"active outer cache" branch — unbatched, one `resolve_with_reasons` call per historical snapshot date):
+
+| as-of date probed | `resolve_with_reasons` wall time (active-cache branch, 548-symbol pool) |
+|---|---|
+| 2011-01-05 (early history, 262 admitted) | 0.785 s |
+| 2015-06-01 | 1.148 s |
+| 2020-03-02 | 1.577 s |
+| 2025-01-02 | 2.150 s |
+| 2026-07-01 (near end of history, 541 admitted) | 2.215 s |
+
+This DB carries **2,904** `scanner_runs` dates. The pre-fix `membership_timeline_cached` MISS fallback
+(`_membership_timeline`) calls `_excluded_counts_by_date` for the FULL date list on ANY non-append-forward
+MISS — i.e. it pays a `resolve_with_reasons` call, at the measured ~0.8-2.2 s/call, for EVERY ONE of those
+2,904 dates, even when only ONE date is genuinely new. Extrapolated: **well over an hour** of wall-clock
+for a single-date historical-gap insert — not "slow," a job that will not reach TC-1's 20-minute bound
+without a change to WHAT is computed, not merely how it is logged. This confirms and quantifies the iter-47
+dev handoff's live observation (job still `running` after 11+ minutes, "no observed convergence").
+
+**Fix:** `membership_timeline_cached` now tries a SECOND bounded path, before the historical full-recompute
+fallback: reuse every already-cached date's `excluded` tally (a pure per-date function of
+`(date, bars <= date, pool, config)` with no dependency on any OTHER snapshot date — see
+`assumptions.md` iter-48 for the full correctness proof) and call the resolver ONLY for the genuinely new
+date(s), gated by the SAME `_membership_bars_are_forward_only` safety proof the existing iter-45
+append-forward path already relies on. `entries`/`exits`/`size` are ALWAYS recomputed fresh, in full date
+order, for every date — never reused — so the order-dependent iter-27/iter-9 correctness guarantee is
+untouched. Does NOT extend `_membership_timeline_incremental`/the `append_forward` gating logic itself,
+both left byte-for-byte unmodified, per the phase spec.
+
+**Live TC-1 proof** (real committed DB, `scripts/start-backend.sh`, target date 2013-09-10 — a genuinely
+unsnapshotted historical trading day, 497 symbols with bars, chosen fresh for this drill; the J-05 golden
+script itself was rotated to a DIFFERENT gap day, 2012-06-15, so the lane's own later run still has real
+work to do):
+
+| Event | Elapsed since job accepted |
+|---|---|
+| Job accepted, `status=running` (`POST /api/data/jobs`, backfill 2013-09-10 → 2013-09-10) | 0 s |
+| Snapshot written (`scanner_runs` row 2905, 1,565 `forward_returns` rows); `stages.backfill` completes | 13.1 s |
+| `coverage_membership_timeline_refresh` phase (the SAME phase that pre-fix would have swept all 2,904 dates) completes | **9.18 s** (measured wall time of THIS phase alone — down from an extrapolated well-over-an-hour) |
+| `per_date_coverage_warm` | 6.24 s |
+| `market_phase_warm` | 24.12 s |
+| `forward_aggregates_warm` (unrelated to this fix — the same per-horizon warm every ingest pays) | 102.48 s |
+| `research_hot_keys_warm` | 2.14 s |
+| `index_series_warm` | 0.03 s |
+| `drawdown_expectations_warm` (unrelated to this fix — 7 ledger claims, 5 of them decile-scoped @ ~30-48 s each per iter-47's own measurement) | remainder |
+| **Job reaches terminal `status: "ok"`** | **834 s (13 min 54 s)** — well inside TC-1's 20-minute (1,200 s) bound |
+
+`aggregates_refreshed` on completion: `["latest_snapshot", "coverage", "membership_timeline",
+"market_phase", "forward_aggregates", "research_hot_keys", "drawdown_expectations"]` — the complete,
+honest 7-category list (TC-1's own honesty gate). `GET /api/health` was polled throughout the entire
+834 s window (69 polls, ~10-12 s cadence) and answered HTTP 200 **every single time** (TC-4). `GET
+/api/runs/2905` (the `/scanner-runs/2905` detail page's own data source) renders 302 scored rows from
+storage for `asof_date: "2013-09-10"` (TC-3 — the stored snapshot, not a placeholder). `sqlite3 …
+"PRAGMA integrity_check"` on the live committed DB read `ok` after the drill.
+
+The dominant cost this fix targeted (`coverage_membership_timeline_refresh`) dropped from an extrapolated
+**well over an hour** to **9.18 seconds** — a >99.7% reduction for the specific phase this iteration
+diagnosed and fixed. The job's TOTAL wall time (834 s) is now dominated by the OTHER finalize-tail phases
+(`forward_aggregates_warm` + `drawdown_expectations_warm`, ~700 s combined) that every ingest job already
+pays regardless of historical-gap-insert vs append-forward — pre-existing, unrelated cost this iteration's
+spec explicitly did not target (see `reports/perf-budgets.md` Items L/N/P for that cost's own history).
+
+### TC-6 — `samples.py`'s `total`/`regime` factor-cohort slices bounded (AG-8, iter-47 next-step item 5)
+
+`_factor_samples`'s "total" (the whole `_factor_observations` population by definition) and "regime"
+(a Python-filtered subset of it) branches used to materialize the FULL unfiltered population — the SAME
+"bounded read, unbounded retention" shape the iter-47 fix already closed for the "decile" branch. Neither
+branch is exercised by any LIVE certified claim today (the 7-claim ledger's factor claims are all
+decile-scoped) — bounded proactively per AG-8, using claim dicts the drill constructs itself, exactly as
+the existing decile drill already does.
+
+**"regime" fix** — `research._factor_regime_observations` (new): filters INSIDE the SAME chunked join loop
+`_factor_observations` runs (a per-observation predicate, no population-wide rank needed — one bounded
+pass, not two like the decile fix). A chunk with no run in the target regime is skipped entirely (no
+join/scan issued for it).
+
+**"total" fix** — cannot be bounded BELOW the population (it must return the whole pool by definition); the
+available reduction is avoiding a REDUNDANT second full materialization — `_factor_samples` now builds each
+row IN PLACE over the `members` list (overwriting each observation dict with its row dict as it goes)
+instead of holding a separately-grown `rows` list alongside the still-intact `members` list.
+
+**Live measurement, ISOLATED** (real committed DB, `leadership_score` factor, horizon 20, no `ulimit`,
+`resource.getrusage(RUSAGE_SELF).ru_maxrss` peak of `_factor_observations`/`_factor_regime_observations`
+alone — a direct child-process measurement):
+
+| Branch | Population | Pre-fix PEAK_RSS_KB | Shipped PEAK_RSS_KB | Reduction |
+|---|---|---|---|---|
+| "total" (all-history) | 1,261,493 observations | 1,518,028 | **1,170,900** | **22.9%** |
+| "regime" = Risk-on (largest fixture bucket) | 458,772 of 1,261,493 observations | 948,052 | **597,476** | **37.0%** |
+
+**Live measurement, FULL ENTRY POINT** (the SAME real committed DB, driven through
+`compute_drawdown_expectations_cached` — the actual `/api/evidence` serving path — instead of the isolated
+sub-call above; a fresh DB copy per probe, no `ulimit`). The full pipeline's OWN additional overhead
+(`phase_context_by_date`, the ticker-chunked `stored_by_key` accumulators, the by-phase distribution
+accumulators) is NOT touched by this iteration's fix, so the reduction through the full pipeline is smaller
+than the isolated figure above — this is the number that actually gates the calibrated `ulimit -v` caps
+below (an earlier calibration pass used the isolated numbers and its caps were consequently too tight; a
+live run caught the shipped implementation tripping its OWN cap under load, corrected here):
+
+| Branch | Pre-fix PEAK_RSS_KB | Shipped PEAK_RSS_KB | Reduction |
+|---|---|---|---|
+| "total" | 1,658,248 | **1,444,820** | **12.9%** |
+| "regime" = Risk-on | 986,608 | **833,576-836,696** | **15.2-15.5%** |
+
+Member counts and `has_panel=True` byte-identical between pre-fix and shipped for both branches in every
+run (1,261,493 and 458,772 respectively) — confirmed by this live measurement, by the full-pipeline
+`compute_drawdown_expectations_cached` calibration above, and by `test_research_streaming.py`'s pinned-
+reference unit tests (`test_factor_regime_observations_equals_pre_fix_reference`, parametrized across both
+fixture regimes and both all-history/as-of scopes).
+
+**TC-6 — 5-consecutive-run memory-pressure proof** (binding iter-44 lesson — one green run is not proof),
+real subprocess `ulimit -v` induction through the FULL entry point, mirroring the shipped decile-branch
+drill exactly (`test_samples_memory_pressure.py`'s
+`test_total_regime_shipped_survives_five_consecutive_tight_cap_runs`, parametrized `total`/`regime`): a
+tight cap that reliably aborts the pre-fix reference with a caught `MemoryError`
+(`TOTAL_TIGHT_CAP_KB=1,550,000`; `REGIME_TIGHT_CAP_KB=900,000`, calibrated against the full-pipeline peaks
+above, with the shipped side's own margin re-verified live) while the shipped implementation completes
+normally across all 5 independent runs, each against its own fresh DB copy:
+
+**Result (2026-08-04, ops-hardening iter-48, resumed developer pass):**
+
+```
+cd apps/backend
+.venv/bin/python -m pytest tests/test_samples_memory_pressure.py -k "total_regime" -q -p no:randomly
+-> 8 passed in 732.21s (0:12:12)
+```
+
+The 8 = `{tight_cap, control, starved, five_consecutive} x {total, regime}`. Both
+`test_total_regime_shipped_survives_five_consecutive_tight_cap_runs[total-1550000]` and
+`[regime-900000]` passed — 5/5 independent subprocess runs each, against a fresh throwaway DB copy per
+run, zero `MemoryError` escapes across all 10 individual runs combined. TC-6 closed.
+
+A deeper "starved" cap (`TOTAL_STARVED_CAP_KB=1,100,000`; `REGIME_STARVED_CAP_KB=650,000`) makes the
+SHIPPED implementation also starve — proving the bound reduces failure likelihood at a given pressure
+level, not immunity to arbitrarily severe pressure (mirrors the decile drill's own disclosed residual).
+
+### An unrelated, pre-existing test-threshold drift discovered while verifying this diff did not regress
+`_membership_timeline`'s OTHER (no-active-cache) memory bound
+
+`test_membership_timeline_batch_bound.py::test_peak_memory_reduced_vs_pinned_reference_on_live_seed` FAILS
+on this build (28.5% peak-memory reduction measured vs. the test's `>= 30%` threshold, calibrated at
+iter-36 when the reference measured 70.7%). This is NOT caused by this iteration's diff: that test
+exercises `_membership_timeline`'s NO-active-cache batched-loading branch (`_excluded_counts_by_date`
+lines 618-632), which this iteration's diff does not touch at all — the new `reuse_excluded_by_date`
+parameter defaults to `None`/absent for this test's 3-positional-argument call, so it takes the byte-
+identical `else` branch this iteration added zero new code to. The drift traces to TWO LATER, unrelated
+iterations that changed the REFERENCE side's own cost: iter-41's `_SymbolColumns` rewrite of
+`_BarCache.prefill` (the reference's own whole-table-scan mechanism) cut its resident footprint well below
+its iter-36 calibration baseline, and iter-43 reverted a since-disproven `prefill` filter — both landed
+years after this specific test's 30% threshold was set, narrowing the gap between the reference and the
+shipped (`load_only`-based) implementation's efficiency without anyone re-calibrating this test's own
+number. Flagged honestly, not fixed — repairing it means either re-tuning the threshold against a fresh
+baseline or porting `_SymbolColumns` to `load_only` too, both out of scope for this iteration's diff.
+
+### Addendum (2026-08-04, resumed developer pass) — a NEW automated live/integration test for TC-1 exposes
+an honest END-TO-END gap the single manual drill above did not
+
+A new opt-in pytest test, `test_start_backend_historical_gap_insert_reaches_terminal_status_within_bound`
+(`apps/backend/tests/test_start_backend_script.py`, `TRENDORA_RUN_HEAVY_INGEST_TEST=1`), reproduces the
+TC-1 scenario against a FRESH throwaway copy of the real committed DB (mirroring the existing heavy-ingest
+test's own pattern) rather than a single hand-run manual drill. Run once, live, target date `2005-05-24`
+(picked at run time as the earliest unsnapshotted trading day with sufficient forward lookahead), job id
+`fd064cfc70b44b82a6fa27acdc665634`:
+
+| Phase | Elapsed |
+|---|---|
+| backfill stage (snapshot write) | ~60s |
+| `coverage_membership_timeline_refresh` (THIS iteration's own fix target) | **24.10s** |
+| `per_date_coverage_warm` | 6.15s |
+| `market_phase_warm` | 0.05s |
+| `forward_aggregates_warm` | 153.07s |
+| `research_hot_keys_warm` | 6.57s |
+| `index_series_warm` | 0.06s |
+| `drawdown_expectations_warm` | **still running when the 1200s (20 min) TC-1 deadline hit** — never completed |
+
+**This iteration's own fix target stayed fast and bounded** — 24.10s, consistent with the 9.18s measured
+in the manual drill above and nowhere near the well-over-an-hour pre-fix extrapolation. `GET /api/health`
+answered all 507 polls with HTTP 200 throughout (TC-4 held perfectly — never a frozen/unresponsive
+window). But the job's TOTAL end-to-end wall time exceeded TC-1's literal 20-minute bound because
+`drawdown_expectations_warm` — the LAST finalize-tail phase, a pre-existing cost this iteration does not
+target (already disclosed as slow/unbounded in the iter-47 dev handoff's Items P/Q: "~26 min settle...
+not fixed") — took longer than its own 667.30s measurement in the manual drill above and had not finished
+by the deadline.
+
+**Honest scoping:** the ONE manual drill recorded earlier in this Item (834s total, comfortably under
+1200s) is real and reproducible for its own conditions, but it is a single sample against a
+long-lived, already-running backend on the real committed DB. This second, automated, freshly-spawned
+run shows `drawdown_expectations_warm`'s own duration varies enough (667s -> >950s+ across two runs) that
+TC-1's full 20-minute END-TO-END bound is NOT reliably met on every run — even though the specific defect
+J-05/TC-1 exists to fix (the O(dates x pool) resolver sweep) is genuinely, verifiably closed. This test is
+left in the suite (opt-in, not part of the default run) as a real, currently-FAILING regression signal
+for whoever next bounds `drawdown_expectations_warm`'s own duration — see the iter-48 dev handoff's Known
+Issues for the full analysis.
+
+### Addendum 2 (2026-08-05, iter-48 AUDIT pass) — a THIRD live run, and the correction it forces
+
+The browser-QA lane ran its own live historical-gap-insert drill AFTER the two runs recorded above
+(job `0ce8e2fb0bd94e52ac3c191080ace831`, target `2012-06-15`, `data_provider_runs` id 308, real committed
+DB, long-lived `scripts/start-backend.sh` process). Its phase timings, read directly from
+`logs/backend.log`:
+
+| Phase | Elapsed |
+|---|---|
+| `coverage_membership_timeline_refresh` (THIS iteration's fix target) | **21.01 s** |
+| `per_date_coverage_warm` | 7.05 s |
+| `market_phase_warm` | 28.02 s |
+| `forward_aggregates_warm` | **1,334.13 s (22 min 14 s)** |
+| `research_hot_keys_warm` | 39.73 s |
+| `index_series_warm` | 0.05 s |
+| `drawdown_expectations_warm` | never logged — still running 10+ min later when the backend was stopped |
+| **Terminal status** | **never reached** — id 308 is still `status: "running"`, `finished_at: NULL` |
+
+**Two corrections to Item R and to Addendum 1.**
+
+1. **The fix itself is confirmed a third time.** `coverage_membership_timeline_refresh` measured 9.18 s /
+   24.10 s / 21.01 s across three independent live runs on three different target dates. The
+   O(dates x pool) resolver sweep is genuinely closed; nothing in this addendum disputes that.
+
+2. **The residual blocker is NOT `drawdown_expectations_warm` alone.** Item R describes
+   `forward_aggregates_warm` as "unrelated to this fix — the same per-horizon warm every ingest pays"
+   and Addendum 1 attributes the TC-1 miss solely to `drawdown_expectations_warm`. Both statements were
+   written from two samples (102.48 s, 153.07 s). The third sample is 1,334.13 s — **`forward_aggregates_warm`
+   alone exceeds TC-1's whole 1,200 s bound**. Its observed spread is 102 s → 153 s → 1,334 s, i.e. a 13x
+   range across three runs of the same phase. Sizing note for whoever picks up J-05 next: bounding
+   `drawdown_expectations_warm` is necessary but NOT sufficient for TC-1; `forward_aggregates_warm` needs
+   its own bound and its own variance investigation.
+
+Also carried forward for visibility (recorded in Item R above but absent from the iter-48 dev handoff's
+Known Issues and from `status.json` until this audit pass added it):
+`test_membership_timeline_batch_bound.py::test_peak_memory_reduced_vs_pinned_reference_on_live_seed` is
+FAILING on this build (28.5 % vs its `>= 30 %` iter-36 threshold) — threshold drift from iter-41/iter-43
+changes to the reference side, not caused by this iteration's diff.
+
+### Addendum 3 (2026-08-05, iter-48 audit-FIX pass) — two stale test calibrations, diagnosed and re-set
+
+The audit's T2/T3 left two tests failing on this build with the cause unresolved. Both are now diagnosed
+with fresh measurements taken on this host, strictly sequentially (never concurrently — concurrent load is
+the confound that muddied QA's own run, per audit T3). Neither failure was caused by iter-48's diff, and
+**neither was a defect**: both are inverted or ratio-shaped assertions that went stale when the code they
+measure got *better*.
+
+**(a) `test_samples_memory_pressure.py::test_starved_cap_shipped_still_degrades_honestly_never_crashes`
+— NOT the "environmental flake" QA inferred. Re-calibrated `STARVED_CAP_KB` 600,000 → 420,000 KB.**
+
+QA dismissed this as "likely environmental flake … memory-pressure tests can be flaky" with no diagnosis.
+It reproduces deterministically. The actual symptom, captured live:
+
+```
+stdout='RESULT=OK has_panel=True\nSUBSEQUENT_READ_OK n=1\n'
+AssertionError: expected the shipped implementation to ALSO honestly degrade under severe enough pressure
+```
+
+The test asserts the shipped implementation **fails** (it is a deliberate honesty disclosure: "the two-pass
+bound reduces failure likelihood, it is not immunity"). It is therefore *inverted-polarity* — it breaks when
+the shipped code improves. The shipped decile bound now fits under 600 MB, so the "starved" cap had stopped
+starving anything and the test's own premise was void. Cap ladder measured, shipped mode, one fresh seed
+copy per probe:
+
+| `ulimit -v` cap | Shipped-implementation outcome |
+|---|---|
+| 600,000 KB (the stale cap) | **completes** — no starvation; premise void |
+| 500,000 KB | starves honestly (`MemoryError` caught, `SUBSEQUENT_READ_OK`, rc=0) |
+| **420,000 KB (new value)** | starves honestly — **3/3 consecutive runs** (binding iter-44 lesson) |
+| 360,000 KB | starves honestly |
+| 300,000 KB | starves honestly (interpreter still boots; the floor is well below this) |
+
+420,000 sits with margin on both sides: ~30 % below the boundary where starvation stops, and far above the
+cap at which the child could no longer import and reach the guard (which would trip the test's
+`returncode == 0` assertion instead — a different failure). That the shipped path survives 600 MB where it
+previously starved is a genuine improvement, now recorded rather than papered over.
+
+**(b) `test_membership_timeline_batch_bound.py::test_peak_memory_reduced_vs_pinned_reference_on_live_seed`
+— re-calibrated `>= 30 %` → `>= 20 %` reduction, independently re-measured.**
+
+Reproduced from a clean run (12 m 22 s on the 30-year basis), confirming the 28.5 % first recorded in
+Item R from a separate run:
+
+| Measurement | Value |
+|---|---|
+| reference (unbounded, pre-fix) peak | 675,472,000 bytes |
+| shipped (`batch_symbols=50`) peak | 482,785,266 bytes |
+| reduction | **28.5 %** (~193 MB saved) vs. the stale `>= 30 %` threshold |
+
+**The bound is intact — the threshold, not the code, is what drifted.** In that same run the two sibling
+proofs that actually guard the bound both PASSED: TC-2 byte-identity, and the TC-3 mutation proof (every
+`load_only` batch ≤ the configured width, > 1 batch used, with the same instrumentation showing the
+reference would not satisfy it). The threshold is a *ratio between two moving implementations*: iter-36 set
+30 % when the gap measured 70.7 %, then iter-41's `_SymbolColumns` prefill rewrite and iter-43's revert of a
+disproven prefill filter made the REFERENCE side cheaper, narrowing the gap with no change to the shipped
+`load_only` path. Reverting the batching still yields `shipped_peak == reference_peak` → 0 % reduction,
+which fails at 20 % — discriminating power is preserved, now with ~8.5 points of headroom against further
+reference-side drift instead of the −1.5 it had. The failure message now names the sibling mutation proof
+as the first thing to check, so the next drift is diagnosable instead of mysterious.
+
+**Unchanged by this pass:** the TC-1 end-to-end residual (Addendum 2 — `forward_aggregates_warm` and
+`drawdown_expectations_warm` both need bounding; that is iter-49 work, not an audit-fix), and every
+OUT OF SCOPE item.

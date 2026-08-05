@@ -1,0 +1,58 @@
+{
+  "phase": "goal-ops-hardening-iter-48",
+  "status": "blocked",
+  "current_step": "audit_qa_failed",
+  "updated_at": "2026-08-05T01:38:46.286816Z",
+  "started_at": "2026-08-04T16:49:09.076112Z",
+  "cli": "claude",
+  "qa_verdict": "FAIL",
+  "audit_verdict": "FAIL",
+  "dev_fix_pass": "audit-fix (2026-08-05): closed the audit's actionable open items (B4, T2 x3). B1/B3/F2/F3 deliberately NOT attempted -- the audit itself scopes them to iter-49 or to a non-developer lane. This pass does NOT move the audit verdict off FAIL.",
+  "blockers": [
+    "J-05 NOT closed: the browser-QA lane's live historical-gap-insert drill (job 0ce8e2fb0bd94e52ac3c191080ace831, target 2012-06-15) never reached a terminal status -- data_provider_runs id 308 is still status=running, finished_at=NULL in the committed DB. The phase GOAL ('the run reaches a real terminal outcome instead of sitting on running forever') is not delivered. UNCHANGED by the audit-fix pass: bounding forward_aggregates_warm + drawdown_expectations_warm is iter-49 work.",
+    "UI test results verdict is FAIL (reports/phase-goal-ops-hardening-iter-48-ui-test-results.md): UT-02 FAILED; target journeys J-05 and J-07 have NO executed row in any lane; required journey J-04 was DEFERRED-BUDGET; UT-03/UT-07/UT-08 SKIPPED. UNCHANGED -- a developer pass cannot self-certify the journey lane.",
+    "TC-8 (golden-script content check) and TC-9 (J-05 golden fails on a zero-work run) were never executed -- J-05's golden was rebuilt this iteration but never run, the exact iter-47 lesson recurring. UNCHANGED."
+  ],
+  "known_gaps": [
+    "TC-1's end-to-end 20-minute bound is not met. The residual is at least TWO unbounded finalize-tail phases -- forward_aggregates_warm measured 1334.13s on the browser-QA run (spread 102s/153s/1334s across three live runs) and alone exceeds the 1200s bound; drawdown_expectations_warm never completed. J-05's own root cause (coverage_membership_timeline_refresh) IS fixed: 9.18s/24.10s/21.01s across three live runs.",
+    "RESOLVED by the audit-fix pass: test_start_backend_historical_gap_insert_reaches_terminal_status_within_bound is now xfail(strict=False) with the corrected two-phase attribution in its reason string (reviewer MINOR note + audit T2). Marker semantics verified on this repo's pytest config: no xfail_strict ini is set; the identical marker shape yields xfailed on failure and xpassed (never an error) on success, so it self-clears once the two phases are bounded.",
+    "RESOLVED by the audit-fix pass: test_membership_timeline_batch_bound.py::test_peak_memory_reduced_vs_pinned_reference_on_live_seed re-calibrated >=30% -> >=20% against a fresh measurement (reference 675,471,872 B -> shipped 482,784,499 B = 28.5%, ~193 MB saved, reproducing to within 128 bytes across two independent runs). The bound is intact -- the sibling TC-2 byte-identity and TC-3 mutation proofs both PASSED in the same run; the threshold is a ratio between two moving implementations and iter-41/iter-43 made the REFERENCE side cheaper. Now green (5 passed).",
+    "RESOLVED by the audit-fix pass: test_starved_cap_shipped_still_degrades_honestly_never_crashes DIAGNOSED -- it is NOT the 'environmental flake' QA inferred, it reproduces deterministically. The test is inverted-polarity (it asserts the shipped code FAILS under pressure, as an honest non-immunity disclosure), so it broke when the shipped bound IMPROVED past the 600MB starved cap. Cap ladder measured sequentially: 600,000 KB completes; 500,000/420,000/360,000/300,000 KB all starve honestly with rc=0 and SUBSEQUENT_READ_OK. STARVED_CAP_KB re-calibrated 600,000 -> 420,000, confirmed 3/3 consecutive runs. Now green.",
+    "J-05's golden asserts page-wide text ('1 snapshots'); demo_runner._check_expect ignores `target` whenever `text` is present, so a scoped assertion is not expressible in the current script schema. UNCHANGED (needs a frontend testid this spec excludes).",
+    "B3 (audit): _membership_bars_are_forward_only's count arithmetic can be defeated by a compensating bar removal + insertion below the previous max bar date. Pre-existing; no code path in this codebase removes bars below the max today. UNCHANGED -- needs a manifest/checksum design decision.",
+    "Regime Lab 8192MB-cap hit (15th deferral), shared warm-in-progress sentinel, J-09 background-worker visibility, health-poll <=2s ceiling -- all carried, untouched."
+  ],
+  "changed_files": [
+    "apps/backend/app/engine/data_manager.py",
+    "apps/backend/app/engine/research.py",
+    "apps/backend/app/engine/samples.py",
+    "apps/backend/tests/test_data_manager.py",
+    "apps/backend/tests/test_research_streaming.py",
+    "apps/backend/tests/test_samples_memory_pressure.py",
+    "apps/backend/tests/test_start_backend_script.py",
+    "apps/backend/tests/test_membership_timeline_batch_bound.py",
+    "reports/perf-budgets.md",
+    "runs/goal-session-ops-hardening/journey-scripts/J-05.json",
+    "runs/goal-session-ops-hardening/state/assumptions.md"
+  ],
+  "audit_changed_files": [
+    "apps/backend/tests/test_data_manager.py",
+    "runs/goal-session-ops-hardening/journey-scripts/J-05.json",
+    "reports/perf-budgets.md",
+    "docs/handoffs/goal-ops-hardening-iter-48-dev.md"
+  ],
+  "dev_fix_changed_files": [
+    "apps/backend/app/engine/samples.py",
+    "apps/backend/tests/test_start_backend_script.py",
+    "apps/backend/tests/test_samples_memory_pressure.py",
+    "apps/backend/tests/test_membership_timeline_batch_bound.py",
+    "reports/perf-budgets.md",
+    "docs/handoffs/goal-ops-hardening-iter-48-dev.md",
+    "reports/phase-goal-ops-hardening-iter-48-implementation-summary.md"
+  ],
+  "tests_run": true,
+  "tests_run_this_fix_pass": "test_membership_timeline_batch_bound.py + test_starved_cap_shipped_still_degrades_honestly_never_crashes -> 5 passed (740.17s); test_samples.py + test_research_streaming.py -> 83 passed (15.77s); test_samples_memory_pressure.py -k total_regime -> 8 passed, 4 deselected (1053.01s, 5/5 both variants). TC-7 NOTE: this pass changed product code (samples.py, B4), so any prior lane run is void and the 8-journey lane must be re-run before scoring.",
+  "browser_checks_run": true,
+  "browser_qa_verdict": "FAIL",
+  "next_action": "evaluate"
+}

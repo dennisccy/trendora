@@ -58,6 +58,7 @@ from app.engine.research import (
     _event_study_observation_set,
     _factor_decile_observations,
     _factor_observations,
+    _factor_regime_observations,
     _assign_triple_deciles,
     _phase_severity_lab_observation_set,
     _recovery_turn_observation_set,
@@ -158,28 +159,64 @@ def _factor_samples(
         # traced through.
         members = _factor_decile_observations(session, factor, horizon, as_of, fl.deciles, decile, cfg=cfg)
     elif slice_kind == "total":
-        members = _factor_observations(session, factor, horizon, as_of)
+        # ops-hardening iter-48 (AG-8): "total" is the WHOLE pool by definition (`n_total` / rank-IC n) —
+        # unlike "decile" it cannot discard the majority of observations, so it cannot be bounded BELOW
+        # the population the way the decile window is. The one available reduction is avoiding a
+        # REDUNDANT second full-population materialization: the loop below transforms each
+        # `_factor_observations` entry into its row shape and immediately drops the reference to the
+        # observation dict (overwriting the slot in place), so peak memory holds roughly ONE
+        # population-sized structure at a time instead of two (the observation list AND a separately
+        # built row list coexisting) — see the `rows` assignment below, which reuses this branch's own
+        # `members` list instead of a second list comprehension over it.
+        # iter-48 AUDIT (B4): pass `cfg` explicitly, exactly as the sibling "decile"/"regime" branches do.
+        # `_factor_observations` otherwise falls back to `get_config()` internally, so this branch resolved
+        # `read_batch_size`/`factor_join_run_chunk` from a DIFFERENT Config object than the one
+        # `_factor_samples` was called with. Results are unaffected at any chunk width (the chunks are
+        # contiguous, non-overlapping slices of the sorted `runs_with_fr` with per-chunk
+        # `ORDER BY (run_id, id)`, so the concatenation is globally `(run_id, id)`-ordered regardless) —
+        # this makes the three branches resolve config identically rather than two ways.
+        members = _factor_observations(session, factor, horizon, as_of, cfg=cfg)
     elif slice_kind == "regime":
         if regime is None or regime not in cfg.regime.labels:
             raise ValueError(
                 f"regime {regime!r} is not a configured regime label {list(cfg.regime.labels)}"
             )
-        # the SAME stored-regime grouping `_regime_effectiveness` uses (regime read verbatim, never recomputed)
-        members = [o for o in _factor_observations(session, factor, horizon, as_of) if o["regime"] == regime]
+        # ops-hardening iter-48 (AG-8, iter-47 next-step item 5): bounded — filters INSIDE the SAME
+        # chunked join loop `_factor_observations` runs, so a non-matching-regime observation is never
+        # retained (see `research._factor_regime_observations`'s docstring). Byte-identical to the pre-fix
+        # `[o for o in _factor_observations(...) if o["regime"] == regime]` (proven by a pinned-reference
+        # test) — the stored regime grouping itself, and the ordering, are unchanged.
+        members = _factor_regime_observations(session, factor, horizon, as_of, regime, cfg=cfg)
     else:
         raise ValueError(f"unknown factor slice {slice_kind!r}; valid slices are {list(_FACTOR_SLICES)}")
 
     run_dates = _run_date_map(session)
-    rows = [
-        {
-            "ticker": o["ticker"],
-            "snapshot_date": run_dates.get(o["run_id"]),
-            "regime": o["regime"],
-            "values": [{"key": factor.key, "label": factor.label, "value": o["factor"]}],
-            "forward_return": o["return"],
-        }
-        for o in members
-    ]
+    if slice_kind == "total":
+        # bound peak retention for the (necessarily whole-population) "total" branch: build each row IN
+        # PLACE over `members`, so the observation dict at index i is replaced (and eligible for immediate
+        # GC) by its row dict as soon as that row is built — never holding a second, separately-grown list
+        # of the same length alongside the still-intact `members` list.
+        for _i in range(len(members)):
+            o = members[_i]
+            members[_i] = {
+                "ticker": o["ticker"],
+                "snapshot_date": run_dates.get(o["run_id"]),
+                "regime": o["regime"],
+                "values": [{"key": factor.key, "label": factor.label, "value": o["factor"]}],
+                "forward_return": o["return"],
+            }
+        rows = members
+    else:
+        rows = [
+            {
+                "ticker": o["ticker"],
+                "snapshot_date": run_dates.get(o["run_id"]),
+                "regime": o["regime"],
+                "values": [{"key": factor.key, "label": factor.label, "value": o["factor"]}],
+                "forward_return": o["return"],
+            }
+            for o in members
+        ]
     cohort = {
         "kind": KIND_FACTOR,
         "slice": slice_kind,

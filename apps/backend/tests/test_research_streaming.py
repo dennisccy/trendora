@@ -1165,3 +1165,108 @@ def test_factor_decile_observations_zero_n_cohort_is_honest_empty(chunked_accumu
             session, factor, H, date(2024, 1, 1), cfg.research.factor_lab.deciles, 10, cfg=cfg
         )
     assert members == []
+
+
+# ==================================================================================================
+# ops-hardening iter-48 (AG-8, iter-47 next-step item 5) — `app.engine.samples._factor_samples`'s
+# "regime" branch used to build the FULL `_factor_observations` list (whole horizon population) just to
+# discard every observation NOT matching the requested regime label afterward — the SAME "bounded read,
+# unbounded retention" shape the iter-47 fix already closed for the "decile" branch. Unlike a decile,
+# regime membership is a per-observation predicate with no population-wide rank dependency, so
+# `research._factor_regime_observations` bounds it in a SINGLE pass (not two): it filters INSIDE the
+# SAME chunked join loop `_factor_observations` runs, discarding a non-matching observation immediately.
+# ==================================================================================================
+def _factor_regime_observations_reference(session, factor, horizon, as_of, regime, cfg):
+    """The PRE-FIX `_factor_samples` regime branch, pinned verbatim: the FULL `_factor_observations` list,
+    filtered afterward — the regression oracle for the iter-48 bounded rewrite."""
+    from app.engine.research import _factor_observations
+
+    return [o for o in _factor_observations(session, factor, horizon, as_of, cfg=cfg) if o["regime"] == regime]
+
+
+@pytest.mark.parametrize("as_of", [None, date(2025, 3, 15)])
+@pytest.mark.parametrize("regime", ["Risk-on", "Risk-off"])
+def test_factor_regime_observations_equals_pre_fix_reference(chunked_accumulator_engine, as_of, regime):
+    """The bounded `_factor_regime_observations` is byte-identical to the pinned pre-fix (whole-population
+    filter) reference — for both fixture regimes and both all-history and a historical as_of."""
+    cfg = _cfg_batch(2)
+    factor = next(f for f in cfg.research.factor_lab.factors if f.key == "leadership_score")
+    with Session(chunked_accumulator_engine) as session:
+        bounded = research_module._factor_regime_observations(session, factor, H, as_of, regime, cfg=cfg)
+        reference = _factor_regime_observations_reference(session, factor, H, as_of, regime, cfg)
+    assert _eq(bounded, reference), (
+        f"bounded regime {regime!r} (as_of={as_of}) != pre-fix whole-population reference"
+    )
+
+
+def test_factor_regime_observations_union_covers_whole_pool_no_double_count(chunked_accumulator_engine):
+    """Sanity/coherence companion: the union of the two fixture regimes' bounded calls equals the whole
+    15-pair fixture pool exactly once each — no member dropped, none duplicated."""
+    cfg = _cfg_batch(2)
+    factor = next(f for f in cfg.research.factor_lab.factors if f.key == "leadership_score")
+    seen: list[tuple[int, str]] = []
+    with Session(chunked_accumulator_engine) as session:
+        for regime in ("Risk-on", "Risk-off"):
+            members = research_module._factor_regime_observations(session, factor, H, None, regime, cfg=cfg)
+            seen.extend((m["run_id"], m["ticker"]) for m in members)
+    assert len(seen) == 15, f"expected all 15 fixture pairs covered exactly once, got {len(seen)}"
+    assert len(set(seen)) == 15, "a (run_id, ticker) pair was double-counted across regimes"
+
+
+def test_factor_regime_observations_chunk_independent(chunked_accumulator_engine):
+    """The bounded regime resolution is batch/chunk-independent — read_batch_size AND
+    factor_join_run_chunk both varied — never a value/order change, only a memory-shape change."""
+    factor = next(f for f in load_config().research.factor_lab.factors if f.key == "leadership_score")
+    with Session(chunked_accumulator_engine) as session:
+        small = research_module._factor_regime_observations(
+            session, factor, H, None, "Risk-on", cfg=_cfg_batch(1, run_chunk=1)
+        )
+        big = research_module._factor_regime_observations(
+            session, factor, H, None, "Risk-on", cfg=_cfg_batch(1_000_000, run_chunk=1_000_000)
+        )
+    assert small, "sanity: Risk-on must be non-empty on this fixture"
+    assert _eq(small, big), "bounded regime resolution differs by chunk width"
+
+
+def test_factor_regime_observations_never_materializes_non_matching_chunk(chunked_accumulator_engine, monkeypatch):
+    """Bound proof: a chunk containing NO run in the target regime never even issues the join/scan query
+    (`_fr_slice_map` is not called for it) — the SAME chunk loop `_factor_observations` runs, but with a
+    non-matching chunk skipped entirely rather than resolved-then-discarded."""
+    cfg = _cfg_batch(1, run_chunk=1)  # 1 run id per chunk -> 5 chunks, each either all-Risk-on or all-Risk-off
+    factor = next(f for f in cfg.research.factor_lab.factors if f.key == "leadership_score")
+
+    calls: list[list[int]] = []
+    real_fr_slice_map = research_module._fr_slice_map
+
+    def _wrapped(session, horizon, slice_run_ids, batch):
+        calls.append(list(slice_run_ids))
+        return real_fr_slice_map(session, horizon, slice_run_ids, batch)
+
+    monkeypatch.setattr(research_module, "_fr_slice_map", _wrapped)
+    with Session(chunked_accumulator_engine) as session:
+        run_ids_by_regime: dict[str, list[int]] = {}
+        for run in session.exec(select(ScannerRun)).all():
+            run_ids_by_regime.setdefault(run.regime_label, []).append(run.id)
+        members = research_module._factor_regime_observations(
+            session, factor, H, None, "Risk-on", cfg=cfg
+        )
+
+    assert members, "sanity: Risk-on must be non-empty on this fixture"
+    called_run_ids = {rid for slice_ids in calls for rid in slice_ids}
+    risk_off_ids = set(run_ids_by_regime.get("Risk-off", []))
+    assert not (called_run_ids & risk_off_ids), (
+        f"a Risk-off-only chunk was resolved even though it cannot contribute to a Risk-on cohort — "
+        f"called run ids {sorted(called_run_ids)} intersect Risk-off ids {sorted(risk_off_ids)}"
+    )
+
+
+def test_factor_regime_observations_zero_n_cohort_is_honest_empty(chunked_accumulator_engine):
+    """An as_of before any snapshot resolves an honest empty regime cohort — never a crash, never a
+    fabricated member."""
+    cfg = _cfg_batch(2)
+    factor = next(f for f in cfg.research.factor_lab.factors if f.key == "leadership_score")
+    with Session(chunked_accumulator_engine) as session:
+        members = research_module._factor_regime_observations(
+            session, factor, H, date(2024, 1, 1), "Risk-on", cfg=cfg
+        )
+    assert members == []

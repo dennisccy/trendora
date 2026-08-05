@@ -275,137 +275,43 @@ backend half explicitly; any fix to the closure gate.
 reference, an attach/fallback context, or an early return; and any change that moves a resource
 release from one stage's `finally` to a later stage's.
 
-## iter-38 — 2026-07-30T16:05:00Z
-
-**Verdict:** ESCALATE
-**Lesson:** A drill that must PROVE a failure mode and a drill that must COMPARE two arms are different
-experiments, and merging them silently kills the first. `mem-drill/config.scratch.yaml:1363` raised the cap
-3072 -> 4608 MB with the honest reason "widened so BOTH arms complete gracefully" — correct for the
-comparison, fatal for J-07 step 4, because both arms then finished `ok` and the per-item `MemoryError`
-isolation handler never ran. Nobody noticed until the audit: the iteration shipped an "induced-pressure
-drill" that induced no pressure.
+## iter-38 — 2026-07-30T16:05:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration whose spec asks one run to both measure a delta AND assert a failure-handling
 path — split them into two runs, and state the cap/threshold each one needs before touching either.
 
-## iter-38 — 2026-07-30T16:05:00Z
-
-**Verdict:** ESCALATE
-**Lesson:** The deterministic replay lane cannot tell "product broken" from "backend not running", so it
-emitted 6 FAILs out of 7 that were pure noise — I only caught it by opening `J-01-verify.png` and
-`J-04-verify.png` and seeing the "Backend unavailable" page in both. The lane then costs more than it
-saves: an LLM re-run has to overturn it every iteration, its reconciliation footer under-reported its own
-overturns (omitting J-05 and J-04), and the one journey the LLM lane could not cover (J-04) silently went
-unverified behind the noise.
+## iter-38 — 2026-07-30T16:05:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration reading `regression-replay-results.md` — check the failure screenshot for a
 service-down page BEFORE treating a replay FAIL as a regression signal; and any work on
 `demo_runner.py --mode verify` should make it probe `/api/health` first and report BLOCKED, not FAIL.
 
-## iter-39 — 2026-07-31T02:10:00Z
-
-**Verdict:** ESCALATE
-**Lesson:** When a live drill cannot reach the code path it is aiming at, the obstacle is usually a
-LARGER allocation upstream in the same sequence — not a cap that needs one more turn of tuning. Three
-cap trials (3420/2700/2650 MB) all died in `_missing_data_diagnostic`'s ~3.3M-row materialization
-(`data_manager.py:271`) before the per-item aggregate-warm handlers were ever reached; the fourth
-attempt, at 2650 MB, wedged the process for 7+ minutes instead of producing a proof. Switching to the
-test hook J-07 step 4 already sanctioned made the same proof deterministic at the COMMITTED cap with
-zero host pressure. Two durable rules fell out: (a) a drill that has probed three times without hitting
-its target is diagnosing the wrong thing — go read what allocates FIRST; (b) `select(...).where(...)`
-being bounded by symbol set does NOT make it bounded in memory — SQLAlchemy buffers the whole result
-via `_raw_all_rows` before the loop body runs, and the in-code comment at `data_manager.py:262-274`
-currently asserts the opposite.
+## iter-39 — 2026-07-31T02:10:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration running an induced-memory-pressure or cap-tightening drill; any iteration
 touching `_missing_data_diagnostic` / `_compute_coverage_body` / the `_refresh_ingest_aggregates`
 finalize tail; and any review of a "bounded query" claim in `apps/backend/app/engine/`.
 
-## iter-39 — 2026-07-31T02:10:00Z (second)
-
-**Verdict:** ESCALATE
-**Lesson:** Deterministic-lane repairs must be verified in BOTH directions before they are called done.
-iter-38's replay lane reported six FAILs against a backend that was simply down; iter-39 fixed it with a
-`BLOCKED` verdict class — but the fix left the *merged* artifact able to headline `**Browser QA Verdict:**
-PASS` for a run whose journeys were all BLOCKED, because `merge_ui_test_results.parse_rows` recognizes
-only PASS/FAIL/SKIP/SKIPPED and drops an unknown verdict from every count. The machine gate is safe
-(`goal_gate.py:89,151` returns rc 1 on any `BLOCKED` cell), so this bites only an LLM reader. Practical
-rule for every future evaluator: read the results TABLE ROWS, never the `Overall:`/verdict headline.
+## iter-39 — 2026-07-31T02:10:00Z (second)  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration touching `merge_ui_test_results.py` / `demo_runner.py` / `replay-lane.sh`,
 and every goal-evaluator reading `reports/phase-*-ui-test-results.md`.
 
-## iter-40 — 2026-07-31T03:20:00Z
-
-**Verdict:** ESCALATE
-**Lesson:** A `404` from a health probe is proof the server is UP, not down — and this session just lost
-seven journey verifications to that confusion. The browser-QA precondition probed
-`http://localhost:8255/health`, but `apps/backend/main.py:127` mounts the health router under prefix
-`/api`, so the live endpoint is `/api/health`; `logs/backend.log` shows the 404 interleaved with
-`GET /api/health 200 OK` on the same process. Combined with a UI test plan that read the spec's
-`Frontend Present: no` as "no UI tests required", DoD item 8 / TC-9 went entirely unexecuted while
-review, QA and the deterministic closure gate all reported clean. Two durable rules: (a) a precondition
-check must distinguish *connection refused* (down) from *any HTTP status* (up) — never treat a 404 as
-absence; (b) `Frontend Present: no` may suppress NEW-surface UI tests, never the required-still-passing
-regression replay, and a browser run whose every regression row is `SKIP` must read as an unmet DoD item,
-not a clean `SKIPPED`.
+## iter-40 — 2026-07-31T03:20:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** every iteration's browser-qa/replay precondition and ui-test-plan step; any
 goal-evaluator reading a `SKIPPED` browser headline; and any framework work on
 `goal-iter-lean.sh` / `replay-lane.sh` / the ui-test-designer.
 
-## iter-40 — 2026-07-31T03:20:00Z (second)
-
-**Verdict:** ESCALATE
-**Lesson:** `.yield_per()` bounds the DB cursor, not your accumulator — the same distinction iter-39
-learned about `WHERE` clauses, one level up. This iteration correctly fixed `_missing_data_diagnostic`
-(`data_manager.py:271`), but `apps/backend/app/engine/prices.py:132-142` (`_BarCache.prefill`) already
-used `.yield_per(batch)` AND still collects every `daily_prices` row into one `by_symbol` dict of `Bar`
-objects (~1.1 GB on the deep basis, named by the dev handoff as one of the two consumers in the drill run
-that froze). So "it streams" is not evidence of a bound; check what the loop BODY retains. Also worth
-recording: the post-fix drill's `MemoryError` fired at `data_manager.py:898`, **53 lines before** the
-fixed call at `:951` — so "no traceback names the fixed site" was true because the code never got there,
-which is much weaker than "the fix held under pressure".
+## iter-40 — 2026-07-31T03:20:00Z (second)  [condensed: body → lessons.md.archive.md]
 **Applies to:** any review of a "bounded read" claim in `apps/backend/app/engine/`; any
 memory-pressure drill whose success criterion is the ABSENCE of a name in a traceback.
 
-## iter-41 — 2026-07-31T06:20:00Z
-
-**Verdict:** ESCALATE
-**Lesson:** Promoting a journey to an iteration's **target** silently REMOVES its verification. Every
-coverage gate in the chain — `ui-test-designer`'s backend-only carve-out, `merge_ui_test_results.py`'s
-`missing_required_journeys`/`skipped_required_journeys`, `goal_gate.py`, `closure_gate.py` — is driven
-by the spec's `Required-still-passing journeys:` line and has no notion of `Target journeys:`. So
-iter-41's merged results headlined `PASS 6/6` while J-05 and J-07 had no row anywhere, and J-05 ended
-up with LESS evidence than in iters 38/39 despite golden scripts `J-05.json`/`J-07.json` sitting unused
-on disk. Second, related lesson from the same iteration (auditor's B1, worth keeping verbatim): when a
-fix is written to prevent a specific past incident, that incident's own committed artifact IS the
-regression fixture — feeding
-`reports/phase-goal-ops-hardening-iter-40-ui-test-results.md` through the new guard took thirty seconds
-and showed it still merged to a clean `SKIPPED`, because the guard caught a MISSING row while iter-40's
-real shape was a PRESENT row reading `SKIP`.
+## iter-41 — 2026-07-31T06:20:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration adding or trusting a journey-coverage gate; any iteration whose spec names
 `Target journeys:` on a backend-only (`Frontend Present: no`) spec; any fix written to prevent a named
 past incident.
 
-## iter-42 — 2026-07-31T09:05:00Z
-
-**Verdict:** REGRESSION
-**Lesson:** Closing a verification hole is not a cost — it is a discovery. Two rounds of "unknown"
-on J-05 read as neutral bookkeeping; the first time the check actually ran, the journey was broken,
-and had been since at least iter-40. `unknown` is not a mild status: it is an unpaid debt that
-compounds, and a session should treat two consecutive `unknown`s on the same journey as urgent, not
-as deferred. The corollary bit this round too: `regressed` is defined as "was passing in a PRIOR
-iteration, now failing" — not the immediately prior one — so an `unknown` interlude does not launder
-a regression into a mere `failing`.
+## iter-42 — 2026-07-31T09:05:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration that scores a journey `unknown`, and any evaluator choosing between
 `failing` and `regressed` after a gap in verification.
 
-## iter-42 — 2026-07-31T09:05:00Z (second)
-
-**Verdict:** REGRESSION
-**Lesson:** A memory measurement that only measures the work you REMOVED is not a measurement. The
-`_BarCache.prefill` bench compared `prefill(pool)` vs `prefill(None)` and reported a 2.5% win; the
-43 symbols the filter stops prefilling are not dropped, they fall onto the lazy `list[Bar]` path at
-264.6 B/row instead of `_SymbolColumns`' 81.0 B/row, and 36 of them are `config.etfs` names read
-every snapshot date. With that arm included the change is +5.1%, the wrong sign. Same shape as this
-session's own `.yield_per()` lesson one file over: bounding one side of a transfer proves nothing
-about the total. Any future memory claim in this codebase must measure a whole job, not a function.
+## iter-42 — 2026-07-31T09:05:00Z (second)  [condensed: body → lessons.md.archive.md]
 **Applies to:** `apps/backend/app/engine/prices.py`, any `perf-budgets.md` memory claim, and any
 iteration whose DoD contains a before/after resource measurement.
 
@@ -538,3 +444,30 @@ executed buys nothing — this round rebuilt five goldens at 15:46-16:05 and ran
 and any iteration whose spec mandates re-running a lane after a fix pass (the TC-7 shape) — check
 the results-file mtime against the newest product-code mtime before scoring, because iter-46 and
 iter-47 both ended with every lane naming the requirement and nobody executing it.
+
+
+## iter-48 — 2026-08-05T02:45:00Z
+
+**Verdict:** ESCALATE
+**Lesson:** A finalize-tail phase whose cost swings **102 s → 153 s → 1,334 s across three runs of
+the same work** cannot be characterised from two samples: the dev handoff and `perf-budgets.md` both
+attributed J-05's remaining non-termination to `drawdown_expectations_warm` alone, written from the
+first two runs, and the third run showed `forward_aggregates_warm` ALONE exceeding TC-1's whole
+1,200 s budget (audit B2). The instrumentation this iteration added to
+`apps/backend/app/engine/data_manager.py`'s finalize tail is what made the spread visible — the
+lesson is to read every run's phase table before naming a bottleneck, not the first two.
+**Applies to:** any iteration attributing a wall-clock blocker to one phase of a multi-phase job —
+especially `_refresh_ingest_aggregates`'s tail.
+
+## iter-48 — 2026-08-05T02:45:00Z (second entry)
+
+**Verdict:** ESCALATE
+**Lesson:** The cure for the session's null-test problem is not "read the golden script" but "read
+the ROW the golden created". J-01's and J-03's replay PASSes became trustworthy only when
+`data_provider_runs` ids 305/306/307 turned out to exist at the replay's own timestamps with exactly
+the counts the scripts assert. Conversely J-06's PASS survived a golden-content read and still had
+to be declined, because `logs/backend.log` recorded two `MemoryError`s on `/research/regime-lab` —
+the route its own step 11 loads — inside the same window. Text assertions and script content are
+both satisfiable without the behaviour; a side-effect row or a log line is not.
+**Applies to:** any evaluator scoring a journey `passing` on a deterministic-replay row; any
+iteration rebuilding a golden for a journey that writes to the DB.

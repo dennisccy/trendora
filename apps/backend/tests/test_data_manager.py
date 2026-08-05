@@ -5677,6 +5677,287 @@ def test_historical_gap_fill_falls_back_to_full_recompute_not_stale_reuse(member
 
 
 # ==================================================================================================
+# ops-hardening iter-48 (J-05 fix) — the historical-gap-insert case ALSO bounds the resolver sweep.
+#
+# The append-forward fast path (iter-45, above) only engages when every new date is strictly LATER than
+# every already-cached one. A historical gap-insert (J-05's own failing scenario: a new snapshot date
+# EARLIER than the latest cached membership date) fell through to `_membership_timeline`'s full,
+# UNBOUNDED O(dates x pool) `resolve_with_reasons` sweep over EVERY historical date — live-measured at
+# ~0.8-2.2s per call across this DB's ~2,900 historical dates, well over an hour total, which is why the
+# `data_provider_runs` row for such a backfill never reached a terminal status within any reasonable
+# bound. `membership_timeline_cached` now tries a SECOND bounded path before falling back to the full
+# sweep: reuse every already-cached date's `excluded` tally (a pure per-date function, independent of
+# any OTHER snapshot date — see `_membership_timeline`'s `reuse_excluded_by_date` docstring) and invoke
+# the resolver ONLY for the genuinely new date(s), gated by the SAME `_membership_bars_are_forward_only`
+# safety proof the append-forward path already relies on. `entries`/`exits` are STILL always recomputed
+# fresh, in full date order, for every date (never reused) — this does NOT extend the iter-45 incremental
+# fast path to the gap-insert case (assumptions.md iter-48).
+# ==================================================================================================
+def test_historical_gap_fill_does_not_reinvoke_resolver_for_cached_dates(
+    membership_fast_path_engine, monkeypatch,
+):
+    """A historical gap-insert (a new date EARLIER than every already-cached one) does NOT re-invoke
+    `resolve_with_reasons` for any already-cached date -- only the new date is ever resolved. Mirrors the
+    append-forward TC-1 spy test above, but for the gap-insert direction the append-forward fast path
+    explicitly does NOT cover."""
+    engine = membership_fast_path_engine
+    cfg = load_config()
+    with Session(engine) as session:
+        dates = _all_scanner_run_dates(session)
+        assert len(dates) == 3
+        data_manager.membership_timeline_cached(session, cfg, dates)  # warm v1
+
+    d_gap = date(2023, 12, 1)  # strictly EARLIER than every already-cached date -- NOT append-forward
+    with Session(engine) as session:
+        _mk_membership_snapshot(session, d_gap, ["AAA", "EEE"])
+
+    resolved_dates: list[date] = []
+    orig_resolve = data_manager.universe_resolver.resolve_with_reasons
+
+    def _spy(session_arg, d, cfg_arg, **kwargs):
+        resolved_dates.append(d)
+        return orig_resolve(session_arg, d, cfg_arg, **kwargs)
+
+    monkeypatch.setattr(data_manager.universe_resolver, "resolve_with_reasons", _spy)
+
+    with Session(engine) as session:
+        dates = _all_scanner_run_dates(session)
+        assert dates[0] == d_gap
+        assert len(dates) == 4
+        data_manager.membership_timeline_cached(session, cfg, dates)  # MISS -> the iter-48 bounded path
+
+    assert resolved_dates, "expected the new date's resolver sweep to actually run"
+    assert set(resolved_dates) == {d_gap}, (
+        f"resolve_with_reasons must run ONLY for the new (gap) date {d_gap}, never for an already-cached "
+        f"date -- got calls for {sorted(set(resolved_dates))}"
+    )
+
+
+def test_historical_gap_fill_reused_excluded_byte_identical_to_full_recompute(membership_fast_path_engine):
+    """The iter-48 bounded gap-insert path's served payload is byte-identical to `_membership_timeline`'s
+    own full, unbounded recompute (the pre-fix reference oracle) for the SAME dates and DB state --
+    reusing cached `excluded` tallies changes nothing observable because they are a pure per-date
+    function with no cross-date dependency."""
+    engine = membership_fast_path_engine
+    cfg = load_config()
+    with Session(engine) as session:
+        dates = _all_scanner_run_dates(session)
+        data_manager.membership_timeline_cached(session, cfg, dates)  # warm v1
+
+    d_gap = date(2023, 6, 15)
+    with Session(engine) as session:
+        _mk_membership_snapshot(session, d_gap, ["AAA", "FFF"])
+
+    with Session(engine) as session:
+        dates = _all_scanner_run_dates(session)
+        bounded_payload = data_manager.membership_timeline_cached(session, cfg, dates)
+        oracle_payload = data_manager._membership_timeline(session, cfg, dates)  # full, unbounded oracle
+
+    assert bounded_payload == oracle_payload
+
+
+def test_historical_gap_fill_reuse_is_keyed_per_date_not_vacuously_identical(
+    membership_fast_path_engine, monkeypatch,
+):
+    """ops-hardening iter-48 AUDIT (T1) — TC-2's byte-identity proof, with a DISCRIMINATING oracle.
+
+    `test_historical_gap_fill_reused_excluded_byte_identical_to_full_recompute` (above) runs on a fixture
+    that carries ZERO `DailyPrice` bars, so `resolve_with_reasons` returns the SAME constant tally for
+    every date. Under that data shape a reuse that mis-keyed one date's cached `excluded` tally onto a
+    DIFFERENT date still compares equal to the full oracle — the byte-identity assertion passes without
+    ever exercising the per-date mapping it is supposed to prove. This test removes that blind spot: the
+    resolver is stubbed to return a tally that is a deterministic function OF THE DATE, so every date's
+    `excluded` block is distinct, and any positional/off-by-one/mis-keyed reuse in
+    `_membership_timeline`'s `reuse_excluded_by_date` lookup becomes observable.
+
+    Asserts three things, in order: (1) the tallies really do vary per date (the anti-vacuity guard — if a
+    future refactor makes them constant again this test fails loudly instead of silently degrading into
+    the very tautology it exists to replace); (2) the bounded gap-insert path really engaged (the resolver
+    ran for the NEW date only); (3) the served payload still equals the full, unbounded oracle."""
+    engine = membership_fast_path_engine
+    cfg = load_config()
+
+    def _date_keyed_diag(_session, d, _cfg, **_kwargs):
+        # A tally that DEPENDS ON THE DATE (unlike the real zero-bar fixture's constant one), using only
+        # real `EXCLUSION_REASONS` keys because `_excluded_counts_by_date` accumulates into a dict
+        # pre-seeded with exactly those keys.
+        reasons = list(data_manager.universe_resolver.EXCLUSION_REASONS)
+        counts = {reason: 0 for reason in reasons}
+        counts[reasons[0]] = d.toordinal() % 9973  # distinct per date across this fixture's range
+        return {"excluded_counts": counts}
+
+    monkeypatch.setattr(
+        data_manager.universe_resolver, "resolve_with_reasons", _date_keyed_diag,
+    )
+
+    with Session(engine) as session:
+        dates = _all_scanner_run_dates(session)
+        assert len(dates) == 3
+        data_manager.membership_timeline_cached(session, cfg, dates)  # warm v1 (date-keyed tallies)
+
+    d_gap = date(2023, 7, 20)  # strictly EARLIER than every already-cached date -- the iter-48 branch
+    with Session(engine) as session:
+        _mk_membership_snapshot(session, d_gap, ["AAA", "III"])
+
+    resolved_dates: list[date] = []
+
+    def _spy(session_arg, d, cfg_arg, **kwargs):
+        resolved_dates.append(d)
+        return _date_keyed_diag(session_arg, d, cfg_arg, **kwargs)
+
+    monkeypatch.setattr(data_manager.universe_resolver, "resolve_with_reasons", _spy)
+
+    with Session(engine) as session:
+        dates = _all_scanner_run_dates(session)
+        assert len(dates) == 4
+        bounded_payload = data_manager.membership_timeline_cached(session, cfg, dates)
+        # snapshot the spy BEFORE the oracle call below (which resolves every date by design and would
+        # otherwise swamp the bounded path's own call record)
+        bounded_resolved = list(resolved_dates)
+        oracle_payload = data_manager._membership_timeline(session, cfg, dates)  # full, unbounded oracle
+
+    # (1) anti-vacuity: the per-date tallies must genuinely differ, or this comparison proves nothing
+    distinct_tallies = {
+        json.dumps(p["excluded"], sort_keys=True) for p in bounded_payload["points"]
+    }
+    assert len(distinct_tallies) == len(bounded_payload["points"]), (
+        "this test is only meaningful while every date's `excluded` tally is distinct -- got "
+        f"{len(distinct_tallies)} distinct tallies across {len(bounded_payload['points'])} points"
+    )
+
+    # (2) the bounded reuse path (not the full sweep) is what produced `bounded_payload`
+    assert set(bounded_resolved) == {d_gap}, (
+        f"expected the bounded gap-insert path to resolve ONLY the new date {d_gap}; got "
+        f"{sorted(set(bounded_resolved))} -- if this reads as every date, the reuse path did not engage "
+        f"and assertion (3) below would be proving the fallback, not the fix"
+    )
+
+    # (3) byte-identity against the full oracle, now with a per-date-varying tally to discriminate against
+    assert bounded_payload == oracle_payload
+
+
+def test_historical_gap_fill_falls_back_to_full_sweep_when_bars_are_not_forward_only(
+    membership_fast_path_engine, monkeypatch,
+):
+    """Safety regression -- when the bars manifest did NOT move forward-only since the previous cache
+    generation (here: the fixture starts with ZERO bars, so ANY new bar makes the prior generation's
+    'no bars existed' assumption unprovable -- `_membership_bars_are_forward_only`'s own documented
+    fail-safe), the iter-48 bounded reuse path must NOT engage even for an otherwise-eligible gap-insert:
+    every date is re-resolved, exactly as the pre-iter-48 code always did. Proves the safety gate, not
+    just the happy path."""
+    engine = membership_fast_path_engine
+    cfg = load_config()
+    with Session(engine) as session:
+        dates = _all_scanner_run_dates(session)
+        data_manager.membership_timeline_cached(session, cfg, dates)  # warm v1 (zero bars)
+
+    d_gap = date(2023, 9, 1)
+    with Session(engine) as session:
+        _mk_membership_snapshot(session, d_gap, ["AAA", "GGG"])
+        # a bar lands for the first time since v1 was cached -- the "no bars existed" precondition
+        # `_membership_bars_are_forward_only` requires for a "none" bar_stamp no longer holds, so reuse
+        # cannot be proven safe regardless of this bar's own date.
+        session.add(DailyPrice(
+            symbol="AAA", date=date(2024, 3, 1),
+            open=10.0, high=10.0, low=10.0, close=10.0, volume=100.0,
+        ))
+        session.commit()
+
+    resolved_dates: list[date] = []
+    orig_resolve = data_manager.universe_resolver.resolve_with_reasons
+
+    def _spy(session_arg, d, cfg_arg, **kwargs):
+        resolved_dates.append(d)
+        return orig_resolve(session_arg, d, cfg_arg, **kwargs)
+
+    monkeypatch.setattr(data_manager.universe_resolver, "resolve_with_reasons", _spy)
+
+    with Session(engine) as session:
+        dates = _all_scanner_run_dates(session)
+        served = data_manager.membership_timeline_cached(session, cfg, dates)
+        oracle = data_manager._membership_timeline(session, cfg, dates)
+
+    assert served == oracle  # still correct -- the fallback, not a stale/unsafe reuse
+    assert set(resolved_dates) == set(dates), (
+        f"expected every date to be re-resolved when bars did not move forward-only (the reuse path must "
+        f"NOT engage) -- got calls for only {sorted(set(resolved_dates))} of {sorted(dates)}"
+    )
+
+
+def test_membership_timeline_reuse_excluded_by_date_default_is_byte_identical(membership_fast_path_engine):
+    """`_membership_timeline`'s new `reuse_excluded_by_date` parameter is purely additive -- calling it
+    with no 4th argument (every pre-iter-48 call site) is byte-identical to calling it with an explicit
+    empty/None reuse map."""
+    engine = membership_fast_path_engine
+    cfg = load_config()
+    with Session(engine) as session:
+        dates = _all_scanner_run_dates(session)
+        no_arg = data_manager._membership_timeline(session, cfg, dates)
+        explicit_none = data_manager._membership_timeline(session, cfg, dates, None)
+        explicit_empty = data_manager._membership_timeline(session, cfg, dates, {})
+
+    assert no_arg == explicit_none == explicit_empty
+
+
+def test_historical_gap_fill_resolver_failure_isolated_never_hangs_the_job(
+    membership_fast_path_engine, monkeypatch,
+):
+    """Error-case coverage (phase spec TESTING REQUIREMENTS) -- a genuine non-memory exception raised
+    from INSIDE the iter-48 bounded gap-insert path, exercised through the real finalize-tail call chain
+    (`_refresh_ingest_aggregates` -> `refresh_coverage_snapshot` -> `membership_timeline_cached` ->
+    `_membership_timeline` -> `_excluded_counts_by_date` -> `resolve_with_reasons`), is caught by the
+    SAME per-item isolation convention every other finalize-tail step already relies on
+    (`test_finalize_hook_partial_failure_isolated_other_aggregates_still_refresh`,
+    `test_finalize_hook_never_raises_even_when_everything_fails`, both unmodified by this iteration's
+    diff) -- `_refresh_ingest_aggregates` never raises, `coverage`/`membership_timeline` are honestly
+    absent from `aggregates_refreshed` (nothing was silently claimed), and every OTHER category still
+    refreshes. The job therefore reaches ITS OWN terminal status (`_final_status(prog)`, set by the
+    caller from the backfill stage's own outcome) rather than hanging on `running` -- proving the "never
+    silently running" half of the phase spec's error-case requirement for THIS iteration's new code.
+
+    Note on scope (see `assumptions.md` iter-48): this does NOT flip `data_provider_runs.status` to
+    `"failed"` -- `_run_job`'s own documented contract (`data_manager.py:4939`, multiply audited since
+    iter-45) is that an aggregate-refresh failure must NEVER flip an otherwise-successful ingest job to
+    failed, precisely so a cosmetic/derived-data fault (as opposed to a fault in the ingest itself) does
+    not misreport a real backfill as failed. Redesigning that contract to make THIS specific failure
+    class flip to "failed" would be an undocumented, unproven change to a deliberately hardened
+    isolation boundary, out of this iteration's scope."""
+    engine = membership_fast_path_engine
+    cfg = load_config()
+    with Session(engine) as session:
+        dates = _all_scanner_run_dates(session)
+        assert len(dates) == 3
+        data_manager.membership_timeline_cached(session, cfg, dates)  # warm v1
+
+    d_gap = date(2023, 11, 1)  # strictly EARLIER than every already-cached date -- the iter-48 branch
+    with Session(engine) as session:
+        _mk_membership_snapshot(session, d_gap, ["AAA", "HHH"])
+
+    def _boom(*_a, **_k):
+        raise RuntimeError("forced resolver failure (historical-gap-insert error-case probe)")
+
+    monkeypatch.setattr(data_manager.universe_resolver, "resolve_with_reasons", _boom)
+
+    with Session(engine) as session:
+        prog = JobProgress(job_id="gap-insert-resolver-failure-probe", kind="backfill", start=d_gap, end=d_gap)
+        prog.new_snapshot_dates = [d_gap]
+        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)  # must not raise
+
+    assert "coverage" not in refreshed, "an honest omission is required when the underlying compute failed"
+    assert "membership_timeline" not in refreshed, (
+        "must not fabricate a refresh for the category whose own resolver call just raised"
+    )
+    # every OTHER finalize-tail category (independent of the coverage/membership-timeline step above)
+    # still refreshes -- the SAME isolation boundary `test_finalize_hook_partial_failure_isolated_...`
+    # already proves for an unrelated forced failure, re-confirmed here for THIS iteration's own new
+    # failure site.
+    assert {"latest_snapshot", "market_phase"} <= set(refreshed), (
+        f"an isolated coverage/membership-timeline failure must not prevent other categories from "
+        f"refreshing; got {refreshed}"
+    )
+
+
+# ==================================================================================================
 # ops-hardening iter-45 AUDIT — regression tests for the three fixes applied during the audit pass.
 # ==================================================================================================
 def test_log_isolation_failure_swallows_a_raising_logger_exception(monkeypatch):

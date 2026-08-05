@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-ops-hardening-iter-48",
+  "base_url": "http://localhost:3255",
+  "not_yet": true,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Open the Data Manager page",
+      "narration": "This iteration aimed to fix a long-standing issue where historical-date backfill jobs never finish. Let's see the Data Manager where that work lives.",
+      "point_out": "The page shows a 'Start a fetch / backfill job' panel with date fields.",
+      "journey": "",
+      "new": false,
+      "verified": false,
+      "section": "full_tour",
+      "action": {"type": "goto", "url": "/data"},
+      "expect": {"text": "Data Manager"}
+    }
+  ]
+}

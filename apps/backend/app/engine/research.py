@@ -326,6 +326,68 @@ def _factor_observations(
     return observations
 
 
+def _factor_regime_observations(
+    session: Session, factor, horizon: int, as_of: Optional[date_cls], regime: str,
+    *, cfg: Optional[Config] = None,
+) -> list[dict]:
+    """ops-hardening iter-48 (AG-8): bounded regime-filtered member resolution for
+    `app.engine.samples._factor_samples`'s "regime" branch — the SAME result as
+    `[o for o in _factor_observations(session, factor, horizon, as_of) if o["regime"] == regime]` would
+    produce, without ever holding the FULL unfiltered population in memory at once.
+
+    Unlike the "decile" branch (`_factor_decile_observations`), a regime membership test needs no
+    population-wide rank — it is a per-observation predicate the SAME chunk loop `_factor_observations`
+    already runs can apply INLINE, so this is a single bounded pass (not two): the SAME chunked
+    `_runs_with_fr` / `_fr_slice_map` join, filtering `regime_by_run.get(res.run_id) == regime` BEFORE
+    appending to the accumulator, so an observation from a NON-matching regime is discarded immediately
+    (never retained, never counted toward peak memory) instead of being built into the full 6-field dict
+    and filtered out afterward by the caller. Byte-identical member rows, in the SAME (run_id, id) order
+    `_factor_observations` itself produces (proven by a pinned-reference test) — this changes only WHEN
+    the regime filter is applied (during the walk vs after it), never what is computed."""
+    parsed = parse_factor_source(factor.source)
+    research_cfg = (cfg or get_config()).research
+    batch = research_cfg.read_batch_size
+    run_chunk = research_cfg.factor_join_run_chunk
+
+    runs_with_fr = _runs_with_fr(session, [horizon], as_of)
+    run_rows = (
+        session.exec(select(ScannerRun).where(ScannerRun.id.in_(runs_with_fr))).all()
+        if runs_with_fr else []
+    )
+    regime_by_run = {run.id: run.regime_label for run in run_rows}
+
+    members: list[dict] = []
+    for start in range(0, len(runs_with_fr), run_chunk):
+        slice_run_ids = runs_with_fr[start:start + run_chunk]
+        # skip chunks with no run in the target regime at all — a cheap upfront filter that avoids the
+        # join/scan entirely for a chunk that cannot possibly contribute (byte-identical: a run outside
+        # the regime would have contributed 0 rows anyway).
+        if not any(regime_by_run.get(rid) == regime for rid in slice_run_ids):
+            continue
+        ret_by_run_symbol = _fr_slice_map(session, horizon, slice_run_ids, batch)
+        res_stmt = (
+            select(ScannerResult)
+            .where(ScannerResult.run_id.in_(slice_run_ids))
+            .order_by(ScannerResult.run_id, ScannerResult.id)
+        )
+        for res in session.exec(res_stmt).yield_per(batch):
+            if regime_by_run.get(res.run_id) != regime:
+                continue  # not this regime -- discarded immediately, never retained (the iter-48 bound)
+            fr = ret_by_run_symbol.get((res.run_id, res.ticker))
+            if fr is None:
+                continue
+            realized, max_drawdown = fr
+            value = _extract_factor_value(res, parsed)
+            if value is None:
+                continue
+            members.append({
+                "run_id": res.run_id, "ticker": res.ticker, "factor": float(value), "return": realized,
+                "max_drawdown": max_drawdown,
+                "regime": regime_by_run.get(res.run_id),
+            })
+    return members
+
+
 def _decile_population_upper_bound(session: Session, runs_with_fr: list[int], run_chunk: int) -> int:
     """ops-hardening iter-47 FIX PASS (audit B3): a PROVEN upper bound on the number of observations
     `_factor_decile_observations`' PASS 1 can produce, read with COUNT-only queries (no row is

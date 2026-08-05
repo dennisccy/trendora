@@ -54,7 +54,25 @@ _CLAIM = {
 TIGHT_CAP_KB = 850_000
 # Deep enough that BOTH implementations starve — proves the shipped code still degrades honestly (never a
 # crash/wedge) rather than merely moving the failure point.
-STARVED_CAP_KB = 600_000
+#
+# ops-hardening iter-48 AUDIT (T2/T3) — RE-CALIBRATED 600_000 -> 420_000, with measurement. This constant
+# is an INVERTED-POLARITY knob: the test asserts the shipped implementation FAILS, so it goes stale when
+# the shipped code gets BETTER, and then reads as a regression. That is exactly what happened. QA's run
+# and an independent reproduction both saw `RESULT=OK has_panel=True` at the old 600,000 KB cap — i.e.
+# the shipped decile bound now fits UNDER 600 MB, so the "starved" cap had stopped starving anything.
+# QA guessed "environmental flake"; it is not one — it reproduces, and it is good news, not a defect.
+#
+# Measured on this host (shipped mode, one fresh seed copy per probe, run strictly sequentially — never
+# concurrently, which is the confound that muddied QA's own run):
+#     600,000 KB -> COMPLETES        (the stale cap: no starvation, test's premise void)
+#     500,000 KB -> starves honestly (MemoryError caught, SUBSEQUENT_READ_OK, rc=0)
+#     420,000 KB -> starves honestly  x3 consecutive runs, 3/3 (binding iter-44 lesson: one run is not proof)
+#     360,000 KB -> starves honestly
+#     300,000 KB -> starves honestly (interpreter still boots — the floor is well below this)
+# 420,000 sits with real margin on BOTH sides: ~30 % below the 600,000 boundary where starvation stops,
+# and comfortably above the cap at which the child could no longer import and reach the guard at all
+# (which would trip this test's `returncode == 0` assertion instead, a different failure).
+STARVED_CAP_KB = 420_000
 # Comfortably clears the whole claim compute for EITHER implementation — the CONTROL cap.
 CONTROL_CAP_KB = 1_600_000
 BOUNDED_TIMEOUT_S = 150.0
@@ -74,6 +92,21 @@ def _fresh_seed_copy(tmp_path: Path, name: str) -> Path:
     dest = tmp_path / name
     shutil.copyfile(REAL_DB, dest)
     return dest
+
+
+def _delete_copy(path: Path) -> None:
+    """ops-hardening iter-48: the total/regime drills below run TWICE as many DB-copy probes as the
+    existing decile drill (two variants x the same battery) — at ~8.4 GB per copy that is a real disk
+    concern (not merely a slow test), so each copy is deleted immediately after its probe subprocess
+    returns rather than left for `tmp_path`'s end-of-session cleanup. Best-effort: a failed cleanup must
+    never fail the test that already got its result."""
+    for suffix in ("", "-wal", "-shm"):
+        p = Path(str(path) + suffix)
+        if p.exists():
+            try:
+                p.unlink()
+            except OSError:
+                pass
 
 
 # --------------------------------------------------------------------------------------------------
@@ -232,3 +265,252 @@ def test_shipped_survives_five_consecutive_tight_cap_runs(tmp_path):
         assert "SUBSEQUENT_READ_OK" in result.stdout, f"run {i}: no live post-call read"
     assert len(outcomes) == 5
     assert all("RESULT=OK has_panel=True" in o for o in outcomes), "not all 5 consecutive runs passed"
+
+
+# ==================================================================================================
+# ops-hardening iter-48 (AG-8, iter-47 next-step item 5) — the SAME real-subprocess induction pattern
+# above, extended to `_factor_samples`'s "total" and "regime" branches (`samples.py:161`/`:168`-169`
+# pre-fix). Neither branch is exercised by any LIVE certified claim today (the 7-claim ledger's factor
+# claims are all decile-scoped) — these drills construct their OWN claim dicts, exactly as the decile
+# drill above already does, so the bound is proven for the code path regardless of what the ledger
+# happens to hold right now.
+#
+# Calibrated on this host through the REAL entry point (`compute_drawdown_expectations_cached`, the SAME
+# call the test bodies below drive — NOT an isolated sub-call; an earlier calibration pass measured only
+# `_factor_observations`/`_factor_regime_observations` in isolation and its caps were too tight once the
+# full pipeline's OWN additional overhead — `phase_context_by_date`, the ticker-chunked `stored_by_key`
+# accumulators, the by-phase distribution accumulators — is included, which a live run caught: the
+# "shipped" implementation was hitting its OWN `ulimit -v` cap under the isolated-calibration numbers).
+# `.venv` Python 3.12, real committed seed (fresh copy per probe — `compute_drawdown_expectations_cached`
+# WRITES an `EventStudyCache` row on a MISS, so a reused copy would trivially cache-HIT a later probe),
+# leadership_score, horizon 20, no `ulimit -v`:
+#
+#   TOTAL   population 1,261,493 observations — pre-fix PEAK_RSS_KB=1,658,248, shipped PEAK_RSS_KB=
+#           1,444,820 (~12.9% reduction)
+#   REGIME=Risk-on (fixture's largest bucket, 458,772 of 1,261,493) — pre-fix PEAK_RSS_KB=986,608,
+#           shipped PEAK_RSS_KB=833,576-836,696 (~15.2-15.5% reduction)
+#
+# `has_panel=True` and member counts byte-identical between pre-fix and shipped for both branches in
+# every calibration run — confirmed both by this live measurement and by `test_research_streaming.py`'s
+# pinned-reference unit tests.
+# ==================================================================================================
+_TOTAL_CLAIM = {
+    "kind": "factor", "factor": "leadership_score", "slice_kind": "total", "horizon": 20,
+    "direction": "positive",
+}
+_REGIME_CLAIM = {
+    "kind": "factor", "factor": "leadership_score", "slice_kind": "regime", "regime": "Risk-on",
+    "horizon": 20, "direction": "positive",
+}
+
+# TOTAL: old (double materialization) aborts, shipped (in-place row build) completes with margin.
+TOTAL_TIGHT_CAP_KB = 1_550_000
+TOTAL_STARVED_CAP_KB = 1_100_000
+TOTAL_CONTROL_CAP_KB = 2_000_000
+
+# REGIME=Risk-on: old (whole-population-then-filter) aborts, shipped (bounded, filters during the walk)
+# completes with margin.
+REGIME_TIGHT_CAP_KB = 900_000
+REGIME_STARVED_CAP_KB = 650_000
+REGIME_CONTROL_CAP_KB = 1_100_000
+
+_TOTAL_REGIME_CHILD_PROBE_TEMPLATE = '''
+import sys
+sys.path.insert(0, "__BACKEND_ROOT__")
+from sqlmodel import Session, select
+from app.config import load_config
+from app.db import make_engine
+import app.engine.forward_testing as ft
+import app.engine.samples as samples_mod
+from app.models import ForwardReturn, ScannerRun
+
+db_path = sys.argv[1]
+mode = sys.argv[2]  # "reference" or "shipped"
+variant = sys.argv[3]  # "total" or "regime"
+claim = __TOTAL_CLAIM__ if variant == "total" else __REGIME_CLAIM__
+
+def _reference_factor_samples(session, cfg, *, factor_key, horizon, slice_kind, decile, regime, as_of):
+    """Pinned pre-fix `_factor_samples` body for the "total"/"regime" branches ONLY (the exact shape
+    iter-48 replaced): the FULL `_factor_observations` list, filtered afterward for "regime", and a
+    SEPARATE full `rows` list built via list comprehension for "total" (never reusing `members` in
+    place) -- both retain two population-sized structures at once at their peak."""
+    from app.engine.research import _factor_observations
+    fl = cfg.research.factor_lab
+    factor = next(f for f in fl.factors if f.key == factor_key)
+    if slice_kind == "total":
+        members = _factor_observations(session, factor, horizon, as_of)
+    else:
+        members = [o for o in _factor_observations(session, factor, horizon, as_of) if o["regime"] == regime]
+    run_dates = {
+        run.id: run.asof_date.isoformat()
+        for run in session.exec(select(ScannerRun.id, ScannerRun.asof_date)).all()
+    }
+    rows = [
+        {
+            "ticker": o["ticker"], "snapshot_date": run_dates.get(o["run_id"]), "regime": o["regime"],
+            "values": [{"key": factor.key, "label": factor.label, "value": o["factor"]}],
+            "forward_return": o["return"],
+        }
+        for o in members
+    ]
+    cohort = {
+        "kind": samples_mod.KIND_FACTOR, "slice": slice_kind, "horizon": horizon,
+        "factor": {"key": factor.key, "label": factor.label, "family": factor.family,
+                   "direction": factor.direction, "source": factor.source},
+        "decile": None, "regime": regime if slice_kind == "regime" else None, "deciles_count": fl.deciles,
+    }
+    return {"cohort": cohort, "rows": rows}
+
+if mode == "reference":
+    samples_mod._factor_samples = _reference_factor_samples
+
+cfg = load_config()
+engine = make_engine(f"sqlite:///{db_path}")
+
+with Session(engine) as session:
+    try:
+        payload = ft.compute_drawdown_expectations_cached(session, claim, cfg)
+    except MemoryError:
+        print("RESULT=UNAVAILABLE_MEMORYERROR")
+    except Exception as exc:  # noqa: BLE001
+        print(f"RESULT=UNAVAILABLE_OTHER exc={exc!r}")
+    else:
+        has_panel = payload is not None and "by_phase" in payload
+        print(f"RESULT=OK has_panel={has_panel}")
+
+with Session(engine) as session:
+    n = len(session.exec(select(ForwardReturn.id).limit(1)).all())
+print(f"SUBSEQUENT_READ_OK n={n}")
+'''
+
+
+def _write_total_regime_child_probe(tmp_path: Path) -> Path:
+    script_path = tmp_path / "_total_regime_mem_probe_child.py"
+    text = (
+        _TOTAL_REGIME_CHILD_PROBE_TEMPLATE
+        .replace("__BACKEND_ROOT__", BACKEND_ROOT)
+        .replace("__TOTAL_CLAIM__", repr(_TOTAL_CLAIM))
+        .replace("__REGIME_CLAIM__", repr(_REGIME_CLAIM))
+    )
+    script_path.write_text(text)
+    return script_path
+
+
+def _run_total_regime_child_probe(
+    script_path: Path, db_path: Path, mode: str, variant: str, cap_kb: int,
+) -> subprocess.CompletedProcess:
+    cmd = f"ulimit -v {cap_kb}; exec {sys.executable} {script_path} {db_path} {mode} {variant}"
+    return subprocess.run(["bash", "-c", cmd], capture_output=True, text=True, timeout=BOUNDED_TIMEOUT_S)
+
+
+@pytest.mark.parametrize(
+    "variant,tight_cap",
+    [("total", TOTAL_TIGHT_CAP_KB), ("regime", REGIME_TIGHT_CAP_KB)],
+)
+def test_total_regime_tight_cap_reference_aborts_shipped_completes(tmp_path, variant, tight_cap):
+    """The "total"/"regime" sibling of `test_tight_cap_reference_aborts_shipped_completes`: at the SAME
+    tight `ulimit -v` cap, the pinned pre-fix (double-materialization / whole-population-then-filter)
+    reference aborts with a caught `MemoryError`, while the shipped (bounded / in-place) implementation
+    completes and serves the real computed panel."""
+    script_path = _write_total_regime_child_probe(tmp_path)
+
+    ref_db = _fresh_seed_copy(tmp_path, f"{variant}_ref.db")
+    try:
+        ref_result = _run_total_regime_child_probe(script_path, ref_db, "reference", variant, tight_cap)
+    finally:
+        _delete_copy(ref_db)
+    assert ref_result.returncode == 0, (
+        f"variant={variant}: the reference probe must never crash uncaught; "
+        f"stdout={ref_result.stdout!r} stderr={ref_result.stderr!r}"
+    )
+    assert "RESULT=UNAVAILABLE_MEMORYERROR" in ref_result.stdout, (
+        f"variant={variant}: expected the pre-fix reference to abort under the tight cap; "
+        f"stdout={ref_result.stdout!r} stderr={ref_result.stderr!r}"
+    )
+
+    shipped_db = _fresh_seed_copy(tmp_path, f"{variant}_shipped.db")
+    try:
+        shipped_result = _run_total_regime_child_probe(script_path, shipped_db, "shipped", variant, tight_cap)
+    finally:
+        _delete_copy(shipped_db)
+    assert shipped_result.returncode == 0, (
+        f"variant={variant}: stdout={shipped_result.stdout!r} stderr={shipped_result.stderr!r}"
+    )
+    assert "RESULT=OK has_panel=True" in shipped_result.stdout, (
+        f"variant={variant}: expected the shipped implementation to complete under the SAME tight cap "
+        f"that aborted the reference; stdout={shipped_result.stdout!r} stderr={shipped_result.stderr!r}"
+    )
+
+
+@pytest.mark.parametrize(
+    "variant,control_cap",
+    [("total", TOTAL_CONTROL_CAP_KB), ("regime", REGIME_CONTROL_CAP_KB)],
+)
+def test_total_regime_control_generous_cap_both_complete(tmp_path, variant, control_cap):
+    """Control assertion: under a generous cap BOTH implementations complete — the tight-cap abort is
+    attributable to the cap, not an unrelated bug."""
+    script_path = _write_total_regime_child_probe(tmp_path)
+    for mode in ("reference", "shipped"):
+        db_copy = _fresh_seed_copy(tmp_path, f"{variant}_control_{mode}.db")
+        try:
+            result = _run_total_regime_child_probe(script_path, db_copy, mode, variant, control_cap)
+        finally:
+            _delete_copy(db_copy)
+        assert result.returncode == 0, f"variant={variant} mode={mode}: stdout={result.stdout!r}"
+        assert "RESULT=OK has_panel=True" in result.stdout, (
+            f"variant={variant} mode={mode}: the generous CONTROL cap unexpectedly failed; "
+            f"stdout={result.stdout!r} stderr={result.stderr!r}"
+        )
+
+
+@pytest.mark.parametrize(
+    "variant,starved_cap",
+    [("total", TOTAL_STARVED_CAP_KB), ("regime", REGIME_STARVED_CAP_KB)],
+)
+def test_total_regime_starved_cap_shipped_still_degrades_honestly(tmp_path, variant, starved_cap):
+    """Under pressure severe enough that the shipped implementation ALSO starves, it still degrades
+    exactly as honestly as the reference — a caught MemoryError, never an uncaught crash/wedge."""
+    script_path = _write_total_regime_child_probe(tmp_path)
+    db_copy = _fresh_seed_copy(tmp_path, f"{variant}_starved.db")
+    try:
+        result = _run_total_regime_child_probe(script_path, db_copy, "shipped", variant, starved_cap)
+    finally:
+        _delete_copy(db_copy)
+    assert result.returncode == 0, f"variant={variant}: stdout={result.stdout!r} stderr={result.stderr!r}"
+    assert "RESULT=UNAVAILABLE_MEMORYERROR" in result.stdout, (
+        f"variant={variant}: expected the shipped implementation to ALSO honestly degrade under severe "
+        f"pressure; stdout={result.stdout!r} stderr={result.stderr!r}"
+    )
+    assert "SUBSEQUENT_READ_OK" in result.stdout, (
+        f"variant={variant}: expected the SAME process to still serve a fresh read after the caught "
+        f"MemoryError — never a wedge; stdout={result.stdout!r}"
+    )
+
+
+@pytest.mark.parametrize(
+    "variant,tight_cap",
+    [("total", TOTAL_TIGHT_CAP_KB), ("regime", REGIME_TIGHT_CAP_KB)],
+)
+def test_total_regime_shipped_survives_five_consecutive_tight_cap_runs(tmp_path, variant, tight_cap):
+    """TC-6 (binding iter-44 lesson — one green run is not proof): the shipped bounded implementation
+    completes normally across 5 CONSECUTIVE independent subprocess runs at the SAME tight cap that
+    reliably aborts the pre-fix reference — zero `MemoryError` escapes across all 5."""
+    script_path = _write_total_regime_child_probe(tmp_path)
+    outcomes = []
+    for i in range(5):
+        db_copy = _fresh_seed_copy(tmp_path, f"{variant}_five_run_{i}.db")
+        try:
+            result = _run_total_regime_child_probe(script_path, db_copy, "shipped", variant, tight_cap)
+        finally:
+            _delete_copy(db_copy)
+        assert result.returncode == 0, f"variant={variant} run {i}: stdout={result.stdout!r}"
+        outcomes.append(result.stdout)
+        assert "RESULT=OK has_panel=True" in result.stdout, (
+            f"variant={variant} run {i} of 5 failed at the tight cap — a flaky bound is not a bound "
+            f"(binding iter-44 lesson); stdout={result.stdout!r} stderr={result.stderr!r}"
+        )
+        assert "SUBSEQUENT_READ_OK" in result.stdout, f"variant={variant} run {i}: no live post-call read"
+    assert len(outcomes) == 5
+    assert all("RESULT=OK has_panel=True" in o for o in outcomes), (
+        f"variant={variant}: not all 5 consecutive runs passed"
+    )

@@ -4025,3 +4025,166 @@ best result in several rounds; the app was never checked end to end after that l
 second round running; and one data job this round pulled real prices from Yahoo over the internet
 rather than from the committed offline copy (long-standing product behaviour, nothing saved into
 version control, but this session's promise is to run offline).
+
+
+## Iteration 48 — goal-ops-hardening-iter-48
+
+**Date:** 2026-08-05T02:45:00Z
+**Verdict:** ESCALATE
+**Depth dispatched:** full (`iter-48/depth-dispatched` = `full`, matching the spec's `Depth: full` /
+`Full trigger: 3`. `runs/goal-ops-hardening-iter-48/status.json` = `blocked` / `audit_qa_failed` /
+`next_action: evaluate`, `browser_checks_run: true`, `browser_qa_verdict: FAIL`, three real blockers.)
+
+**Journey deltas:**
+- **THE FACT THAT CHANGED THIS ROUND, and I proved it in sqlite rather than reading it off a report:
+  the replay lane finally submitted REAL JOBS.** `data_provider_runs` id=305 (2026-05-02→2026-05-29,
+  19/19 dates, 28 calendar · 19 already snapshotted · 9 non-trading, `ok`, 0.25 s), id=306 (the
+  weekend span, 0/0 dates, 2 calendar · 2 non-trading, `ok`, 0.20 s) and id=307 (2025-06-01→2026-07-17,
+  283/283 dates over 412 calendar days, `ok`, 0.24 s) were all created at 22:08:47-22:09:08Z — exactly
+  the replay's own timestamps (screenshots 23:09:07-23:09:57 local). Every number the goldens assert
+  matches a row that job created. This is the first iteration in this session where J-01's and J-03's
+  PASS rows are backed by work the replay itself caused, and it is why two journeys move up.
+- **J-01 "Backfill honors the requested range and explains zero-work"** — `partial` → **`passing`**.
+  All three run shapes the journey names are on record (productive-range re-run, weekend-only,
+  identical re-run), the zero-work note testid asserted, and `J-01-verify.png` shows
+  `/scanner-runs/748` rendering the stored immutable snapshot "as of 2026-05-29" with real values —
+  the journey's own step 4. Caveat recorded rather than rounded away: the May range is already dense,
+  so the productive-creation branch cannot recur; the journey's own step 6 is written for exactly
+  that state.
+- **J-03 "No per-run range cap"** — `partial` → **`passing`**. The step that failed at iter-46 ("at
+  least the first chunk completes") is now met in full: the entire 412-day span ran to completion,
+  283/283, in 0.24 s. No cap rejection anywhere. `J-03-verify.png` shows the live job card for that
+  span on `/data`.
+- **J-05 "Aggregates are precomputed at ingest"** — `failing`, **FIFTH consecutive** (44, 45, 46, 47,
+  48); `last_passing_iter` stays iter-39. UT-02 FAIL, and I read the row myself: id=308 (2012-06-15)
+  wrote its snapshot then sat with `aggregates_refreshed: null`, `stages: {}`, `completed_stages: []`
+  from 22:50:27Z until the 01:33:04Z restart stamped it `interrupted` — 2 h 43 m against a 20-minute
+  bound. **AND THE COUNTER-EVIDENCE, which I also read myself: id=304 (2013-09-10, same build) reached
+  terminal `ok` in 13 m 52 s with the complete 7-category `aggregates_refreshed`, and its snapshot
+  `scanner_runs` id=2905 holds 302 stored `scanner_results` rows.** So the defect this round diagnosed
+  and fixed is genuinely fixed; the job is now blocked by two OTHER, pre-existing finalize phases
+  whose cost swings 102 s → 153 s → 1,334 s across three runs of the same thing.
+- **J-06 "Pages load only what they need"** — stays `partial`, and I decline the lane's PASS with a
+  reason. `logs/backend.log` went 7,077 → 7,079 `MemoryError`s; the two new ones (lines 183953,
+  184049) are `api/research.py:421 → research.py:3842 → :3727 → :3640/:3630`
+  (`_regime_lab_members_by_horizon`) and sit immediately after the 23:09:08 phase-timing line — i.e.
+  inside the very replay whose step 11 loads `/research/regime-lab`. The golden asserts the page
+  heading; the page behind it hit the 8192 MB ceiling twice. UT-07 separately records the Factor Lab's
+  first read unfinished after 26+ minutes.
+- **J-07 "Heavy aggregates never take the service down"** — stays `partial`, `last_verified_iter`
+  iter-48 on partial evidence: UT-05 (readiness `ready`, health 200 through a 31+ min heavy job) and
+  UT-06 (drawdown-expectations table populated, no error) are real, and the `samples.py` `total`/
+  `regime` bound ran 5/5 consecutive pressure runs. But no lane produced a UT-J-07 row — a target
+  journey with zero rows for the second consecutive round — and its own acceptance clause ("no
+  unbounded whole-table ORM materialization remains on the warm or serving path") is contradicted by
+  the two regime-lab MemoryErrors above. `evidence_makeup: true` set (see the capture defect below).
+- **J-04 "Non-blocking boot with visible status"** — `DEFERRED-BUDGET`: NOT tested. Prior status
+  `partial` and prior `last_verified_iter` (iter-46) carried unchanged, per the SPEED-15 rule.
+- **J-08, J-09 KEPT `passing`**, spot-checked by me (A.4): fresh replay rows plus screenshots, and
+  their own producer (`forward_testing.py`, incl. `get_background_compute_status:1700`) is untouched
+  by this diff — `git diff --stat` against the snapshot lists only `data_manager.py`, `research.py`,
+  `samples.py` and tests.
+- No `browser-infra.json`; no `journeys-changed.md`; all 8 `spec_hash`es match
+  `goal_gate hash-journeys` run by me. `pending_infra`: cleared everywhere.
+- Anti-goal violations: **ONE CARRIED ITEM CLOSED — iter-46/au** (the three-site unbounded-retention
+  class named at iter-46 is now 3/3 closed: `samples.py`'s `regime` branch filters inside the chunked
+  join via the new `research._factor_regime_observations`, and `total` builds its rows in place;
+  byte-identity pinned, 5/5 pressure runs). **FIVE NEW OPEN: iter-48/bj** (the gap-insert backfill
+  still never terminates end-to-end — run 308), **iter-48/bk** (the Regime Lab's two new MemoryErrors,
+  15th deferral of iter-33/g), **iter-48/bl** (TC-7 breached a third consecutive round — `samples.py`
+  mtime 00:48:12 against merged results 00:23:54), **iter-48/bm** (UT-05's screenshot is a
+  byte-identical copy of UT-01's), **iter-48/bn** (the demo lane captured ZERO steps). **ONE NEW
+  RESOLVED IN-AUDIT: iter-48/bo** (QA issued a verdict while its own suite was still running and
+  skipped the journey lane on a category error; corrected inside the round). Ledger now: **77 total,
+  28 unresolved, 0 unresolved critical.** scan-report CLEAN; coherence **COHERENCE-PASS** (zero
+  blocking, zero advisories); review **PASS_WITH_NOTES** (1 MINOR, 1 NOTE); QA **FAIL** (revalidated
+  from an initial PASS_WITH_NOTES); audit **FAIL** (2 IMPORTANT + 1 IMPORTANT-test fixed in-audit,
+  B1/B3/F2/F3 open); browser QA **FAIL** (9/13; 1 FAIL, 3 SKIPPED, 1 required-missing, 2
+  target-missing); ux-regression SKIPPED (wall-clock trim); demo **NOT_YET** with an empty step table.
+
+**Reasoning:** I checked every load-bearing fact myself instead of reading it off a report.
+(1) **The two promotions rest on database rows, not on page text.** The session has been burned three
+times by goldens that assert text a persisted history panel already satisfies. So I read the five
+scripts and then read the jobs they caused: ids 305, 306 and 307 exist, at the replay's own
+timestamps, with exactly the counts the scripts assert. That is what makes J-01 and J-03 `passing`
+rather than "PASS row observed".
+(2) **J-05's fix is real and its failure is also real, and both facts are in the same table.** id=304
+finished in 13 m 52 s with the full seven-category outcome list and 302 stored result rows; id=308 did
+not finish in 2 h 43 m. The difference is not this round's code — it is `forward_aggregates_warm`,
+which measured 102 s, 153 s and 1,334 s on three runs of the same work. A step whose cost varies 13x
+and whose worst case alone exceeds the whole budget is the next round's job.
+(3) **I counted the MemoryErrors rather than accepting "no new memory errors".** 7,079 now against
+iter-47's 7,077. Both new ones are the Regime Lab, on the route J-06's own golden loads, during the
+window that golden ran. This is the single fact that keeps J-06 at `partial`, and I would rather say
+it than let a heading-text PASS carry the journey.
+(4) **The app did not go dark, and I verified that by counting.** 454 `GET /api/health 200` responses
+between 23:00 and 02:33, zero non-200, zero 500s, no silent access-log window. Third consecutive
+round with no blackout, this time under a 2 h 43 m runaway job.
+(5) **I hashed the evidence directory and found a duplicate.** `UT-05-result.png` is byte-identical to
+`UT-01-result.png` (md5 57f2acd7…), yet UT-01 was taken before the heavy job started and UT-05 claims
+a 31-minute window during it. The behaviour is nonetheless true (see 4) — so this is a capture defect
+(A.7), recorded as iter-48/bm, not a product fault.
+(6) **TC-7 was breached again and I measured it, but I did not void the lane for it.** `samples.py`
+mtime 00:48:12 against merged results 00:23:54. The change is one keyword argument (`cfg=cfg`) on a
+slice none of the five replayed journeys touch, proven output-neutral by the auditor and re-tested by
+the reviewer. `data_manager.py`'s 00:35 mtime is the auditor's documented mutation-inject-and-revert,
+byte-identical afterwards. Third consecutive round for a rule the spec calls non-negotiable.
+(7) **AG-10 checked at the source:** `git diff` against the snapshot over `config.yaml`, `scripts/`
+and `project-extensions/` is EMPTY, every launch banner reads `memory_cap_mb=8192 malloc_arena_max=2`
+with `host-guard: cpu_list=0-15 blas_threads=8`, and the scan-report is CLEAN.
+(8) **AG-9 checked at the row level, because last round's audit looked at the wrong rows:** every run
+created this iteration (298-308) is `provider='seed'`. The one `yahoo` row is id=297, and it belongs
+to iter-47.
+Rejected **REGRESSION (C.1)**: no journey moved `passing`/`already_passing` → `failing` — two moved UP
+— and there is no unresolved critical violation (scan CLEAN, AG-10 untouched, and the one genuine
+correctness risk, a vacuous byte-identity test that could not detect a mis-keyed reuse, was found and
+closed inside the audit with a mutation proof). Rejected **STALLED (C.2)**: not one unblock path is
+human-owned — they are named with file and line (`forward_aggregates_warm` and
+`drawdown_expectations_warm` in `data_manager.py`'s finalize tail; `research.py:3630/:3640`; running
+J-05's already-rotated golden; re-running J-04's deferred check) — and nothing is outstanding on the
+owner. Rejected **GOAL_ACHIEVED (C.3)**: J-05 is `failing`, three journeys are `partial`, and one is
+deferred. **Chose ESCALATE (C.4):** the first clause fires plainly — J-05 has now failed FIVE
+consecutive iterations — and full depth is right on the merits, because this round's auditor again
+produced the load-bearing findings (the 1,334 s phase nobody else measured, and the vacuous test).
+**FIVE THINGS I STATE PLAINLY RATHER THAN ROUND AWAY:** (i) **the journey table finally moved, and it
+moved for the right reason.** Two journeys went up not because the product changed but because the
+checks became real: they now submit jobs and I can point at the rows. That is the first honest upward
+movement in this session. (ii) **the round fixed what it set out to fix and still failed its own
+goal.** A step that would have taken over an hour now takes nine seconds. The job still does not
+finish, because two older steps in the same tail were never bounded. Both facts belong in the record;
+neither cancels the other. (iii) **one page can still take the whole machine to its ceiling, and this
+round it did so while a journey was being scored as a pass.** Fifteen deferrals is no longer a
+scheduling detail. (iv) **the process rule that has now failed three rounds running is not a rule
+yet.** "The journey lane must be the last thing that happens" was written into three consecutive
+specs and broken three consecutive times; this round the breach was small and harmless, which is
+exactly how a rule quietly dies. (v) **the correction mechanism is working and that is worth saying.**
+QA's first answer was wrong, the audit caught it, status.json was corrected, and the audit also found
+that this round's own byte-identity proof could not detect the bug it existed to detect. Three rounds
+in a row a lane's first answer was overturned in public. That is the system doing its job.
+
+**Next-step recommendation:** FULL depth (mandatory via ESCALATE). Give the next round this order.
+(1) **Make the historical backfill finish.** Fifth failing round; it is the only remaining product
+fault on a must-have journey. The step this round fixed is fixed — one real backfill completed in
+under 14 minutes with a full outcome record. What is left is the older clean-up work every data job
+runs: measured at 102 seconds, 153 seconds and 1,334 seconds on three runs of the same thing, the
+longest one alone over the whole 20-minute promise. Bound that step first, then the last step, which
+never even reported on the failing run. (2) **Then run J-05's own check** — its script was repaired
+this round and pointed at 2012-01-05, which I confirmed has no snapshot; nobody ever ran it, and the
+journey has had no picture of its own for four rounds. (3) **Re-run the check for "Non-blocking boot
+with visible status" (J-04)**, dropped this round for lack of time. (4) **Stop the Regime Lab page
+from eating the whole machine** — it hit the 8 GB ceiling twice more, during the replay that scored
+"Pages load only what they need" as a pass; until it is bounded that journey cannot honestly move up.
+(5) SMALL AND ALREADY WRITTEN DOWN: the Factor Lab's first read did not finish in 26 minutes; the new
+`total`/`regime` bound needs a live page measurement to go with its test-bench one; the shared "warm
+in progress" flag; the health check's 2-second promise; the background worker missing from the page
+that lists background work. (6) CARRIED, untouched: iter-29/b + the badge wording after a permanently
+failed warm-up (21st round unmade); iter-31/e; iter-32/f; iter-35/k; iter-36/n; iter-37/o; iter-37/q;
+iter-39/u; iter-46/az; iter-46/ba; iter-47/bd; iter-47/bf; iter-47/bi. (7) DEFERRED a FIFTEENTH time,
+and no longer theoretical: iter-33/g, the Regime Lab — see item 4. (8) CAPTURE ONLY, never a round's
+goal: this round's demo recorded ZERO steps, so J-07's `[NEW]` walkthrough is eighteen rounds
+unrecorded and J-05's acceptance frames are still missing; UT-05's picture was a copy of an earlier
+one and should be retaken. (9) OWNER: nothing needs his decision, but three facts belong in front of
+him — two more journeys now pass on real, checkable job records, which is the first genuine upward
+movement in this session; the app stayed up and answered every one of 454 health checks with no
+memory failure on its own work; and adding one old day of history still does not finish, because of
+slow clean-up steps that pre-date this round's fix.

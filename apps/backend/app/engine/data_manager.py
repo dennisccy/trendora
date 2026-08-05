@@ -520,7 +520,8 @@ def _membership_labels(session: Session, cfg: Config) -> dict:
 
 
 def _membership_timeline(
-    session: Session, cfg: Config, snapshot_dates: list[date_cls]
+    session: Session, cfg: Config, snapshot_dates: list[date_cls],
+    reuse_excluded_by_date: Optional[dict[date_cls, dict[str, int]]] = None,
 ) -> dict:
     """J-96 — the dynamic-universe membership timeline: a READ-ONLY descriptive derivation over the
     stored per-snapshot `ScannerResult` membership (the persisted scored-ticker sets that ARE the
@@ -539,7 +540,20 @@ def _membership_timeline(
     sourced via `_excluded_counts_by_date` (below), which BOUNDS peak resident bar data to a config-driven
     symbol-batch width instead of the full candidate pool's whole price history, WHEN no outer job-scoped
     bar cache is already active (see that helper's docstring). `entries`/`exits`/`size` are unaffected —
-    they read only the persisted `members_by_date` membership, never a bar."""
+    they read only the persisted `members_by_date` membership, never a bar.
+
+    ops-hardening iter-48 (J-05 fix — see `assumptions.md` iter-48 for the full correctness proof):
+    `reuse_excluded_by_date` is an OPTIONAL `{date: excluded_counts}` map of ALREADY-KNOWN per-date
+    tallies (from a previous cache generation) the caller has proven are still valid for those exact
+    dates — `membership_timeline_cached`'s historical-gap-insert branch is the only caller that passes
+    one. When given, `_excluded_counts_by_date`'s O(dates x pool) resolver sweep runs ONLY for the dates
+    NOT already in the map (normally just the genuinely new date(s)); every other date's tally is reused
+    verbatim. This is safe REGARDLESS of date order because `resolve_with_reasons`'s per-date result is a
+    PURE function of (date, bars <= date, pool, config) — it never reads any OTHER snapshot date, so
+    inserting/removing a DIFFERENT snapshot date can never change it (only `entries`/`exits`, computed
+    fresh below in full date order every call, are order-dependent — iter-27/iter-9). `None` (every
+    caller before iter-48, and the default) preserves the exact prior behavior byte-for-byte — the full
+    O(dates x pool) sweep for every date, unchanged."""
     dates = sorted(snapshot_dates)
     pool_symbols = {row["symbol"] for row in read_pool()}
     pool_count = len(pool_symbols)
@@ -557,7 +571,18 @@ def _membership_timeline(
     for asof_date, ticker in rows:
         members_by_date.setdefault(asof_date, set()).add(ticker.upper())
 
-    excluded_by_date = _excluded_counts_by_date(session, cfg, dates, pool_symbols)
+    if reuse_excluded_by_date:
+        dates_to_resolve = [d for d in dates if d not in reuse_excluded_by_date]
+        freshly_resolved = (
+            _excluded_counts_by_date(session, cfg, dates_to_resolve, pool_symbols)
+            if dates_to_resolve else {}
+        )
+        excluded_by_date = {
+            d: reuse_excluded_by_date[d] if d in reuse_excluded_by_date else freshly_resolved[d]
+            for d in dates
+        }
+    else:
+        excluded_by_date = _excluded_counts_by_date(session, cfg, dates, pool_symbols)
 
     for d in dates:
         members = members_by_date.get(d, set())
@@ -805,7 +830,16 @@ def membership_timeline_cached(
     REFRESHES on a real membership change — a backfill add, a removal, or the J-85 rebuild — because each
     of those changes the snapshot set or the bars manifest; a stale row keyed to an older narrow stamp is
     never hit (and is pruned on write). The cached timeline spans the WHOLE history, so the key has no
-    as-of slot — exactly one row per membership dataset version."""
+    as-of slot — exactly one row per membership dataset version.
+
+    iter-48 (J-05 fix, `assumptions.md` iter-48): a MISS that is NOT append-forward (e.g. a historical
+    gap-insert — a new snapshot date earlier than the latest already-cached one) no longer always pays
+    `_membership_timeline`'s full O(dates x pool) resolver sweep. When the same bars-forward-only safety
+    proof the append-forward path already relies on holds (and no cached date went missing), the previous
+    generation's per-date `excluded` tallies are reused and the resolver runs only for the genuinely new
+    date(s) — see `_membership_timeline`'s `reuse_excluded_by_date` parameter for the correctness argument.
+    Falls back to the original full, unbounded recompute only when that proof does not hold (e.g. a fetch
+    landed bars at/before an already-cached date) or there is no previous row to reuse from."""
     version = _membership_dataset_version(session, cfg)
 
     hit = session.exec(
@@ -856,6 +890,36 @@ def membership_timeline_cached(
             append_forward = False
         if append_forward:
             payload = _membership_timeline_incremental(session, cfg, dates_sorted, prev_payload)
+
+        # ops-hardening iter-48 (J-05 fix, `assumptions.md` iter-48 — the historical-gap-insert case):
+        # NOT append-forward (a new date is not strictly later than every already-cached date, or a
+        # cached date went missing) does NOT mean the O(dates x pool) resolver sweep must re-run for
+        # EVERY historical date. `entries`/`exits` are order-dependent on the full prior timeline
+        # (iter-27/iter-9) and are always recomputed fresh, in full date order, below — this branch does
+        # NOT touch that. But each date's `excluded` tally is a PURE function of (date, bars <= date,
+        # pool, config) with no dependency on any OTHER snapshot date, so it is safe to reuse from the
+        # previous cache generation whenever the bars manifest only moved forward-only since that
+        # generation was computed (the SAME `_membership_bars_are_forward_only` proof `append_forward`
+        # above already relies on, for the identical reason) and no previously-cached date is missing.
+        # Deliberately does NOT call `_membership_timeline_incremental` (never generalizing the iter-45
+        # append-forward fast path to this case, per the phase spec) — it calls `_membership_timeline`'s
+        # own bounded `reuse_excluded_by_date` path instead, which always recomputes entries/exits/size
+        # fully. Bounds the resolver sweep to genuinely new date(s) only — closing the SAME recompute
+        # storm the append-forward fast path closes for its own (later-date-only) case, but for a
+        # historical gap-insert (e.g. J-05's own single unsnapshotted day earlier than the latest cached
+        # membership date): measured live at ~0.8-2.2s per unbounded `resolve_with_reasons` call across
+        # this DB's ~2,900 historical dates, the pre-fix full recompute totals well over an hour of
+        # wall-clock for a ONE-date insert — the root cause of J-05 never reaching a terminal status
+        # within any reasonable bound (see the dev handoff's live measurement).
+        if payload is None and new_dates and not missing_dates and _membership_bars_are_forward_only(
+            session, prev_row.dataset_version, version,
+        ):
+            prev_points_by_date = {p["date"]: p for p in prev_payload.get("points", [])}
+            reuse_excluded_by_date = {
+                date_cls.fromisoformat(d_iso): point["excluded"]
+                for d_iso, point in prev_points_by_date.items()
+            }
+            payload = _membership_timeline(session, cfg, snapshot_dates, reuse_excluded_by_date)
 
     if payload is None:
         # the cold, BOUNDED (non-append-forward) compute — UNCHANGED from before this iteration.
@@ -3720,7 +3784,16 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
     warmed" honesty gate still reports the category when >= 1 item warmed before the abort. Every other
     loop's own try/except boundary — and the generic non-memory isolate-and-continue behavior within each
     loop — is unchanged. Root cause + live before/after measurement: `reports/perf-budgets.md` (Item L
-    iter-8 update)."""
+    iter-8 update).
+
+    ops-hardening iter-48 (J-05 diagnosis instrumentation): every phase below now logs its own wall-clock
+    elapsed time (`logger.info("J-05 finalize-tail phase timing: ...")`), unconditionally — whether the
+    phase succeeded or hit a caught isolation failure — so a live `logs/backend.log` read can attribute
+    a slow/stalled finalize tail to a SPECIFIC phase without instrumenting-and-redeploying first. This is
+    what confirmed the coverage/membership-timeline refresh phase as the dominant cost for a historical
+    gap-insert backfill (measured live: ~0.8-2.2s per unbounded `resolve_with_reasons` call across this
+    DB's ~2,900 historical dates, well over an hour for the pre-fix full sweep) — see
+    `membership_timeline_cached`'s iter-48 fix."""
     refreshed: list[str] = []
     prog.tick()  # F1 fix: heartbeat-only stamp at the start of the finalize tail — see docstring above.
 
@@ -3767,6 +3840,12 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
     )
     try:
         with cache_ctx:
+            # ops-hardening iter-48 (J-05 diagnosis): phase-level wall-clock timing across every finalize-
+            # tail step below, logged unconditionally (success OR a caught isolation failure) — this is
+            # what lets a live log answer "which step(s) actually dominate wall-clock time" for a SPECIFIC
+            # job without guessing (the iter-47 dev handoff's own next-step ask). Each phase's `_phase_t0`
+            # is set immediately before that phase's own `try:` and read immediately after its block ends.
+            _phase_t0 = time.monotonic()
             try:
                 # ops-hardening iter-46 FIX PASS (QA blockers 1 + 4 — J-01/J-03): gate this refresh on the
                 # SAME cheap `_coverage_snapshot_is_current` check the fetch/expand branch has used since
@@ -3820,6 +3899,10 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
                         refreshed.append("membership_timeline")
             except Exception as exc:  # noqa: BLE001 — non-fatal: log + continue to the next aggregate
                 _log_isolation_failure("ingest coverage/membership-timeline refresh failed (non-fatal): %s", exc)
+            logger.info(
+                "J-05 finalize-tail phase timing: job=%s phase=%s elapsed=%.2fs",
+                prog.job_id, "coverage_membership_timeline_refresh", time.monotonic() - _phase_t0,
+            )
 
             # iter-2 review (CRITICAL): also persist a per-date coverage_snapshot for every date THIS run
             # newly created, so the app-wide as-of switcher serves REAL coverage for each historical date
@@ -3827,11 +3910,17 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
             # (no new one); own try/except (log + continue) so it never flips the job. Skips the current
             # stamp (persisted above) and is a no-op — no bar-cache load — for the common single-latest-
             # date backfill.
+            _phase_t0 = time.monotonic()
             try:
                 _persist_per_date_coverage_snapshots(session, cfg, prog.new_snapshot_dates, prog)
             except Exception as exc:  # noqa: BLE001 — non-fatal: log + continue to the next aggregate
                 _log_isolation_failure("ingest per-date coverage warm failed (non-fatal): %s", exc)
+            logger.info(
+                "J-05 finalize-tail phase timing: job=%s phase=%s elapsed=%.2fs",
+                prog.job_id, "per_date_coverage_warm", time.monotonic() - _phase_t0,
+            )
 
+            _phase_t0 = time.monotonic()
             market_phase_warmed = False
             for d in prog.new_snapshot_dates:
                 prog.tick()  # F1 fix: per-date heartbeat stamp -- see function docstring above.
@@ -3854,6 +3943,10 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
                     _log_isolation_failure("ingest market-phase warm failed for %s (non-fatal): %s", d, exc)
             if market_phase_warmed:
                 refreshed.append("market_phase")
+            logger.info(
+                "J-05 finalize-tail phase timing: job=%s phase=%s elapsed=%.2fs",
+                prog.job_id, "market_phase_warm", time.monotonic() - _phase_t0,
+            )
 
             # ops-hardening iter-5 (J-06): warm the CURRENT latest stored run's per-horizon forward-aggregate
             # cache (GET /api/backtest's `evidence_by_horizon`, ~34.77s pre-fix over all 5 configured horizons
@@ -3869,6 +3962,7 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
             # operation instead of the intended fix. A user-navigated HISTORICAL as-of on `/backtest` still
             # computes-once-and-caches on first view (the same cold-miss contract EventStudyCache/
             # MarketPhaseCache already carry) — never pre-warmed here.
+            _phase_t0 = time.monotonic()
             try:
                 latest_run_date = scanner._latest_stored_run_date(session)
                 if latest_run_date is not None:
@@ -3904,7 +3998,12 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
                         refreshed.append("forward_aggregates")
             except Exception as exc:  # noqa: BLE001 — non-fatal: log + continue to the next aggregate
                 _log_isolation_failure("ingest forward-aggregate warm failed (non-fatal): %s", exc)
+            logger.info(
+                "J-05 finalize-tail phase timing: job=%s phase=%s elapsed=%.2fs",
+                prog.job_id, "forward_aggregates_warm", time.monotonic() - _phase_t0,
+            )
 
+            _phase_t0 = time.monotonic()
             try:
                 subjects = subject_catalog(cfg)
                 if subjects:
@@ -3916,6 +4015,10 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
                     refreshed.append("research_hot_keys")
             except Exception as exc:  # noqa: BLE001 — non-fatal: log + continue
                 _log_isolation_failure("ingest research hot-key warm failed (non-fatal): %s", exc)
+            logger.info(
+                "J-05 finalize-tail phase timing: job=%s phase=%s elapsed=%.2fs",
+                prog.job_id, "research_hot_keys_warm", time.monotonic() - _phase_t0,
+            )
 
             # ops-hardening iter-13 (J-06, aggregation candidate #7): warm the SINGLE unparameterized default
             # hot key for `GET /api/indexes` (`range_key=cfg.index_chart.default_range`, `full=True` —
@@ -3936,6 +4039,7 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
             # appended ONLY when this call actually persisted a new row this run (`persisted` is False on a
             # cache HIT — an honest "was skipped" omission, never a fabricated refresh, mirroring every other
             # category's honesty gate above).
+            _phase_t0 = time.monotonic()
             try:
                 # ops-hardening iter-44 AUDIT (B2): the deferred import stays INSIDE this block's guards.
                 # Sitting one line above the `try`, it was the only unguarded statement left in this
@@ -3958,6 +4062,10 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
                 _release_process_memory()
             except Exception as exc:  # noqa: BLE001 — non-fatal: log + continue to the next aggregate
                 _log_isolation_failure("ingest index-series warm failed (non-fatal): %s", exc)
+            logger.info(
+                "J-05 finalize-tail phase timing: job=%s phase=%s elapsed=%.2fs",
+                prog.job_id, "index_series_warm", time.monotonic() - _phase_t0,
+            )
 
             # ops-hardening iter-7 (J-06 closeout, audit B1): warm the per-claim `drawdown_expectations`
             # EventStudyCache view slot — the SAME cache slot `build_evidence_payload` looks up lazily via
@@ -3980,6 +4088,7 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
                 _log_isolation_failure("ingest drawdown-expectations ledger read failed (non-fatal): %s", exc)
                 ledger_entries = []
 
+            _phase_t0 = time.monotonic()
             drawdown_warmed = False
             for entry in ledger_entries:
                 if not isinstance(entry, dict) or entry.get("type") == FORWARD_WALK_TYPE:
@@ -4015,6 +4124,10 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
                     )
             if drawdown_warmed:
                 refreshed.append("drawdown_expectations")
+            logger.info(
+                "J-05 finalize-tail phase timing: job=%s phase=%s elapsed=%.2fs",
+                prog.job_id, "drawdown_expectations_warm", time.monotonic() - _phase_t0,
+            )
     finally:
         # ops-hardening iter-37 (J-07 closure): `_do_backfill` deferred releasing its shared whole-table
         # `_BarCache` (~1.13 GB) until THIS point — every warm call in the `with cache_ctx:` block above is
