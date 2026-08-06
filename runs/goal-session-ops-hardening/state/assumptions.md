@@ -663,3 +663,62 @@ it as `iter-50/by` rather than absorbing it. A reader who takes TC-13 literally 
 replayed journeys `unknown` this round — which changes no gate (GOAL_ACHIEVED is blocked by J-07 and
 by J-04's deferral either way) but would show 0 of 8 green rather than 4.
 **Reversible:** yes
+
+
+## iter-51 — goal-decomposer
+
+**Ambiguity:** the iter-50 evaluator's next-step item (1) offers two acceptable readings of "take the
+heavy research calculation off the request path": (a) compute `compute_factor_lab_all` during the data
+job and persist it (the `docs/goal.md` Improvement Direction table's own aggregation-candidate #6
+reading, "warm default keys at ingest"), or (b) move the calculation off the thread that answers
+requests some other way (a background worker/subprocess boundary the auditor's own write-up in
+`reports/perf-budgets.md` Item S names as the alternative). Neither `docs/goal.md` nor the evaluator's
+own text picks between them.
+
+**We chose:** reading (a) — warm `factor_lab_all_cached`'s default all-history key inside the existing
+`_refresh_ingest_aggregates` finalize tail, mirroring the `research_hot_keys`/`index_series` precedent
+already in the SAME function. Grounds: (1) this is the goal's own named architecture ("every heavy
+computation runs inside ingest jobs... boot + request paths only read storage"), not a new invention;
+(2) it reuses an already-audited, already-tested code shape (per-item isolate-and-continue,
+`_release_process_memory()` on `MemoryError`, phase-timing log line) rather than introducing a new
+process/IPC boundary, which would itself be a structural/cross-cutting change (a full-depth trigger on
+its own, this session's history of multi-week single-subsystem work suggests a much larger and riskier
+lift); (3) `factor_lab_all_cached`'s cache key is already keyed on the SAME global dataset-version stamp
+`forward_aggregates`/`research_hot_keys` use, so the unconditional-per-ingest warm shape is a direct,
+proven fit, not a guess. Cost recorded honestly: this pushes the finalize tail's total wall-clock
+meaningfully past its existing 1,200s (TC-1) budget (the auditor's own Item S measured `compute_factor_lab_all`
+alone at 578-875s solo, up to 742s concurrent) — this iteration records the new real total rather than
+hiding it, but does NOT itself decide whether TC-1's number should be raised; that is left as a fresh,
+explicitly measured `reports/perf-budgets.md` addendum for the developer to write, not a decomposer-picked
+number. A reader who chose (b) instead would defer this iteration's fix and spend it designing a
+subprocess/worker boundary — slower to land, but sidesteps growing the ingest job's own wall-clock further
+and might close J-07 step 2's <=2s-during-ingest residual (which reading (a) explicitly does NOT close) in
+the same pass.
+
+**Reversible:** yes — the new warm phase is one additional per-item block in an already-isolated finalize
+loop; it can be removed on its own without touching `forward_aggregates_warm`/`drawdown_expectations_warm`/
+the request-path route, which are all unchanged.
+
+## iter-51 — goal-decomposer (second entry)
+
+**Ambiguity:** rule 5 ("one iteration may carry ... one risky journey") does not say how many small,
+already-diagnosed sub-fixes may ride inside that one risky journey's fix, mirroring the SAME question the
+iter-50 decomposer logged for its own three-sub-fix bundle.
+
+**We chose:** bundle the `factor_lab_all` ingest-warm together with bounding `_combination_cohort_members`'s
+`set(range(pool_n))` allocation (`app.engine.research:1530`) as ONE risky change for this iteration, not two.
+Grounds: (1) both sit in the SAME already-registered Data Contract row (Membership timeline / research
+hot-key caches) and the SAME module (`app.engine.research`); (2) the second fix is not a new diagnosis
+effort — the iter-50 evaluator named it explicitly as "SMALL AND ALREADY WRITTEN DOWN" (the exact frame
+logged immediately before the 2026-08-05 17m30s wedge), carrying none of the "undiagnosed architecture" risk
+rule 5 exists to prevent; (3) a joint failure would still be diagnosable to one subsystem (research.py's
+combination/factor-lab compute path), not undiagnosable across two unrelated areas. Cost recorded honestly:
+if the browser lane surfaces a NEW regression in this area, distinguishing which of the two sub-fixes caused
+it costs more triage time than a strictly single-fix iteration would have. A reader who takes rule 5 at its
+strictest (one CODE CHANGE, not one THEME) would defer the `_combination_cohort_members` bound to iter-52,
+accepting a slightly slower path to closing that specific wedge-adjacent allocation in exchange for a
+cleaner failure signal if something regresses.
+
+**Reversible:** yes — the `_combination_cohort_members` bound is a small, independent change to one
+function's internals; if implicated in a regression, it can be reverted on its own without touching the
+`factor_lab_all` ingest-warm.
