@@ -4354,3 +4354,174 @@ down for nearly thirteen minutes when a research page and a background job ran o
 together, the same shape as the failure that stopped this session in July, and the repair is already
 written down and does not need him; and the round's quality report says "pass" while its own browser
 check says "fail".
+
+## Iteration 50 — goal-ops-hardening-iter-50
+
+**Date:** 2026-08-06T07:45:00Z
+**Verdict:** ESCALATE
+**Depth dispatched:** full (`iter-50/depth-dispatched` = `full`, matching the spec's `Depth: full` /
+`Full trigger: 3`. `runs/goal-ops-hardening-iter-50/status.json` = `blocked` / `audit_failed` /
+`next_action: browser_qa_lane`, `browser_checks_run: false`, `qa_verdict:
+INVALID_PENDING_REGENERATION`, THREE audit passes, 5 declared blockers.)
+
+**Journey deltas:**
+- **NO journey changed status.** 4 passing, 3 partial, 1 failing — same shape as iter-49. What changed
+  is the quality of what sits under each row, and I checked all of it myself rather than reading it
+  off a report.
+- **J-07 "Heavy aggregates never take the service down" — stays `failing`,** and its two halves now
+  point in opposite directions, so I state both. **AGAINST:** the service WEDGED for **17 m 30 s** and
+  only a restart cleared it. Measured by me in `logs/backend.log`: the last line the process ever
+  wrote is `2026-08-05 23:57:06,885 ... phase=drawdown_expectations_warm elapsed=314.38s` (22:57:06Z,
+  job `278ddb7d`), and the next line in the file is `=== start-backend.sh: launching at
+  2026-08-05T23:14:36Z ===`. Nothing in between. I opened `UT-03-fail.png`: the badge reads "Checking
+  backend…", the banner reads "Checking board status…", the Scanner Runs table is skeleton rows — it
+  never reached `ready` and never reached the honest `unavailable` either. `data_provider_runs` id=317
+  (read by me in sqlite) shows the job itself reached terminal `ok` at 22:57:07.266, so the wedge is
+  in the TEARDOWN after the job finished, not in the job. Separately, TC-7 is refuted by the round's
+  own best measurement, which I read from the raw drill file rather than the handoff:
+  `health.polls = 1179`, `http_200 = 1179`, **`polls_over_2s = 96`**, `latency_max_s = 10.0633`,
+  `latency_p90_s = 1.3439`. Step 4's acceptance says "never a deadlock, wedge, or restart requirement";
+  a restart was required. `last_passing_iter` stays iter-34. **FOR, and it is real:** step 3 is met
+  with room to spare — `memory.VmPeak_kB_max = 3,204,252` kB = **3,129 MB** against the 8,192 MB cap
+  (61.8 % margin) across 1,521 samples, and I counted **ZERO** `MemoryError`s in the entire
+  05:12:54Z→06:19:23Z backend segment, against 9 in the browser-lane segment and 7.76 GB RSS at the
+  wedge.
+- **J-05 "Aggregates are precomputed at ingest" — stays `partial`, on the strongest evidence it has
+  had in this session, which still does not reach `passing`.** FOR: **three** in-app backfills of
+  previously unsnapshotted historical days all reached terminal `ok` this round, and I read every one
+  in sqlite rather than trusting a row: id=316 (2012-01-04) `ok` in **11 m 16 s**, id=317
+  (2013-02-14) `ok` in 24 m 14 s, id=318 (2010-11-09) `ok` in **18 m 18 s** with 7 aggregate
+  categories refreshed — and each wrote a real snapshot: `scanner_runs` 2908 / 2909 / 2910 holding
+  **275 / 291 / 263** stored `scanner_results` rows. All `provider='seed'`. UT-02 was driven through
+  the `/data` form in the browser (start/end filled, Start clicked, `job-status` observed spinning).
+  AGAINST: **no `UT-J-05` row exists in any lane** (third target journey with zero rows), step 2(a)'s
+  leaderboard has **no screenshot** — the tester says so plainly — step 3 (`UT-09`) was SKIPPED, and
+  step 4 fails on the health numbers above. `evidence_makeup: true` set for the missing leaderboard
+  capture. `last_passing_iter` stays iter-39.
+- **J-06 "Pages load only what they need" — stays `partial`.** UT-01 PASS is real (11 rows, real
+  rank-IC figures) and UT-10's warm numbers are in budget (52 ms nav / 163 ms API). But its step 2
+  says "assert every measurement is within budget", and the same endpoint's cold path measured
+  **780.2 s and 874.7 s** in the lane and **742.07 s** in the audit's own drill (`factor_lab.wall_s`,
+  read by me). Three orders of magnitude outside budget is not a pass. No `UT-J-06` row.
+- **J-01 and J-03 KEEP `passing` on rows the checks themselves caused.** `data_provider_runs` ids
+  **313, 314, 315** were created 21:10:24–21:10:46Z by the deterministic replay, with exactly the
+  counts the goldens assert (19 of 19 dates; 0 of 0 on the weekend span; 283 of 283) — read by me in
+  sqlite, with fresh unique screenshots.
+- **J-08 and J-09 KEEP `passing`, and this time on pictures that are actually pictures.** I opened
+  both: `J-08-verify.png` shows the Backtest page with badge "Ready", `provider: seed`, 591 symbols,
+  Market Regime 66.07 Risk-on and the honest "No elapsed forward window for this date yet";
+  `J-09-verify.png` shows the top-bar badge reading **"background compute running (1)"** with a fully
+  populated coverage panel at 2,907 snapshot dates — which cross-checks exactly against the DB's
+  current 2,910 after this round's three backfills. Their producer `forward_testing.py` is **not in
+  this iteration's diff at all** (7 files: `data_manager.py`, `research.py`, `warmup.py` + 4 test
+  modules). `evidence_makeup` CLEARED on both.
+- **J-04 — `DEFERRED-BUDGET`: NOT tested.** Prior status `partial` and prior `last_verified_iter`
+  (iter-49) carried unchanged per SPEED-15. It is also in "Missing Required Journeys".
+- No `browser-infra.json`; no `journeys-changed.md`; all 8 `spec_hash`es match `goal_gate
+  hash-journeys` run by me. `pending_infra`: cleared everywhere.
+- Anti-goal violations: **ONE CLOSED — iter-49/bs** (the blank/duplicate screenshot class: I md5'd the
+  whole evidence directory and all 10 files are unique, none copied from iter-49, and the three I
+  opened are real). **SIX NEW OPEN: iter-50/bx** (the 17 m 30 s wedge), **by** (TC-13 breached a FIFTH
+  consecutive round, substantively), **bz** (the QA report reads PASS while claiming a re-run that
+  never happened), **ca** (all three target journeys plus J-04 with zero executed rows), **cb** (demo
+  captured zero steps, third round), **cc** (the interlock's double-skip, an OWNER spec question).
+  **ONE NEW RESOLVED IN-AUDIT: iter-50/cd** (the memory-pressure cooldown never covered the
+  single-flight waiter — the exact amplification path the outage took; fixed with a failing-first
+  test). Ledger now: **92 total, 39 unresolved, 0 unresolved critical.** scan-report CLEAN; coherence
+  **COHERENCE-WARN** (zero blocking, 3 advisories); review **PASS_WITH_NOTES** (0 MINOR, 3 NOTE); QA
+  **PASS but INVALID** (status.json overrides it); audit **FAIL** (B1 fixed in-audit, B2/B3/B4 open,
+  T1 CRITICAL); browser QA **FAIL** (11/14; 1 FAIL, 2 SKIPPED, 1 required-missing, 3 target-missing);
+  ux-regression SKIPPED (wall-clock trim); demo **NOT_YET** with an empty step table.
+
+**Reasoning:** I checked every load-bearing fact myself instead of reading it off a report.
+(1) **The round's central claim is true and I proved it from the raw sample file, not the handoff.**
+`memory.VmPeak_kB_max = 3,204,252` kB over 1,521 samples — 3,129 MB against an 8,192 MB ceiling — and
+`health.http_200 = 1179` out of `health.polls = 1179`. On the crash frame that took the process down
+last round at 7.76 GB, that is a genuine, measured, large win.
+(2) **The same file refutes the round's own top requirement, so I read that field too.**
+`health.polls_over_2s = 96`, `latency_max_s = 10.0633`. The developer, the reviewer and the auditor
+all say this plainly rather than rounding it up, and the cause they name — two processor-bound
+computations in one process — is untouched by any memory fix. I agree with them and I checked the
+numbers before agreeing.
+(3) **I reconstructed the wedge from the log rather than the report.** 22:57:06Z last line → 23:14:36Z
+restart banner = 17 m 30 s, not the "12 m 03 s+" the lane could see from outside, and the run row that
+should have been in flight had already committed `ok` 0.4 s before the silence began. That last fact
+matters: the wedge is in the teardown, not the job.
+(4) **I counted MemoryErrors per backend segment instead of quoting a total.** 7,862 now against
+iter-49's 7,083 — but 770 of the 779 new ones are the developer's own deliberately fault-injected
+TC-2 drills (segments 13:58 and 14:14), 9 are in the browser-lane segment, and **0** are in the
+post-fix drill segment. A raw total would have read as a catastrophe; the breakdown reads as progress.
+(5) **I hashed the evidence directory and this time found nothing wrong** — 10 unique files, no
+duplicate, none copied from iter-49. That closes the class I flagged in each of the last two rounds,
+and I would rather say so than only report faults.
+(6) **The wedge's proximate frame is provably not this diff's.** The last MemoryError before the
+silence is `research.py:1334`, `_combination_cohort_members`'s `set(range(pool_n))`, and
+`_combination_cohort_members` has **zero** hits in this iteration's `research.py` diff. The wedge was
+also observed on PRE-columnar code, and the post-columnar re-run of the same scenario as written ran
+1,522 s clean.
+(7) **AG-10 checked at the source:** `git diff` and `git status` over `config.yaml`, `host-guard.env`,
+`start-backend.sh`, `dev.sh` and `start-frontend.sh` are both EMPTY; `config.yaml:1363-1364` still
+reads 8192 / 2; every launch banner agrees.
+(8) **AG-9 checked at the row level:** every run created this round (313, 314, 315, 316, 317, 318) is
+`provider='seed'`.
+Rejected **REGRESSION (C.1)**: no journey moved `passing`/`already_passing` → `failing` — J-07 was
+already `failing` from iter-49 and has not passed since iter-34 — and no violation meets my own
+instructions' critical list (no secret, no paid dependency, no license change, no backdoor, no
+fabricated data; scan CLEAN, AG-10 untouched, all ingest `seed`). The AG-8 wedge is scored `minor` in
+the machine field on the grounds in (6), and filed in `assumptions.md` because a reader could reverse
+it. Rejected **STALLED (C.2)**: not every unblock path is human-owned — the structural fix is named
+with file and line and is agent work (take `compute_factor_lab_all` off the request path;
+`research.py:1334`; re-run the lane last; regenerate the QA report). One item genuinely IS the
+owner's (the interlock spec contradiction, `iter-50/cc`), but one owner item among many agent items
+is not a stall. Rejected **GOAL_ACHIEVED (C.3)**: J-07 is `failing`, three journeys are `partial`, one
+is deferred. **Chose ESCALATE (C.4):** the first clause fires plainly — J-07 has now failed two
+consecutive iterations and J-05/J-06 have been below `passing` since iter-39/iter-45 — and full depth
+is right on the merits, because this round's auditor again produced the load-bearing finding nobody
+else had (the single-flight waiter that walked straight past the memory cooldown, on the exact path
+the outage took, proven by a test that fails without the fix).
+**FIVE THINGS I STATE PLAINLY RATHER THAN ROUND AWAY:** (i) **the engineering is real and the journey
+table did not move.** The heaviest page's footprint fell from 7.8 GB to 3.1 GB and a 25-minute
+concurrent run produced not one memory failure. Both facts are true, and so is the fact that not one
+journey changed status. (ii) **the app went silent for seventeen and a half minutes and needed a
+restart, and I will not call that fixed.** It did not reproduce in the clean re-run, but the re-run
+never reached the same memory level either, so "it did not happen again" is not evidence that it
+cannot. The round's own status file says exactly this, and that honesty is why I could go straight to
+the log. (iii) **the rule that the journey checks must run last has now failed five rounds in a row,
+and this time it failed big.** Three separate product-code passes followed the lane, including a
+rewrite of the very code the lane was meant to test. A rule broken five consecutive times, each time
+for a good local reason, is not a rule. (iv) **the round's quality report says "pass" while its own
+browser check says "fail" — for the second round running.** The auditor caught it, refused to
+hand-edit it, and recorded it as a blocker instead. That refusal was correct. (v) **the pictures are
+finally real again.** After two rounds of blank and copied frames, all ten of this round's screenshots
+are distinct and the three I opened show genuine product state. That class is closed.
+
+**Next-step recommendation:** FULL depth (mandatory via ESCALATE). Give the next round this order.
+(1) **Take the heavy research calculation off the request path.** This is the one change that matters
+and every lane this round pointed at it. Opening the Factor Lab page still costs 12 to 15 minutes the
+first time after any data job, and while it computes, the health check that tells the app "I am alive"
+is slow — 96 of 1,179 checks over the two-second promise, worst 10 seconds. Using less memory did not
+fix this and cannot: the page and the data job are competing for the same processor. Either compute
+this page's numbers during the data job and store them — which is what the goal already says all heavy
+work should do — or move the calculation off the thread that answers requests. (2) **Then run the
+eight journey checks last, and change no code afterwards.** Three journeys had no check at all this
+round: "Aggregates are precomputed at ingest" (J-05), "Pages load only what they need" (J-06) and
+"Heavy aggregates never take the service down" (J-07). "Non-blocking boot with visible status" (J-04)
+was dropped for lack of time. The J-05 check now points at 2010-11-08, which I confirmed still has no
+stored snapshot. (3) **Rebuild the quality report from that run** — never hand-edit it. (4) **Find out
+why the app went completely silent for seventeen minutes**; the teardown step is now timed, so a
+repeat will say where it went. (5) SMALL AND ALREADY WRITTEN DOWN: `research.py:1334` builds a set
+over the whole pool at once and was the last thing logged before the silence; the waiting-caller hold
+can now last 43 minutes and has never been measured with more than one caller; the two other slow
+steps in the data job's clean-up tail. (6) CARRIED, untouched: iter-29/b + the badge wording after a
+permanently failed warm-up (23rd round unmade); iter-31/e; iter-32/f; iter-35/k; iter-36/n; iter-37/o;
+iter-37/q; iter-39/u; iter-46/az; iter-46/ba; iter-47/bd; iter-47/bf; iter-47/bi; iter-48/bj. Deferred
+a SIXTEENTH time: iter-33/g, the Regime Lab. (7) CAPTURE ONLY, never a round's goal: the walkthrough
+recorded zero steps for the third round running, and no picture was taken of the stored leaderboard
+for a freshly backfilled day. (8) OWNER: one decision and three facts. The decision — the spec asks
+for two things that cannot both be true: a deferred warm-up must "never silently drop the work", but
+it must also "defer" when the other one is running; today both sides can step aside at once and the
+work is dropped for that data version. Please say which one wins. The facts — the heaviest page now
+uses about 3.1 GB instead of 7.8 GB, comfortably inside your 8 GB ceiling; adding one old day of
+history finished successfully three times out of three, in 11, 18 and 24 minutes, each writing a real
+stored snapshot; and the app nevertheless went completely silent for seventeen and a half minutes
+during this round's own testing and needed a restart to come back.

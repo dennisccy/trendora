@@ -7344,3 +7344,336 @@ Nothing here changes TC-1 (3/3 within 1,200 s), TC-3 (byte-identity), TC-5 (VmPe
 TC-10 (frozen files still EMPTY) — those are re-confirmed from the same raw samples. It changes only the
 health-availability picture and where the follow-up work should start. This addendum is append-only; no
 earlier dated section was edited.
+
+### Addendum 7 (2026-08-05, ops-hardening iter-50 developer pass) — the two interlocked crash contributors
+### closed; TC-2's live drill; TC-6's mechanism verified (numeric live re-drill still pending the browser/QA lane)
+
+**What this iteration closes.** The iter-49 evaluator reconstructed the round's 12m45s outage as THREE
+concurrent heavy loops in one process: the ingest finalize tail (already isolation-guarded), the boot
+re-warm path's `_warm_drawdown_expectations` (uninterlocked with the finalize tail), and a live
+`/research/factor-lab?all=true` page view whose `compute_factor_lab_all` raised an **uncaught**
+`MemoryError` at `research.py:1051`'s `sorted(obs, ...)` — the actual process-killer. This iteration bounds
++ isolates that crash frame, adds a shared warm-in-progress guard between the other two loops, and skips
+`drawdown_expectations_warm`'s `phase_context_by_date` precompute when nothing needs it (Addendum 6's MID
+cluster). Full description: `docs/handoffs/goal-ops-hardening-iter-50-dev.md`.
+
+**TC-2 (fast/deterministic leg) — proven in-process, 6/6 new tests green.** A `MemoryError` injected at the
+confirmed crash frame (the SAME test-only `_fault_inject_memory_error` hook this suite already uses for the
+finalize tail's two per-item handlers) is caught by the per-(factor,horizon) isolate-and-continue: that one
+entry degrades to an honest `status: "unavailable"`, every other entry still renders, `compute_factor_lab_all`
+never raises, and a degraded payload is never persisted to the cache (proven directly —
+`tests/test_research_streaming.py`). TC-3's byte-identity is proven against a pinned copy of the pre-iter-50
+dict-based implementation on the discriminating `prune_engine` fixture, both `as_of=None` and a historical
+`as_of`.
+
+**TC-2 (live leg) — a REAL spawned backend, launched via `scripts/start-backend.sh`, against the real
+committed DB, with the SAME fault deterministically armed on every call.**
+`test_factor_lab_all_survives_repeated_memory_pressure_live` (`tests/test_start_backend_script.py`,
+`TRENDORA_RUN_HEAVY_INGEST_TEST=1`-gated) hits `GET /api/research/factor-lab?all=true` 5 CONSECUTIVE times
+and polls `GET /api/health` after each one:
+
+```
+1 passed in 1130.35s (0:18:50) — 5 consecutive GET /api/research/factor-lab?all=true calls against the
+real committed ~7.8 GB DB, ~3m46s average per call (consistent with the ~2-4 min documented cold-MISS
+compute_factor_lab_all range, iter-31 dev handoff). Every one of the 5 responses was HTTP 200 with every
+(factor, horizon) entry honestly marked status: "unavailable" (the fault fires unconditionally on every
+call, and a degraded payload is never cached -- confirmed by the fact all 5 calls paid the full cold-read
+cost rather than serving a cached degraded result). GET /api/health answered 200 after EVERY one of the 5
+attempts. The spawned backend process was torn down cleanly by the fixture at the end of the run (no
+leaked process, no crash mid-run) -- run on 2026-08-05, this host.
+```
+
+**TC-4/TC-5 (the warm-in-progress guard, both trigger orders) — proven in-process.**
+`tests/test_data_manager.py`'s two new guard tests simulate "the other caller already holds the slot" via a
+direct `_try_acquire_drawdown_warm(...)` call, then invoke the REAL `warmup._warm_drawdown_expectations`
+(TC-4) / the REAL `_refresh_ingest_aggregates` drawdown-expectations phase (TC-5) and assert: zero claims
+attempted, the deferral is logged naming which caller deferred, every OTHER finalize-hook category still
+refreshes normally (TC-5), and — after releasing the slot — a normal run proceeds and warms the claim as
+before. Both pass.
+
+**TC-6 (the `phase_context_by_date` skip) — mechanism verified in-process; the LIVE numeric before/after is
+still Addendum 6's own measurement, not yet re-drilled post-fix.** A new unit test runs the SAME
+`finalize_hook_drawdown_engine` fixture through `_refresh_ingest_aggregates` twice with no new data between
+calls: the FIRST (genuine cache MISS) call invokes `phase_context_by_date` exactly once; the SECOND (every
+claim now a cache HIT) invokes it ZERO times, while the claim is still honestly reported as warm both times.
+A companion unit test exercises `_drawdown_expectations_ledger_needs_recompute` directly (empty ledger,
+uncached claim, cache-warmed claim, forward-walk-only ledger). This proves the SKIP fires exactly when the
+spec requires it to; it does not by itself re-measure Addendum 6's live ~23.6-23.9s MID health-poll-stall
+cluster with the fix applied (that requires a live ingest finalize-tail run against the real committed DB,
+the SAME live-drill class as TC-1/TC-7/TC-8/TC-10/TC-11/TC-12 below) — left for the browser/QA lane per this
+iteration's own division of labor (DEFINITION OF DONE names browser-qa-agent for J-05/J-07's live evidence).
+
+**Still pending live re-drill (not this developer pass's scope per the phase spec's own DEFINITION OF
+DONE, which names browser-qa-agent for J-05/J-07 and the browser/replay lane for J-04/J-08/J-09):**
+- TC-1: an ingest finalize-tail warm running concurrently with a live `/research/factor-lab?all=true` view,
+  confirming `GET /api/health` stays 200 throughout (the exact iter-49 crash scenario).
+- TC-7/TC-8: the full-horizon forward-aggregate warm's `GET /api/health` poll cadence and peak VmPeak
+  margin under `server.memory_cap_mb=8192`.
+- TC-9: an induced memory-pressure abort during a warm leaving the SAME process still serving.
+- TC-10/TC-11: J-05's in-app defining case (a live `/data` backfill of one unsnapshotted historical day).
+- TC-12: `/research/factor-lab`'s time-to-interactive + on-load API latency on a warm frontend+backend in
+  prod mode.
+
+`git diff --stat` over `config.yaml`, `project-extensions/host-guard/host-guard.env`,
+`scripts/start-backend.sh`, `scripts/dev.sh` — EMPTY before and after this pass (TC-10/AG-10 unchanged).
+This addendum is append-only; no earlier dated section was edited.
+
+### Addendum 8 (2026-08-05, ops-hardening iter-50 browser/QA lane) — TC-1/TC-7/TC-9/TC-12 live re-drill:
+### the crash is fixed, but a sustained health-endpoint HANG was reproduced in the exact TC-1 scenario
+
+**Context.** Addendum 7 (developer pass) proved TC-2/TC-3/TC-4/TC-5/TC-6 in-process and via one live spawned
+backend, and named TC-1/TC-7/TC-8/TC-9/TC-10/TC-11/TC-12 as pending live re-drill by the browser/QA lane per
+the phase spec's own division of labor. This addendum records that re-drill.
+
+**TC-12 (warm measurement) — clean, in budget.** `/research/factor-lab`, cache already warm, no concurrent
+job: navigation 52ms, `GET /api/research/factor-lab?all=true` 163ms, all-factors table (11 rows) rendered
+essentially instantly. Well within a "responsive" experience — no committed budget number existed before
+this iteration; this is the first live measurement.
+
+**Cold cache-miss finding (diagnostic, adjacent to TC-12).** Two separate cold computations of the same
+endpoint (fired directly against the API while investigating page-load behavior, before understanding the
+endpoint's own server-side cache) measured **780.2s and 874.7s (13.0–14.6 minutes)** — both HTTP 200, 11
+real factors returned, no crash. This exceeds the dev handoff's documented "~2–4 minute" cold-MISS range;
+it is not clear from this single host whether that is because two such computations were effectively
+serialized back-to-back (competing for the same CPU-bound work in one process) or because the true
+single-request cold cost on this data basis is simply higher than ~2–4 min. Flagged, not diagnosed further
+(outside browser-QA's remit).
+
+**TC-1 (the exact scenario) — reproduced live, with a critical result.** A live "Backfill snapshots" job
+(`job_id=278ddb7d8cd3418fac93908b1b7e369b`, target `2013-02-14`, started `2026-08-05T22:32:52Z`) was run to
+its finalize tail while `/research/factor-lab` and other pages were loaded concurrently in the browser and
+`GET /api/health` was polled repeatedly. Phase timings logged live:
+
+```
+forward_aggregates_warm   (total)              337.49s
+research_hot_keys_warm                           2.51s
+index_series_warm                                0.10s
+drawdown_expectations_warm (total, 5+ claims)   314.38s
+  ... claim=combination:composite:h20           112.58s   <- the SAME already-documented expensive claim
+                                                              from Addendum 6/7's late stall cluster
+```
+
+Multiple `MemoryError`s were logged and caught during this window — several inside `compute_factor_lab_all`
+(`factor_lab_all_cached: ... aborted under memory pressure ... degrading the response honestly, not
+crashing`, exactly this iteration's intended fix, working), but ALSO several inside
+`_all_factor_observations_by_horizon` (`research.py:964`/`966`) and `_combination_cohort_members`
+(`research.py:1326`/`1334`, via `samples.py:277`) — functions this iteration's own spec named as
+"already bounded... unaffected by this defect" and explicitly out of scope. Each was individually caught
+(no crash), but their repeated firing shows the memory-pressure condition is broader than the one function
+this iteration bounds.
+
+**The critical result:** immediately after `drawdown_expectations_warm` completed (`2026-08-05T22:57:06Z`,
+backend-log clock), the backend log stopped advancing entirely and `GET /api/health` stopped answering
+ANY request — not a slow response, a full connection-level non-response (`curl` with 5–30s timeouts all
+returned no response) — for a confirmed continuous **15m02s** (through `2026-08-05T23:12:08Z`, when this
+addendum was written; the process had not recovered when the browser-QA session ended). The frontend's
+readiness badge stayed on its initial `loading`/"Checking backend…" placeholder for 17+ minutes straight —
+never even reaching the honest `unavailable` state, because the underlying poll `fetch()` itself never
+settled. The process itself did NOT crash: `ps` showed it alive throughout, CPU busy (80–89%), RSS actually
+DROPPED from 7.76 GB to 5.89 GB partway through (not an OOM condition), main thread parked in
+`futex_do_wait` — consistent with a lock/wedge condition, not a process death. Full narrative, evidence, and
+an important caveat about the browser-QA session's own earlier diagnostic load are in
+`reports/phase-goal-ops-hardening-iter-50-ui-test-results.llm.md`'s UT-03 section — read that section in
+full before scoring TC-1/TC-7/TC-9/J-07, since the caveat materially affects how to weigh the finding.
+
+**Net assessment.** TC-1's specific target (`compute_factor_lab_all` must not raise an uncaught `MemoryError`
+that kills the process) is proven fixed — every occurrence in this live drill was caught and degraded
+honestly, exactly as designed. TC-1's OTHER clause ("an immediately-following `GET /api/health` still
+answers 200") and TC-7/TC-9 ("every poll answers 200 ... never a deadlock, wedge") are NOT proven —
+this drill produced a 15+ minute, unresolved `GET /api/health` silence in the exact scenario TC-1 describes,
+matching or exceeding the prior round's own 12m45s outage this iteration exists to prevent. Score honestly:
+the crash is closed; the hang is not.
+
+This addendum is append-only; no earlier dated section was edited.
+
+### Addendum 9 (2026-08-06, ops-hardening iter-50 AUDIT-FIX pass) — the Factor Lab request-path memory
+### peak is re-aimed at its real site; the outage class is closed, the ≤2s health ceiling is not
+
+**What changed since Addendum 8.** Addendum 8 recorded the honest verdict "the crash is closed; the hang is
+not", and the audit that followed it (`docs/handoffs/goal-ops-hardening-iter-50-audit.md`, finding B3)
+established WHY: the iteration had bounded the wrong frame. Five real, un-injected `MemoryError`s during
+that lane (2026-08-05 23:28:44 / 23:37:53 / 23:38:25 / 23:42:07 / 23:44:52) all carry the identical
+traceback ending at `research.py:966` — `pools[h].append(...)` inside
+`_all_factor_observations_by_horizon`, the function the phase spec had carved out as "already bounded …
+unaffected by this defect". This pass re-aimed at that site (columnar accumulators), added a termination
+condition to the degrade path (audit B4), widened the warm interlock to the whole ingest finalize tail
+(audit B2), and fixed the drill's own blind spot (audit T3).
+
+**Measurement conditions.** Real committed DB, backend launched by `scripts/start-backend.sh` on port 8255
+with the host-guard caps live and verified from `/proc/<pid>/limits` (`Max address space 8589934592` =
+8192 MB, i.e. `server.memory_cap_mb` enforced — AG-10 intact). Boot warm-up already settled
+(`readiness: ready`, `warmup 89/89 ok`) before the request was issued. `GET /api/research/factor-lab?all=
+true` (all-history — a guaranteed cache MISS at the current dataset stamp) issued over real HTTP with
+`GET /api/health` polled once per second on a background thread FOR THE DURATION of the request, and
+`/proc/<pid>/status` sampled once per second. Raw samples retained at
+`reports/qa/goal-ops-hardening-iter-50-evidence/iter50-auditfix-live-factorlab-measurement.json`.
+
+| Metric | Addendum 8 (pre-audit-fix) | Addendum 9 (post-audit-fix) |
+|---|---|---|
+| Cold `?all=true` wall clock | 780.2s / 874.7s | **578.87s** (9m39s) |
+| Payload | `factors_status: unavailable`, 5/5 live attempts | **HTTP 200, 11 real factors, 55/55 (factor,horizon) entries with real decile tables, 0 degraded** |
+| Result cached afterwards? | No — a degraded payload is never persisted, so every viewer restarted the compute | **Yes** — verified by an immediate repeat: **43ms** warm HIT |
+| `GET /api/health` during the compute | connection-level non-response for 12–15 min | **249/249 polls HTTP 200; zero non-200, zero timeouts, zero dropped connections** |
+| Health latency during the compute | n/a (no response at all) | median **0.327s**, p90 4.028s, p99 5.454s, max **5.807s** |
+| Process VmPeak | (process wedged / restarted by the pump) | **3,133 MB** — under the 8192 MB cap with **5,059 MB (62%) margin** |
+| Process VmRSS during the compute | 7.76 GB → 5.89 GB | **1,196 MB → 1,703 MB** |
+
+**TC-1 — both clauses now met, live.** No uncaught `MemoryError`; the request answered 200 with real
+figures; and `GET /api/health` answered 200 on every one of the 249 polls taken *during* the heavy request
+(not merely after it — see T3 below). The 12–15 minute total-service-outage class Addendum 8 recorded, and
+the 12m45s outage of iter-49 before it, did not reproduce.
+
+> **CORRECTION (2026-08-06, iter-50 audit-fix pass 2 — additive errata, nothing above is deleted or
+> rewritten).** The bold claim in the paragraph immediately above **overstated what this measurement
+> established, and is withdrawn.** TC-1's given-clause is *"with an ingest job's finalize-tail warm
+> running"*; this addendum's own "Measurement conditions" record that no ingest job was running when the
+> Factor Lab request was issued, so the scenario's defining precondition was never established here and no
+> TC-1 verdict follows from it. Every NUMBER in this addendum stands and is unaffected — it is a valid
+> measurement of a solo Factor Lab request on an idle-but-warm instance. The TC-1 scenario was
+> subsequently executed **as written** (real `/data` backfill, Factor Lab load issued during its finalize
+> tail, health polled 1 Hz through and past the tail) — see **Addendum 10** below for that run and its
+> verdict.
+
+**TC-8 — VmPeak margin recorded.** 3,133 MB peak against `server.memory_cap_mb=8192` → 5,059 MB / 62%
+margin. Note VmPeak is a since-process-start high-water mark, so it already includes boot; the compute
+itself never pushed it above the boot figure. The compute-attributable resident growth is the RSS range
+above: 1,196 MB → 1,703 MB, i.e. **~507 MB** for the whole all-factors sweep on a 6,496,075-row
+`forward_returns` basis.
+
+**NOT met, disclosed rather than rounded up — the ≤2s bounded-background-compute ceiling.** 62 of the 249
+polls exceeded 2.0s (range 2.0s–5.807s), clustered in polls 143–247, i.e. the second half of the compute.
+Every one still answered **HTTP 200** — this is latency, not unavailability, and not the wedge/outage class
+this pass targeted. The mechanism is GIL contention: `compute_factor_lab_all`'s per-(factor,horizon) sort
+and decile loops are tight CPU-bound Python that starve the event loop between yields. Bounding memory did
+not, and could not, address that. Recorded here so the next iteration can aim at it directly (the honest
+options are to move the request-path compute off the event loop, or to serve this endpoint from an
+ingest-time artifact per `docs/goal.md`'s own compute-at-ingest principle — the audit's own next-step (1)).
+
+**Unit-level corroboration of the B3 re-aim** (`test_returned_pool_structure_is_columnar_not_boxed_python_
+objects`, deterministic fixture): a pool row — the exact `pools[h].append` site of all five live tracebacks
+— costs **63.8 B** columnar against **129.8 B** as the iter-31 boxed tuple on the fixture, and the whole
+returned structure projects to **460 MB** at the live basis (781,417 core records / 3,971,375 pool rows)
+against iter-31's **769 MB** and the pre-iter-31 dict shape's **2,025 MB**. The fixture understates the win
+(20 core records amortise each buffer's fixed ~64-byte header over almost nothing); at the live basis a pool
+row approaches its raw 8+8+1+8+1 = 26 bytes.
+
+`git diff --stat` over `config.yaml`, `project-extensions/host-guard/host-guard.env`,
+`scripts/start-backend.sh`, `scripts/dev.sh` — EMPTY before and after this pass (TC-10/AG-10 unchanged).
+This addendum is append-only; no earlier dated section was edited.
+
+---
+
+## Item S — TC-1 executed AS WRITTEN, and the finalize-tail teardown frame instrumented (ops-hardening iter-50 AUDIT-FIX PASS 2, 2026-08-06, audit B1/B2, J-05/J-07)
+
+### Addendum 10 (2026-08-06, ops-hardening iter-50 AUDIT-FIX pass 2) — the ingest finalize tail and a live
+### Factor Lab page load, concurrent, for 1,522 s of once-per-second health polling
+
+**Why this run exists.** The iter-50 audit's finding B1 rejected Addendum 9's `TC-1 — both clauses now met`
+because that measurement had **no ingest job running**: TC-1's given-clause is *"with an ingest job's
+finalize-tail warm running"*, and a solo Factor Lab request on an idle-but-warm instance does not establish
+it. (Addendum 9 now carries an additive CORRECTION saying so; its numbers stand as what they actually are.)
+The audit's Recommended Next Step 2 specified the run below almost verbatim, including the instruction to
+keep polling **past** the tail's completion, because the 2026-08-05 silence began at the `finally` boundary
+*after* the last phase finished.
+
+### Measurement conditions (stated first, so the reader can judge the claim against them)
+
+- Backend restarted through `scripts/start-backend.sh` on port 8255 (AG-10; `/proc/<pid>/limits`
+  `Max address space 8589934592` = 8192 MB confirmed live before the run). Boot warm-up allowed to settle
+  first — `readiness: ready`, `warmup 89/89 ok` — so the boot re-warm is NOT a third concurrent actor and
+  the measurement isolates TC-1's own pair.
+- **A real in-app backfill through the product API** (`POST /api/data/jobs`, `kind: backfill`,
+  `2010-11-09 → 2010-11-09` — one unsnapshotted historical trading day). `2010-11-08` was deliberately NOT
+  used: it is J-05's golden target and this pass left it clean at 0 snapshot rows.
+- **The Factor Lab page load was issued 12.5 s in, while the finalize tail was already running** — real
+  HTTP `GET /api/research/factor-lab?all=true`, the exact call `FactorLabPage` makes on mount, and a
+  guaranteed cache MISS because the backfill had just bumped the dataset-version stamp.
+- `GET /api/health` polled once per second on its own thread for the whole 1,522 s, i.e. **through the
+  overlap AND 420 s past the job's completion**; `/proc/<pid>/status` sampled once per second alongside.
+- Raw samples (every poll, every memory sample, every event, the persisted job record):
+  `reports/qa/goal-ops-hardening-iter-50-evidence/iter50-auditfix2-tc1-live-drill.json`.
+
+### Result
+
+| | Value |
+|---|---|
+| Overlap actually achieved | Factor Lab request t=12.5 s → t=754.6 s; ingest finalize tail t≈12 s → t=1,100.0 s — **full containment**, not adjacency |
+| `compute_factor_lab_all` outcome | **HTTP 200**, 11 factors, 55 (factor,horizon) entries, **0 degraded**, 13,883,204 observations summed, no `factors_status` — a clean full payload |
+| Uncaught `MemoryError`? | **None.** Zero `MemoryError` / `Traceback` / ERROR / WARNING lines in `logs/backend.log` for the entire run |
+| Factor Lab wall clock | 742.07 s (vs 578.87 s solo in Addendum 9 — the ingest tail is now competing for the same CPU) |
+| `GET /api/health` immediately after | **200 in 0.095 s** |
+| Health across the whole 1,522 s | **1,179 polls, 1,179 HTTP 200. Zero non-200, zero timeouts, zero connection-level non-responses.** Longest gap between consecutive polls **10.06 s** — i.e. no silent window at all |
+| Health during the overlap (417 polls) | all 200; median 0.289 s, p90 4.579 s, **max 10.063 s**, 90 polls > 2 s |
+| Health after the tail finished (421 polls / 420 s) | all 200; **max 0.133 s, zero polls > 2 s** |
+| Process VmPeak | **3,129 MB** against `server.memory_cap_mb = 8192` → **5,063 MB (61.8 %) margin** |
+| Process VmRSS | 1,462 MB → peak 2,401 MB → 1,376 MB at the end; threads peak 17; the process never disappeared |
+| Persisted run record | `status ok`, `snapshots_created 1`, `dates_total 1`, `calendar_days 1`, `already_snapshotted 0`, `non_trading_days 0`, `error_other 0`, `aggregates_refreshed: [latest_snapshot, coverage, membership_timeline, market_phase, forward_aggregates, research_hot_keys, drawdown_expectations]`, `"backfill: 1 snapshots over 1 dates, 1370 forward returns"` |
+
+**TC-1 — both clauses met, with the given-clause established.** The Factor Lab read completed without an
+uncaught `MemoryError` while an ingest job's finalize-tail warm was genuinely running, and the
+immediately-following `GET /api/health` answered 200. This is the first time in this iteration that the
+scenario's own precondition was live when the measurement was taken.
+
+**TC-8 — VmPeak margin recorded** (3,129 MB / 61.8 % margin), now under the concurrent load rather than solo.
+
+**TC-9 — no wedge, no deadlock, no restart requirement** across 1,522 s including 420 s past the tail. The
+17-minute silence class did not reproduce. See the honest limit on this below.
+
+### Finalize-tail phase timings under the concurrent Factor Lab load (from `logs/backend.log`)
+
+`coverage_membership_timeline_refresh` 32.00 s · `per_date_coverage_warm` 12.89 s · `market_phase_warm`
+23.67 s · `forward_aggregates_warm` **707.20 s** (h1 79.34 / h5 80.39 / h10 81.14 / **h20 448.09** / h60
+18.24) · `research_hot_keys_warm` 1.97 s · `index_series_warm` 0.02 s · `drawdown_expectations_warm`
+309.62 s. Total job wall clock **18 m 18 s** (05:14:48 → 05:33:06 UTC) against **11 m 16 s** for the same
+in-app backfill measured standalone by the iter-50 lane.
+
+The h20 sub-phase's 448.09 s against 79–81 s for every other horizon is the same GIL-contention signature as
+the health-latency tail, not a memory effect: h20 is the horizon whose window the Factor Lab compute
+overlapped. Both figures are the *cost* of the concurrency, and both were paid without a single non-200.
+
+### B2 — the teardown frame is no longer unexamined
+
+The audit's finding B2 named `_refresh_ingest_aggregates`'s `finally` (drop `prog._shared_bar_cache` →
+`_release_process_memory()`'s `gc.collect()` + `malloc_trim`) as the only frame inside the 2026-08-05
+silence that nobody had timed. It is now instrumented (log-only), and it reported:
+
+```
+06:33:06,420 _release_process_memory: START (gc.collect + malloc_trim)
+06:33:06,529 _release_process_memory: DONE gc_collect=0.06s malloc_trim=0.05s total=0.11s
+06:33:06,529 J-05 finalize-tail teardown timing: job=dc7be88b… shared_bar_cache_drop=0.00s total_teardown=0.11s
+06:33:06,529 ingest heavy-warm window CLOSED: job=dc7be88b… depth=0
+```
+
+**0.11 s**, with a real stashed shared bar cache (the release only runs when one was stashed). Under this
+run's footprint the teardown is not a plausible source of a multi-minute stall, so B2's mechanism is *not
+supported* here.
+
+**Honest limit — this is not a proof that the wedge is fixed.** The 2026-08-05 outage ran at VmRSS
+7.76 GB; this drill peaked at 2.40 GB, and a `gc.collect()`'s cost scales with the live heap it walks, so
+0.11 s at 2.4 GB does not establish 0.11 s at 7.8 GB. What has changed is falsifiability: if the silence
+recurs, `logs/backend.log` will now show either a `START` with no `DONE` (the teardown *is* the frame) or a
+`DONE` with a small total *before* the silence (it is not), instead of the ambiguity that made the outage
+unattributable. The wedge/outage class remains **unproven-either-way**, and no J-07 credit should be taken
+for it.
+
+### Still NOT met, disclosed rather than rounded up
+
+- **TC-7 / J-07 step 2 — the ≤2 s bounded-background-compute ceiling is breached, and by more than before.**
+  96 of 1,179 polls exceeded 2.0 s, worst **10.063 s** (Addendum 9's solo run peaked at 5.807 s). That is
+  the expected direction: this run finally has the concurrency TC-1 asks for, and the extra latency is GIL
+  contention between two CPU-bound Python computes in one process. Every poll still answered **HTTP 200** —
+  latency, not unavailability — and the breach vanishes entirely once the tail ends (421 consecutive
+  post-tail polls, max 0.133 s, zero over 2 s). **Do not score TC-7 as met.** The structural fix is the one
+  `docs/goal.md` already prescribes: serve `/research/factor-lab` from an ingest-time artifact instead of
+  computing it on the request path.
+- **B3's waiter thread-hold was not exercised.** Only one Factor Lab caller existed in this run, so the
+  re-based single-flight wait ceiling (2,625 s) never had a waiter occupying an anyio threadpool worker.
+  That regime remains unmeasured — carried, as the audit itself scoped it.
+- **TC-10/TC-11's in-app UI half is the lane's, not this drill's.** This run proves the API/engine contract
+  (the persisted record above); `/scanner-runs` rendering the stored snapshot in a browser is the browser
+  lane's row.
+
+`git diff --stat` over `config.yaml`, `project-extensions/host-guard/host-guard.env`,
+`scripts/start-backend.sh`, `scripts/dev.sh` — EMPTY before and after this pass (AG-10 unchanged). This
+addendum is append-only; the only edit to an earlier section is the additive, dated CORRECTION block under
+Addendum 9's withdrawn TC-1 claim, which deletes and rewrites nothing.

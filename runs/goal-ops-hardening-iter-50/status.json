@@ -1,0 +1,47 @@
+{
+  "phase": "goal-ops-hardening-iter-50",
+  "status": "blocked",
+  "current_step": "audit_failed",
+  "updated_at": "2026-08-06T06:34:02.232071Z",
+  "started_at": "2026-08-05T13:18:08.949996Z",
+  "cli": "claude",
+  "blockers": [
+    "TC-13 / DoD item 7 (HARD BLOCKER): this audit-fix pass #2 changed product code (research.py B4 fix, data_manager.py B2 instrumentation). The full 8-journey browser/replay lane MUST be re-run against the CURRENT code before closure, and reports/qa/goal-ops-hardening-iter-50-qa.md MUST be REGENERATED from that run -- never hand-edited. The lane has never run against this iteration's current code (audit T1), so the re-run was already mandatory before this pass. Audit findings T1 and T2 are closed by that re-run, not by this pass.",
+    "reports/qa/goal-ops-hardening-iter-50-qa.md currently reads Verdict: PASS and asserts a re-run that never happened (audit T1, CRITICAL). It was DELIBERATELY left untouched: the spec's remedy is regeneration from the re-run, and hand-correcting the verdict is exactly the prohibited act. Treat its current contents as invalid until regenerated.",
+    "J-07 step 2 / TC-7 NOT met, and by a wider margin than the previous pass: 96 of 1179 health polls exceeded 2.0s during the live TC-1 drill, worst 10.063s (the solo run in Addendum 9 peaked at 5.807s). Every poll answered HTTP 200 -- latency, not unavailability -- and the breach vanishes once the ingest tail ends (421 post-tail polls, max 0.133s, zero over 2s). Cause is GIL contention between two CPU-bound computes in one process. Score honestly; see reports/perf-budgets.md Addendum 10.",
+    "The 2026-08-05 wedge/outage class is UNPROVEN-EITHER-WAY, not fixed. It did not reproduce across 1522s of 1Hz polling (including 420s past the ingest tail), but the outage's own footprint was not reproduced either (7.76 GB RSS then vs 2.40 GB peak here). The teardown frame is now instrumented (0.11s in this run), so a recurrence becomes attributable. Do not take J-07 credit for the wedge.",
+    "J-05's golden target date 2010-11-08 is live-confirmed at 0 snapshot rows and MUST stay unconsumed until the lane runs it. This pass's own TC-1 drill deliberately used 2010-11-09 instead. 2012-01-04 and 2013-02-14 are already consumed."
+  ],
+  "changed_files": [
+    "apps/backend/app/engine/research.py",
+    "apps/backend/app/engine/data_manager.py",
+    "apps/backend/tests/test_factor_lab_all.py",
+    "apps/backend/tests/test_data_manager.py",
+    "runs/goal-session-ops-hardening/journey-scripts/J-05.json",
+    "reports/perf-budgets.md",
+    "reports/qa/goal-ops-hardening-iter-50-evidence/iter50-auditfix2-tc1-live-drill.json",
+    "docs/handoffs/goal-ops-hardening-iter-50-dev.md",
+    "reports/phase-goal-ops-hardening-iter-50-implementation-summary.md"
+  ],
+  "audit_findings_addressed": {
+    "B1": "closed -- the 'TC-1 met live' claim is WITHDRAWN (additive correction in perf-budgets Addendum 9) and TC-1 was executed AS WRITTEN: real /data backfill of 2010-11-09, Factor Lab loaded 12.5s in while the finalize tail ran, health polled 1Hz for 1522s through and 420s past the tail. Result: HTTP 200, 11 factors, 55 entries, 0 degraded, no uncaught MemoryError, 1179/1179 health polls 200, VmPeak 3129 MB (61.8% margin). perf-budgets Addendum 10.",
+    "B2": "instrumented (log-only, no behavior change). _release_process_memory now logs START before gc.collect and DONE with per-step wall clocks; the finalize tail logs its teardown timing. Measured 0.11s in this drill -- mechanism NOT supported at this footprint, and explicitly NOT claimed as a wedge fix (see blockers).",
+    "B3": "deliberately unchanged -- the audit itself scopes it to the next round's measurement plan. The drill had a single Factor Lab caller, so the waiter thread-hold regime remains unmeasured. Carried and disclosed.",
+    "B4": "FIXED, both halves. _FactorCoreRecords.append coerces with float() (the pre-columnar consumer's own coercion) so string-typed record_json raws serve byte-identically again; a non-numeric raw is excluded as a factor-NULL with an AG-8 WARNING instead of raising TypeError out of the shared pool builder. compute_factor_lab_all's per-(factor,horizon) loop gained the broader except Exception that evidence.py's per-claim convention pairs with its MemoryError catch, so one entry's failure degrades that entry rather than 500ing the whole ?all=true response. 5 new tests, all proven to fail without the fix.",
+    "B5": "no action -- already disclosed in code and handoff; confirmed still disclosed.",
+    "T1": "NOT fixed by this pass, deliberately -- regeneration from the mandatory lane re-run is the spec's remedy; hand-editing the verdict is the prohibited act. Recorded as a hard blocker above.",
+    "T2": "lane work -- closed by the same mandatory re-run.",
+    "T3": "FIXED. journey-scripts/J-05.json rewritten with a real 19-minute wait (sized from 11m16s standalone / 18m18s under concurrent load) and run-specific assertions: this run's own breakdown counts, the aggregates-refreshed list (TC-10, never asserted before), the click-through to the run's own /scanner-runs detail, and the stored leaderboard rendering. Verified empirically first that demo_runner.py's 20000ms cap binds the locator/expect timeout, NOT wait_for{ms} -- a throwaway J-99 golden with wait_for 45000ms took 47s wall and returned PASS.",
+    "T4": "re-confirmed -- 367 passed across the four affected modules; 33 passed in test_factor_lab_all.py."
+  },
+  "tests_run": true,
+  "tests_passed": true,
+  "tests_summary": "test_factor_lab_all.py 33 passed (5 new B4 tests); test_data_manager.py + test_research_streaming.py + test_ingest_finalize_fault_injection.py + test_research.py 367 passed in 390.79s (includes the new B2 instrumentation test). Teeth verified: all 5 new B4 tests FAIL with the fix reverted in a scratch copy.",
+  "frozen_files_unchanged": true,
+  "browser_checks_run": false,
+  "browser_checks_skipped": false,
+  "browser_checks_skipped_reason": "",
+  "qa_verdict": "INVALID_PENDING_REGENERATION",
+  "services_left_running": "backend http://localhost:8255 (health 200, readiness ready, this pass's code loaded); frontend http://localhost:3255 (200)",
+  "next_action": "browser_qa_lane"
+}

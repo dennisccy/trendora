@@ -850,6 +850,173 @@ def test_start_backend_survives_back_to_back_heavy_ingest_under_memory_cap(spawn
     )
 
 
+# ==================================================================================================
+# ops-hardening iter-50 (J-07, TC-2): the confirmed iter-49 crash frame — `compute_factor_lab_all`'s
+# per-(factor,horizon) obs-build+sort (research.py) — raised an UNCAUGHT MemoryError that killed a live
+# backend for 12m45s during that round's own browser lane. This drills the LIVE, spawned server process:
+# `GET /research/factor-lab?all=true` must survive REPEATED memory-pressure hits without the process ever
+# dying, and `GET /api/health` must stay 200 throughout.
+#
+# WHY THE DETERMINISTIC FAULT-INJECTOR, NOT AN ORGANIC `ulimit -v` CALIBRATION:
+# `test_ingest_finalize_fault_injection.py`'s own docstring documents why a genuinely tightened cap cannot
+# reliably reach a SPECIFIC deep call site inside a live server process for the finalize tail's two
+# per-item handlers (an earlier, unrelated allocation in the same request/boot sequence exhausts a cap
+# tight enough to threaten the target site first) — the SAME reasoning applies here, one call deeper
+# (this crash frame is reached via `GET /research/factor-lab?all=true` -> `factor_lab_all_cached` ->
+# `compute_factor_lab_all`'s per-(factor,horizon) loop, itself downstream of the shared pool builder's own
+# DB read). The fault-injector raises a REAL `MemoryError` object at the EXACT confirmed site — Python's
+# `except MemoryError:` handler behaves identically whether that object came from a failed `malloc()` or
+# an explicit `raise`, so this is the SAME code path a real `ulimit -v` exhaustion would hit, just aimed
+# reliably instead of hoping to land on it. `TRENDORA_RUN_HEAVY_INGEST_TEST`-gated like this module's
+# other real-process drills, so it never runs by accident on a plain `pytest` invocation.
+# ==================================================================================================
+_FACTOR_LAB_FAULT_TEST_PORT = 19200 + _offset
+
+
+@pytest.fixture()
+def spawned_backend_fault_injected():
+    """Like `spawned_backend`, but launched with `TRENDORA_FAULT_INJECT_MEMORY_ERROR=factor_lab_all` in
+    its environment — deterministically arming the test-only `_fault_inject_memory_error` hook at
+    `compute_factor_lab_all`'s per-(factor,horizon) obs-build+sort, the confirmed iter-49 crash frame.
+    Opt-in (same gate as the heavy-ingest fixtures above): a fault-injecting backend must never spawn by
+    accident on a plain `pytest tests/test_start_backend_script.py` run."""
+    if os.environ.get("TRENDORA_RUN_HEAVY_INGEST_TEST") != "1":
+        pytest.skip(
+            "live fault-injected backend drill is opt-in — set TRENDORA_RUN_HEAVY_INGEST_TEST=1 "
+            "(run it only on an idle host with the host-guard protections active)"
+        )
+    if not SCRIPT.exists():
+        pytest.skip(f"{SCRIPT} not found")
+    env = dict(os.environ)
+    env["CHAIN_BACKEND_PORT"] = str(_FACTOR_LAB_FAULT_TEST_PORT)
+    env["CHAIN_FRONTEND_PORT"] = str(_FACTOR_LAB_FAULT_TEST_PORT + 1000)
+    env["TRENDORA_FAULT_INJECT_MEMORY_ERROR"] = "factor_lab_all"
+    proc = subprocess.Popen(
+        ["bash", str(SCRIPT)], cwd=str(REPO_ROOT), env=env,
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
+    try:
+        _wait_for_health(_FACTOR_LAB_FAULT_TEST_PORT, timeout=60.0)
+        yield _FACTOR_LAB_FAULT_TEST_PORT
+    finally:
+        if _pid_alive(proc.pid):
+            os.kill(proc.pid, signal.SIGKILL)
+            deadline = time.monotonic() + 10.0
+            while _pid_alive(proc.pid) and time.monotonic() < deadline:
+                time.sleep(0.1)
+        try:
+            proc.wait(timeout=10)
+        except ChildProcessError:
+            pass
+
+
+def _distinct_factor_lab_asof_dates(port: int, n: int) -> list[str]:
+    """`n` distinct real snapshot as-of dates, read from the SPAWNED INSTANCE's own `GET /api/runs` — never
+    hardcoded literals that go stale. Each one is a DIFFERENT `factor_lab_all_cached` key, which is what
+    makes the repeated-pressure drill below exercise `n` genuinely independent full-scale computes."""
+    resp = httpx.get(f"http://127.0.0.1:{port}/api/runs", timeout=120.0)
+    resp.raise_for_status()
+    dates = [r["asof_date"] for r in resp.json().get("runs", []) if r.get("asof_date")]
+    if len(dates) < n:
+        pytest.skip(f"need >= {n} persisted snapshot dates to key {n} independent computes; got {len(dates)}")
+    return dates[:n]
+
+
+# The owner-amended `GET /api/health` ceiling during a BOUNDED BACKGROUND-COMPUTE window (docs/goal.md,
+# "Additional binding notes", 2026-07-31): every poll must answer HTTP 200 within <= 2s. Steady-state reads
+# keep their own <= 0.1s ceiling — not what this drill measures.
+_HEALTH_BOUNDED_COMPUTE_CEILING_S = 2.0
+
+
+def test_factor_lab_all_survives_repeated_memory_pressure_live(spawned_backend_fault_injected):
+    """TC-2 (ops-hardening iter-50) — a REAL live server process, launched via `scripts/start-backend.sh`,
+    with the confirmed crash frame deterministically faulted on EVERY call. Every response is an honest 200
+    with every entry degraded (never a raw 500, never a dropped connection — the process staying alive to
+    answer at all IS the proof), and `GET /api/health` stays 200 THROUGHOUT.
+
+    ops-hardening iter-50 AUDIT FIX (finding T3) — this drill previously had a blind spot that was exactly
+    the defect: it issued the Factor Lab request, waited ~3m46s for it to COMPLETE, and only then checked
+    health. Across the whole 18m50s run it never once probed health while the process was busy, so it went
+    green (1 passed in 1130.35s) in the same round the live browser lane found a 12-15 minute health
+    outage. The phase's own TC-1/TC-7 are about health answering DURING the heavy work, so health is now
+    polled on a background thread FOR THE DURATION of each request and every poll is asserted.
+
+    ops-hardening iter-50 AUDIT FIX (finding B4) — the drill also now uses a DISTINCT as-of key per run, so
+    each run is a genuinely independent full-scale compute rather than a repeat that the new memory-pressure
+    cooldown would (correctly) short-circuit; the cooldown's own behaviour is then asserted explicitly at
+    the end, against a repeat of an already-degraded key."""
+    # A cold `compute_factor_lab_all` on the CURRENT live basis was measured at 780.2s and 874.7s
+    # (`reports/perf-budgets.md` Addendum 8) — the SHARED pool builder runs to completion BEFORE the
+    # per-(factor,horizon) loop this fault targets even starts, and a degraded payload is deliberately never
+    # cached, so every run below pays that full cold-read cost. Sized above the worst observed figure with
+    # the same headroom `factor_lab_all_cached`'s own `_FACTOR_LAB_ALL_WAIT_TIMEOUT_S` uses.
+    _REQUEST_TIMEOUT_S = 1200.0
+    _RUNS = 3  # iter-44 lesson: one green run proves nothing. 3 independent full-scale computes, each of
+               # which can cost ~15 minutes on this basis — the upper end of the spec's own "3-5".
+    port = spawned_backend_fault_injected
+    asof_dates = _distinct_factor_lab_asof_dates(port, _RUNS)
+
+    for i, asof in enumerate(asof_dates):
+        health = _HealthPoller(port)
+        health.start()
+        try:
+            resp = httpx.get(
+                f"http://127.0.0.1:{port}/api/research/factor-lab?all=true&as_of={asof}",
+                timeout=_REQUEST_TIMEOUT_S,
+            )
+        finally:
+            health.stop()
+            health.join(timeout=15.0)
+
+        assert resp.status_code == 200, (
+            f"run {i} (as_of={asof}): expected an honest 200 (degraded payload), got "
+            f"{resp.status_code}: {resp.text[:300]}"
+        )
+        payload = resp.json()
+        assert payload.get("factors_table"), f"run {i}: the factor catalog must still be listed"
+        for entry in payload["factors_table"]:
+            for bh in entry["by_horizon"]:
+                assert bh.get("status") == "unavailable", f"run {i}: expected a degraded entry, got {bh}"
+
+        # --- T3: the polls taken WHILE the process was busy, not after it went idle -------------------
+        assert health.results, (
+            f"run {i}: the health poller recorded nothing — the drill would be measuring an idle process"
+        )
+        bad = [
+            (j, r) for j, r in enumerate(health.results)
+            if r.get("status") != 200 or r.get("elapsed", 0) > _HEALTH_BOUNDED_COMPUTE_CEILING_S
+        ]
+        assert not bad, (
+            f"run {i} (as_of={asof}): GET /api/health must answer 200 within "
+            f"{_HEALTH_BOUNDED_COMPUTE_CEILING_S}s on EVERY poll taken DURING the heavy request "
+            f"({len(health.results)} polls, {len(bad)} bad). This is the exact failure the pre-fix drill "
+            f"could not see, because it only checked health after the request had already returned. "
+            f"First offenders: {bad[:5]}"
+        )
+
+    # --- B4: the repeat of an already-degraded key is served from the cooldown, not recomputed ---------
+    # The termination condition the audit found missing: without it, every subsequent viewer restarted a
+    # doomed multi-GB compute. A repeat must answer FAST (nowhere near a full compute) and still honestly.
+    repeat_start = time.monotonic()
+    repeat = httpx.get(
+        f"http://127.0.0.1:{port}/api/research/factor-lab?all=true&as_of={asof_dates[-1]}",
+        timeout=_REQUEST_TIMEOUT_S,
+    )
+    repeat_elapsed = time.monotonic() - repeat_start
+    assert repeat.status_code == 200, f"the cooled-down repeat must still answer 200, got {repeat.status_code}"
+    repeat_payload = repeat.json()
+    assert all(
+        bh.get("status") == "unavailable"
+        for entry in repeat_payload.get("factors_table", [])
+        for bh in entry["by_horizon"]
+    ), "the cooled-down repeat must still be honestly degraded, never a fabricated success"
+    # Generous by design: the point is "orders of magnitude below a full compute", not a latency budget.
+    assert repeat_elapsed < 60.0, (
+        f"the repeat of an already-degraded key took {repeat_elapsed:.1f}s — it restarted the compute "
+        f"instead of being served from the memory-pressure cooldown (audit B4)"
+    )
+
+
 # ops-hardening iter-48 (J-05 fix) — TC-1's own 20-minute bound, measured from the job's own acceptance
 # (a superset/stricter measurement than "from the snapshot write", since the snapshot writes only ~13s
 # after acceptance on this DB per the live drill in `reports/perf-budgets.md` Item R).

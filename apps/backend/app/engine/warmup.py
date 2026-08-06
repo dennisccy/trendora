@@ -181,11 +181,38 @@ def _warm_drawdown_expectations(engine: Engine, cfg: Config) -> None:
     step is expensive, and the readiness badge J-04 and J-07 step 1 depend on must flip `Ready` on exactly
     the schedule it did before this fix — so this warm is deliberately OUTSIDE the readiness path. The
     consequence is disclosed honestly: an Evidence view landing inside the short window between `ok` and
-    this warm's completion still pays the cold miss."""
+    this warm's completion still pays the cold miss.
+
+    ops-hardening iter-50 (J-07): guarded by `data_manager`'s shared warm-in-progress slot — this warm and
+    the ingest finalize tail's OWN drawdown-expectations warm phase (`data_manager._refresh_ingest_
+    aggregates`) must never run their heavy per-claim loops concurrently in the same process (the second
+    proven-concurrent crash contributor from iter-49's own traceback read: three heavy loops were live at
+    once — the finalize tail, this boot re-warm, and a live Factor Lab request). A loss here defers this
+    ENTIRE warm (zero claims attempted) rather than racing the finalize tail for the same memory headroom —
+    non-fatal (this function already never raises), and the next boot/restart retries.
+
+    ops-hardening iter-50 AUDIT FIX (finding B2): that slot alone was too narrow — it interlocked only the
+    two drawdown per-claim loops, while the finalize tail's `forward_aggregates_warm` (337-385s live) and
+    `coverage_membership_timeline_refresh` (82.04s live) were free to run concurrently with THIS loop, which
+    is exactly the overlap the 2026-08-05 outage window sat inside. This warm now ALSO yields to the whole
+    ingest heavy-warm window (`data_manager._ingest_heavy_warm_active`), and — because one claim can itself
+    run for minutes — it re-checks BEFORE EVERY CLAIM, stopping early if a window opens mid-loop. Yielding
+    is the right asymmetry here: the finalize tail's warms are the J-05 product contract, while this one is
+    a best-effort pre-warm whose only cost when skipped is a cold miss on the first `/evidence` view."""
+    if data_manager._ingest_heavy_warm_active():
+        logger.info(
+            "evidence drawdown-expectations warm deferred -- an ingest finalize-tail heavy-warm window is "
+            "open in this process (iter-50 audit B2); retried on the next boot/restart"
+        )
+        return
+    if not data_manager._try_acquire_drawdown_warm("boot_rewarm"):
+        return  # deferred -- another warm (the ingest finalize tail) is already live in this process;
+                # the guard's own log line records why. Retried on the next boot/restart.
     try:
         entries = read_entries(evidence.resolve_ledger_path())
     except Exception as exc:  # NON-FATAL: a missing/corrupt ledger degrades to zero warm calls
         logger.exception("evidence drawdown-expectations ledger read failed (non-fatal): %s", exc)
+        data_manager._release_drawdown_warm()
         return
     warmed = 0
     try:
@@ -193,6 +220,18 @@ def _warm_drawdown_expectations(engine: Engine, cfg: Config) -> None:
             for entry in entries:
                 if not isinstance(entry, dict) or entry.get("type") == FORWARD_WALK_TYPE:
                     continue
+                # iter-50 AUDIT FIX (B2): re-checked BEFORE EVERY CLAIM, not just at entry. An ingest job
+                # can start its finalize tail at any point during this multi-minute loop, and a start-only
+                # check would let the rest of the loop run straight through the overlap the outage sat in.
+                # Stopping here is honest: `warmed` already reflects every claim completed before the yield,
+                # and the untouched claims stay exactly as warm/cold as they were, retried on the next boot.
+                if data_manager._ingest_heavy_warm_active():
+                    logger.info(
+                        "evidence drawdown-expectations warm yielding after %d claim panels -- an ingest "
+                        "finalize-tail heavy-warm window opened (iter-50 audit B2); the remaining claims "
+                        "are retried on the next boot/restart", warmed,
+                    )
+                    break
                 claim = entry.get("claim") if isinstance(entry.get("claim"), dict) else {}
                 try:
                     if forward_testing.compute_drawdown_expectations_cached(session, claim, cfg) is not None:
@@ -219,6 +258,11 @@ def _warm_drawdown_expectations(engine: Engine, cfg: Config) -> None:
         logger.info("evidence drawdown-expectations cache warmed (%d claim panels)", warmed)
     except Exception as exc:  # NON-FATAL: must never fail the otherwise-successful warm-up
         logger.exception("evidence drawdown-expectations cache warm failed (non-fatal): %s", exc)
+    finally:
+        # ops-hardening iter-50 (J-07): release the shared warm-in-progress slot whether this warm
+        # succeeded or raised — this call only runs when the acquire above actually won it (the two
+        # early-return paths above release it themselves before returning), so the slot never wedges.
+        data_manager._release_drawdown_warm()
 
 
 def _run_warmup(engine: Engine, cfg: Config, prog: "data_manager.JobProgress") -> None:

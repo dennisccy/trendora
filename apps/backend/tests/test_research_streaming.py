@@ -31,22 +31,29 @@ from sqlmodel import Session, select
 import app.engine.research as research_module
 from app.config import load_config
 from app.db import create_db_and_tables, make_engine
+from app.engine import data_manager
 from app.engine.research import (
+    RESEARCH_CAVEAT,
+    SURVIVORSHIP_BIAS_LABEL,
     VIEW_EPISODES,
     VIEW_POOLED,
     _all_factor_observations_by_horizon,
     _combination_observations,
+    _deciles,
     _event_study_members,
     _event_study_members_by_horizon,
     _factor_observations,
+    _rank_ic,
     _regime_setup_pattern_observations,
     _severity_velocity_observation_set,
     compute_event_study,
     compute_factor_combination,
     compute_factor_lab,
     compute_factor_lab_all,
+    factor_catalog,
+    factor_lab_all_cached,
 )
-from app.models import ForwardReturn, ScannerResult, ScannerRun
+from app.models import EventStudyCache, ForwardReturn, ScannerResult, ScannerRun
 
 H = 20
 
@@ -557,6 +564,19 @@ def test_all_factor_observations_by_horizon_matches_per_factor_per_horizon(prune
                 assert _eq(got, want), f"all-horizons subset != _factor_observations ({factor.key}@{h})"
 
 
+def _materialize_shared_pools(built) -> dict:
+    """iter-50 audit B3: the shared-pool builder now returns COLUMNAR accumulators
+    (`_FactorCoreRecords` / `_FactorObsPool`) instead of `list[tuple]`. Expand them through their sequence
+    protocol into plain nested lists so the byte-identity comparison below stays a comparison of DATA — a
+    raw `json.dumps(..., default=str)` on the objects themselves would compare `repr()`s (memory addresses),
+    which is never equal and would silently turn this proof into a tautological failure."""
+    core_records, pools = built
+    return {
+        "core_records": [[run_id, ticker, list(values)] for run_id, ticker, values in core_records],
+        "pools": {h: [list(row) for row in pool] for h, pool in pools.items()},
+    }
+
+
 @pytest.mark.parametrize("as_of", [None, date(2025, 1, 31)])
 def test_all_factor_observations_by_horizon_chunk_independent(prune_engine, as_of):
     """The all-horizons shared pool read is byte-identical under read_batch_size=1 vs a huge batch — the
@@ -569,7 +589,9 @@ def test_all_factor_observations_by_horizon_chunk_independent(prune_engine, as_o
         big = _all_factor_observations_by_horizon(
             session, factors, horizons, as_of, cfg=_cfg_batch(1_000_000)
         )
-        assert _eq(small, big), f"all-horizons pool differs by batch (as_of={as_of})"
+        small_rows, big_rows = _materialize_shared_pools(small), _materialize_shared_pools(big)
+        assert small_rows["core_records"], "fixture produced no observations — the comparison is vacuous"
+        assert _eq(small_rows, big_rows), f"all-horizons pool differs by batch (as_of={as_of})"
 
 
 @pytest.mark.parametrize("as_of", [None, date(2025, 1, 31)])
@@ -581,6 +603,341 @@ def test_compute_factor_lab_all_chunk_independent_component(component_engine, as
         small = compute_factor_lab_all(session, _cfg_batch(1), as_of=as_of)
         big = compute_factor_lab_all(session, _cfg_batch(1_000_000), as_of=as_of)
         assert _eq(small, big), f"factor-lab-all payload differs by batch (as_of={as_of})"
+
+
+# ==================================================================================================
+# ops-hardening iter-50 (J-07): `compute_factor_lab_all`'s per-(factor,horizon) obs-build + sort is the
+# CONFIRMED live crash frame from iter-49's own traceback (`research.py:1051`'s `sorted(obs, ...)`, an
+# uncaught MemoryError that killed the backend). Two proofs:
+#   1. TC-3: the bounded implementation (a `__slots__` `_FactorLabAllObs` stand-in for the old list-of-
+#      dicts) is byte-identical to a PINNED COPY of the pre-iter-50 dict-based implementation — mirrors
+#      this file's own established "pinned pre-fix reference oracle" pattern (see the `_fr_slice_map`
+#      TC-2 block above).
+#   2. TC-2 (fast/deterministic leg): a MemoryError injected at the confirmed crash frame via the SAME
+#      test-only `_fault_inject_memory_error` hook the ingest finalize-tail fault-injection suite already
+#      uses (test_ingest_finalize_fault_injection.py) is caught by the isolate-and-continue convention —
+#      never crashes the process, never raises out of `compute_factor_lab_all` /
+#      `factor_lab_all_cached`. A REAL `ulimit -v` drill proves the SAME contract under genuine memory
+#      pressure (test_start_backend_script.py).
+# ==================================================================================================
+def _compute_factor_lab_all_pinned_pre_iter50(session: Session, config, *, as_of=None) -> dict:
+    """A byte-for-byte copy of `compute_factor_lab_all`'s PRE-iter-50 obs-build + sort — the plain
+    list-of-dicts implementation iter-49's own traceback identified as the live crash frame — pinned here
+    as the reference oracle TC-3 proves the iter-50 `_FactorLabAllObs`-based bound against. Deliberately
+    does NOT call the current `compute_factor_lab_all` (that would prove nothing)."""
+    cfg = config
+    fl = cfg.research.factor_lab
+    wf = cfg.walk_forward
+    catalog = factor_catalog(cfg)
+    factors = list(fl.factors)
+    horizons = list(wf.horizons)
+    default_h = wf.default_horizon
+
+    core_records, pools = _all_factor_observations_by_horizon(session, factors, horizons, as_of, cfg=cfg)
+    factor_index = {f.key: i for i, f in enumerate(factors)}
+
+    factors_table: list[dict] = []
+    for factor in factors:
+        idx = factor_index[factor.key]
+        by_horizon: list[dict] = []
+        dh_rank_ic: dict = {"value": None, "n": 0}
+        dh_risk_adjusted = None
+        dh_n_total = 0
+        for h in horizons:
+            obs = []
+            for core_idx, ret, max_drawdown in pools[h]:
+                factor_value = core_records[core_idx][2][idx]
+                if factor_value is None:
+                    continue
+                run_id, ticker, _values = core_records[core_idx]
+                obs.append({
+                    "run_id": run_id, "ticker": ticker,
+                    "factor": float(factor_value), "return": ret, "max_drawdown": max_drawdown,
+                })
+            ordered = sorted(obs, key=lambda o: (o["factor"], o["ticker"], o["run_id"]))
+            deciles = _deciles(ordered, fl.deciles, wf.min_sample)
+            by_horizon.append({"horizon": h, "n_total": len(obs), "deciles": deciles})
+            if h == default_h:
+                dh_rank_ic = _rank_ic([(o["factor"], o["return"]) for o in obs])
+                dh_risk_adjusted = deciles[-1]["risk_adjusted"]
+                dh_n_total = len(obs)
+        factors_table.append({
+            "key": factor.key, "label": factor.label, "family": factor.family,
+            "direction": factor.direction,
+            "n_total": dh_n_total,
+            "rank_ic": dh_rank_ic,
+            "risk_adjusted": dh_risk_adjusted,
+            "by_horizon": by_horizon,
+        })
+
+    return {
+        "asof_date": as_of.isoformat() if as_of is not None else None,
+        "factors": catalog,
+        "horizons": horizons,
+        "default_horizon": default_h,
+        "deciles_count": fl.deciles,
+        "min_sample": wf.min_sample,
+        "survivorship_bias": SURVIVORSHIP_BIAS_LABEL,
+        "descriptive_caveat": RESEARCH_CAVEAT,
+        "factors_table": factors_table,
+    }
+
+
+@pytest.mark.parametrize("as_of", [None, date(2025, 1, 31)])
+def test_compute_factor_lab_all_matches_pinned_pre_iter50_reference(prune_engine, as_of):
+    """TC-3 (AG-3) — the bounded `compute_factor_lab_all` is byte-identical to the pinned pre-iter-50
+    reference oracle above, for every (factor, horizon, decile) figure, both all-history and a historical
+    as_of — proving the `_FactorLabAllObs` memory bound changed only the internal representation, never a
+    value or an ordering."""
+    cfg = load_config()
+    with Session(prune_engine) as session:
+        got = compute_factor_lab_all(session, cfg, as_of=as_of)
+        want = _compute_factor_lab_all_pinned_pre_iter50(session, cfg, as_of=as_of)
+        assert _eq(got, want), (
+            f"bounded compute_factor_lab_all diverges from the pinned pre-iter-50 reference (as_of={as_of})"
+        )
+
+
+def test_compute_factor_lab_all_isolates_memory_pressure_per_factor_horizon(component_engine, monkeypatch):
+    """TC-2 (fast/deterministic leg) — a MemoryError injected at the confirmed iter-49 crash frame is
+    caught by the per-(factor,horizon) isolate-and-continue convention: THAT entry alone degrades to an
+    honest `status: "unavailable"` (empty deciles, n_total 0) — `compute_factor_lab_all` itself never
+    raises, so a live request can still answer. Control arm first (env unset -> no `status` key anywhere,
+    proving a silently-disabled injector cannot pass as a green result), then the armed leg."""
+    cfg = load_config()
+
+    with Session(component_engine) as session:
+        control = compute_factor_lab_all(session, cfg, as_of=None)
+    for entry in control["factors_table"]:
+        for bh in entry["by_horizon"]:
+            assert "status" not in bh, f"control run must have no degraded entries; got {bh}"
+
+    monkeypatch.setenv(data_manager._FAULT_INJECT_MEMORY_ERROR_ENV, "factor_lab_all")
+    with Session(component_engine) as session:
+        payload = compute_factor_lab_all(session, cfg, as_of=None)  # must not raise
+
+    # the injector fires unconditionally on every call, so EVERY (factor, horizon) entry degrades —
+    # exercising the catch under maximum, repeated, consecutive stress (never accumulates, never escapes).
+    assert payload["factors_table"], "the factor catalog must still be listed even when every entry degrades"
+    for entry in payload["factors_table"]:
+        assert entry["n_total"] == 0
+        assert entry["rank_ic"] == {"value": None, "n": 0}
+        assert entry["risk_adjusted"] is None
+        for bh in entry["by_horizon"]:
+            assert bh["status"] == "unavailable"
+            assert bh["deciles"] == []
+            assert bh["n_total"] == 0
+
+
+def test_factor_lab_all_cached_degrades_honestly_on_memory_error_outside_the_per_entry_loop(
+    component_engine, monkeypatch,
+):
+    """The OUTER safety net in `factor_lab_all_cached`: a MemoryError raised OUTSIDE the per-(factor,
+    horizon) loop (e.g. the shared pool builder) is still caught — degrading the WHOLE response honestly
+    (`factors_status: "unavailable"`, empty `factors_table`) instead of propagating to FastAPI. Never
+    cached (no EventStudyCache row persisted), and the single-flight slot is not left wedged — a
+    follow-up call with the fault removed succeeds normally."""
+    cfg = load_config()
+
+    def _boom(*_a, **_k):
+        raise MemoryError("simulated — outside the per-entry loop")
+
+    monkeypatch.setattr(research_module, "_all_factor_observations_by_horizon", _boom)
+    with Session(component_engine) as session:
+        degraded = factor_lab_all_cached(session, cfg, as_of=None)
+        assert degraded["factors_status"] == "unavailable"
+        assert degraded["factors_table"] == []
+        rows = session.exec(
+            select(EventStudyCache).where(EventStudyCache.view == "factors_table")
+        ).all()
+        assert rows == [], "a degraded response must never be persisted to the cache"
+
+    monkeypatch.undo()  # restore the real _all_factor_observations_by_horizon
+    # iter-50 AUDIT FIX (B4): the memory-pressure cooldown is what makes "never cached" safe — without it,
+    # every viewer restarts a doomed multi-GB compute. Expire it explicitly here so this test keeps proving
+    # exactly what it always proved (the single-flight slot is not wedged and a real compute still works),
+    # rather than silently measuring the cooldown instead.
+    _expire_factor_lab_cooldown()
+    with Session(component_engine) as session:
+        recovered = factor_lab_all_cached(session, cfg, as_of=None)  # must not hang — slot not wedged
+    assert recovered["factors_table"], "a follow-up call after the fault clears must compute normally"
+    assert "factors_status" not in recovered
+
+
+def test_factor_lab_all_cached_never_persists_a_per_entry_degraded_payload(component_engine, monkeypatch):
+    """A payload where a per-(factor,horizon) entry degraded under memory pressure (the INNER isolate-
+    and-continue inside `compute_factor_lab_all`, which returns NORMALLY rather than raising) must NEVER
+    be persisted to the cache — otherwise a LATER request under the SAME dataset-version stamp would be
+    served this stale degraded payload until the next dataset change, instead of getting a fresh attempt
+    once the memory pressure has actually cleared. Proven by injecting the fault for exactly one call,
+    confirming the served response is honestly degraded, confirming NO EventStudyCache row was written,
+    then clearing the fault and confirming the NEXT call computes fresh (not a stale degraded HIT)."""
+    cfg = load_config()
+
+    monkeypatch.setenv(data_manager._FAULT_INJECT_MEMORY_ERROR_ENV, "factor_lab_all")
+    with Session(component_engine) as session:
+        degraded = factor_lab_all_cached(session, cfg, as_of=None)
+    assert any(
+        bh["status"] == "unavailable"
+        for entry in degraded["factors_table"]
+        for bh in entry["by_horizon"]
+    ), "fixture sanity: the injected fault must actually degrade at least one entry"
+    with Session(component_engine) as session:
+        rows = session.exec(
+            select(EventStudyCache).where(EventStudyCache.view == "factors_table")
+        ).all()
+    assert rows == [], "a per-entry-degraded payload must never be persisted to the cache"
+
+    monkeypatch.delenv(data_manager._FAULT_INJECT_MEMORY_ERROR_ENV, raising=False)
+    # iter-50 AUDIT FIX (B4): expire the in-process memory-pressure cooldown so this test still measures
+    # the cache (its subject), not the cooldown — the cooldown's own behaviour is pinned separately below.
+    _expire_factor_lab_cooldown()
+    with Session(component_engine) as session:
+        recovered = factor_lab_all_cached(session, cfg, as_of=None)
+    assert all(
+        "status" not in bh for entry in recovered["factors_table"] for bh in entry["by_horizon"]
+    ), "the next call (fault cleared) must compute fresh, never serve a stale degraded HIT from the cache"
+
+
+# ==================================================================================================
+# ops-hardening iter-50 AUDIT FIX (finding B4) — the degrade path's TERMINATION CONDITION.
+#
+# "Never cache a degraded payload" is correct in intent, but on its own it removed the only thing that
+# used to stop the retries: with no persisted row, no negative cache, no backoff and no cap on concurrent
+# computes, EVERY subsequent view of `/research/factor-lab` started another full-scale, multi-minute,
+# multi-GB compute that could not succeed while the pressure lasted. On 2026-08-05 that turned one failed
+# page view into a 12-15 minute service wedge, amplified by five single-flight waiters timing out mid-
+# compute (the 900s ceiling sat inside the real 780-875s compute band) and each starting an INDEPENDENT
+# compute inside an already-exhausted process.
+# ==================================================================================================
+def _expire_factor_lab_cooldown() -> None:
+    """Force every open memory-pressure cooldown window to be expired — the deterministic stand-in for
+    "wait `_FACTOR_LAB_ALL_DEGRADED_COOLDOWN_S` seconds" (no clock manipulation, no sleep)."""
+    with research_module._FACTOR_LAB_ALL_LOCK:
+        for key, (_deadline, payload) in list(research_module._FACTOR_LAB_ALL_DEGRADED.items()):
+            research_module._FACTOR_LAB_ALL_DEGRADED[key] = (float("-inf"), payload)
+
+
+@pytest.fixture(autouse=True)
+def _clean_factor_lab_cooldown():
+    """The cooldown registry is MODULE state (deliberately: it must survive across requests inside one
+    process). Clear it around every test in this file so no test can leak a window into another."""
+    research_module._FACTOR_LAB_ALL_DEGRADED.clear()
+    yield
+    research_module._FACTOR_LAB_ALL_DEGRADED.clear()
+
+
+def test_memory_pressure_cooldown_stops_every_viewer_restarting_a_doomed_compute(
+    component_engine, monkeypatch,
+):
+    """iter-50 audit B4 — after a compute degrades under memory pressure, the NEXT viewer of the same key
+    is served that honest degraded payload from the in-process cooldown instead of launching another
+    full-scale compute. Teeth: `_all_factor_observations_by_horizon` is wrapped in a COUNTING spy, so a
+    second heavy compute cannot hide — the count must stay at exactly 1 across the repeat views."""
+    cfg = load_config()
+    calls = {"n": 0}
+    real = research_module._all_factor_observations_by_horizon
+
+    def _counting_boom(*a, **k):
+        calls["n"] += 1
+        raise MemoryError("simulated memory pressure")
+
+    monkeypatch.setattr(research_module, "_all_factor_observations_by_horizon", _counting_boom)
+    with Session(component_engine) as session:
+        first = factor_lab_all_cached(session, cfg, as_of=None)
+    assert first["factors_status"] == "unavailable"
+    assert calls["n"] == 1, "the first view must actually attempt the compute"
+
+    # three more views inside the cooldown window — each served the honest degrade, none recomputing.
+    for i in range(3):
+        with Session(component_engine) as session:
+            repeat = factor_lab_all_cached(session, cfg, as_of=None)
+        assert repeat["factors_status"] == "unavailable", f"repeat {i}: must stay honestly degraded"
+        assert calls["n"] == 1, (
+            f"repeat {i}: the cooldown must serve the degraded payload, not restart the compute "
+            f"(compute attempts so far: {calls['n']})"
+        )
+
+    # still NEVER persisted — the cooldown is in-process only, never an EventStudyCache row.
+    with Session(component_engine) as session:
+        rows = session.exec(select(EventStudyCache).where(EventStudyCache.view == "factors_table")).all()
+    assert rows == [], "the cooldown must not persist a degraded payload to the cache"
+
+    # once the window expires, the next view retries for real — the cooldown is a backoff, not a wedge.
+    _expire_factor_lab_cooldown()
+    monkeypatch.setattr(research_module, "_all_factor_observations_by_horizon", real)
+    with Session(component_engine) as session:
+        recovered = factor_lab_all_cached(session, cfg, as_of=None)
+    assert recovered["factors_table"] and "factors_status" not in recovered, (
+        "after the cooldown window expires the next view must compute for real, not stay degraded forever"
+    )
+
+
+def test_memory_pressure_cooldown_is_per_key_and_cleared_by_a_successful_compute(
+    component_engine, monkeypatch,
+):
+    """iter-50 audit B4 — two independent guarantees.
+
+    (1) PER KEY: a cooldown opened for the all-history key must not silence a DIFFERENT as-of key. The key
+        already carries the dataset-version stamp, so a dataset change can never be masked either.
+    (2) CLEARED ON SUCCESS: a clean, fully-computed payload closes any window the key still carries, so
+        recovery is immediate and never has to wait out a window opened by an earlier failure."""
+    cfg = load_config()
+    other_as_of = date(2025, 3, 31)
+
+    monkeypatch.setattr(
+        research_module, "_all_factor_observations_by_horizon",
+        lambda *a, **k: (_ for _ in ()).throw(MemoryError("simulated")),
+    )
+    with Session(component_engine) as session:
+        degraded = factor_lab_all_cached(session, cfg, as_of=None)
+    assert degraded["factors_status"] == "unavailable"
+
+    # (1) a DIFFERENT as-of key is untouched by the all-history key's window.
+    monkeypatch.undo()
+    with Session(component_engine) as session:
+        other = factor_lab_all_cached(session, cfg, as_of=other_as_of)
+    assert "factors_status" not in other, (
+        "a cooldown opened for one key must never silence a different as-of key"
+    )
+    with Session(component_engine) as session:
+        still_cooled = factor_lab_all_cached(session, cfg, as_of=None)
+    assert still_cooled["factors_status"] == "unavailable", "the original key's window must still be open"
+
+    # (2) a successful compute for the key CLOSES its window immediately.
+    _expire_factor_lab_cooldown()
+    with Session(component_engine) as session:
+        recovered = factor_lab_all_cached(session, cfg, as_of=None)
+    assert "factors_status" not in recovered
+    assert not research_module._FACTOR_LAB_ALL_DEGRADED, (
+        "a clean compute must clear the key's cooldown window, so recovery never waits out a stale one"
+    )
+
+
+def test_single_flight_wait_ceiling_clears_the_measured_cold_compute(component_engine):
+    """iter-50 audit B4 (second half) — the single-flight bounded wait must sit ABOVE the real cold-compute
+    duration, not inside it. The pre-fix ceiling was 300 x 3 = 900s while a live cold compute measured
+    780.2s and 874.7s (`reports/perf-budgets.md` Addendum 8), so waiters routinely timed out MID-compute
+    and fell through to compute independently — `logs/backend.log` recorded five such fall-throughs in
+    2m16s during the outage window, each starting an additional independent multi-GB compute.
+
+    A source-level pin, deliberately: the real failure needs a 13-minute compute to reproduce, and a test
+    that sleeps for that is not a test. Teeth: restoring the old 300s base fails this."""
+    measured = research_module._FACTOR_LAB_ALL_MEASURED_COLD_MISS_S
+    ceiling = research_module._FACTOR_LAB_ALL_WAIT_TIMEOUT_S
+    worst_observed_live_cold_compute_s = 874.7  # 2026-08-05, reports/perf-budgets.md Addendum 8
+    assert measured >= worst_observed_live_cold_compute_s, (
+        f"the measured-cold-miss base ({measured}s) is below the worst observed live cold compute "
+        f"({worst_observed_live_cold_compute_s}s) — waiters will time out mid-compute and duplicate it"
+    )
+    assert ceiling > worst_observed_live_cold_compute_s, (
+        f"the single-flight wait ceiling ({ceiling}s) must clear the real compute duration "
+        f"({worst_observed_live_cold_compute_s}s); it is reached only by a genuinely wedged owner"
+    )
+    assert research_module._FACTOR_LAB_ALL_DEGRADED_COOLDOWN_S >= worst_observed_live_cold_compute_s, (
+        "the degrade cooldown must be at least one full compute duration — a retry started sooner cannot "
+        "observe a recovered host, only add load to an exhausted one"
+    )
 
 
 # ==================================================================================================

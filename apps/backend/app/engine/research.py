@@ -38,6 +38,8 @@ from __future__ import annotations
 import json
 import logging
 import threading
+import time
+from array import array
 from collections import defaultdict
 from datetime import date as date_cls
 from datetime import datetime, timezone
@@ -849,10 +851,183 @@ def _all_fr_slice_map(
     return fr_by_h
 
 
+# ops-hardening iter-50 AUDIT FIX (finding B3, J-07/AG-8) — the two RESIDENT accumulators below replace the
+# `list[tuple]` / `list[tuple]` shapes iter-31 shipped. WHY: iter-50's own live evidence contradicted the
+# spec's "already bounded, unaffected by this defect" carve-out for this function. Five real (un-injected)
+# `MemoryError`s under live pressure (2026-08-05 23:28:44 / 23:37:53 / 23:38:25 / 23:42:07 / 23:44:52,
+# `logs/backend.log`) all carry the SAME traceback, and NONE lands at the per-(factor,horizon) transient the
+# iteration bounded — every one lands at `pools[h].append(...)` in the sweep below. `core_records`+`pools`
+# accumulate across the WHOLE sweep and stay resident for the entire call, so they — not the per-iteration
+# transient built on top of them — dominate the peak. "Chunked source reads" bounded the QUERY side only;
+# the RETURN VALUE was never bounded, just re-encoded.
+#
+# The fix is a columnar (struct-of-arrays) encoding: fixed-width `array`/`bytearray` buffers instead of one
+# Python object per row. A pool row costs 8+8+8+1 = 25 raw bytes here versus ~128 bytes as a 3-tuple of
+# boxed floats (a tuple header + 3 pointers + 2 float objects + the list slot); a core record costs
+# 8 + 8 + (9 x n_factors) bytes versus a tuple-of-tuple-of-boxed-floats. NOTHING is truncated, dropped,
+# rounded, or reordered — the same rows in the same order, so byte-identity (AG-3) is preserved by
+# construction, and the AG-8 disclosure net still sees true `len()`s.
+#
+# Both classes implement the SEQUENCE protocol (`__len__`/`__getitem__`/`__iter__`/`__bool__`) materialising
+# the OLD tuple shape on demand, so every existing caller, oracle and test that walks the returned structure
+# keeps working unchanged; `compute_factor_lab_all`'s hot loop uses the direct column accessors instead, so
+# the hot path never pays that materialisation.
+#
+# TYPE NOTE (byte-identity): the float columns are IEEE-754 doubles, which is exactly what a Python `float`
+# already is — a stored value round-trips bit-for-bit. A value arriving as an `int` (a JSON `record_json`
+# component `raw` written without a decimal point) becomes the equal `float`; every consumer of these
+# columns already coerces (`float(factor_value)` in `compute_factor_lab_all`) or aggregates into floats
+# (`_deciles` / `_rank_ic` means), so no SERVED figure changes. `None` is carried exactly by a companion
+# presence mask — never conflated with 0.0, never with NaN.
+class _FactorCoreRecords:
+    """Columnar replacement for `list[tuple[run_id, ticker, values_tuple]]` — one entry per ScannerResult
+    with a realized return at >= 1 horizon, holding the identity + every factor's stored value.
+
+    `tickers` stays a `list[str]` on purpose: the strings are interned by the caller, so the live cost is
+    one pointer per row plus ~591 shared string objects on the live basis (the same sharing iter-31's
+    `ticker_intern` already achieved) — an array-of-offsets encoding would save nothing measurable and
+    would break the byte-identity of the ticker values."""
+
+    __slots__ = ("run_ids", "tickers", "value_cols", "value_present", "n_factors", "n_non_numeric")
+
+    def __init__(self, n_factors: int):
+        self.n_factors = n_factors
+        self.run_ids = array("q")                                        # int64 — one per core record
+        self.tickers: list[str] = []                                     # interned; one pointer per record
+        self.value_cols = [array("d") for _ in range(n_factors)]         # float64 column per factor
+        self.value_present = [bytearray() for _ in range(n_factors)]     # 1 byte per (record, factor)
+        self.n_non_numeric = 0  # AG-8 disclosure counter — see `append` below
+
+    def append(self, run_id: int, ticker: str, values) -> int:
+        """Append one core record; returns its `core_idx` (the SAME index the old `len(core_records)`
+        assignment produced, so `pools`' back-references are unchanged).
+
+        ops-hardening iter-50 AUDIT FIX (finding B4, AG-8 data-shape tolerance): a factor value reaching
+        here is either a typed `ScannerResult` column (always a real number or NULL) or a `record_json`
+        component's `raw` — free-form JSON, so it can be a string, a list, or anything else a future
+        record shape emits. `array("d").append` accepts ONLY a real number (`"3.5"` raises `TypeError`),
+        whereas the pre-columnar path stored the raw object and its sole consumer coerced it later with
+        `float(...)` — which accepted `"3.5"` fine. Applying that SAME `float(...)` coercion HERE keeps the
+        served figure byte-identical for every shape the old path served (`3 → 3.0`, `True → 1.0`,
+        `"3.5" → 3.5`, `3.5 → 3.5`) and restores the tolerance the columnar encoding had narrowed.
+
+        A value that is not a real number AT ALL (`"n/a"`, a list, a dict) is recorded as ABSENT — the
+        module's own established "excluded factor-NULL observation, never fabricated" convention
+        (`_extract_factor_value`'s docstring) — rather than raising out of the shared pool builder, where
+        no caller's handler would catch it and the whole `?all=true` response would 500 (AG-8 forbids the
+        blank application-error page). It is counted and disclosed by a WARNING in the sweep below."""
+        idx = len(self.run_ids)
+        self.run_ids.append(run_id)
+        self.tickers.append(ticker)
+        for j, v in enumerate(values):
+            if v is None:
+                self.value_cols[j].append(0.0)      # placeholder; masked out below — never read as a value
+                self.value_present[j].append(0)
+                continue
+            try:
+                fv = float(v)                        # the pre-columnar consumer's own coercion, verbatim
+            except (TypeError, ValueError):
+                self.n_non_numeric += 1
+                self.value_cols[j].append(0.0)      # placeholder; masked out — excluded, never fabricated
+                self.value_present[j].append(0)
+                continue
+            self.value_cols[j].append(fv)
+            self.value_present[j].append(1)
+        return idx
+
+    def factor_value(self, i: int, j: int) -> Optional[float]:
+        """The stored value of factor `j` on core record `i` — `None` iff the factor was NULL/absent there
+        (the excluded factor-NULL observation `_extract_factor_value` reports, never fabricated)."""
+        return self.value_cols[j][i] if self.value_present[j][i] else None
+
+    def run_id(self, i: int) -> int:
+        return self.run_ids[i]
+
+    def ticker(self, i: int) -> str:
+        return self.tickers[i]
+
+    def __len__(self) -> int:
+        return len(self.run_ids)
+
+    def __bool__(self) -> bool:
+        return len(self.run_ids) > 0
+
+    def __getitem__(self, i: int) -> tuple:
+        if i < 0:
+            i += len(self.run_ids)
+        return (
+            self.run_ids[i], self.tickers[i],
+            tuple(self.factor_value(i, j) for j in range(self.n_factors)),
+        )
+
+    def __iter__(self):
+        for i in range(len(self.run_ids)):
+            yield self[i]
+
+
+class _FactorObsPool:
+    """Columnar replacement for one horizon's `list[tuple[core_idx, realized_return, max_drawdown]]` — the
+    genuinely per-horizon part of an observation (identity + factor values live once in
+    `_FactorCoreRecords`). This is the exact `append` site of all five live `MemoryError` tracebacks.
+
+    iter-50 AUDIT FIX (B4) scope note: unlike `_FactorCoreRecords`' factor values, these two columns are
+    fed from the TYPED `ForwardReturn.realized_return` / `ForwardReturn.max_drawdown` Float columns, not
+    from free-form `record_json` — so they are already a real number or NULL by construction, and a
+    non-numeric there would equally have broken `_deciles`' mean before the columnar encoding existed. No
+    per-row coercion is applied here: it would buy no data-shape tolerance the DB schema does not already
+    give, and this `append` runs once per pool row (millions), where `_FactorCoreRecords.append` runs once
+    per core record."""
+
+    __slots__ = ("core_idx", "returns", "return_present", "max_drawdowns", "max_drawdown_present")
+
+    def __init__(self):
+        self.core_idx = array("q")               # int64 index into the shared `_FactorCoreRecords`
+        self.returns = array("d")                # float64 realized forward return
+        self.return_present = bytearray()        # realized_return is non-NULL in practice; carried exactly
+        self.max_drawdowns = array("d")          # float64 paired max drawdown (J-86)
+        self.max_drawdown_present = bytearray()  # max_drawdown IS nullable — mask, never a NaN sentinel
+
+    def append(self, core_idx: int, realized, max_drawdown) -> None:
+        self.core_idx.append(core_idx)
+        if realized is None:
+            self.returns.append(0.0)
+            self.return_present.append(0)
+        else:
+            self.returns.append(realized)
+            self.return_present.append(1)
+        if max_drawdown is None:
+            self.max_drawdowns.append(0.0)
+            self.max_drawdown_present.append(0)
+        else:
+            self.max_drawdowns.append(max_drawdown)
+            self.max_drawdown_present.append(1)
+
+    def realized(self, i: int) -> Optional[float]:
+        return self.returns[i] if self.return_present[i] else None
+
+    def max_drawdown(self, i: int) -> Optional[float]:
+        return self.max_drawdowns[i] if self.max_drawdown_present[i] else None
+
+    def __len__(self) -> int:
+        return len(self.core_idx)
+
+    def __bool__(self) -> bool:
+        return len(self.core_idx) > 0
+
+    def __getitem__(self, i: int) -> tuple:
+        if i < 0:
+            i += len(self.core_idx)
+        return (self.core_idx[i], self.realized(i), self.max_drawdown(i))
+
+    def __iter__(self):
+        for i in range(len(self.core_idx)):
+            yield (self.core_idx[i], self.realized(i), self.max_drawdown(i))
+
+
 def _all_factor_observations_by_horizon(
     session: Session, factors: list, horizons: list[int], as_of: Optional[date_cls] = None,
     *, cfg: Optional[Config] = None,
-) -> tuple[list[tuple[int, str, tuple]], dict[int, list[tuple[int, float, Optional[float]]]]]:
+) -> tuple["_FactorCoreRecords", dict[int, "_FactorObsPool"]]:
     """The read-only SHARED per-observation pools for the all-factors view across EVERY horizon in
     `horizons` (J-109), built from ONE run-chunked sweep: per slice of run ids, one `ForwardReturn` SELECT
     covering all horizons (`horizon IN horizons`, column-projected to run_id/symbol/realized_return/
@@ -870,16 +1045,27 @@ def _all_factor_observations_by_horizon(
     deferred (771,629-804,372 observations PER horizon on the live basis — `config.yaml`'s
     `research.factor_pool_max_observations` comment).
 
+    ops-hardening iter-50 AUDIT FIX (finding B3) — the SAME redesign taken from "smaller Python objects" to
+    "no per-row Python object at all". iter-31's compaction was real but still allocated one boxed tuple (and
+    its boxed floats) per row, so the RESIDENT return value remained O(observations) in Python objects — and
+    at the current live scale (6,496,075 `forward_returns` rows) that is where the process actually runs out:
+    five real, un-injected `MemoryError`s on 2026-08-05 all carry the identical traceback ending at
+    `pools[h].append(...)` HERE, none at the per-(factor,horizon) transient iter-50 originally bounded. The
+    accumulators are now COLUMNAR (`_FactorCoreRecords` / `_FactorObsPool` above): fixed-width `array`
+    buffers plus 1-byte presence masks, ~25 bytes per pool row against ~128 before. Nothing is truncated,
+    dropped, rounded, or reordered — see the byte-identity keystone below, which is unchanged.
+
     Returns `(core_records, pools)` — a genuine memory-representation redesign, not a smaller constant:
-      - `core_records`: ONE entry per ScannerResult with a realized return at >= 1 horizon —
-        `(run_id, ticker, values)`, where `values` is a TUPLE (not a dict) of every catalog factor's stored
-        value, ORDERED to match `factors` (so `values[i]` is `factors[i]`'s value — `compute_factor_lab_all`
-        looks it up by a precomputed index, never by string key). `ticker` is INTERNED against a local cache
-        scoped to this call, so the (far smaller) set of distinct ticker strings is held ONCE rather than
-        once per horizon-observation.
-      - `pools[h]`: a list of SMALL `(core_idx, realized_return, max_drawdown)` tuples — the genuinely
-        per-horizon-specific data (a result's realized return / drawdown differ by horizon; its identity and
-        factor values do not) — replacing the old per-horizon 5-key dict. `core_idx` indexes `core_records`.
+      - `core_records` (`_FactorCoreRecords`): ONE entry per ScannerResult with a realized return at >= 1
+        horizon, carrying `run_id`, `ticker`, and every catalog factor's stored value ORDERED to match
+        `factors` (so factor `i`'s value is column `i` — `compute_factor_lab_all` looks it up by a
+        precomputed index, never by string key). `ticker` is INTERNED against a local cache scoped to this
+        call, so the (far smaller) set of distinct ticker strings is held ONCE rather than once per
+        horizon-observation. Indexing/iterating it yields the historical `(run_id, ticker, values_tuple)`
+        shape on demand, so existing callers and oracles are unaffected.
+      - `pools[h]` (`_FactorObsPool`): the genuinely per-horizon-specific data — `core_idx` (indexing
+        `core_records`), `realized_return`, `max_drawdown` — held as parallel columns; iterating it yields
+        the historical `(core_idx, realized_return, max_drawdown)` tuples on demand.
       Neither the run-id chunking below nor the "ONE shared read serves every factor at every horizon"
       property changes: `core_records` is built lazily on the FIRST horizon a result has an FR at (same
       trigger the old `values` dict used), so this remains ONE pass over `ScannerResult`, never a per-horizon
@@ -939,8 +1125,12 @@ def _all_factor_observations_by_horizon(
     pool_cap = research_cfg.factor_pool_max_observations  # AG-8 disclosure ceiling — never truncates
 
     runs_with_fr = _runs_with_fr(session, horizons, as_of)
-    core_records: list[tuple[int, str, tuple]] = []
-    pools: dict[int, list[tuple[int, float, Optional[float]]]] = {h: [] for h in horizons}
+    # iter-50 AUDIT FIX (B3): columnar accumulators (see the two classes above). Same rows, same order,
+    # same values — a fixed-width encoding instead of one boxed Python object per row, because THESE two
+    # structures (not the per-(factor,horizon) transient built on top of them) are where all five live
+    # `MemoryError` tracebacks land.
+    core_records = _FactorCoreRecords(len(factors))
+    pools: dict[int, _FactorObsPool] = {h: _FactorObsPool() for h in horizons}
     ticker_intern: dict[str, str] = {}  # dedupes repeated ticker strings across the whole sweep (iter-31)
     warned_horizons: set[int] = set()  # one WARNING per horizon — never a per-chunk log storm (iter-31 audit)
     for start in range(0, len(runs_with_fr), run_chunk):
@@ -960,10 +1150,11 @@ def _all_factor_observations_by_horizon(
                 if core_idx is None:
                     values = tuple(_extract_factor_value(res, parsed) for parsed in parsed_by_key.values())
                     ticker = ticker_intern.setdefault(res.ticker, res.ticker)
-                    core_idx = len(core_records)
-                    core_records.append((res.run_id, ticker, values))
+                    # `append` returns the index it assigned — the SAME value `len(core_records)` produced
+                    # before the columnar encoding, so `pools`' back-references are byte-identical.
+                    core_idx = core_records.append(res.run_id, ticker, values)
                 realized, max_drawdown = fr
-                pools[h].append((core_idx, realized, max_drawdown))
+                pools[h].append(core_idx, realized, max_drawdown)
         # `fr_by_h` is rebound (not accumulated into) on the next iteration — this slice's maps are eligible
         # for GC before the next chunk's query even starts (the bounded-memory guarantee, unchanged iter-29).
         #
@@ -984,7 +1175,55 @@ def _all_factor_observations_by_horizon(
                     "truncation",
                     h, len(pool), pool_cap,
                 )
+    # ops-hardening iter-50 AUDIT FIX (B4) — AG-8 disclosure for the OTHER data-shape axis: a `record_json`
+    # component whose `raw` is not a real number at all is excluded exactly like a factor-NULL (see
+    # `_FactorCoreRecords.append`), never fabricated and never a 500. Unlike the pool-size ceiling above this
+    # one is safe to check after the sweep: a non-numeric value cannot raise out of the loop it would need to
+    # pre-announce — it is handled inline — so there is no crash for an after-the-loop check to miss.
+    if core_records.n_non_numeric:
+        logger.warning(
+            "research factor pool: %d stored factor value(s) were not real numbers (a record_json "
+            "component `raw` of a non-numeric shape) and were EXCLUDED as factor-NULL observations, "
+            "never fabricated — AG-8 data-shape disclosure; every other observation is unaffected",
+            core_records.n_non_numeric,
+        )
     return core_records, pools
+
+
+# ops-hardening iter-50 (J-07, AG-8): a memory-lean stand-in for the per-(factor,horizon) observation dict
+# `compute_factor_lab_all` used to build (a `__slots__` object costs roughly a third of a small dict's
+# footprint per instance — no hash table, just slot pointers) while still answering `o["key"]` / `o.get
+# ("key")` exactly the way the SHARED `_deciles` builder (untouched by this change, still a dict-contract
+# caller used by `compute_factor_lab` / `_regime_effectiveness` / the Regime & Phase-Severity labs) expects
+# — so bounding this loop's own transient footprint introduces NO second decile/rank-IC derivation (still
+# ONE computation path, per this function's own docstring). Mirrors `_SubjectResultRow`'s established
+# `__slots__` precedent (line ~1487) for the SAME class of transient-row memory bound.
+class _FactorLabAllObs:
+    __slots__ = ("run_id", "ticker", "factor", "return_", "max_drawdown")
+
+    def __init__(self, run_id, ticker, factor, return_, max_drawdown):
+        self.run_id = run_id
+        self.ticker = ticker
+        self.factor = factor
+        self.return_ = return_
+        self.max_drawdown = max_drawdown
+
+    def __getitem__(self, key):
+        # `_deciles` reads `m["return"]` / `m["factor"]` — "return" cannot be a Python attribute name (it
+        # is a reserved keyword), so the dict-style lookup maps it to the `return_` slot; every other key
+        # is a direct attribute.
+        if key == "return":
+            return self.return_
+        try:
+            return getattr(self, key)
+        except AttributeError:
+            raise KeyError(key)
+
+    def get(self, key, default=None):
+        try:
+            return self[key]
+        except KeyError:
+            return default
 
 
 def compute_factor_lab_all(
@@ -1019,6 +1258,12 @@ def compute_factor_lab_all(
     horizons = list(wf.horizons)
     default_h = wf.default_horizon
 
+    # lazy import — app.engine.data_manager imports FROM this module (_dataset_version /
+    # _membership_dataset_version / event_study_cached / subject_catalog), so a module-level import back
+    # would be circular (mirrors forward_testing.py's own lazy import of research internals). Used only for
+    # the test-only `_fault_inject_memory_error` hook below (a no-op in production).
+    from app.engine import data_manager
+
     core_records, pools = _all_factor_observations_by_horizon(session, factors, horizons, as_of, cfg=cfg)
     # position of each factor inside `core_records[i][2]`'s values tuple — built from the SAME `factors`
     # list (in the SAME order) `_all_factor_observations_by_horizon` used to build that tuple (iter-31).
@@ -1037,24 +1282,67 @@ def compute_factor_lab_all(
             # compute_factor_lab(factor, h) exactly. The paired drawdown rides along verbatim. `core_records`
             # holds the (run_id, ticker, values) identity SHARED across every horizon a result touches — only
             # `ret`/`max_drawdown` are genuinely per-horizon (iter-31 compact-encoding return-value bound).
-            obs = []
-            for core_idx, ret, max_drawdown in pools[h]:
-                factor_value = core_records[core_idx][2][idx]
-                if factor_value is None:
-                    continue
-                run_id, ticker, _values = core_records[core_idx]
-                obs.append({
-                    "run_id": run_id, "ticker": ticker,
-                    "factor": float(factor_value), "return": ret, "max_drawdown": max_drawdown,
-                })
-            # ascending by stored factor value; SAME deterministic tie-break compute_factor_lab uses.
-            ordered = sorted(obs, key=lambda o: (o["factor"], o["ticker"], o["run_id"]))
-            deciles = _deciles(ordered, fl.deciles, wf.min_sample)
+            #
+            # ops-hardening iter-50 (J-07, AG-8): this obs-build + sort is the CONFIRMED live crash frame
+            # (iter-49's own traceback: an uncaught MemoryError here, then a dict-based `sorted(obs, ...)`)
+            # — a live `/research/factor-lab?all=true` view can run concurrently with the boot re-warm /
+            # ingest finalize tail's own heavy loops. `_FactorLabAllObs` (a `__slots__` stand-in, above)
+            # bounds the per-observation footprint; the try/except mirrors `evidence.py`'s per-claim
+            # isolate-and-continue convention (NOT the ingest warm loops' break-on-MemoryError convention —
+            # that one is for a background loop that can defer; this is a live request that must still
+            # answer): on a MemoryError, THIS horizon's entry alone degrades to an honest
+            # `status: "unavailable"` (no deciles, n_total 0) and the loop continues to the next
+            # horizon/factor — every OTHER entry still renders normally, never a blanked whole-response.
+            try:
+                data_manager._fault_inject_memory_error("factor_lab_all")  # test-only; a no-op in production
+                obs: list[_FactorLabAllObs] = []
+                # iter-50 AUDIT FIX (B3): read the shared pool through the columnar accessors instead of
+                # unpacking a materialised `(core_idx, ret, max_drawdown)` tuple per row and re-indexing a
+                # nested `values` tuple. Same rows, same order, same values — this walk never builds a
+                # transient object per pool row, so the only per-observation allocation left in this loop is
+                # the `_FactorLabAllObs` actually kept in `obs`.
+                _pool = pools[h]
+                _core_run_ids, _core_tickers = core_records.run_ids, core_records.tickers
+                _vals, _has = core_records.value_cols[idx], core_records.value_present[idx]
+                for k in range(len(_pool)):
+                    core_idx = _pool.core_idx[k]
+                    if not _has[core_idx]:
+                        continue  # factor-NULL observation — EXCLUDED, never bucketed (unchanged)
+                    obs.append(_FactorLabAllObs(
+                        _core_run_ids[core_idx], _core_tickers[core_idx], float(_vals[core_idx]),
+                        _pool.realized(k), _pool.max_drawdown(k),
+                    ))
+                # ascending by stored factor value; SAME deterministic tie-break compute_factor_lab uses.
+                ordered = sorted(obs, key=lambda o: (o.factor, o.ticker, o.run_id))
+                deciles = _deciles(ordered, fl.deciles, wf.min_sample)
+            except MemoryError as exc:
+                logger.exception(
+                    "compute_factor_lab_all: obs-build/sort aborted under memory pressure for factor=%s "
+                    "horizon=%s -- isolate-and-continue (AG-8), degrading THIS (factor,horizon) entry "
+                    "honestly rather than the whole all-factors response: %s", factor.key, h, exc,
+                )
+                by_horizon.append({"horizon": h, "n_total": 0, "deciles": [], "status": "unavailable"})
+                continue
+            except Exception as exc:  # noqa: BLE001 — ops-hardening iter-50 AUDIT FIX (B4, AG-8)
+                # The MemoryError catch above was the ONLY handler on this loop, so any OTHER exception
+                # from one (factor,horizon) entry still 500'd the entire `?all=true` response — a blank
+                # application-error page for all 11 factors because of one entry, which AG-8 forbids.
+                # `evidence.py`'s per-claim convention (the precedent this loop already follows for
+                # MemoryError) pairs its MemoryError catch with exactly this broader one, degrading the
+                # single failing unit to an honest `unavailable` and continuing. Nothing WRONG is ever
+                # displayed by this path: the entry carries no deciles and no n, only the honest status.
+                logger.exception(
+                    "compute_factor_lab_all: obs-build/sort failed for factor=%s horizon=%s (non-fatal) "
+                    "-- isolate-and-continue (AG-8), degrading THIS (factor,horizon) entry honestly "
+                    "rather than the whole all-factors response: %s", factor.key, h, exc,
+                )
+                by_horizon.append({"horizon": h, "n_total": 0, "deciles": [], "status": "unavailable"})
+                continue
             by_horizon.append({"horizon": h, "n_total": len(obs), "deciles": deciles})
             if h == default_h:
                 # the relabelled rank-IC + top-decile downside risk-adjusted at the FIXED default horizon —
                 # byte-identical to compute_factor_lab(factor, default_h).rank_ic / deciles[-1].risk_adjusted.
-                dh_rank_ic = _rank_ic([(o["factor"], o["return"]) for o in obs])
+                dh_rank_ic = _rank_ic([(o.factor, o.return_) for o in obs])
                 dh_risk_adjusted = deciles[-1]["risk_adjusted"]
                 dh_n_total = len(obs)
         factors_table.append({
@@ -3431,9 +3719,70 @@ _FACTOR_LAB_ALL_INFLIGHT: dict[tuple, threading.Event] = {}
 # wedged owner: sizing it generously costs a healthy request nothing, while sizing it below the real
 # compute duration silently disables the de-dup. Integer seconds (`Event.wait` accepts an int) so the
 # derivation stays literal-free under the no-magic-numbers engine rule.
-_FACTOR_LAB_ALL_MEASURED_COLD_MISS_S = 300  # worst observed live cold-MISS compute (2026-07-29 measurement)
+#
+# ops-hardening iter-50 AUDIT FIX (finding B4): the measured base is RE-TUNED from the 2026-07-29 figure to
+# the iter-50 live re-measurement. A cold `compute_factor_lab_all` on the CURRENT basis was measured at
+# 780.2s and 874.7s (`reports/perf-budgets.md` Addendum 8) — i.e. the old ceiling (300 x 3 = 900s) sat
+# INSIDE the real compute's own duration band, so waiters routinely timed out mid-compute and fell through
+# to compute independently. `logs/backend.log` recorded five such fall-throughs in 2m16s during the
+# 2026-08-05 outage window (23:11:31.446, 23:12:33.079, 23:12:33.082, 23:13:47.924, 23:13:47.935), each
+# starting an ADDITIONAL independent multi-GB compute inside an already-exhausted process — the exact
+# amplification this guard exists to prevent. Re-based on the worst observed live figure, the ceiling is
+# once again well clear of a healthy compute, so it is reached only by a genuinely wedged owner.
+_FACTOR_LAB_ALL_MEASURED_COLD_MISS_S = 875  # worst observed live cold-MISS compute (2026-08-05, Addendum 8)
 _FACTOR_LAB_ALL_WAIT_SAFETY_FACTOR = 3      # headroom for a slower/more loaded host than the measured one
 _FACTOR_LAB_ALL_WAIT_TIMEOUT_S = _FACTOR_LAB_ALL_MEASURED_COLD_MISS_S * _FACTOR_LAB_ALL_WAIT_SAFETY_FACTOR
+
+# ops-hardening iter-50 AUDIT FIX (finding B4) — the TERMINATION CONDITION for the degrade path.
+# "Never cache a degraded payload" (below) is correct — a stale degraded payload must not be served until
+# the next dataset change — but on its own it removed the only thing that used to stop the retries: with no
+# persisted row and no negative cache, EVERY subsequent view of `/research/factor-lab` started another
+# full-scale, multi-minute, multi-GB compute that could not succeed while the pressure lasted. Under the
+# 2026-08-05 outage that is what turned "one failed page view" into a 12-15 minute service wedge.
+#
+# The fix is a per-key, in-process COOLDOWN: once a compute for a key degrades under memory pressure, that
+# key's honest degraded payload is served directly for the cooldown window instead of launching a fresh
+# doomed compute. It is deliberately NOT persistence — nothing reaches `EventStudyCache`, the entry lives
+# only in this process, dies with it, and is dropped the moment a non-degraded compute succeeds. The key
+# already carries the dataset-version stamp, so a dataset change can never be masked by a cooldown entry.
+#
+# SIZING (no magic number): one full measured cold compute. A retry started sooner than that is, by
+# construction, a retry launched into the same window the previous attempt was still failing in — it cannot
+# observe a recovered host, only add load to an exhausted one. This bounds the failing-compute duty cycle at
+# roughly one attempt per attempt-duration instead of one attempt per viewer, and the user gets an immediate
+# honest `factors_status: "unavailable"` (AG-8's contained, honest degrade) instead of a multi-minute hang.
+_FACTOR_LAB_ALL_DEGRADED_COOLDOWN_S = _FACTOR_LAB_ALL_MEASURED_COLD_MISS_S
+# key -> (monotonic deadline, the degraded payload served during the window). Guarded by the SAME
+# `_FACTOR_LAB_ALL_LOCK` as the in-flight registry — one lock for this function's whole module state.
+_FACTOR_LAB_ALL_DEGRADED: dict[tuple, tuple[float, dict]] = {}
+
+
+def _degraded_cooldown_get(key: tuple) -> Optional[dict]:
+    """The degraded payload to serve for `key` while its cooldown window is open, else None. Expired
+    entries are dropped on touch, so the registry cannot grow without bound."""
+    now = time.monotonic()
+    with _FACTOR_LAB_ALL_LOCK:
+        entry = _FACTOR_LAB_ALL_DEGRADED.get(key)
+        if entry is None:
+            return None
+        deadline, payload = entry
+        if now >= deadline:
+            _FACTOR_LAB_ALL_DEGRADED.pop(key, None)
+            return None
+        return payload
+
+
+def _degraded_cooldown_set(key: tuple, payload: dict) -> None:
+    """Open (or re-open) `key`'s cooldown window around an honest degraded payload."""
+    with _FACTOR_LAB_ALL_LOCK:
+        _FACTOR_LAB_ALL_DEGRADED[key] = (time.monotonic() + _FACTOR_LAB_ALL_DEGRADED_COOLDOWN_S, payload)
+
+
+def _degraded_cooldown_clear(key: tuple) -> None:
+    """Close `key`'s cooldown window — called when a compute for it succeeds WITHOUT degrading, so recovery
+    is immediate and never has to wait out a window opened by an earlier failure."""
+    with _FACTOR_LAB_ALL_LOCK:
+        _FACTOR_LAB_ALL_DEGRADED.pop(key, None)
 
 
 def factor_lab_all_cached(
@@ -3475,8 +3824,21 @@ def factor_lab_all_cached(
     if hit is not None:
         return hit
 
-    # single-flight: only the FIRST caller for this key computes; concurrent same-key callers wait.
     key = (asof_key, version, horizon)
+    # ops-hardening iter-50 AUDIT FIX (B4): the degrade path's termination condition. A key that just
+    # degraded under memory pressure serves its honest degraded payload directly for one cooldown window
+    # instead of starting another full-scale compute that cannot succeed — checked BEFORE the single-flight
+    # slot so a cooled-down key never even becomes an owner or a waiter.
+    cooled = _degraded_cooldown_get(key)
+    if cooled is not None:
+        logger.info(
+            "factor_lab_all_cached: serving the honest degraded payload for key=%s from the "
+            "memory-pressure cooldown (%ss) -- NOT starting another compute", key,
+            _FACTOR_LAB_ALL_DEGRADED_COOLDOWN_S,
+        )
+        return cooled
+
+    # single-flight: only the FIRST caller for this key computes; concurrent same-key callers wait.
     with _FACTOR_LAB_ALL_LOCK:
         event = _FACTOR_LAB_ALL_INFLIGHT.get(key)
         is_owner = event is None
@@ -3489,6 +3851,23 @@ def factor_lab_all_cached(
         hit = _cached_row()
         if hit is not None:
             return hit
+        # ops-hardening iter-50 AUDIT (finding B1): re-check the memory-pressure cooldown HERE too. The
+        # check at the top of this function only covers callers that arrive AFTER a degrade; a caller that
+        # was ALREADY waiting when the owner degraded wakes on the owner's `finally`, finds no persisted row
+        # (a degraded payload is deliberately never persisted — the `_degraded` guard below) and would
+        # otherwise fall straight through into its OWN full-scale multi-GB compute inside the process that
+        # just ran out of memory. That is the exact amplification the cooldown exists to stop, on the exact
+        # path the 2026-08-05 outage took: `logs/backend.log` recorded five waiters falling through in
+        # 2m16s, each starting an independent compute. The owner opened this window immediately before
+        # waking us, so serving it is both honest and current.
+        cooled = _degraded_cooldown_get(key)
+        if cooled is not None:
+            logger.info(
+                "factor_lab_all_cached: the single-flight owner for key=%s degraded under memory pressure "
+                "-- serving its honest degraded payload from the cooldown (%ss) instead of starting a "
+                "second compute (iter-50 audit B1)", key, _FACTOR_LAB_ALL_DEGRADED_COOLDOWN_S,
+            )
+            return cooled
         # the owner failed (its `finally` already released the slot) or a genuine wedge exceeded the
         # bounded wait without persisting — fall through and compute independently rather than blocking
         # indefinitely. Still byte-identical (the SAME sole producer); at worst a rare redundant compute.
@@ -3502,7 +3881,68 @@ def factor_lab_all_cached(
 
     # MISS (owner path, or the rare fallback above) — compute once and persist.
     try:
-        payload = compute_factor_lab_all(session, cfg, as_of=as_of)
+        try:
+            payload = compute_factor_lab_all(session, cfg, as_of=as_of)
+        except MemoryError as exc:
+            # ops-hardening iter-50 (J-07, AG-8): the OUTER safety net. `compute_factor_lab_all`'s own
+            # per-(factor,horizon) loop already isolates the confirmed iter-49 crash frame, but a live
+            # `ulimit -v` exhaustion can in principle land ANYWHERE in the call chain (the shared pool
+            # builder, `_deciles`'s own aggregation, ...) — this catch mirrors evidence.py's isolate-and-
+            # continue convention at the WHOLE-RESPONSE granularity: log, then degrade the response
+            # honestly (an explicit `factors_status: "unavailable"`, empty `factors_table`) instead of
+            # letting the raw MemoryError propagate to FastAPI, which is how iter-49's crash reached the
+            # process. NEVER cached (the `finally` below still releases the single-flight slot), so the
+            # next request gets a fresh attempt rather than a frozen failure.
+            logger.exception(
+                "factor_lab_all_cached: compute_factor_lab_all aborted under memory pressure for key=%s "
+                "-- degrading the response honestly, not crashing: %s", key, exc,
+            )
+            degraded = {
+                "asof_date": as_of.isoformat() if as_of is not None else None,
+                "factors": factor_catalog(cfg),
+                "horizons": list(cfg.walk_forward.horizons),
+                "default_horizon": horizon,
+                "deciles_count": cfg.research.factor_lab.deciles,
+                "min_sample": cfg.walk_forward.min_sample,
+                "survivorship_bias": SURVIVORSHIP_BIAS_LABEL,
+                "descriptive_caveat": RESEARCH_CAVEAT,
+                "factors_table": [],
+                "factors_status": "unavailable",
+            }
+            # iter-50 AUDIT FIX (B4): open the cooldown window so the NEXT viewer is served this honest
+            # degrade immediately rather than launching another doomed multi-GB compute. Still never
+            # persisted to `EventStudyCache` — in-process only, dropped on restart or on first success.
+            _degraded_cooldown_set(key, degraded)
+            return degraded
+
+        # ops-hardening iter-50 (J-07, AG-8): a payload where at least one (factor,horizon) entry degraded
+        # under memory pressure (the INNER per-entry isolate-and-continue above) is honest partial data for
+        # THIS caller, but must NEVER be persisted as if it were the canonical cached value — a later
+        # request under the SAME dataset-version stamp (e.g. once the concurrent ingest/warm that caused
+        # the pressure has finished) would otherwise be served this stale degraded payload until the NEXT
+        # dataset change, instead of getting a fresh attempt. Mirrors the OUTER catch's own "never cached"
+        # discipline above, just for the finer-grained per-entry degrade path.
+        _degraded = any(
+            bh.get("status") == "unavailable"
+            for entry in payload.get("factors_table", [])
+            for bh in entry.get("by_horizon", [])
+        )
+        if _degraded:
+            logger.warning(
+                "factor_lab_all_cached: at least one (factor,horizon) entry degraded under memory "
+                "pressure or an isolated per-entry failure (iter-50 B4) for key=%s -- serving this "
+                "response but NOT caching it; the memory-pressure "
+                "cooldown (%ss) serves it directly to the next viewer rather than restarting the compute",
+                key, _FACTOR_LAB_ALL_DEGRADED_COOLDOWN_S,
+            )
+            # iter-50 AUDIT FIX (B4) — same termination condition as the whole-response catch above, for
+            # the finer-grained per-entry degrade path.
+            _degraded_cooldown_set(key, payload)
+            return payload
+
+        # A clean, fully-computed payload — close any cooldown window this key still carries, so recovery
+        # is immediate and never has to wait out a window opened by an earlier failure (iter-50 B4).
+        _degraded_cooldown_clear(key)
 
         stale = session.exec(
             select(EventStudyCache).where(

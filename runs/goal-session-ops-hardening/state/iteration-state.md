@@ -1,27 +1,29 @@
 # Iteration State — ops-hardening
 
-**After iteration:** 49 · **Date:** 2026-08-05 · **Verdict:** ESCALATE
+**After iteration:** 50 · **Date:** 2026-08-06 · **Verdict:** ESCALATE
 
 ## Journeys
 
-4 passing (J-01 J-03 J-08 J-09) · 3 partial (J-04, J-05 — up from failing, J-06) · 1 failing (J-07 — the service actually went DOWN this round) — 8 total. J-01/J-03 rest on `data_provider_runs` 309/310/311, created by the replay itself at 04:40-04:41Z.
+4 passing (J-01 J-03 J-08 J-09) · 3 partial (J-04 J-05 J-06) · 1 failing (J-07) — 8 total. J-04 was NOT tested (DEFERRED-BUDGET); J-05/J-06/J-07 had zero lane rows of their own.
 
 ## Active blockers
 
-- **The backend DIED for 12m45s during this round's own lane** (`logs/backend.log:191719-191721`, restart 09:48:49Z). Owner: dev. Two halves, must land as ONE change: `research.py:1051` (`compute_factor_lab_all`, unbounded `sorted(obs,…)`, uncaught `MemoryError`, untouched 5 rounds = audit B1) + `warmup.py:198` (`_warm_drawdown_expectations`, no `phases` memoization, no interlock with the ingest loop = audit B2, proven live by its own traceback). J-07's only remaining blocker and the next round's primary scope.
-- **Three journeys have ZERO executed lane rows** (J-04, J-08, J-09 — all SKIP, app was down). Run the 8-journey lane LAST and change no code after it: 4th consecutive breach (lane 10:46 vs product-code mtime 12:34:46).
-- **`reports/qa/…-iter-49-qa.md` reads PASS while the same phase's browser lane reads FAIL** and never cites it — regenerate, do not edit. **No owner blockers.** Ledger: 85 total, 35 unresolved, **0 unresolved critical**. scan CLEAN, coherence COHERENCE-PASS.
+- **J-07 health ceiling — dev.** `GET /api/health` breached ≤2 s on 96 of 1,179 polls (worst 10.06 s) during the live TC-1 drill. Cause is GIL contention between two CPU-bound computes, NOT memory — a memory bound cannot close it. Fix: take `compute_factor_lab_all` off the request path (ingest-time artifact) or off the event loop. `apps/backend/app/engine/research.py`.
+- **17 m 30 s service wedge — dev, unproven-either-way.** `logs/backend.log` 22:57:06Z → restart 23:14:36Z; process alive, `futex_do_wait`, RSS 7.76 GB; only a restart cleared it. Did NOT reproduce in the 1,522 s post-fix drill (0 MemoryErrors, VmPeak 3,129 MB). Teardown is now instrumented. Do not claim fixed.
+- **Lane never ran against current code — process.** `status.json`: `browser_checks_run: false`, `qa_verdict: INVALID_PENDING_REGENERATION`. TC-13 breached a 5th round: lane 00:13 → `warmup.py` 03:03, `data_manager.py` 05:41, `research.py` 07:28. Re-run the 8-journey lane LAST and REGENERATE `reports/qa/goal-ops-hardening-iter-50-qa.md` — never hand-edit.
+- **Interlock spec contradiction — HUMAN/owner.** TESTING REQUIREMENTS "never silently drop the work" vs TC-5 "the finalize-tail warm defers analogously" cannot both hold; today both sides can defer and the drawdown warm is dropped for a whole dataset version (`data_manager.py:4290`, `warmup.py:202-232`). Audit B2 / ledger `iter-50/cc`.
+- **`research.py:1334`** `set(range(pool_n))` in `_combination_cohort_members` — last MemoryError frame before the wedge, untouched by any diff since iter-31.
 
 ## Last 2 verdicts
 
-- iter 49: ESCALATE — the 1,200s termination bound is genuinely met 3/3 on idle-host drills, but the service went down under ordinary concurrent use and J-07 dropped to `failing`.
-- iter 48: ESCALATE — J-01/J-03 promoted on real replay-caused job rows; J-05 failed a 5th round on two unbounded finalize-tail phases (this round's scope, now closed).
+- iter 50: ESCALATE — memory genuinely fixed (7.76 GB → 3.13 GB, 0 MemoryErrors in a 1,522 s drill) but J-07 failed a 2nd consecutive round on the ≤2 s health ceiling and a 17 m 30 s wedge; no journey changed status.
+- iter 49: ESCALATE — the backend DIED for 12 m 45 s during its own lane; J-07 `partial` → `failing`, J-05 `failing` → `partial`.
 
 ## Do not redo
 
-- **Both finalize-tail phases are BOUNDED and proven** — TC-1 met 3/3 (1,012-1,048s vs 1,200s), VmPeak 45-49% margin, live in-app `forward_aggregates_warm elapsed=168.15s` (was 1,334s). `reports/perf-budgets.md` Addenda 4-6.
-- **Per-horizon/per-claim sub-phase timing EXISTS and is regression-guarded** — `data_manager.py:3978-4013`/`:4105-4199`, `test_data_manager.py:2070` (mutation-proven).
-- **J-04's boot + crash/restart halves have REAL executed rows** — `tests/test_start_backend_script.py::test_j04_*`, re-run after the final build.
-- **J-05's golden is already rotated to `2012-01-04`** (0 snapshot rows, 480 symbols with bars, verified in the DB). Never re-target 2012-01-05 — this round's lane consumed it.
-- **AG-10 values frozen, verified untouched** (`config.yaml` 8192/2) — bound the page, never raise the cap. Gap-insert reuse branch (`data_manager.py:891-917`) correct; leave byte-for-byte alone.
-- **Evidence capture is never an iteration goal** — J-07's walkthrough (19 rounds), J-05's frames and this round's 5 blank/copied screenshots ride the showcase / `Depth: evidence` lane.
+- **Evidence capture is never an iteration goal.** Demo (0 steps, 3rd round) and the missing `/scanner-runs` leaderboard screenshot ride the make-up lane as passenger tasks only.
+- **Columnar `_FactorCoreRecords`/`_FactorObsPool` bound is DONE and byte-identity-proven** against an independently written pre-columnar oracle (`tests/test_factor_lab_all.py:480` vs `:391`). Do not re-open.
+- **Single-flight waiter cooldown is DONE** (`research.py:3854-3871`, audit B1, failing-first test). Do not re-open.
+- **`phase_context_by_date` conditional skip is DONE** (`data_manager.py:3889-3919`, TC-6).
+- **AG-10 frozen files are correct and untouched** — `config.yaml` (8192 / 2), `host-guard.env`, `start-backend.sh`, `dev.sh`. Never edit; raising the cap is not the fix.
+- **Carried, untouched (do not schedule as new diagnosis):** iter-29/b · iter-31/e · iter-32/f · iter-33/g (16th deferral) · iter-35/k · iter-36/n · iter-37/o · iter-37/q · iter-39/u · iter-46/az · iter-46/ba · iter-47/bd · iter-47/bf · iter-47/bi · iter-48/bj.

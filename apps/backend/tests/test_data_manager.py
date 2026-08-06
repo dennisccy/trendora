@@ -32,7 +32,7 @@ from app.config import load_config
 from app.db import create_db_and_tables, make_engine
 from app.data_providers.base import Bar, PriceProvider, ProviderUnavailableError, RateLimitError
 from app.engine import data_manager
-from app.engine import forward_testing, indexes, market_phase, scanner
+from app.engine import forward_testing, indexes, market_phase, scanner, warmup
 from app.engine.data_manager import (
     JobProgress,
     _chunk_plan,
@@ -2148,6 +2148,388 @@ def test_finalize_hook_sub_phase_timing_names_each_horizon_and_claim_and_memoize
 
 
 # ==================================================================================================
+# ops-hardening iter-50 (J-07): the shared warm-in-progress guard between the boot/re-warm path
+# (`warmup._warm_drawdown_expectations`) and THIS module's own `_refresh_ingest_aggregates`
+# drawdown-expectations warm phase — the two proven-concurrent crash contributors from iter-49's own
+# traceback read. TC-4/TC-5 prove the guard holds in BOTH trigger orders; TC-6 proves the
+# `phase_context_by_date` precompute is skipped entirely once the ledger is fully cache-warm.
+# ==================================================================================================
+def test_drawdown_warm_guard_boot_rewarm_defers_when_ingest_already_in_flight(
+    finalize_hook_drawdown_engine, tmp_path, monkeypatch, caplog,
+):
+    """TC-4 — the boot/re-warm path (`warmup._warm_drawdown_expectations`) defers ENTIRELY (no claim
+    attempted) when the ingest finalize tail's OWN drawdown-expectations warm phase already holds the
+    shared warm-in-progress slot — proven by simulating "ingest already in flight" via a direct acquire,
+    then calling the boot re-warm and asserting it neither reads the ledger's real compute path nor warms
+    anything, and logs the deferral naming which caller deferred. Once the slot is released, a normal
+    boot re-warm proceeds and actually warms the claim (proving this is a real defer, not a permanent
+    disable)."""
+    engine, d = finalize_hook_drawdown_engine
+    cfg = load_config()
+    ledger = tmp_path / "certified-claims.jsonl"
+    append_entry(str(ledger), {
+        "claim": _DD_LEDGER_CLAIM, "register_date": "2024-06-01",
+        "verdict": {"status": "FAIL", "reason": "test fixture — not a real certification"},
+    })
+    monkeypatch.setenv(LEDGER_PATH_ENV, str(ledger))
+
+    claim_calls: list[str] = []
+    real_compute = forward_testing.compute_drawdown_expectations_cached
+
+    def _spy(*a, **k):
+        claim_calls.append("called")
+        return real_compute(*a, **k)
+
+    monkeypatch.setattr(forward_testing, "compute_drawdown_expectations_cached", _spy)
+
+    assert data_manager._try_acquire_drawdown_warm("ingest_finalize") is True  # simulate "already in flight"
+    try:
+        with caplog.at_level("INFO", logger="trendora.data_manager"):
+            warmup._warm_drawdown_expectations(engine, cfg)  # must not raise, must not block
+        assert claim_calls == [], "the boot re-warm must not attempt any claim while the guard is held"
+        assert any(
+            "deferring" in r.getMessage() and "boot_rewarm" in r.getMessage() for r in caplog.records
+        ), f"expected a deferral log line naming boot_rewarm; got {[r.getMessage() for r in caplog.records]}"
+    finally:
+        data_manager._release_drawdown_warm()
+
+    # after release, a normal boot re-warm proceeds and actually warms the claim.
+    warmup._warm_drawdown_expectations(engine, cfg)
+    assert claim_calls == ["called"], "once the slot is free, the boot re-warm must proceed normally"
+
+
+def test_drawdown_warm_guard_ingest_finalize_defers_when_boot_rewarm_already_in_flight(
+    finalize_hook_drawdown_engine, tmp_path, monkeypatch, caplog,
+):
+    """TC-5 — the guard holds in the OTHER trigger order: the ingest finalize tail's own
+    drawdown-expectations warm phase (inside `_refresh_ingest_aggregates`) defers when the boot/re-warm
+    path already holds the shared slot — "drawdown_expectations" is honestly absent from `refreshed` (no
+    claim attempted), `phase_context_by_date` is never called, and every OTHER finalize-hook category
+    still refreshes normally (the guard scopes ONLY this one phase). Releasing the slot lets a normal
+    finalize run warm the claim as before."""
+    engine, d = finalize_hook_drawdown_engine
+    cfg = load_config()
+    ledger = tmp_path / "certified-claims.jsonl"
+    append_entry(str(ledger), {
+        "claim": _DD_LEDGER_CLAIM, "register_date": "2024-06-01",
+        "verdict": {"status": "FAIL", "reason": "test fixture — not a real certification"},
+    })
+    monkeypatch.setenv(LEDGER_PATH_ENV, str(ledger))
+
+    phase_ctx_calls = {"n": 0}
+    real_phase_ctx = market_phase.phase_context_by_date
+
+    def _counting_phase_ctx(session=None, as_of=None, config=None):
+        phase_ctx_calls["n"] += 1
+        return real_phase_ctx(session, as_of=as_of, config=config)
+
+    monkeypatch.setattr(market_phase, "phase_context_by_date", _counting_phase_ctx)
+
+    assert data_manager._try_acquire_drawdown_warm("boot_rewarm") is True  # simulate "already in flight"
+    try:
+        with Session(engine) as session:
+            prog = JobProgress(job_id="dd-guard-ingest-defers", kind="backfill", start=d, end=d)
+            prog.new_snapshot_dates = [d]
+            with caplog.at_level("INFO", logger="trendora.data_manager"):
+                refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)  # must not raise
+    finally:
+        data_manager._release_drawdown_warm()
+
+    assert "drawdown_expectations" not in refreshed, f"deferred phase must be honestly absent; got {refreshed}"
+    assert {"coverage", "membership_timeline"} <= set(refreshed), (
+        f"every OTHER category must still refresh normally; refreshed={refreshed}"
+    )
+    assert phase_ctx_calls["n"] == 0, "a deferred phase must never call phase_context_by_date"
+    assert any(
+        "deferring" in r.getMessage() and "ingest_finalize" in r.getMessage() for r in caplog.records
+    ), f"expected a deferral log line naming ingest_finalize; got {[r.getMessage() for r in caplog.records]}"
+
+    # after release, a normal finalize run proceeds and actually warms the claim as before.
+    with Session(engine) as session:
+        prog = JobProgress(job_id="dd-guard-ingest-recovers", kind="backfill", start=d, end=d)
+        prog.new_snapshot_dates = [d]
+        refreshed2 = data_manager._refresh_ingest_aggregates(session, cfg, prog)
+    assert "drawdown_expectations" in refreshed2, "once the slot is free, the finalize phase must proceed"
+
+
+# ==================================================================================================
+# ops-hardening iter-50 AUDIT FIX (finding B2) — the interlock above was aimed at the pair that did not
+# collide. It guards ONLY the two drawdown-expectations per-claim loops against each other, while the
+# finalize tail's `forward_aggregates_warm` (measured 337-385s live) and
+# `coverage_membership_timeline_refresh` (82.04s live) stayed free to run concurrently with the boot
+# re-warm's per-claim loop — and that overlap is exactly where the 2026-08-05 outage window sat.
+# `logs/backend.log` shows the narrow guard FIRING and NOT HELPING at 23:04:01,255 ("drawdown-expectations
+# warm-in-progress guard: ingest_finalize deferring") while that same job's UNGUARDED
+# `forward_aggregates_warm` had been running since 22:57:37.
+#
+# The widened interlock covers the WHOLE ingest finalize-tail heavy-warm window and is deliberately
+# ASYMMETRIC: the finalize tail is the priority producer (its warms ARE the J-05 contract) and never
+# defers; the boot re-warm — a best-effort pre-warm that is already "non-fatal, retried next boot" —
+# yields, both at entry AND before every claim.
+# ==================================================================================================
+@pytest.fixture(autouse=True)
+def _reset_ingest_heavy_warm_window():
+    """The heavy-warm window depth is MODULE state (deliberately — it must be visible across threads in one
+    process). Reset it around every test so a failed assertion can never leave the whole file's remaining
+    tests running against a permanently-open window."""
+    data_manager._INGEST_HEAVY_WARM_DEPTH = 0
+    yield
+    data_manager._INGEST_HEAVY_WARM_DEPTH = 0
+
+
+def _write_dd_ledger(tmp_path, monkeypatch, n_claims: int = 1):
+    """A ledger carrying `n_claims` DISTINCT resolvable claims (distinct by `slice_kind`, so each is its own
+    cache subject) — `n_claims >= 2` is what makes a mid-loop yield observable."""
+    ledger = tmp_path / "certified-claims.jsonl"
+    for i in range(n_claims):
+        claim = dict(_DD_LEDGER_CLAIM)
+        if i:
+            claim["slice_kind"] = f"total_{i}"
+        append_entry(str(ledger), {
+            "claim": claim, "register_date": "2024-06-01",
+            "verdict": {"status": "FAIL", "reason": "test fixture — not a real certification"},
+        })
+    monkeypatch.setenv(LEDGER_PATH_ENV, str(ledger))
+    return ledger
+
+
+def test_boot_rewarm_defers_for_the_whole_ingest_heavy_warm_window(
+    finalize_hook_drawdown_engine, tmp_path, monkeypatch, caplog,
+):
+    """iter-50 audit B2 — the boot re-warm defers for the WHOLE ingest finalize-tail heavy-warm window, not
+    only when the narrow drawdown slot happens to be held.
+
+    Teeth: the narrow slot is deliberately left FREE here (`_try_acquire_drawdown_warm` would succeed), so
+    the pre-fix guard would have let this warm run straight through — which is precisely the overlap the
+    outage sat in (the boot re-warm running while the finalize tail's `forward_aggregates_warm` ran)."""
+    engine, d = finalize_hook_drawdown_engine
+    cfg = load_config()
+    _write_dd_ledger(tmp_path, monkeypatch)
+
+    claim_calls: list[str] = []
+    real_compute = forward_testing.compute_drawdown_expectations_cached
+    monkeypatch.setattr(
+        forward_testing, "compute_drawdown_expectations_cached",
+        lambda *a, **k: (claim_calls.append("called"), real_compute(*a, **k))[1],
+    )
+
+    data_manager._enter_ingest_heavy_warm("job-under-test")
+    try:
+        assert not data_manager._DRAWDOWN_WARM_IN_PROGRESS, (
+            "fixture sanity: the NARROW drawdown slot must be free, so this test proves the WIDENED "
+            "window is what defers the boot re-warm"
+        )
+        with caplog.at_level("INFO", logger="trendora.warmup"):
+            warmup._warm_drawdown_expectations(engine, cfg)  # must not raise, must not block
+        assert claim_calls == [], (
+            "the boot re-warm must attempt zero claims while an ingest heavy-warm window is open"
+        )
+        assert any(
+            "deferred" in r.getMessage() and "heavy-warm window" in r.getMessage()
+            for r in caplog.records
+        ), f"expected a deferral log line naming the window; got {[r.getMessage() for r in caplog.records]}"
+    finally:
+        data_manager._exit_ingest_heavy_warm("job-under-test")
+
+    # a real defer, not a permanent disable: once the window closes the boot re-warm proceeds normally.
+    warmup._warm_drawdown_expectations(engine, cfg)
+    assert claim_calls == ["called"], "once the window closes, the boot re-warm must proceed normally"
+
+
+def test_boot_rewarm_yields_mid_loop_when_an_ingest_window_opens(
+    finalize_hook_drawdown_engine, tmp_path, monkeypatch, caplog,
+):
+    """iter-50 audit B2 — an entry-only check is not enough. A single claim can run for minutes (worst
+    observed on the live ledger: the ~250s `combination:composite:h20`), so an ingest job that starts its
+    finalize tail mid-loop would otherwise overlap every REMAINING claim. The boot re-warm re-checks before
+    every claim and stops early.
+
+    Teeth: the window is opened from INSIDE the first claim's compute, so a start-only check would let all
+    three claims run and this assertion would see 3 calls instead of 1."""
+    engine, d = finalize_hook_drawdown_engine
+    cfg = load_config()
+    _write_dd_ledger(tmp_path, monkeypatch, n_claims=3)
+
+    claim_calls: list[str] = []
+    real_compute = forward_testing.compute_drawdown_expectations_cached
+
+    def _open_window_during_first_claim(*a, **k):
+        claim_calls.append("called")
+        if len(claim_calls) == 1:
+            data_manager._enter_ingest_heavy_warm("job-starting-mid-loop")
+        return real_compute(*a, **k)
+
+    monkeypatch.setattr(
+        forward_testing, "compute_drawdown_expectations_cached", _open_window_during_first_claim
+    )
+
+    try:
+        with caplog.at_level("INFO", logger="trendora.warmup"):
+            warmup._warm_drawdown_expectations(engine, cfg)
+    finally:
+        data_manager._exit_ingest_heavy_warm("job-starting-mid-loop")
+
+    assert len(claim_calls) == 1, (
+        f"the boot re-warm must yield as soon as an ingest heavy-warm window opens; it attempted "
+        f"{len(claim_calls)} claims (3 = it never re-checked after the first)"
+    )
+    assert any("yielding" in r.getMessage() for r in caplog.records), (
+        f"expected a mid-loop yield log line; got {[r.getMessage() for r in caplog.records]}"
+    )
+
+
+def test_ingest_finalize_declares_a_heavy_warm_window_across_its_whole_tail(
+    finalize_hook_drawdown_engine, tmp_path, monkeypatch,
+):
+    """iter-50 audit B2 — the window must span the WHOLE finalize tail, including the phases the narrow
+    drawdown slot never covered. Observed from inside `forward_aggregates_ingest_cached` (the phase measured
+    at 337-385s live, and the one that was actually running during the outage) and from inside the coverage/
+    membership refresh — a window opened only around the drawdown phase would fail both probes. Also
+    asserts the window is CLOSED again afterwards, so a finished job can never leave the boot re-warm
+    permanently deferred."""
+    engine, d = finalize_hook_drawdown_engine
+    cfg = load_config()
+    _write_dd_ledger(tmp_path, monkeypatch)
+
+    seen: dict[str, bool] = {}
+    real_fa = forward_testing.forward_aggregates_ingest_cached
+    real_cov = data_manager.refresh_coverage_snapshot
+
+    def _probe_fa(*a, **k):
+        seen["forward_aggregates_warm"] = data_manager._ingest_heavy_warm_active()
+        return real_fa(*a, **k)
+
+    def _probe_cov(*a, **k):
+        seen["coverage_membership_timeline_refresh"] = data_manager._ingest_heavy_warm_active()
+        return real_cov(*a, **k)
+
+    monkeypatch.setattr(forward_testing, "forward_aggregates_ingest_cached", _probe_fa)
+    monkeypatch.setattr(data_manager, "refresh_coverage_snapshot", _probe_cov)
+
+    assert not data_manager._ingest_heavy_warm_active(), "no window may be open before the job starts"
+    with Session(engine) as session:
+        prog = JobProgress(job_id="heavy-warm-window", kind="backfill", start=d, end=d)
+        prog.new_snapshot_dates = [d]
+        data_manager._refresh_ingest_aggregates(session, cfg, prog)
+
+    assert seen.get("forward_aggregates_warm") is True, (
+        "the heavy-warm window must be OPEN during forward_aggregates_warm — the phase measured at "
+        f"337-385s live and running during the 2026-08-05 outage; observed: {seen}"
+    )
+    assert seen.get("coverage_membership_timeline_refresh") is True, (
+        f"the heavy-warm window must be OPEN during the coverage/membership refresh (82.04s live); "
+        f"observed: {seen}"
+    )
+    assert not data_manager._ingest_heavy_warm_active(), (
+        "the window must be CLOSED when the finalize tail returns — otherwise one job would defer every "
+        "future boot re-warm in this process"
+    )
+    assert data_manager._INGEST_HEAVY_WARM_DEPTH == 0, "the window depth must unwind to exactly zero"
+
+
+def test_ingest_heavy_warm_window_closes_even_when_a_phase_raises(
+    finalize_hook_drawdown_engine, tmp_path, monkeypatch,
+):
+    """iter-50 audit B2 — the window is closed in a `finally`. If an unexpected failure could leave it open,
+    a single bad job would silently disable the boot re-warm for the rest of the process's life (a
+    permanent, invisible regression of the J-06 post-restart Evidence warm). Teeth: the probe raises a
+    non-MemoryError from inside a heavy phase — the class `_refresh_ingest_aggregates` isolates per phase —
+    and the depth must still unwind to zero."""
+    engine, d = finalize_hook_drawdown_engine
+    cfg = load_config()
+    _write_dd_ledger(tmp_path, monkeypatch)
+
+    def _boom(*a, **k):
+        raise RuntimeError("simulated phase failure")
+
+    monkeypatch.setattr(forward_testing, "forward_aggregates_ingest_cached", _boom)
+
+    with Session(engine) as session:
+        prog = JobProgress(job_id="heavy-warm-window-raises", kind="backfill", start=d, end=d)
+        prog.new_snapshot_dates = [d]
+        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)
+
+    assert "forward_aggregates" not in refreshed, "a failed phase must be honestly absent from refreshed"
+    assert data_manager._INGEST_HEAVY_WARM_DEPTH == 0, (
+        "the heavy-warm window must unwind to zero even when a phase raises — otherwise one bad job "
+        "permanently disables the boot re-warm"
+    )
+
+
+def test_drawdown_expectations_phase_context_skipped_when_ledger_fully_cache_warm(
+    finalize_hook_drawdown_engine, tmp_path, monkeypatch,
+):
+    """TC-6 — a SECOND finalize invocation, same ledger/claim, no new data: every claim is already a cache
+    HIT for the current dataset version, so `phase_context_by_date` is skipped ENTIRELY (never invoked) on
+    the second call — closing the ~23.6-23.9s measured MID health-poll-stall cluster (`reports/perf-
+    budgets.md` Item R Addendum 6) for the common "nothing new to compute" case. The FIRST call (a genuine
+    cache MISS) still calls it exactly once, proving this is a real skip, not a permanently-disabled
+    precompute."""
+    engine, d = finalize_hook_drawdown_engine
+    cfg = load_config()
+    ledger = tmp_path / "certified-claims.jsonl"
+    append_entry(str(ledger), {
+        "claim": _DD_LEDGER_CLAIM, "register_date": "2024-06-01",
+        "verdict": {"status": "FAIL", "reason": "test fixture — not a real certification"},
+    })
+    monkeypatch.setenv(LEDGER_PATH_ENV, str(ledger))
+
+    phase_ctx_calls = {"n": 0}
+    real_phase_ctx = market_phase.phase_context_by_date
+
+    def _counting_phase_ctx(session=None, as_of=None, config=None):
+        phase_ctx_calls["n"] += 1
+        return real_phase_ctx(session, as_of=as_of, config=config)
+
+    monkeypatch.setattr(market_phase, "phase_context_by_date", _counting_phase_ctx)
+
+    with Session(engine) as session:
+        prog1 = JobProgress(job_id="dd-skip-first", kind="backfill", start=d, end=d)
+        prog1.new_snapshot_dates = [d]
+        refreshed1 = data_manager._refresh_ingest_aggregates(session, cfg, prog1)
+    assert "drawdown_expectations" in refreshed1, f"fixture sanity: the claim must genuinely warm; got {refreshed1}"
+    assert phase_ctx_calls["n"] == 1, "the FIRST (cache-MISS) call must compute the timeline exactly once"
+
+    with Session(engine) as session:
+        prog2 = JobProgress(job_id="dd-skip-second", kind="backfill", start=d, end=d)
+        prog2.new_snapshot_dates = [d]
+        refreshed2 = data_manager._refresh_ingest_aggregates(session, cfg, prog2)
+    assert "drawdown_expectations" in refreshed2, (
+        f"the claim is still a HIT, still honestly reported as warm; got {refreshed2}"
+    )
+    assert phase_ctx_calls["n"] == 1, (
+        "the SECOND call (every claim already cache-HIT) must skip phase_context_by_date entirely — "
+        f"call count grew to {phase_ctx_calls['n']}"
+    )
+
+
+def test_drawdown_expectations_needs_recompute_helper_directly(finalize_hook_drawdown_engine, tmp_path, monkeypatch):
+    """TC-6 (unit-level) — `_drawdown_expectations_ledger_needs_recompute` directly: an empty ledger and a
+    ledger whose sole claim is already cache-HIT both report False (nothing needs it); a ledger with a
+    genuinely uncached claim reports True."""
+    engine, d = finalize_hook_drawdown_engine
+    cfg = load_config()
+
+    with Session(engine) as session:
+        assert data_manager._drawdown_expectations_ledger_needs_recompute(session, [], cfg) is False
+
+        uncached_entry = {"claim": _DD_LEDGER_CLAIM}
+        assert data_manager._drawdown_expectations_ledger_needs_recompute(
+            session, [uncached_entry], cfg
+        ) is True
+
+        # warm it for real via the canonical cached path, then re-check — must now report False.
+        forward_testing.compute_drawdown_expectations_cached(session, _DD_LEDGER_CLAIM, cfg)
+        assert data_manager._drawdown_expectations_ledger_needs_recompute(
+            session, [uncached_entry], cfg
+        ) is False
+
+        # a forward-walk monitoring record is not a claim to warm a panel for — never "needs" a compute.
+        fw_entry = {"type": "forward_walk", "claim": _DD_LEDGER_CLAIM}
+        assert data_manager._drawdown_expectations_ledger_needs_recompute(session, [fw_entry], cfg) is False
+
+
+# ==================================================================================================
 # ops-hardening iter-9 (B2): the resolved libc `CDLL` handle inside `_release_process_memory()` is
 # memoized module-level (first-call-cached) instead of re-resolved via `ctypes.util.find_library` +
 # `ctypes.CDLL` on EVERY call — the exact memory-pressure `MemoryError`-abort path this session hardened
@@ -2215,6 +2597,41 @@ def test_release_process_memory_caches_permanent_resolution_failure(monkeypatch)
 
     assert find_calls["n"] == 1, "a resolution failure must be cached — never retried on later calls"
     assert gc_calls["n"] == 3, "gc.collect() must still run on every call despite the cached failure"
+
+
+def test_release_process_memory_brackets_itself_with_start_and_done_timings(monkeypatch, caplog):
+    """ops-hardening iter-50 audit B2 — the ONLY unexamined frame inside the 2026-08-05 ~17-minute service
+    silence is this teardown: `logs/backend.log` last advances at `_refresh_ingest_aggregates`'s
+    `drawdown_expectations_warm` phase-timing line, and the next statements executed are its `finally` ->
+    drop the shared bar cache -> `_release_process_memory()`, whose `gc.collect()` holds the GIL for its
+    whole duration. Nobody could attribute the silence because that frame emitted no log line at all.
+
+    A START line must land BEFORE `gc.collect()` runs (so a process killed or restarted mid-teardown still
+    leaves the entry boundary in the log — the exact 2026-08-05 situation), and a DONE line must carry each
+    step's wall clock. Teeth: `gc.collect` is stubbed to assert the START line is ALREADY emitted when it is
+    entered, so an implementation that logs only after the fact fails here rather than passing on the
+    presence of two lines at the end."""
+    monkeypatch.setattr(data_manager, "_libc_malloc_trim_cache", {"fn": None})
+    seen_at_gc_time: list[str] = []
+
+    def _gc_collect():
+        seen_at_gc_time.append(caplog.text)
+
+    monkeypatch.setattr(data_manager.gc, "collect", _gc_collect)
+
+    with caplog.at_level("INFO", logger="trendora.data_manager"):
+        data_manager._release_process_memory()
+
+    assert seen_at_gc_time and "_release_process_memory: START" in seen_at_gc_time[0], (
+        "the START line must be emitted BEFORE gc.collect() begins — a teardown that wedges or is killed "
+        "mid-collect would otherwise leave no entry boundary in the log at all, which is precisely why "
+        "the 2026-08-05 outage could not be attributed"
+    )
+    assert "_release_process_memory: DONE" in caplog.text, "the completion line with timings must be logged"
+    assert "gc_collect=" in caplog.text and "malloc_trim=" in caplog.text and "total=" in caplog.text, (
+        "the DONE line must carry each step's own wall clock, not just a total — the point is to say "
+        "WHICH half of the teardown consumed the time"
+    )
 
 
 # ==================================================================================================

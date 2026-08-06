@@ -885,6 +885,86 @@ def test_factor_lab_all_cached_waiter_does_not_deadlock_when_owner_raises(lab_en
         )
 
 
+def test_already_waiting_caller_is_served_the_cooldown_not_a_second_doomed_compute(lab_engine):
+    """ops-hardening iter-50 AUDIT (finding B1) — the memory-pressure cooldown must also cover the
+    single-flight WAITER path, not just callers that arrive after the degrade.
+
+    The B4 cooldown is checked only at the TOP of `factor_lab_all_cached`, before the single-flight slot.
+    A caller that was ALREADY waiting when the owner degrades wakes on the owner's `finally`, re-checks the
+    persisted cache (empty by construction — a degraded payload is deliberately never persisted) and, before
+    this fix, fell straight through into its OWN full-scale multi-GB compute inside the process that had
+    just run out of memory. That is the exact amplification the cooldown exists to stop, on the exact path
+    the 2026-08-05 outage took (five waiters fell through in 2m16s, each starting an independent compute).
+
+    Teeth: the heavy read is a COUNTING spy. Without the fix the waiter recomputes and the count reaches 2;
+    with it the waiter is served the owner's honest degraded payload and the count stays at 1. The ordering
+    assertion below proves the waiter really was a waiter (it entered before the owner degraded, so the
+    top-of-function cooldown check could not have short-circuited it)."""
+    import time
+
+    import app.engine.research as research
+
+    cfg = load_config()
+    calls = {"n": 0}
+    owner_may_fail = threading.Event()
+    stamps: dict = {}
+
+    def _counting_boom(*_a, **_k):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            owner_may_fail.wait(timeout=BOUNDED_TIMEOUT_S)
+            stamps["owner_raised"] = time.monotonic()
+        raise MemoryError("simulated memory pressure (iter-50 audit B1 probe)")
+
+    owner_result: dict = {}
+    waiter_result: dict = {}
+
+    def _owner_call():
+        with Session(lab_engine) as session:
+            owner_result["payload"] = research.factor_lab_all_cached(session, cfg)
+
+    def _waiter_call():
+        stamps["waiter_entered"] = time.monotonic()
+        with Session(lab_engine) as session:
+            waiter_result["payload"] = research.factor_lab_all_cached(session, cfg)
+
+    real = research._all_factor_observations_by_horizon
+    research._all_factor_observations_by_horizon = _counting_boom
+    try:
+        owner_thread = threading.Thread(target=_owner_call)
+        waiter_thread = threading.Thread(target=_waiter_call)
+        owner_thread.start()
+        # the owner is parked inside the (spied) heavy read, holding the in-flight slot
+        deadline = time.monotonic() + BOUNDED_TIMEOUT_S
+        while calls["n"] == 0 and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert calls["n"] == 1, "owner never entered the compute — the probe never armed"
+        waiter_thread.start()
+        time.sleep(0.5)  # let the waiter register as a non-owner before the owner degrades
+        owner_may_fail.set()
+        owner_thread.join(timeout=BOUNDED_TIMEOUT_S)
+        waiter_thread.join(timeout=BOUNDED_TIMEOUT_S)
+    finally:
+        research._all_factor_observations_by_horizon = real
+        with research._FACTOR_LAB_ALL_LOCK:
+            research._FACTOR_LAB_ALL_DEGRADED.clear()
+
+    assert not owner_thread.is_alive() and not waiter_thread.is_alive(), "a caller hung"
+    assert stamps.get("waiter_entered") is not None and stamps.get("owner_raised") is not None
+    assert stamps["waiter_entered"] < stamps["owner_raised"], (
+        "the waiter entered AFTER the owner had already degraded — it was served by the top-of-function "
+        "cooldown check, so this run never exercised the waiter path (vacuous)"
+    )
+    assert owner_result["payload"]["factors_status"] == "unavailable", "the owner must degrade honestly"
+    assert waiter_result.get("payload", {}).get("factors_status") == "unavailable", (
+        "the waiter must be served the owner's honest degraded payload, not an error and not a stale hit"
+    )
+    assert calls["n"] == 1, (
+        f"the already-waiting caller started a SECOND full-scale compute in a memory-exhausted process "
+        f"(compute attempts: {calls['n']}) — the cooldown must be re-checked after the single-flight wait"
+    )
+
+
 # ==================================================================================================
 # 6. iter-31 AUDIT — the two proofs the shipped suite was missing:
 #    (a) TC-6 as the phase spec actually words it ("observes the peak resident size of the RETURNED pools
@@ -915,7 +995,14 @@ _MIN_REDUCTION_VS_PRE_FIX = 1.5
 def _deep_size(obj) -> int:
     """Resident bytes of an object graph: every container AND the scalars it references, deduped BY IDENTITY
     (so a shared `values` tuple, an interned ticker, or a cached small int is counted ONCE — exactly how the
-    process holds them). Deterministic: no clock, no GC timing, no tracemalloc sampling."""
+    process holds them). Deterministic: no clock, no GC timing, no tracemalloc sampling.
+
+    ops-hardening iter-50 AUDIT FIX (finding B3): the walker now descends into `__slots__` objects too.
+    Without this it would stop at `sys.getsizeof(<_FactorCoreRecords instance>)` — a few dozen bytes of
+    object header, none of the buffers it points at — and every projection assertion built on it would pass
+    VACUOUSLY for any structure whose payload hangs off slots. `array.array` / `bytearray` report their whole
+    buffer through `sys.getsizeof`, so descending one level into the slots charges every byte the process
+    actually holds."""
     seen: set[int] = set()
     stack = [obj]
     total = 0
@@ -930,6 +1017,13 @@ def _deep_size(obj) -> int:
             stack.extend(o.values())
         elif isinstance(o, (list, tuple, set, frozenset)):
             stack.extend(o)
+        else:
+            for cls in type(o).__mro__:
+                for slot in getattr(cls, "__slots__", ()):
+                    try:
+                        stack.append(getattr(o, slot))
+                    except AttributeError:
+                        pass
     return total
 
 
@@ -995,6 +1089,116 @@ def test_returned_pool_structure_projected_to_the_live_basis_stays_under_the_mem
     )
 
 
+# ops-hardening iter-50 AUDIT FIX (finding B3). The projection test above guards the iter-31 redesign
+# against a revert to the PRE-iter-31 dict shape — but reverting only iter-50's columnar encoding back to
+# iter-31's boxed tuples still clears its 1.5x floor comfortably, so it has no teeth on THIS fix. These
+# floors pin the columnar encoding specifically, measured against the iter-31 tuple encoding rebuilt from
+# the SAME returned data (so any divergence can only come from the encoding itself).
+#
+# Both are deliberately well BELOW the measured margins because this fixture understates the win: with 20
+# core records and 80 pool rows, the fixed ~64-byte header of each `array`/`bytearray` is amortised over
+# almost nothing, while at the live basis (781,417 core records / 3,971,375 pool rows) it vanishes and the
+# per-pool-row cost approaches its raw 8+8+1+8+1 = 26 bytes against the tuple encoding's ~128. Reverting to
+# the tuple encoding scores exactly 1.0x on both and fails here.
+_MIN_REDUCTION_VS_ITER31_TOTAL = 1.35    # measured on this fixture: ~1.67x
+_MIN_REDUCTION_VS_ITER31_POOL_ROW = 1.6  # measured on this fixture: ~2.03x
+
+
+def test_returned_pool_structure_is_columnar_not_boxed_python_objects(lab_engine):
+    """iter-50 audit B3 — the accumulators `_all_factor_observations_by_horizon` RETURNS must be columnar
+    fixed-width buffers, not one boxed Python object per row.
+
+    WHY THIS TEST EXISTS: iter-50 shipped believing this function was "already bounded … unaffected by this
+    defect" (its own phase spec's carve-out). The live evidence said otherwise — five real, un-injected
+    `MemoryError`s on 2026-08-05 (23:28:44 / 23:37:53 / 23:38:25 / 23:42:07 / 23:44:52) carry the identical
+    traceback ending at `pools[h].append(...)` in THIS function, and none at the per-(factor,horizon)
+    transient the iteration actually bounded. "Chunked source reads" bounded the QUERY side only; the
+    RETURN VALUE was O(observations) in boxed Python objects and stayed resident for the whole call.
+
+    Two independent teeth: a structural assertion (the buffers really are `array`/`bytearray`, so an
+    encoding that merely renames the tuples cannot pass) and a measured one (the resident cost per pool row
+    and the whole-structure projection must both beat the iter-31 tuple encoding by a stated factor)."""
+    from array import array as _array
+
+    cfg = load_config()
+    factors = list(cfg.research.factor_lab.factors)
+    horizons = list(cfg.walk_forward.horizons)
+    with Session(lab_engine) as session:
+        core_records, pools = _all_factor_observations_by_horizon(session, factors, horizons, None, cfg=cfg)
+
+    pool_rows = sum(len(p) for p in pools.values())
+    assert core_records and pool_rows, "fixture produced no observations — the measurement would be vacuous"
+
+    # --- structural: fixed-width buffers, not per-row Python objects ------------------------------------
+    assert isinstance(core_records.run_ids, _array), "core-record run ids must be a fixed-width array"
+    assert all(isinstance(c, _array) for c in core_records.value_cols), "factor values must be array columns"
+    assert all(isinstance(m, bytearray) for m in core_records.value_present), "null masks must be bytearrays"
+    for h, pool in pools.items():
+        assert isinstance(pool.core_idx, _array), f"horizon {h}: pool core_idx must be a fixed-width array"
+        assert isinstance(pool.returns, _array), f"horizon {h}: pool returns must be a fixed-width array"
+        assert isinstance(pool.max_drawdowns, _array), f"horizon {h}: pool drawdowns must be an array"
+
+    # --- measured: beat the iter-31 boxed-tuple encoding rebuilt from the SAME data ---------------------
+    iter31_core = [(cr[0], cr[1], cr[2]) for cr in core_records]
+    iter31_pools = {h: [(i, ret, mdd) for (i, ret, mdd) in pool] for h, pool in pools.items()}
+
+    per_core = _deep_size(core_records) / len(core_records)
+    per_pool_row = _deep_size(pools) / pool_rows
+    iter31_per_core = _deep_size(iter31_core) / len(iter31_core)
+    iter31_per_pool_row = _deep_size(iter31_pools) / pool_rows
+
+    assert per_pool_row * _MIN_REDUCTION_VS_ITER31_POOL_ROW <= iter31_per_pool_row, (
+        f"a pool row costs {per_pool_row:.1f} B columnar vs {iter31_per_pool_row:.1f} B as an iter-31 boxed "
+        f"tuple — less than the required {_MIN_REDUCTION_VS_ITER31_POOL_ROW}x reduction at the very "
+        f"`pools[h].append` site all five live MemoryError tracebacks land on"
+    )
+
+    live_pool_rows = sum(_LIVE_POOL_ROWS_BY_HORIZON)
+    projected = per_core * _LIVE_CORE_RECORDS + per_pool_row * live_pool_rows
+    iter31_projected = iter31_per_core * _LIVE_CORE_RECORDS + iter31_per_pool_row * live_pool_rows
+    assert projected * _MIN_REDUCTION_VS_ITER31_TOTAL <= iter31_projected, (
+        f"the columnar structure projects to {projected / (1024 * 1024):.0f} MB at the live basis vs the "
+        f"iter-31 tuple encoding's {iter31_projected / (1024 * 1024):.0f} MB — less than the required "
+        f"{_MIN_REDUCTION_VS_ITER31_TOTAL}x reduction. iter-50's audit-B3 columnar encoding has been "
+        f"reverted or diluted (boxed per-row objects re-introduced?)"
+    )
+
+
+def test_columnar_accumulators_carry_null_and_value_exactly(lab_engine):
+    """iter-50 audit B3 — the columnar encoding stores `None` through a companion presence mask, never a
+    0.0 or NaN sentinel. Teeth: the catalog's unpopulated factors are genuinely NULL in this fixture, so an
+    encoding that conflated NULL with 0.0 would turn an EXCLUDED factor-NULL observation into a real 0.0
+    observation and silently change every decile it lands in (AG-3)."""
+    cfg = load_config()
+    factors = list(cfg.research.factor_lab.factors)
+    horizons = list(cfg.walk_forward.horizons)
+    with Session(lab_engine) as session:
+        core_records, pools = _all_factor_observations_by_horizon(session, factors, horizons, None, cfg=cfg)
+
+    # at least one factor column is entirely NULL in this fixture (the catalog's volatility columns) and at
+    # least one is populated — otherwise the null-carrying assertion below would be vacuous.
+    null_cols = [j for j in range(len(factors)) if not any(core_records.value_present[j])]
+    populated_cols = [j for j in range(len(factors)) if all(core_records.value_present[j])]
+    assert null_cols and populated_cols, "fixture must mix NULL and populated factor columns"
+    for j in null_cols:
+        for i in range(len(core_records)):
+            assert core_records.factor_value(i, j) is None, (
+                f"factor column {j} is NULL for every record but reads back "
+                f"{core_records.factor_value(i, j)!r} — a NULL was conflated with a value"
+            )
+
+    # `max_drawdown` is nullable per horizon: NO_MDD_HORIZON's FRs carry None, the populated ones carry a
+    # real negative figure. Both must round-trip exactly.
+    assert all(pools[NO_MDD_HORIZON].max_drawdown(k) is None for k in range(len(pools[NO_MDD_HORIZON]))), (
+        "horizon with no stored max_drawdown must read back None, never 0.0"
+    )
+    populated = pools[POPULATED_HORIZONS[0]]
+    assert len(populated) > 0 and all(
+        populated.max_drawdown(k) is not None and populated.max_drawdown(k) < 0
+        for k in range(len(populated))
+    ), "a populated horizon's stored negative max_drawdowns must round-trip exactly"
+
+
 def test_factor_pool_cap_warning_lands_even_when_the_sweep_dies_part_way(lab_engine, caplog):
     """iter-31 (audit fix): `config.yaml` promises the ceiling turns a future data-scale widening into "an
     observable log line in logs/backend.log, not another opaque crash". That promise is only true if the
@@ -1042,4 +1246,163 @@ def test_factor_pool_cap_warning_lands_even_when_the_sweep_dies_part_way(lab_eng
     # one line per overflowing horizon, never a per-chunk storm.
     assert caplog.text.count("factor_pool_max_observations exceeded") <= len(horizons), (
         "the disclosure warning is repeating per chunk — it must be emitted once per horizon"
+    )
+
+
+# ==================================================================================================
+# 12. iter-50 audit B4 — AG-8 data-shape tolerance of the columnar encoding
+#
+# The B3 columnar accumulators store factor values into `array("d")`, which accepts ONLY a real number.
+# A component factor's value is `record_json[<block>]["components"][i]["raw"]` — FREE-FORM JSON — so a
+# record shape that writes `"raw": "3.5"` (a string) rather than `3.5` used to be served fine (the sole
+# consumer coerced with `float(...)` downstream) and, after the columnar rewrite, raised `TypeError` out
+# of `_all_factor_observations_by_horizon`, where the only handlers on the request path were
+# `except MemoryError` — so it 500'd the WHOLE `?all=true` response. AG-8 forbids exactly that
+# ("must never crash an existing page ... never a blank application-error page").
+# ==================================================================================================
+def _string_raw_engine(tmp_path, *, raw_for):
+    """The SAME shape as `lab_engine` but with each result's `leadership.components.rs_spy_3m.raw` produced
+    by `raw_for(numeric_value)` — so a caller can build the numeric-raw basis and a string-raw (or
+    non-numeric-raw) basis that are otherwise identical row for row."""
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    engine = make_engine(f"sqlite:///{tmp_path / 'lab_all_shape.db'}")
+    create_db_and_tables(engine)
+    with Session(engine) as session:
+        r1 = _add_run(session, date(2025, 1, 10), regime_label="Risk-on")
+        for i in range(1, 13):
+            session.add(ScannerResult(
+                run_id=r1.id, ticker=f"A{i:02d}", name=f"A{i:02d}", sector="Technology",
+                leadership_score=float(i * 5), leadership_bucket="C",
+                entry_quality_score=float(100 - i * 3), entry_quality_bucket="C",
+                risk_score=float(i * 4), risk_bucket="C",
+                setup_status="Breakout-watch", rank=i,
+                record_json=json.dumps({
+                    "leadership": {"components": [
+                        {"name": "rs_spy_3m", "raw": raw_for(float(i) / 10.0), "available": True},
+                    ]},
+                    "risk": {"components": [
+                        {"name": "atr_pct", "raw": float(i) / 100.0, "available": True},
+                    ]},
+                }),
+            ))
+            for h in POPULATED_HORIZONS:
+                _add_fr(session, r1.id, f"A{i:02d}", ret=(i - 6) / 100.0 * h, horizon=h, mdd=-(i / 200.0))
+        session.commit()
+    return engine
+
+
+def _rs_spy_3m_entry(payload: dict) -> dict:
+    return next(e for e in payload["factors_table"] if e["key"] == "rs_spy_3m")
+
+
+def test_string_typed_component_raw_is_served_identically_to_a_numeric_raw(tmp_path):
+    """iter-50 audit B4 — a `record_json` component whose `raw` is the STRING `"0.7"` must produce the
+    byte-identical served figures to the same value written as the number `0.7`, exactly as the
+    pre-columnar path did (it stored the raw object and coerced with `float(...)` at the point of use).
+
+    Teeth: without the coercion at the columnar `append` site this does not merely differ — it raises
+    `TypeError: must be real number, not str` out of `_all_factor_observations_by_horizon`, which no
+    handler on the request path catches, so `GET /api/research/factor-lab?all=true` returns 500 for
+    EVERY viewer (AG-8's "never a blank application-error page")."""
+    numeric = _string_raw_engine(tmp_path / "num", raw_for=lambda v: v)
+    stringy = _string_raw_engine(tmp_path / "str", raw_for=lambda v: str(v))
+    cfg = load_config()
+
+    with Session(numeric) as session:
+        numeric_payload = compute_factor_lab_all(session, cfg, as_of=None)
+    with Session(stringy) as session:
+        string_payload = compute_factor_lab_all(session, cfg, as_of=None)
+
+    numeric_entry, string_entry = _rs_spy_3m_entry(numeric_payload), _rs_spy_3m_entry(string_payload)
+    assert numeric_entry["n_total"] > 0, "fixture produced no rs_spy_3m observations — the proof is vacuous"
+    assert _bytes(string_entry) == _bytes(numeric_entry), (
+        "a string-typed component `raw` must serve byte-identically to the same numeric value — the "
+        "columnar encoding must not narrow the data shapes this endpoint tolerates (AG-8)"
+    )
+    # and nothing was quietly dropped: every observation still counted.
+    assert all(
+        bh["n_total"] == next(n["n_total"] for n in numeric_entry["by_horizon"] if n["horizon"] == bh["horizon"])
+        for bh in string_entry["by_horizon"]
+    ), "string-typed raws changed an observation count — values must be coerced, never excluded"
+
+
+@pytest.mark.parametrize("bad_raw", ["n/a", [0.7], {"value": 0.7}])
+def test_non_numeric_component_raw_is_excluded_as_factor_null_never_a_500(tmp_path, caplog, bad_raw):
+    """iter-50 audit B4 — a component `raw` that is not a real number AT ALL is excluded exactly like a
+    factor-NULL observation (`_extract_factor_value`'s own "never fabricated" convention), disclosed by an
+    AG-8 WARNING, and the response still renders every OTHER factor. It must never fabricate a value and
+    must never raise out of the shared pool builder.
+
+    Teeth: the OTHER catalog factors in the same fixture stay fully populated, so a handler that blanked
+    the whole response (or a `float()` that fabricated 0.0) fails here."""
+    engine = _string_raw_engine(tmp_path, raw_for=lambda v: bad_raw)
+    cfg = load_config()
+
+    with caplog.at_level("WARNING", logger="trendora.research"):
+        with Session(engine) as session:
+            payload = compute_factor_lab_all(session, cfg, as_of=None)
+
+    entry = _rs_spy_3m_entry(payload)
+    assert entry["n_total"] == 0 and entry["rank_ic"]["n"] == 0, (
+        f"a non-numeric raw ({bad_raw!r}) must be EXCLUDED as a factor-NULL observation, never coerced "
+        f"into a fabricated number — got n_total={entry['n_total']}"
+    )
+    assert all(d["mean_return"] is None for d in entry["by_horizon"][0]["deciles"]), (
+        "an all-excluded factor must render honest NA deciles, never fabricated figures (AG-3)"
+    )
+    leadership = next(e for e in payload["factors_table"] if e["key"] == "leadership_score")
+    assert leadership["n_total"] > 0, (
+        "one factor's unusable stored shape blanked the OTHER factors' entries — AG-8 requires the "
+        "contained degrade, not a whole-response failure"
+    )
+    assert "were EXCLUDED as factor-NULL observations" in caplog.text, (
+        "the AG-8 data-shape exclusion must be disclosed in the log, never silent"
+    )
+
+
+def test_one_entry_s_non_memory_failure_degrades_only_that_entry(lab_engine, monkeypatch, caplog):
+    """iter-50 audit B4 (second half) — `compute_factor_lab_all`'s per-(factor,horizon) loop carried ONLY
+    an `except MemoryError`, so any OTHER exception from ONE entry still propagated and 500'd the whole
+    `?all=true` response for all 11 factors. `evidence.py`'s per-claim convention — the precedent this loop
+    already cites for its MemoryError catch — pairs that catch with a broader one, degrading the single
+    failing unit to an honest `status: "unavailable"` and continuing.
+
+    Teeth: the fault fires on exactly ONE `_deciles` call, so a handler that blanked the whole response
+    (or no handler at all — the pre-fix behavior, which raises straight out of this function) fails both
+    the "one entry degraded" and the "every other entry still real" assertions below."""
+    import app.engine.research as research
+
+    cfg = load_config()
+    real_deciles = research._deciles
+    calls = {"n": 0}
+    fault_on_call = 3  # a specific (factor, horizon) entry, deterministically
+
+    def _boom_on_one_entry(ordered, n_deciles, min_sample):
+        calls["n"] += 1
+        if calls["n"] == fault_on_call:
+            raise RuntimeError("simulated non-memory failure inside one (factor,horizon) entry")
+        return real_deciles(ordered, n_deciles, min_sample)
+
+    monkeypatch.setattr(research, "_deciles", _boom_on_one_entry)
+    with caplog.at_level("ERROR", logger="trendora.research"):
+        with Session(lab_engine) as session:
+            payload = compute_factor_lab_all(session, cfg, as_of=None)
+
+    degraded = [
+        (e["key"], bh["horizon"]) for e in payload["factors_table"]
+        for bh in e["by_horizon"] if bh.get("status") == "unavailable"
+    ]
+    assert calls["n"] > fault_on_call, (
+        "the loop stopped at the injected failure instead of continuing to the next entry — "
+        "isolate-and-continue means CONTINUE"
+    )
+    assert len(degraded) == 1, (
+        f"exactly the faulted (factor,horizon) entry must degrade; got {degraded!r}"
+    )
+    assert any(
+        bh.get("status") != "unavailable" and bh["n_total"] > 0
+        for e in payload["factors_table"] for bh in e["by_horizon"]
+    ), "no entry survived — the isolation is not contained, which is the failure this test forbids"
+    assert "isolate-and-continue" in caplog.text, (
+        "the isolated failure must be logged, never swallowed silently"
     )

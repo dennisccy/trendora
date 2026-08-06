@@ -478,3 +478,27 @@ without shipping.
 **Applies to:** any iteration whose acceptance is a wall-clock or memory bound (J-05, J-07, and any
 future perf-budget work) — require at least one measurement through the app's own pages, under
 concurrent reads, before the journey moves up.
+
+## iter-50 — 2026-08-06T07:45:00Z
+
+**Verdict:** ESCALATE
+**Lesson:** A raw `grep -c MemoryError logs/backend.log` total is an actively misleading metric in
+this session and I nearly used it as one. The count went 7,083 → 7,862 this round (+779), which reads
+as a catastrophe; segmenting by `start-backend.sh: launching at` banner shows 770 of them are the
+developer's own deliberately fault-injected TC-2 memory-pressure drills (segments 13:58 and 14:14),
+9 are the browser lane, and **0** are the post-fix TC-1 drill. Always split the count per backend
+segment before drawing any conclusion from it.
+**Applies to:** any iter scoring J-05/J-06/J-07 or any memory-bounding work; any evaluator or auditor
+citing a `logs/backend.log` MemoryError count.
+
+## iter-50 — 2026-08-06T07:45:00Z
+
+**Verdict:** ESCALATE
+**Lesson:** Bounding memory cannot close a responsiveness requirement, and this round proved it
+cleanly: `compute_factor_lab_all`'s footprint fell 7.76 GB → 3.13 GB with zero MemoryErrors across a
+1,522 s concurrent drill, and `GET /api/health` still breached its ≤2 s ceiling 96 times out of 1,179
+(worst 10.06 s) in that same drill — because the cause is GIL contention between two CPU-bound Python
+computes in one process, not allocation. J-07 step 2 is a *scheduling* problem wearing a memory
+problem's clothes; three consecutive iterations aimed memory fixes at it.
+**Applies to:** any iter targeting J-07's health-poll ceiling, or proposing a memory bound as the
+remedy for a latency/availability journey.
