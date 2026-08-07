@@ -1,0 +1,142 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-ops-hardening-iter-51",
+  "base_url": "http://localhost:3255",
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Open the Data Manager to see factor lab refresh status",
+      "narration": "The Data Manager shows what aggregates were refreshed during each data-loading job. Let's check the most recent run to confirm the new factor lab warm completed successfully.",
+      "point_out": "Look for the 'Refreshed:' line in the Job progress card — it now includes 'factor lab all'.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "goto",
+        "url": "/data"
+      },
+      "expect": {
+        "text": "aggregates-refreshed"
+      }
+    },
+    {
+      "n": 2,
+      "title": "Verify factor lab all appears in the completed job's refresh list",
+      "narration": "This tells us the ingest-time factor lab warm ran during the job's finalize step. The page already shows this status for completed runs.",
+      "point_out": "The gray text under the job card reads 'Refreshed: … factor lab all, coverage, research hot keys, …' — a new entry this iteration.",
+      "journey": "J-05",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "click",
+        "target": {
+          "role": "heading",
+          "name": "Job progress"
+        }
+      }
+    },
+    {
+      "n": 3,
+      "title": "Navigate to the Factor Lab research page",
+      "narration": "Opening Factor Lab used to sometimes trigger a live, multi-minute computation on first visit after new data loaded. That computation now runs during ingest instead, so the page responds immediately.",
+      "point_out": "Notice the page loads with data in just a few seconds — no multi-minute 'Still computing' amber card.",
+      "journey": "J-06",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "goto",
+        "url": "/research/factor-lab"
+      },
+      "expect": {
+        "text": "Research — Factor Lab"
+      }
+    },
+    {
+      "n": 4,
+      "title": "Confirm the factor table loads with real data",
+      "narration": "The all-factors comparison is now served from the cache warmed at ingest time, delivering real numbers immediately instead of waiting for a live compute.",
+      "point_out": "The table shows 11 real factor rows (e.g., 'Leadership score') with numeric columns like 'N', 'Mean', 'Rank IC'. No placeholder data, no 'Still computing' notice.",
+      "journey": "J-06",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "click",
+        "target": {
+          "role": "button",
+          "name": "Research"
+        }
+      }
+    },
+    {
+      "n": 5,
+      "title": "Return to Factor Lab and test sort interaction",
+      "narration": "The sort controls work client-side on the cached data. Click a column header to verify rows re-order without a page reload.",
+      "point_out": "Clicking the 'N' header flips the sort direction, rows re-order immediately, and the sort indicator shows the new direction.",
+      "journey": "J-06",
+      "new": false,
+      "verified": true,
+      "section": "full_tour",
+      "action": {
+        "type": "goto",
+        "url": "/research/factor-lab"
+      },
+      "expect": {
+        "text": "Leadership score"
+      }
+    },
+    {
+      "n": 6,
+      "title": "Click the N column header to trigger a client-side sort",
+      "narration": "Sorting should be instant on cache-warmed data.",
+      "point_out": "Rows re-order without any spinner or network request.",
+      "journey": "J-06",
+      "new": false,
+      "verified": true,
+      "section": "full_tour",
+      "action": {
+        "type": "click",
+        "target": {
+          "css": "[data-testid='factor-lab-table'] thead th:nth-child(2)"
+        }
+      }
+    },
+    {
+      "n": 7,
+      "title": "Expand a factor row to view its decile distribution",
+      "narration": "Clicking a row reveals its D1–D10 decile breakdown. This detail view also works instantly on the cached data.",
+      "point_out": "The first row expands to show a decile grid below it — no error, no loading delay.",
+      "journey": "J-06",
+      "new": false,
+      "verified": true,
+      "section": "full_tour",
+      "action": {
+        "type": "click",
+        "target": {
+          "css": "[data-testid='factor-lab-table'] tbody tr:first-child"
+        }
+      }
+    },
+    {
+      "n": 8,
+      "title": "Open the Research hub to confirm Factor Lab is discoverable",
+      "narration": "Factor Lab remains accessible from the main Research page, unchanged in wording and position.",
+      "point_out": "The 'Factor Lab' tile is present in the lab grid. Clicking it navigates back to the Factor Lab page.",
+      "journey": "J-06",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "goto",
+        "url": "/research"
+      },
+      "expect": {
+        "text": "Factor Lab"
+      }
+    }
+  ]
+}

@@ -93,6 +93,7 @@ from app.engine.research import (
     _dataset_version,  # single-sourced cache stamp (J-72/J-87) — never duplicated
     _membership_dataset_version,  # J-100: the NARROW membership-cache stamp (no forward-return term)
     event_study_cached,  # ops-hardening iter-2 (J-05): the ingest finalize hook warms one default hot key
+    factor_lab_all_cached,  # ops-hardening iter-51 (J-05/J-06/J-07): warms the Factor Lab default all-history key
     subject_catalog,
 )
 from app.seed_loader import price_load_symbols
@@ -2271,9 +2272,9 @@ class JobProgress:
     # `MarketPhaseCache` ("for each newly-created snapshot date" — never every stored date).
     # `aggregates_refreshed` is the finalize hook's honest output — the subset of `["latest_snapshot",
     # "coverage", "membership_timeline", "market_phase", "forward_aggregates", "research_hot_keys",
-    # "index_series"]` it actually refreshed — empty/default until the hook has actually run (never
-    # fabricated on an interrupted/failed row; gated in `_run_detail()` the SAME way `calendar_days` etc.
-    # already are).
+    # "drawdown_expectations", "index_series", "factor_lab_all"]` it actually refreshed — empty/default
+    # until the hook has actually run (never fabricated on an interrupted/failed row; gated in
+    # `_run_detail()` the SAME way `calendar_days` etc. already are).
     new_snapshot_dates: list[date_cls] = field(default_factory=list)
     aggregates_refreshed: list[str] = field(default_factory=list)
     # J-34: chunked-fetch progress. `chunk_index` = number of fully-completed chunks (== the durable
@@ -3928,8 +3929,8 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
     `_warm_membership_timeline`'s non-fatal contract in warmup.py — an aggregate-refresh failure must never
     flip an otherwise-successful ingest job to failed). Returns the subset of `["latest_snapshot",
     "coverage", "membership_timeline", "market_phase", "forward_aggregates", "research_hot_keys",
-    "drawdown_expectations", "index_series"]` ACTUALLY refreshed — never a fabricated category (mirrors
-    the `omitted`/`passers` honesty convention already used elsewhere in this module).
+    "drawdown_expectations", "index_series", "factor_lab_all"]` ACTUALLY refreshed — never a fabricated
+    category (mirrors the `omitted`/`passers` honesty convention already used elsewhere in this module).
 
     ops-hardening iter-4 (F1 fix): calls the bare `prog.tick()` (no `activity` argument — it stamps ONLY
     the `last_progress_at` heartbeat, never overwriting `current_activity`, so an already-pinned "scanning
@@ -4255,6 +4256,58 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
             logger.info(
                 "J-05 finalize-tail phase timing: job=%s phase=%s elapsed=%.2fs",
                 prog.job_id, "index_series_warm", time.monotonic() - _phase_t0,
+            )
+
+            # ops-hardening iter-51 (J-05/J-06/J-07): warm the Factor Lab's default all-history hot key
+            # (`factor_lab_all_cached` -> `compute_factor_lab_all`, the SAME `EventStudyCache` sentinel
+            # namespace `research_hot_keys_warm` above uses for the event-study default key) so
+            # `GET /api/research/factor-lab?all=true`'s first post-ingest view is always a stored-row cache
+            # HIT — never the 578-875s live compute the iter-50 audit measured on the request path (its own
+            # verbatim recommendation: "serve /research/factor-lab from an ingest-time artifact instead of
+            # computing it on the request path"). Unconditional (not gated on `prog.new_snapshot_dates`),
+            # mirroring `forward_aggregates`/`index_series` above: the dataset-version stamp is GLOBAL, so
+            # ANY ingest anywhere can invalidate the one all-history key. A single default-key warm (never a
+            # per-as-of sweep), mirroring `research_hot_keys_warm`'s own "warm default keys only" philosophy.
+            #
+            # `prog.tick()` stamps the heartbeat immediately before this call — this single call can itself
+            # run for several minutes (measured 578-875s cold-MISS, `reports/perf-budgets.md` Addendum 8),
+            # so a tick right before it starts keeps `last_progress_at` from reading stale relative to the
+            # OTHER per-item loops in this tail, mirroring their own per-item tick convention.
+            #
+            # Honesty gate: `factor_lab_all_cached` never lets a MemoryError from `compute_factor_lab_all`
+            # escape — it catches it INTERNALLY and returns an honest degraded payload (`factors_status:
+            # "unavailable"`, or a per-(factor,horizon) `by_horizon[].status: "unavailable"`) WITHOUT
+            # persisting to `EventStudyCache` (see that function's own "never cached" degrade contract). So
+            # "the call didn't raise" is NOT sufficient proof a fresh row was written — this phase inspects
+            # the SAME degrade signals `factor_lab_all_cached` uses internally before claiming the category,
+            # mirroring `index_series_warm`'s "persisted this run" honesty gate just above (never a
+            # fabricated refresh for a degraded response). The outer `except MemoryError`/`except Exception`
+            # below still guard the rarer case of a MemoryError escaping BEFORE that internal catch (e.g.
+            # the dataset-version stamp read) — mirroring every other phase's per-item isolation convention.
+            _phase_t0 = time.monotonic()
+            try:
+                prog.tick()
+                factor_lab_all_payload = factor_lab_all_cached(session, cfg, as_of=None)
+                _factor_lab_all_degraded = (
+                    factor_lab_all_payload.get("factors_status") == "unavailable"
+                    or any(
+                        bh.get("status") == "unavailable"
+                        for entry in factor_lab_all_payload.get("factors_table", [])
+                        for bh in entry.get("by_horizon", [])
+                    )
+                )
+                if not _factor_lab_all_degraded:
+                    refreshed.append("factor_lab_all")
+            except MemoryError as exc:
+                _log_isolation_failure(
+                    "ingest factor-lab-all warm aborted — memory pressure: %s", exc,
+                )
+                _release_process_memory()
+            except Exception as exc:  # noqa: BLE001 — non-fatal: log + continue to the next aggregate
+                _log_isolation_failure("ingest factor-lab-all warm failed (non-fatal): %s", exc)
+            logger.info(
+                "J-05 finalize-tail phase timing: job=%s phase=%s elapsed=%.2fs",
+                prog.job_id, "factor_lab_all_warm", time.monotonic() - _phase_t0,
             )
 
             # ops-hardening iter-7 (J-06 closeout, audit B1): warm the per-claim `drawdown_expectations`

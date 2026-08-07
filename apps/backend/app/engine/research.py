@@ -1537,8 +1537,6 @@ def _combination_cohort_members(pool: list[dict], resolved: list[dict], comb) ->
     list) call THIS function, so a cohort's drill-down total EQUALS its published N by construction
     (count-coherence keystone, invariant 13 — never a second membership rule). Pure index arithmetic over
     the already-built pool; recomputes no factor and no return."""
-    pool_n = len(pool)
-
     # per-condition membership (a set of pool indices) using each condition's nearest-rank quantile cutoff
     # over the SHARED pool's values for that factor; strict_overlap = the exact AND-intersection of singles.
     single_members: list[set[int]] = []
@@ -1559,9 +1557,22 @@ def _combination_cohort_members(pool: list[dict], resolved: list[dict], comb) ->
 
     # SECONDARY strict-overlap cohort: the exact AND-intersection of all single memberships (the demoted
     # iter-12 cohort) — empty for many selections (then NA + n, never a fabricated 0).
-    strict_members: set[int] = set(range(pool_n))
-    for members in single_members:
-        strict_members &= members
+    #
+    # ops-hardening iter-51 (J-05/J-06/J-07 fix, the exact frame logged before the 2026-08-05 17m30s
+    # wedge): start the intersection from the FIRST single-condition membership set (copied — `&=` mutates
+    # in place, and `single_members[0]` is a shared reference returned to every caller below, so intersecting
+    # the ORIGINAL object would corrupt it) instead of unconditionally allocating `set(range(pool_n))` and
+    # reducing it by intersection. Intersecting the full range with every `single_members` entry is exactly
+    # the intersection of those entries alone (the full range is the identity element under `&`), so this is
+    # a pure allocation-strategy change — byte-identical `strict` for every existing caller. No conditions ->
+    # an empty set (never a fabricated full-pool cohort).
+    strict_members: set[int]
+    if single_members:
+        strict_members = set(single_members[0])
+        for members in single_members[1:]:
+            strict_members &= members
+    else:
+        strict_members = set()
 
     # HEADLINE composite cohort: the top config-quantile of the pool by a config-weighted blend of the
     # conditions' oriented percentile ranks of the STORED values (REUSE `_composite_scores` +

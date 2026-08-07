@@ -7677,3 +7677,119 @@ for it.
 `scripts/start-backend.sh`, `scripts/dev.sh` — EMPTY before and after this pass (AG-10 unchanged). This
 addendum is append-only; the only edit to an earlier section is the additive, dated CORRECTION block under
 Addendum 9's withdrawn TC-1 claim, which deletes and rewrites nothing.
+
+---
+
+## Item T — `factor_lab_all_warm`: the Factor Lab moves to the ingest finalize tail (ops-hardening iter-51, 2026-08-06, developer pass, J-05/J-06/J-07)
+
+### Addendum 11 (2026-08-06, ops-hardening iter-51 developer pass) — the new `factor_lab_all_warm`
+### finalize-tail phase, measured live end-to-end; TC-1/TC-9 established, a new health-poll finding disclosed
+
+**What this iteration changes.** `_refresh_ingest_aggregates` (`data_manager.py`) gains a new finalize-tail
+phase, `factor_lab_all_warm`, that calls the SAME `research.factor_lab_all_cached(session, cfg,
+as_of=None)` the `/research/factor-lab?all=true` request path already calls — moving the iter-50-measured
+578-875s cold-MISS compute from the FIRST post-ingest page view onto the ingest job's own background
+thread, mirroring the existing `research_hot_keys_warm`/`index_series_warm` phases. `research.py`'s
+`_combination_cohort_members` no longer allocates an unconditional `set(range(pool_n))` scratch set
+(starts the AND-intersection from the first single-condition membership set instead) — byte-identical
+output, proven against a pinned pre-fix reference oracle (`tests/test_research_streaming.py`).
+
+**Why this run exists.** This iteration's plan calls for a real, in-app measurement of the new phase's own
+wall-clock cost and a reconciliation against the existing TC-1 1,200s finalize-tail-total budget (goal.md:
+"record it; do not silently loosen or silently exceed"). This is a developer-pass measurement — **solo**
+(no concurrent Factor Lab/Factor Combination request issued mid-warm) — mirroring Addendum 7's own
+division of labor: the full concurrent TC-5/TC-6 drill (a simultaneous user-facing request racing the
+warm) and TC-3's browser time-to-interactive measurement remain browser-qa-agent/audit-lane scope, per the
+phase spec's DEFINITION OF DONE.
+
+**Measurement conditions.**
+- Backend launched via `scripts/start-backend.sh` on port 8255 (AG-10 caps live: `ulimit -v` 8192 MB,
+  `MALLOC_ARENA_MAX=2`, host-guard `taskset -c 0-15` / `BLAS_THREADS=8` confirmed in the boot log). Boot
+  warm-up allowed to settle before the drill's own request was issued.
+- **A real in-app backfill through the product API** (`POST /api/data/jobs`, `kind: backfill`,
+  `2011-03-16 → 2011-03-16` — one unsnapshotted historical trading day, live-confirmed at 0 `scanner_runs`
+  rows immediately before the run; `2010-11-08` [J-05's golden target] and iter-50's own consumed dates
+  `2010-11-09`/`2012-01-04`/`2013-02-14` were not touched). `"source": null` on the persisted job record —
+  a backfill-only job carries no import source; it reads the committed seed exclusively (AG-9).
+- `GET /api/health` polled once per second on an independent thread for the whole run plus 30s past
+  completion (653 polls total, ~1,104s).
+- **Disclosed methodology note:** a first attempt at this same measurement (targeting `2011-03-15`) was
+  interrupted mid-`factor_lab_all_warm` when its backing process was reaped at a harness session boundary
+  (a known subagent background-process limitation, unrelated to the product code). `2011-03-15` itself DID
+  get snapshotted before the interruption (`scanner_runs` count now 2911; its `EventStudyCache` row was
+  never written, since the compute never reached its own commit). This addendum's numbers come from the
+  SECOND attempt, against the next clean date (`2011-03-16`), run start-to-finish in one unbroken sequence
+  with the drill process launched via `setsid` and polled in-turn rather than backgrounded.
+
+### Result — TC-1 established live
+
+| | Value |
+|---|---|
+| Job | `bfedec0ceaad4f14ac0182f05dcf8947`, `backfill`, `2011-03-16` |
+| Final status | `ok` — `snapshots_created 1`, `dates_total 1`, `calendar_days 1`, `non_trading_days 0`, `already_snapshotted 0`, `error_other 0` |
+| `aggregates_refreshed` | `[latest_snapshot, coverage, membership_timeline, market_phase, forward_aggregates, research_hot_keys, factor_lab_all, drawdown_expectations]` — **`factor_lab_all` present, live, in-app** (TC-1). `index_series` correctly absent — a cache HIT this run (not persisted), the pre-existing "persisted this run" honesty gate |
+| `EventStudyCache` row | `subject=__all_factors__ view=factors_table asof_key=all horizon=20 dataset_version=r2912-f6500215-allh-mdd-v1` — matches this run's own fresh dataset-version stamp (verified directly against the DB) |
+| Uncaught `MemoryError` / Traceback? | **None** — zero occurrences in `logs/backend.log` for this run's window |
+| Total job elapsed (job accepted → terminal `ok`) | **1,072.3s** (`started_at` 22:17:55.227Z → `finished_at` 22:35:47.527Z) |
+| Process VmPeak | 3,740,092 kB (3,652.4 MB) against `server.memory_cap_mb=8192` → **4,539.6 MB (55.4%) margin** |
+| Process VmHWM (peak RSS) | 3,181,516 kB (3,107.0 MB) |
+| Finalize-tail teardown | `_release_process_memory: DONE gc_collect=0.08s malloc_trim=0.05s total=0.13s`; `J-05 finalize-tail teardown timing: total_teardown=0.13s` — fired and captured (solo run; the CONCURRENT variant toward the still-open 2026-08-05 wedge question remains the audit lane's, no new fix claimed here) |
+
+### Finalize-tail phase timings (from `logs/backend.log`, `job=bfedec0ceaad4f14ac0182f05dcf8947`)
+
+backfill stage (snapshot write, unchanged by this iteration) 23.97s · `coverage_membership_timeline_refresh`
+16.18s · `per_date_coverage_warm` 8.26s · `market_phase_warm` 24.48s · `forward_aggregates_warm` **107.05s**
+(h1 33.59 / h5 20.31 / h10 17.83 / h20 17.80 / h60 17.52) · `research_hot_keys_warm` 1.98s ·
+`index_series_warm` 0.03s · **`factor_lab_all_warm` 583.76s** · `drawdown_expectations_warm` **306.43s**
+(`leadership_score`:h20 19.04s / `Breakout-watch`:h20 7.03s / `ma_stack`:h20 53.35s / `vcp_contraction`:h20
+23.13s / `vcp_contraction`:h60 22.80s / `combination:composite`:h20 103.39s / `rs_spy_3m`:h60 54.54s).
+
+**Finalize-tail total (the 8 phases above, excluding the backfill/snapshot-write stage): 1,048.17s.**
+
+### TC-9 — reconciled against the existing 1,200s finalize-tail-total budget
+
+**1,048.17s against the existing TC-1 1,200s budget: still UNDER, by 151.83s (12.65% margin) — even with
+the new ~584s phase added.** This is NOT the budget-pressure outcome this iteration's own NOTES
+anticipated ("adding the `factor_lab_all_warm` phase... is expected to push its total wall-clock
+meaningfully past the existing 1,200s figure"). The reason is visible in the phase table:
+`forward_aggregates_warm` (107.05s) and `drawdown_expectations_warm` (306.43s) both ran markedly cheaper
+here than iter-49 Addendum 5's own 3-sample baseline (137-139s and 789-801s respectively) — that baseline
+was measured against a FRESH throwaway DB copy with a cold OS page cache for each run; this measurement
+instead used the real, long-lived committed DB with a warm page cache (the backend had already served boot
+warm-up and earlier requests before this drill). **Disclosed, not claimed as a re-certified budget:** this
+is ONE sample under warm-DB conditions, not iter-49's binding "≥3 samples" convention, and a cold-DB-copy
+re-run could plausibly land closer to or past 1,200s. Record the number honestly; the 1,200s figure itself
+is not touched or loosened by this addendum.
+
+### New finding, disclosed — a solo (non-concurrent) run of `factor_lab_all_warm` still produced 9 connection-level `GET /api/health` non-responses
+
+Of 653 health polls (644 HTTP 200: min 0.096s / median 0.197s / p90 1.823s / p99 4.478s / max 4.970s),
+**9 polls got no response at all** (curl `code=000`, each hitting the poller's own 5.0s `--max-time`
+ceiling) — not slow, a full connection-level non-answer. **All 9 fall inside the `factor_lab_all_warm`
+phase's own window** (22:24:54Z-22:29:47Z UTC, against the phase's 22:20:57Z-22:30:40Z UTC span) and NONE
+occurred during any other phase (including `drawdown_expectations_warm`'s own 306s of per-claim compute)
+or the 30s post-completion tail. This run had **no concurrent user-facing request** — the new phase's OWN
+background-thread compute alone was enough to occasionally starve the event loop past a full connection
+accept/response cycle, not merely slow it down.
+
+This matters for J-07 scoring: goal.md's owner amendment relaxes the health ceiling to ≤2s **during** a
+bounded background-compute window, but is explicit that "a frozen or unresponsive window, any non-200, or
+an untruthful readiness value remains a failure" — a `code=000` connection-level non-response is exactly
+that, not a latency number under a relaxed ceiling. **This is a new observation this iteration's own change
+introduces**, additional to the pre-existing request-path GIL-contention latency pattern iter-50
+documented. Disclosed here, not fixed — closing it is out of this iteration's scope per its own NOTES
+("closing J-07 step 2's ≤2s-during-ingest ceiling in full... is not this iteration's deliverable"), and the
+goal spec's own "Honest limit" section already named a residual breach as carried, not claimed fixed.
+**Methodological caveat:** the health poller ran as a sibling shell process on the same shared host, not a
+dedicated isolated measurement client, so a poller-side scheduling contribution cannot be fully excluded —
+but the precise, exclusive clustering inside this one phase's window (and total silence across the OTHER
+~650 polls spanning 18 minutes of otherwise CPU-heavy phases) is strong circumstantial evidence of a real,
+phase-specific effect rather than random host noise.
+
+### AG-10 / AG-9
+
+`git diff --stat` over `config.yaml`, `project-extensions/host-guard/host-guard.env`,
+`scripts/start-backend.sh`, `scripts/dev.sh`, `scripts/start-frontend.sh` — EMPTY before and after this
+pass (AG-10 unchanged). The drill's job record shows `"source": null` — a backfill-only job reads the
+committed seed exclusively, no network call (AG-9). This addendum is append-only; no earlier dated section
+was edited.

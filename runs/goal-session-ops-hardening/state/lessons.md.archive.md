@@ -1023,3 +1023,63 @@ exception it produced would have taken a minute.
 `threading.Thread(...).start()` site (`warmup.start_warmup`, `forward_testing.py:1691` are the two
 still unguarded).
 
+
+<!-- condense.sh 2026-08-06T22:00:10Z: moved 4 entries (keep-iters=5) -->
+
+## iter-44 — 2026-08-03T22:10:00Z
+
+**Verdict:** ESCALATE
+**Lesson:** A timeout enforced BY the thing that hangs is not a timeout. This iteration correctly
+wired uvicorn's `--timeout-graceful-shutdown` (a genuine, previously-unenforced `ServerOpsCfg` gap)
+and live-verified it on `/proc/<pid>/cmdline` — then the same build sat 20m51s unreachable and needed
+`SIGKILL`, because that flag is enforced by the asyncio event loop and the loop itself was wedged
+(`logs/backend.log` shows NO shutdown output at all for that process: a caught `MemoryError` in
+`evidence.py`, then straight to the next launch banner). Any deadline that must survive a total wedge
+has to live in a different process — the launcher backgrounding the server and owning its own SIGKILL
+escalation, or a supervisor.
+**Applies to:** any iter adding a timeout/watchdog/health-deadline to a process that can freeze; any
+launcher change (`scripts/start-backend.sh`, `dev.sh`); any claim that a config flag "closes" an
+availability failure mode — ask first which component enforces it.
+
+## iter-44 — 2026-08-03T22:10:01Z
+
+**Verdict:** ESCALATE
+**Lesson:** A memory-pressure guard proven by ONE green run is not proven. The audit found and fixed
+two real `MemoryError` escapes in `_refresh_ingest_aggregates` and cited a single
+`pytest tests/test_ingest_finalize_memory_pressure.py -q → 2 passed`; the reviewer ran the identical
+test twice back-to-back and got 1 failed / 1 passed, then 2 passed — exposing a THIRD escape
+(`logger.exception()` itself allocating under the 750,000 KB cap). Under an exhausted cap the failing
+site moves between runs, so the pass/fail signal is inherently flaky and a single run mostly measures
+luck.
+**Applies to:** any iter whose proof is a test that runs under a tightened `ulimit -v` /
+`memory_cap_mb` (`test_ingest_finalize_memory_pressure.py` and friends) — run it 3-5x consecutively
+before calling the contract closed, and treat a new flake as a new escape to trace, never a number to
+tune.
+
+## iter-45 — 2026-08-04T04:30:00Z
+
+**Verdict:** ESCALATE
+**Lesson:** A live thread dump names where a thread is BLOCKED, not necessarily what is KILLING the
+process. iter-44's SIGUSR1 dump named `_membership_timeline`'s O(dates × pool) storm; iter-45 fixed
+that storm correctly and the backend still died — because the memory pressure was arriving from a
+different, request-serving path (`evidence.py:168` → `forward_testing.py:2343` / `research.py:777`,
+16 of the 24 wedge-window `MemoryError`s). Under memory exhaustion the *slowest* stack and the
+*allocating* stack are usually different stacks; pair any stack dump with a per-site allocation
+count from the same window before choosing what to fix.
+**Applies to:** any iteration that picks its target from a stack/thread dump taken during a freeze —
+especially `apps/backend/app/engine/` memory work.
+
+## iter-45 — 2026-08-04T04:30:00Z
+
+**Verdict:** ESCALATE
+**Lesson:** Check that the live data basis can actually SATISFY a fix's precondition before
+committing an iteration to that fix. iter-45's append-forward fast path only fires when the ingested
+date is at or after every cached date, but `GET /api/data` reports `gap_last = 2019-02-25` against a
+latest snapshot of `2026-07-31` and the seed's data horizon IS that latest snapshot — so no
+append-forward target can exist in this database, AG-9 forbids fetching one, and the mechanism
+finished the iteration with zero live evidence (`grep` for it over 173k log lines → 0 matches). One
+`gap_last`-vs-latest-snapshot query at decompose time would have caught this before the round was
+spent.
+**Applies to:** any iteration whose fix is scoped to a data shape (append-forward, latest-only,
+same-version) — verify the live DB contains an instance of that shape during decomposition.
+

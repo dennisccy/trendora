@@ -325,60 +325,22 @@ any iter touching `compute_forward_aggregates` / the ingest finalize warm; any l
 `threading.Thread(...).start()` site (`warmup.start_warmup`, `forward_testing.py:1691` are the two
 still unguarded).
 
-## iter-44 — 2026-08-03T22:10:00Z
-
-**Verdict:** ESCALATE
-**Lesson:** A timeout enforced BY the thing that hangs is not a timeout. This iteration correctly
-wired uvicorn's `--timeout-graceful-shutdown` (a genuine, previously-unenforced `ServerOpsCfg` gap)
-and live-verified it on `/proc/<pid>/cmdline` — then the same build sat 20m51s unreachable and needed
-`SIGKILL`, because that flag is enforced by the asyncio event loop and the loop itself was wedged
-(`logs/backend.log` shows NO shutdown output at all for that process: a caught `MemoryError` in
-`evidence.py`, then straight to the next launch banner). Any deadline that must survive a total wedge
-has to live in a different process — the launcher backgrounding the server and owning its own SIGKILL
-escalation, or a supervisor.
+## iter-44 — 2026-08-03T22:10:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iter adding a timeout/watchdog/health-deadline to a process that can freeze; any
 launcher change (`scripts/start-backend.sh`, `dev.sh`); any claim that a config flag "closes" an
 availability failure mode — ask first which component enforces it.
 
-## iter-44 — 2026-08-03T22:10:01Z
-
-**Verdict:** ESCALATE
-**Lesson:** A memory-pressure guard proven by ONE green run is not proven. The audit found and fixed
-two real `MemoryError` escapes in `_refresh_ingest_aggregates` and cited a single
-`pytest tests/test_ingest_finalize_memory_pressure.py -q → 2 passed`; the reviewer ran the identical
-test twice back-to-back and got 1 failed / 1 passed, then 2 passed — exposing a THIRD escape
-(`logger.exception()` itself allocating under the 750,000 KB cap). Under an exhausted cap the failing
-site moves between runs, so the pass/fail signal is inherently flaky and a single run mostly measures
-luck.
+## iter-44 — 2026-08-03T22:10:01Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iter whose proof is a test that runs under a tightened `ulimit -v` /
 `memory_cap_mb` (`test_ingest_finalize_memory_pressure.py` and friends) — run it 3-5x consecutively
 before calling the contract closed, and treat a new flake as a new escape to trace, never a number to
 tune.
 
-## iter-45 — 2026-08-04T04:30:00Z
-
-**Verdict:** ESCALATE
-**Lesson:** A live thread dump names where a thread is BLOCKED, not necessarily what is KILLING the
-process. iter-44's SIGUSR1 dump named `_membership_timeline`'s O(dates × pool) storm; iter-45 fixed
-that storm correctly and the backend still died — because the memory pressure was arriving from a
-different, request-serving path (`evidence.py:168` → `forward_testing.py:2343` / `research.py:777`,
-16 of the 24 wedge-window `MemoryError`s). Under memory exhaustion the *slowest* stack and the
-*allocating* stack are usually different stacks; pair any stack dump with a per-site allocation
-count from the same window before choosing what to fix.
+## iter-45 — 2026-08-04T04:30:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration that picks its target from a stack/thread dump taken during a freeze —
 especially `apps/backend/app/engine/` memory work.
 
-## iter-45 — 2026-08-04T04:30:00Z
-
-**Verdict:** ESCALATE
-**Lesson:** Check that the live data basis can actually SATISFY a fix's precondition before
-committing an iteration to that fix. iter-45's append-forward fast path only fires when the ingested
-date is at or after every cached date, but `GET /api/data` reports `gap_last = 2019-02-25` against a
-latest snapshot of `2026-07-31` and the seed's data horizon IS that latest snapshot — so no
-append-forward target can exist in this database, AG-9 forbids fetching one, and the mechanism
-finished the iteration with zero live evidence (`grep` for it over 173k log lines → 0 matches). One
-`gap_last`-vs-latest-snapshot query at decompose time would have caught this before the round was
-spent.
+## iter-45 — 2026-08-04T04:30:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration whose fix is scoped to a data shape (append-forward, latest-only,
 same-version) — verify the live DB contains an instance of that shape during decomposition.
 
@@ -502,3 +464,26 @@ computes in one process, not allocation. J-07 step 2 is a *scheduling* problem w
 problem's clothes; three consecutive iterations aimed memory fixes at it.
 **Applies to:** any iter targeting J-07's health-poll ceiling, or proposing a memory bound as the
 remedy for a latency/availability journey.
+
+## iter-51 — 2026-08-07T10:05:11Z
+
+**Verdict:** ESCALATE
+**Lesson:** Uvicorn access-log lines in `logs/backend.log` carry NO timestamp of their own, so any
+"nearest preceding timestamped line" attribution manufactures phantom multi-minute dead windows that
+land exactly on the longest CPU-bound phase — because that phase logs only at its end. My first pass
+showed a 583 s gap with zero `/api/health` lines during `factor_lab_all_warm`; re-counting the lines
+BUCKETED at that anchor found **248** health responses, all 200. Always count access lines per anchor
+before claiming an unresponsive window; the wrong reading would have driven a REGRESSION halt.
+**Applies to:** any iter scoring J-07/J-05 responsiveness, or reading `logs/backend.log` for outage,
+wedge, or latency evidence.
+
+## iter-51 — 2026-08-07T10:05:11Z (second entry)
+
+**Verdict:** ESCALATE
+**Lesson:** TC-8/TC-13 ("the journey lane runs LAST, no product-code change afterward") held for the
+first time in six rounds, and the reason is that the auditor applied **zero** fixes — it wrote B3/T1
+up as findings precisely because editing `apps/backend/app/**` post-lane would have invalidated the
+only lane evidence the iteration had. "Fix small things during audit" and "the lane runs last" are in
+direct tension; when both are in force, findings-only is the correct resolution and should be stated
+as the expectation, not left to the auditor's judgement each round.
+**Applies to:** any full-depth iter whose spec carries the TC-8 lane-last sequencing rule.

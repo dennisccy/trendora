@@ -32,7 +32,7 @@ from app.config import load_config
 from app.db import create_db_and_tables, make_engine
 from app.data_providers.base import Bar, PriceProvider, ProviderUnavailableError, RateLimitError
 from app.engine import data_manager
-from app.engine import forward_testing, indexes, market_phase, scanner, warmup
+from app.engine import forward_testing, indexes, market_phase, research, scanner, warmup
 from app.engine.data_manager import (
     JobProgress,
     _chunk_plan,
@@ -1052,7 +1052,8 @@ def test_finalize_hook_persists_coverage_snapshot_and_warms_aggregates(finalize_
     compute warms both), `market_phase` (the new date), `forward_aggregates` (ops-hardening iter-5: the
     current latest run's per-horizon forward-aggregate cache), `research_hot_keys` (the default hot key),
     `index_series` (ops-hardening iter-13: the fixture's own `SPY` bar is one of `index_chart.symbols`, so
-    the hot-key warm has real bars to compute from)."""
+    the hot-key warm has real bars to compute from), `factor_lab_all` (ops-hardening iter-51: the Factor
+    Lab's default all-history hot key)."""
     engine, d = finalize_hook_engine
     cfg = load_config()
     with Session(engine) as session:
@@ -1061,7 +1062,7 @@ def test_finalize_hook_persists_coverage_snapshot_and_warms_aggregates(finalize_
         refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)
     assert set(refreshed) == {
         "latest_snapshot", "coverage", "membership_timeline", "market_phase", "forward_aggregates",
-        "research_hot_keys", "index_series",
+        "research_hot_keys", "index_series", "factor_lab_all",
     }
     with Session(engine) as session:
         rows = session.exec(select(CoverageSnapshot)).all()
@@ -1211,6 +1212,182 @@ def test_finalize_hook_index_series_memory_error_isolated_and_not_reported(
     } <= set(refreshed)
 
 
+# ==================================================================================================
+# ops-hardening iter-51 (J-05/J-06/J-07): the finalize hook's NEW `factor_lab_all` warm — mirrors the
+# `research_hot_keys`/`index_series` proofs above for the SINGLE unparameterized default all-history hot
+# key `GET /api/research/factor-lab?all=true` serves from `EventStudyCache` (`factor_lab_all_cached` /
+# `_ALL_FACTORS_SUBJECT` / `_ALL_FACTORS_VIEW` sentinel namespace).
+# ==================================================================================================
+def test_finalize_hook_warms_factor_lab_all_hot_key(finalize_hook_engine):
+    """TC-1 — a finalize hook call persists exactly one `EventStudyCache` row for the default all-history
+    Factor Lab key (`subject=_ALL_FACTORS_SUBJECT`, `view=_ALL_FACTORS_VIEW`, `asof_key=None`,
+    `horizon=default_horizon`) and reports "factor_lab_all" as refreshed."""
+    engine, d = finalize_hook_engine
+    cfg = load_config()
+    with Session(engine) as session:
+        prog = JobProgress(job_id="factor-lab-all-probe", kind="backfill", start=d, end=d)
+        prog.new_snapshot_dates = [d]
+        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)
+    assert "factor_lab_all" in refreshed
+    with Session(engine) as session:
+        rows = session.exec(select(EventStudyCache)).all()
+    all_factors_rows = [
+        r for r in rows
+        if r.subject == research._ALL_FACTORS_SUBJECT and r.view == research._ALL_FACTORS_VIEW
+    ]
+    assert len(all_factors_rows) == 1
+    # `_cache_asof_key(None)` (research.py) serializes an all-history (no as_of) key as the sentinel
+    # string "all", not a bare None column value -- the pre-existing (iter-31) `factor_lab_all_cached`
+    # contract, unchanged by this iteration.
+    assert all_factors_rows[0].asof_key == "all"
+    assert all_factors_rows[0].horizon == cfg.walk_forward.default_horizon
+
+
+def test_finalize_hook_factor_lab_all_unconditional_even_with_no_new_snapshot(finalize_hook_engine):
+    """Unconditional (not gated on `new_snapshot_dates`), mirroring `forward_aggregates`/`index_series`
+    above: the dataset-version stamp is GLOBAL, so this key is warmed even on a zero-new-snapshot
+    (already-current) finalize call."""
+    engine, d = finalize_hook_engine
+    cfg = load_config()
+    with Session(engine) as session:
+        prog = JobProgress(job_id="factor-lab-all-zero-work-probe", kind="backfill", start=d, end=d)
+        # prog.new_snapshot_dates deliberately left empty.
+        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)
+    assert "factor_lab_all" in refreshed
+
+
+def test_finalize_hook_factor_lab_all_second_run_still_reported_on_cache_hit(finalize_hook_engine):
+    """A SECOND finalize hook call with no intervening dataset change is a genuine cache HIT for the SAME
+    key — still honestly reported as "factor_lab_all" (mirrors `research_hot_keys_warm`'s own "call
+    succeeded, non-degraded" gate, not `index_series_warm`'s "persisted this run" gate — a clean HIT is not
+    a degrade). Exactly one `EventStudyCache` row for this key exists after both calls -- the second call
+    never writes a duplicate."""
+    engine, d = finalize_hook_engine
+    cfg = load_config()
+    with Session(engine) as session:
+        prog1 = JobProgress(job_id="factor-lab-all-first", kind="backfill", start=d, end=d)
+        prog1.new_snapshot_dates = [d]
+        first = data_manager._refresh_ingest_aggregates(session, cfg, prog1)
+    assert "factor_lab_all" in first
+
+    with Session(engine) as session:
+        prog2 = JobProgress(job_id="factor-lab-all-second", kind="backfill", start=d, end=d)
+        prog2.new_snapshot_dates = [d]
+        second = data_manager._refresh_ingest_aggregates(session, cfg, prog2)
+    assert "factor_lab_all" in second
+    with Session(engine) as session:
+        rows = session.exec(select(EventStudyCache)).all()
+    all_factors_rows = [
+        r for r in rows
+        if r.subject == research._ALL_FACTORS_SUBJECT and r.view == research._ALL_FACTORS_VIEW
+    ]
+    assert len(all_factors_rows) == 1  # the second call never wrote a duplicate row
+
+
+def test_finalize_hook_factor_lab_all_memory_error_isolated_and_not_reported(
+    finalize_hook_engine, monkeypatch
+):
+    """TC-error-case — a `MemoryError` escaping `factor_lab_all_cached` (e.g. before its own internal
+    catch) is isolated to that one warm step: it never flips the ingest job's own status, the OTHER
+    aggregates still refresh normally, "factor_lab_all" is honestly absent (never fabricated), and
+    `_release_process_memory()` runs (the iter-8 per-item isolation convention)."""
+    engine, d = finalize_hook_engine
+    cfg = load_config()
+    release_calls: list[str] = []
+
+    def _boom(*_a, **_k):
+        raise MemoryError("forced factor-lab-all memory pressure")
+
+    monkeypatch.setattr(data_manager, "factor_lab_all_cached", _boom)
+    monkeypatch.setattr(
+        data_manager, "_release_process_memory", lambda: release_calls.append("called"),
+    )
+    with Session(engine) as session:
+        prog = JobProgress(job_id="factor-lab-all-oom-probe", kind="backfill", start=d, end=d)
+        prog.new_snapshot_dates = [d]
+        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)  # must not raise
+    assert "factor_lab_all" not in refreshed
+    assert {
+        "latest_snapshot", "coverage", "membership_timeline", "market_phase", "forward_aggregates",
+        "research_hot_keys", "index_series",
+    } <= set(refreshed)
+    assert release_calls, "_release_process_memory() must be called on the MemoryError abort path"
+
+
+def test_finalize_hook_factor_lab_all_generic_failure_isolated_other_aggregates_still_refresh(
+    finalize_hook_engine, monkeypatch
+):
+    """A non-memory exception from `factor_lab_all_cached` (forced) does not prevent the OTHER aggregates
+    from refreshing — log + continue, never raise (mirrors the sibling per-item isolation tests above)."""
+    engine, d = finalize_hook_engine
+    cfg = load_config()
+
+    def _boom(*_a, **_k):
+        raise RuntimeError("forced factor-lab-all failure")
+
+    monkeypatch.setattr(data_manager, "factor_lab_all_cached", _boom)
+    with Session(engine) as session:
+        prog = JobProgress(job_id="factor-lab-all-failure-probe", kind="backfill", start=d, end=d)
+        prog.new_snapshot_dates = [d]
+        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)
+    assert "factor_lab_all" not in refreshed
+    assert {
+        "latest_snapshot", "coverage", "membership_timeline", "market_phase", "forward_aggregates",
+        "research_hot_keys", "index_series",
+    } <= set(refreshed)
+
+
+def test_finalize_hook_factor_lab_all_never_reported_on_whole_response_degrade(
+    finalize_hook_engine, monkeypatch
+):
+    """Honesty gate distinct from a plain exception: `factor_lab_all_cached` NEVER lets a MemoryError from
+    `compute_factor_lab_all` escape — it catches it INTERNALLY and returns an honest degraded dict
+    (`factors_status: "unavailable"`) WITHOUT persisting to `EventStudyCache`. A naive "the call didn't
+    raise -> append" gate would wrongly claim a refresh that never happened. This forces exactly that
+    degraded-but-non-raising return and asserts "factor_lab_all" is still honestly omitted."""
+    engine, d = finalize_hook_engine
+    cfg = load_config()
+    degraded_payload = {
+        "asof_date": None, "factors": [], "horizons": list(cfg.walk_forward.horizons),
+        "default_horizon": cfg.walk_forward.default_horizon, "deciles_count": cfg.research.factor_lab.deciles,
+        "min_sample": cfg.walk_forward.min_sample, "survivorship_bias": "x", "descriptive_caveat": "x",
+        "factors_table": [], "factors_status": "unavailable",
+    }
+
+    def _degraded(*_a, **_k):
+        return degraded_payload
+
+    monkeypatch.setattr(data_manager, "factor_lab_all_cached", _degraded)
+    with Session(engine) as session:
+        prog = JobProgress(job_id="factor-lab-all-degrade-probe", kind="backfill", start=d, end=d)
+        prog.new_snapshot_dates = [d]
+        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)  # must not raise
+    assert "factor_lab_all" not in refreshed, (
+        "a whole-response degraded payload must never be claimed as a refresh, even though the call itself "
+        "did not raise"
+    )
+    assert {
+        "latest_snapshot", "coverage", "membership_timeline", "market_phase", "forward_aggregates",
+        "research_hot_keys", "index_series",
+    } <= set(refreshed)
+
+
+def test_finalize_hook_factor_lab_all_phase_timing_log_line_present(finalize_hook_engine, caplog):
+    """The `factor_lab_all_warm` phase logs its own wall-clock "J-05 finalize-tail phase timing" line
+    unconditionally, mirroring every sibling phase (iter-48 diagnosis instrumentation convention)."""
+    engine, d = finalize_hook_engine
+    cfg = load_config()
+    with caplog.at_level("INFO", logger="trendora.data_manager"):
+        with Session(engine) as session:
+            prog = JobProgress(job_id="factor-lab-all-timing-probe", kind="backfill", start=d, end=d)
+            prog.new_snapshot_dates = [d]
+            data_manager._refresh_ingest_aggregates(session, cfg, prog)
+    assert (
+        "J-05 finalize-tail phase timing: job=factor-lab-all-timing-probe phase=factor_lab_all_warm"
+        in caplog.text
+    ), caplog.text
+
+
 def test_finalize_hook_market_phase_computed_exactly_once_not_on_subsequent_read(
     finalize_hook_engine, monkeypatch
 ):
@@ -1289,6 +1466,7 @@ def test_finalize_hook_never_raises_even_when_everything_fails(finalize_hook_eng
     monkeypatch.setattr(forward_testing, "forward_aggregates_ingest_cached", _boom)
     monkeypatch.setattr(data_manager, "event_study_cached", _boom)
     monkeypatch.setattr(indexes, "index_series_cached_with_status", _boom)
+    monkeypatch.setattr(data_manager, "factor_lab_all_cached", _boom)
     with Session(engine) as session:
         prog = JobProgress(job_id="all-fail-probe", kind="backfill", start=d, end=d)
         prog.new_snapshot_dates = [d]

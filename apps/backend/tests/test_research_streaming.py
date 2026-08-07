@@ -941,6 +941,128 @@ def test_single_flight_wait_ceiling_clears_the_measured_cold_compute(component_e
 
 
 # ==================================================================================================
+# ops-hardening iter-51 (TC-4): `_combination_cohort_members`'s `strict_members` construction no longer
+# unconditionally allocates `set(range(pool_n))` before reducing it by intersection — the exact frame
+# logged immediately before the 2026-08-05 17m30s wedge. Two proofs, on a representative-size synthetic
+# pool (no DB needed — this is a pure index-arithmetic function over an already-built `pool`):
+#   1. byte-identical `single`/`strict`/`composite` outputs vs. a pinned pre-iter-51 reference oracle that
+#      keeps the original `set(range(pool_n))` behavior.
+#   2. `range` is never called with `pool_n` inside `_combination_cohort_members`'s own `strict_members`
+#      construction — intercepted via monkeypatch (LOAD_GLOBAL resolves a module-level `range` override
+#      before falling through to the builtin).
+# ==================================================================================================
+def _combination_cohort_members_pinned_pre_iter51(pool: list[dict], resolved: list[dict], comb) -> dict:
+    """A byte-for-byte copy of `_combination_cohort_members`'s PRE-iter-51 `strict_members` construction —
+    the unconditional `set(range(pool_n))` scratch allocation, reduced by intersection — pinned here as the
+    reference oracle the bounded version is proven against. Every other line is identical to the current
+    function (never calls the current `_combination_cohort_members`, which would prove nothing)."""
+    pool_n = len(pool)
+    single_members: list[set[int]] = []
+    for cond in resolved:
+        key = cond["factor"].key
+        fraction = cond["quantile"].fraction
+        ordered = sorted(obs["values"][key] for obs in pool)
+        if not ordered:
+            single_members.append(set())
+            continue
+        if cond["side"] == "top":
+            cutoff = research_module._quantile_cutoff(ordered, 1 - fraction)
+            members = {i for i, obs in enumerate(pool) if obs["values"][key] >= cutoff}
+        else:
+            cutoff = research_module._quantile_cutoff(ordered, fraction)
+            members = {i for i, obs in enumerate(pool) if obs["values"][key] <= cutoff}
+        single_members.append(members)
+
+    strict_members: set[int] = set(range(pool_n))  # the PRE-fix allocation, pinned verbatim
+    for members in single_members:
+        strict_members &= members
+
+    comp = comb.composite
+    composite_quantile = next(q for q in comb.quantiles if q.key == comp.quantile)
+    base_weights = [comp.weighting.default_weight] * len(resolved)
+    weight_total = sum(base_weights)
+    weights = [w / weight_total for w in base_weights]
+    composite_scores = research_module._composite_scores(pool, resolved, weights)
+    if composite_scores:
+        cutoff = research_module._quantile_cutoff(sorted(composite_scores), 1 - composite_quantile.fraction)
+        composite_members = {i for i, score in enumerate(composite_scores) if score >= cutoff}
+    else:
+        composite_members = set()
+
+    return {"single": single_members, "strict": strict_members, "composite": composite_members}
+
+
+def _combination_cohort_members_synthetic_fixture(pool_n: int):
+    """A deterministic (non-random), representative-size synthetic pool + 2-condition `resolved` +the
+    real shipped `combination` config — big enough (pool_n) to make an unbounded `set(range(pool_n))`
+    allocation observable, small enough to run in well under a second either way."""
+    cfg = load_config()
+    fl = cfg.research.factor_lab
+    comb = fl.combination
+    factors = fl.factors[:2]
+    assert len(factors) == 2, "sanity: the shipped catalog must carry >= 2 factors"
+    quantile = comb.quantiles[0]
+    resolved = [
+        {"factor": factors[0], "side": "top", "quantile": quantile},
+        {"factor": factors[1], "side": "bottom", "quantile": quantile},
+    ]
+    pool = [
+        {"values": {
+            factors[0].key: float((i * 37 + 11) % 997),
+            factors[1].key: float((i * 53 + 7) % 991),
+        }}
+        for i in range(pool_n)
+    ]
+    return pool, resolved, comb
+
+
+def test_combination_cohort_members_strict_matches_pinned_pre_iter51_reference():
+    """TC-4 (part 1) — the bounded `_combination_cohort_members` is byte-identical to the pinned
+    pre-iter-51 `set(range(pool_n))` reference, for `single`/`strict`/`composite`, on a representative
+    (pool_n=5,000) synthetic pool."""
+    pool, resolved, comb = _combination_cohort_members_synthetic_fixture(5_000)
+    got = research_module._combination_cohort_members(pool, resolved, comb)
+    want = _combination_cohort_members_pinned_pre_iter51(pool, resolved, comb)
+    assert got["strict"] == want["strict"], "strict membership diverges from the pinned pre-iter-51 reference"
+    assert got["composite"] == want["composite"], (
+        "composite membership diverges from the pinned pre-iter-51 reference"
+    )
+    assert len(got["single"]) == len(want["single"]) == len(resolved)
+    for got_members, want_members in zip(got["single"], want["single"]):
+        assert got_members == want_members, "single-condition membership diverges from the pinned reference"
+    assert want["strict"], "sanity: this fixture's two conditions must overlap (a non-empty strict cohort)"
+
+
+def test_combination_cohort_members_strict_no_full_range_allocation(monkeypatch):
+    """TC-4 (part 2) — for a representative pool_n, `_combination_cohort_members` never calls
+    `set(range(pool_n))`: intercepted by overriding `research.py`'s module-level `set` name (LOAD_GLOBAL
+    resolves it before falling through to the builtin) and recording any call whose sole argument is a
+    `range` object of length `pool_n`. The only bare `set(...)`/`set(range(...))` calls inside this
+    function's own body (never inside `_quantile_cutoff`/`_composite_scores`, neither of which calls
+    `set`) are the empty-cohort sentinels and the (now-removed) `strict_members` scratch allocation, so
+    this assertion is unambiguous for this call."""
+    pool_n = 5_000
+    pool, resolved, comb = _combination_cohort_members_synthetic_fixture(pool_n)
+
+    real_set = set
+    offending_calls: list[int] = []
+
+    def _counting_set(*args, **kwargs):
+        if args and isinstance(args[0], range) and len(args[0]) == pool_n:
+            offending_calls.append(len(args[0]))
+        return real_set(*args, **kwargs)
+
+    monkeypatch.setattr(research_module, "set", _counting_set, raising=False)
+    result = research_module._combination_cohort_members(pool, resolved, comb)
+
+    assert offending_calls == [], (
+        f"_combination_cohort_members must never call set(range(pool_n={pool_n})) -- "
+        f"observed {len(offending_calls)} such call(s)"
+    )
+    assert result["strict"], "sanity: this fixture's two conditions must overlap (a non-empty strict cohort)"
+
+
+# ==================================================================================================
 # ops-hardening iter-29 (AG-8): `_factor_observations`'s join accumulator (`ret_by_run_symbol`) used to
 # hold ONE entry per distinct (run_id, symbol) pair across the FULL horizon's `forward_returns` history for
 # as_of=None (803,042 pairs / 3,964,725 rows measured live at iter-28) even though the SOURCE query was
