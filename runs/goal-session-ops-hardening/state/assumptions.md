@@ -538,3 +538,41 @@ reader glancing at the merged results file sees two FAILs and my table shows no 
 FAIL as binding would score both `failing` — moving the shape to 4 passing / 2 partial / 2 failing —
 and that is defensible.
 **Reversible:** yes
+
+## iter-53 — goal-decomposer
+
+**Ambiguity:** iteration-state.md's "Active blockers" digest names exactly two finalize-tail phases
+as needing the cooperative-scheduling treatment (`coverage_membership_timeline_refresh`,
+`market_phase_warm`), matching the iter-52 evaluator's next-step item (2) verbatim ("two other
+steps... refreshing coverage, and working out the market phase"). But `reports/perf-budgets.md`
+Addendum 14's own "what is still open" section (written by the iter-52 developer, the same round)
+names a THIRD phase, `forward_aggregates_warm`, as also having "never received the chunked-sort /
+bounded-GC treatment" -- and by one measure (polls >2.0s: 15 of 34) it is the single largest
+untreated contributor, more than the other two combined (8). Neither `docs/goal.md` nor the
+evaluator's own reasoning explains the discrepancy.
+
+**We chose:** scope this iteration to the two phases the iteration-state digest and the evaluator's
+own next-step item (2) name, not the third. Grounds stated rather than assumed: (1) the evaluator's
+own severity ranking treats connection-level non-answers (a poll gets NO response at all) as the
+higher-priority defect than a slow-but-answered poll -- both of Addendum 14's 2 non-answers landed in
+the two phases we are treating; zero non-answers landed in `forward_aggregates_warm` despite its far
+larger slow-poll count; (2) the iteration-state digest is the binding, evaluator-authored source of
+truth for "what is still open" per my agent instructions ("Trust this digest before re-deriving state
+from history files"), and it deliberately narrowed to two phases where perf-budgets.md's own raw
+finding-list named three; (3) rule 6 (never bundle two risky/undiagnosed changes in one iteration)
+favors the smaller, already-bounded scope -- `forward_aggregates_warm`'s own bottleneck has not yet
+been profiled (unlike the two phases here, whose profile-first methodology this iteration explicitly
+mandates), so including it would add a third unprofiled diagnosis effort to a session that has
+repeatedly ESCALATEd on overreach. **Cost recorded honestly:** the finalize tail's TC-5 concurrent-load
+budget (1,200s, currently 1,261.42s / 5.1% over) will very likely STILL read over budget after this
+iteration, since `forward_aggregates_warm` (738.70s concurrent, by far the largest phase) and
+`drawdown_expectations_warm` (411.89s) are both untouched -- this iteration does not close that budget
+line, only the two connection-level non-answers. A reader who takes perf-budgets.md's three-phase list
+as the authoritative scope would extend the SAME treatment to `forward_aggregates_warm` this same
+iteration instead -- a larger, riskier diff, but with a real chance of also closing the 1,200s budget
+line and more of the >2.0s slow-poll count in one pass.
+
+**Reversible:** yes -- `forward_aggregates_warm` is architecturally independent of the two phases this
+iteration treats (different module, `app.engine.forward_testing` vs.
+`app.engine.data_manager`/`app.engine.market_phase`); it can be picked up in a later iteration without
+touching or re-opening this iteration's work.
