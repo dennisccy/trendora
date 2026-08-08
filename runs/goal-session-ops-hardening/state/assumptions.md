@@ -631,3 +631,39 @@ caught the real position for five rounds running (the audit) disappears. A reade
 QA-over-BLOCKED override as the same failure MODE C.4's fail-open clause exists to catch would return
 ESCALATE and mandate full depth; that is defensible and I would not argue it is wrong.
 **Reversible:** yes
+
+## iter-54 — goal-decomposer
+
+**Ambiguity:** the iter-53 audit's next-step item 4 lists three finalize-tail phases together in one
+numbered bullet: "`per_date_coverage_warm` — the single remaining connection-level non-answer... Then
+`forward_aggregates_warm` (12 of the 14 remaining >2.0s polls) and `drawdown_expectations_warm`, which is
+what the 1,200s finalize-tail budget actually needs." Read as one undifferentiated instruction this asks
+iter-54 to treat all three phases; neither `docs/goal.md` nor the audit says whether "Then X and Y" means
+"in this same iteration" or "sequenced to a later one" — the audit's own numbering (items 1 through 7)
+otherwise reads as strict priority order across iterations, not a single iteration's bundled scope.
+
+**We chose:** treat ONLY `per_date_coverage_warm` this iteration; explicitly defer `forward_aggregates_warm`
+and `drawdown_expectations_warm`. Grounds stated rather than assumed: (1) `per_date_coverage_warm` is the
+ONLY one of the three tied to a CONNECTION-LEVEL non-answer (the higher-severity defect class this
+session's own evaluator has repeatedly prioritized over slow-but-answered polls — iter-53's own eval
+scored the two now-fixed phases on exactly this axis); `forward_aggregates_warm`/`drawdown_expectations_warm`'s
+defects are >2.0s SLOW-but-answered polls, a different and lower-priority class; (2) neither phase has
+been profiled yet — the SAME "profile first, do not force-fit a prior pattern" discipline that made
+iter-53's own fix succeed (iter-48/iter-50 lessons, restated in the iter-53 audit's own Domain Assessment)
+argues against bundling a fresh, un-profiled diagnosis effort into an iteration that already carries B1,
+B3, and B2 across three modules; (3) this mirrors the iter-53 decomposer's own identical scoping choice on
+a different phase pair (`assumptions.md`, iter-53: "rule 6... favors the smaller, already-bounded
+scope... including it would add a third unprofiled diagnosis effort to a session that has repeatedly
+ESCALATEd on overreach") — the same reasoning applies one iteration later, now to
+`forward_aggregates_warm`/`drawdown_expectations_warm`. **Cost recorded honestly:** the 1,200s
+finalize-tail wall-clock budget (last measured 1,559.30s, 29.9% over, Addendum 15) will almost certainly
+STILL read over budget after this iteration, since `forward_aggregates_warm` (by far the largest phase)
+and `drawdown_expectations_warm` are both untouched — this iteration closes the LAST connection-level
+non-answer but not the wall-clock budget line. A reader who takes the audit's item 4 as one bundled
+instruction would extend the SAME bounded-fetch/cooperative-yield profiling to both remaining phases this
+same iteration — a larger, riskier diff (two more un-profiled modules' worth of work), but with a real
+chance of also closing the 1,200s budget line and most of the remaining >2.0s slow-poll count in one pass.
+
+**Reversible:** yes — `forward_aggregates_warm` and `drawdown_expectations_warm` are architecturally
+independent phases inside the same finalize tail (different functions, `app.engine.forward_testing`); either
+can be picked up in a later iteration without touching or re-opening this iteration's work.
