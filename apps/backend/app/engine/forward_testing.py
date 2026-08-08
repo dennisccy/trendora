@@ -37,6 +37,7 @@ import json
 import logging
 import random
 import threading
+import time
 from calendar import monthrange
 from collections import defaultdict
 from datetime import date as date_cls, datetime, timedelta, timezone
@@ -1251,6 +1252,15 @@ def compute_forward_aggregates(
     control_group_builder = _ControlGroupBuilder(cfg)
 
     for start in range(0, len(runs_with_fr), run_chunk):
+        # ops-hardening iter-52 (J-07): a real scheduling yield once per run-id chunk. Prior live drills
+        # (`reports/perf-budgets.md` Item S Addendum 10 UT-08: 19/892 connection-level `GET /api/health`
+        # non-answers clustered inside THIS loop's `forward_aggregates_warm horizon=20` phase, the concurrent
+        # drill's own longest sub-phase) confirmed this generalizes past `factor_lab_all_warm` to whichever
+        # finalize-tail sub-phase is currently longest. `time.sleep(0)` forces a real OS-level GIL hand-off
+        # (a `prog.tick()` heartbeat stamp, called by this function's own caller once per horizon, does not)
+        # so a concurrent request gets a fair chance to be scheduled between chunks. Scheduling only — no
+        # value/order change (TC-4, byte-identical against a pinned reference).
+        time.sleep(0)
         slice_run_ids = runs_with_fr[start:start + run_chunk]
         slice_map = _forward_agg_slice_map(session, horizon, slice_run_ids, batch)
         for (slice_run_id, slice_symbol), (slice_return, _slice_mdd) in slice_map.items():

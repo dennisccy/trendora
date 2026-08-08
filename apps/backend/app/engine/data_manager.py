@@ -3703,6 +3703,10 @@ def _persist_per_date_coverage_snapshots(
     with cache_ctx:
         for d in todo:
             prog.tick()  # F1 fix (iter-4): per-date heartbeat stamp before this date's heavy coverage compute
+            # ops-hardening iter-52 (J-07): a REAL scheduling yield, not just the heartbeat stamp above —
+            # see `_refresh_ingest_aggregates`'s docstring for the full rationale (GIL contention, not
+            # allocation; TC-4 scheduling-only, byte-identical).
+            time.sleep(0)
             try:
                 refresh_coverage_snapshot_for(session, cfg, d)
             # ops-hardening iter-8 (J-05 REGRESSION fix): a `MemoryError` under real pressure must NOT be
@@ -3962,7 +3966,28 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
     what confirmed the coverage/membership-timeline refresh phase as the dominant cost for a historical
     gap-insert backfill (measured live: ~0.8-2.2s per unbounded `resolve_with_reasons` call across this
     DB's ~2,900 historical dates, well over an hour for the pre-fix full sweep) — see
-    `membership_timeline_cached`'s iter-48 fix."""
+    `membership_timeline_cached`'s iter-48 fix.
+
+    ops-hardening iter-52 (J-07, real scheduling yields — NOT just `prog.tick()`): iter-49/50/51's own live
+    drills (`reports/perf-budgets.md` Item S Addendum 10, Item T Addendum 11) proved a per-item HEARTBEAT
+    STAMP is not a scheduling yield — a `prog.tick()` call only writes a timestamp, it never hands the GIL
+    to another thread. Whichever finalize-tail sub-phase is currently LONGEST (measured: `factor_lab_all_warm`
+    solo at 9/653 connection-level `GET /api/health` non-answers; `forward_aggregates_warm horizon=20`
+    concurrent at 19/892) can starve the event loop past a full connection cycle. Every per-item loop this
+    function drives directly (`market_phase_warm`, `forward_aggregates_warm` below) or calls into
+    (`_persist_per_date_coverage_snapshots`'s per-date coverage warm) now ALSO calls `time.sleep(0)` once per
+    item, immediately alongside its existing `prog.tick()` — a real OS-level thread hand-off (per iter-50's
+    binding lesson: "the cause is GIL contention between two CPU-bound Python computes in one process, not
+    allocation"), so a concurrent `GET /api/health` gets a fair chance to be scheduled between items instead
+    of only after the whole phase completes. `compute_factor_lab_all`/`_combination_observations`/
+    `_factor_decile_observations`/`_all_factor_observations_by_horizon` (research.py) and
+    `compute_forward_aggregates` (forward_testing.py) carry the SAME yield at their own per-item/per-chunk
+    loop boundaries — see each function's own docstring. Scheduling only: no value, no algorithm, no ordering
+    changes anywhere (TC-4) — `time.sleep(0)` never blocks and never changes what is computed, only when the
+    interpreter next offers the GIL to another thread. Honest limit: this closes the CONNECTION-LEVEL
+    non-answer (TC-1/TC-2); it is not guaranteed to fully close every poll's ≤2s latency ceiling (TC-3) —
+    some residual GIL hand-off latency can remain (see `reports/perf-budgets.md`'s iter-52 addendum for what
+    was actually measured)."""
     refreshed: list[str] = []
     prog.tick()  # F1 fix: heartbeat-only stamp at the start of the finalize tail — see docstring above.
 
@@ -4100,6 +4125,7 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
             market_phase_warmed = False
             for d in prog.new_snapshot_dates:
                 prog.tick()  # F1 fix: per-date heartbeat stamp -- see function docstring above.
+                time.sleep(0)  # ops-hardening iter-52 (J-07): real scheduling yield -- see docstring above.
                 try:
                     market_phase.market_phase_cached(session, d, cfg)
                     market_phase_warmed = True
@@ -4147,6 +4173,9 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
                         prog.tick()  # F1-style heartbeat stamp before each horizon's compute (a cold-cache
                                      # compute here can take up to ~35s pre-warm; 5 sequential horizons could
                                      # otherwise freeze the heartbeat for minutes without a per-horizon tick).
+                        # ops-hardening iter-52 (J-07): real scheduling yield alongside the heartbeat stamp
+                        # above -- see `_refresh_ingest_aggregates`'s docstring for the full rationale.
+                        time.sleep(0)
                         # ops-hardening iter-8 (J-05 REGRESSION fix): a `MemoryError` on one horizon is caught
                         # HERE, distinctly, so a horizon that already succeeded before it is still honestly
                         # reported — the outer `except Exception` below (unchanged for every OTHER exception

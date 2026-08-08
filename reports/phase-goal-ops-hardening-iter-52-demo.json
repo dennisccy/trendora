@@ -1,0 +1,104 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-ops-hardening-iter-52",
+  "base_url": "http://localhost:3255",
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Open the Dashboard",
+      "narration": "The home screen loads with no errors. The readiness pill in the top-right shows green and says 'Ready'.",
+      "point_out": "The small pill in the top-right corner and the absence of a loud red banner below the header — both confirm the backend is healthy and responsive.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/" },
+      "expect": { "text": "Dashboard" }
+    },
+    {
+      "n": 2,
+      "title": "Navigate to Data Manager",
+      "narration": "Click the Data Manager link in the sidebar to go to the job-control page.",
+      "point_out": "The readiness pill stays green and the form appears with pre-filled date fields ready for a backfill job.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "link", "name": "Data Manager" } },
+      "expect": { "text": "Start a fetch / backfill job" }
+    },
+    {
+      "n": 3,
+      "title": "Check the job history and refreshed categories",
+      "narration": "Scroll down or look at an existing run to see the 'Refreshed:' line, which lists all the categories computed during the most recent ingest.",
+      "point_out": "The list of categories (e.g. coverage, research hot keys, factor lab all) confirms aggregates were precomputed at ingest time, not fetched on demand.",
+      "journey": "J-05",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "link", "name": "Research" } },
+      "expect": { "text": "Research" }
+    },
+    {
+      "n": 4,
+      "title": "Open Factor Lab to check research data",
+      "narration": "Navigate to the Factor Lab page to see the latest research scoring results.",
+      "point_out": "A sortable table with real factor rows (Leadership, etc.) shows that research data is intact after the backend scheduling change.",
+      "journey": "J-06",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "link", "name": "Factor Lab" } },
+      "expect": { "text": "Factor Lab" }
+    },
+    {
+      "n": 5,
+      "title": "Sort the Factor Lab table to confirm responsiveness",
+      "narration": "Click the 'N' column header to re-order the rows by sample size.",
+      "point_out": "Rows re-order instantly with no page reload or error, showing the data is correctly computed and accessible.",
+      "journey": "J-06",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "columnheader", "name": /^N$/ } },
+      "expect": { "text": "Leadership" }
+    },
+    {
+      "n": 6,
+      "title": "Expand a factor row to see the decile breakdown",
+      "narration": "Click the first factor row to reveal its decile detail grid (D1 through D10).",
+      "point_out": "The decile grid renders without error, confirming all research computations are complete and cacheable.",
+      "journey": "J-06",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "button", "name": /Expand/ } },
+      "expect": { "text": "D1" }
+    },
+    {
+      "n": 7,
+      "title": "Navigate back to Data Manager",
+      "narration": "Return to the Data Manager page to check the badge behavior during normal operations.",
+      "point_out": "The readiness pill is still green — it renders consistently across all pages and never gets stuck in an error state.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "link", "name": "Data Manager" } },
+      "expect": { "text": "Start a fetch / backfill job" }
+    },
+    {
+      "n": 8,
+      "title": "Confirm the readiness badge recovered and stays healthy",
+      "narration": "Look at the top-right header pill one final time to confirm the backend state displays correctly.",
+      "point_out": "The pill reads 'Ready' with a solid green dot. This concludes the tour — the product remains healthy, data flows normally, and the header state accurately reflects the backend's availability.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/data" },
+      "expect": { "text": "Job progress" }
+    }
+  ]
+}

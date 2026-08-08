@@ -1,0 +1,110 @@
+{
+  "frontend": "http://localhost:3255",
+  "runs": [
+    {
+      "run": 0,
+      "nav_timing_ms": {
+        "domInteractive": 25.300000000745058,
+        "domContentLoadedEventEnd": 25.400000002235174,
+        "loadEventEnd": 250.5,
+        "responseEnd": 20.800000000745058,
+        "duration": 250.5
+      },
+      "content_visible_ms": 57.1,
+      "networkidle_ms": 1252.9,
+      "api_requests": [
+        {
+          "url": "http://localhost:8255/api/research/factor-lab?all=true",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/research/factor-lab?all=true",
+          "status": 200
+        }
+      ],
+      "api_resource_timing_ms": [
+        {
+          "name": "http://localhost:8255/api/research/factor-lab?all=true",
+          "duration": 101.80000000074506,
+          "startTime": 289
+        },
+        {
+          "name": "http://localhost:8255/api/research/factor-lab?all=true",
+          "duration": 10.900000002235174,
+          "startTime": 433.30000000074506
+        }
+      ],
+      "table_rows_rendered": 11
+    },
+    {
+      "run": 1,
+      "nav_timing_ms": {
+        "domInteractive": 22.799999997019768,
+        "domContentLoadedEventEnd": 22.799999997019768,
+        "loadEventEnd": 251.59999999776483,
+        "responseEnd": 17.199999999254942,
+        "duration": 251.59999999776483
+      },
+      "content_visible_ms": 52.8,
+      "networkidle_ms": 1156.0,
+      "api_requests": [
+        {
+          "url": "http://localhost:8255/api/research/factor-lab?all=true",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/research/factor-lab?all=true",
+          "status": 200
+        }
+      ],
+      "api_resource_timing_ms": [
+        {
+          "name": "http://localhost:8255/api/research/factor-lab?all=true",
+          "duration": 10.199999999254942,
+          "startTime": 288.19999999925494
+        },
+        {
+          "name": "http://localhost:8255/api/research/factor-lab?all=true",
+          "duration": 12.399999998509884,
+          "startTime": 409.5
+        }
+      ],
+      "table_rows_rendered": 11
+    },
+    {
+      "run": 2,
+      "nav_timing_ms": {
+        "domInteractive": 21,
+        "domContentLoadedEventEnd": 21,
+        "loadEventEnd": 246.89999999850988,
+        "responseEnd": 16.300000000745058,
+        "duration": 246.89999999850988
+      },
+      "content_visible_ms": 57.5,
+      "networkidle_ms": 1144.9,
+      "api_requests": [
+        {
+          "url": "http://localhost:8255/api/research/factor-lab?all=true",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/research/factor-lab?all=true",
+          "status": 200
+        }
+      ],
+      "api_resource_timing_ms": [
+        {
+          "name": "http://localhost:8255/api/research/factor-lab?all=true",
+          "duration": 12.599999997764826,
+          "startTime": 284.30000000074506
+        },
+        {
+          "name": "http://localhost:8255/api/research/factor-lab?all=true",
+          "duration": 11.599999997764826,
+          "startTime": 423
+        }
+      ],
+      "table_rows_rendered": 11
+    }
+  ]
+}

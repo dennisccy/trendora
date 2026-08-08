@@ -1083,3 +1083,34 @@ spent.
 **Applies to:** any iteration whose fix is scoped to a data shape (append-forward, latest-only,
 same-version) — verify the live DB contains an instance of that shape during decomposition.
 
+
+<!-- condense.sh 2026-08-07T13:13:59Z: moved 2 entries (keep-iters=5) -->
+
+## iter-46 — 2026-08-04T09:15:00Z
+
+**Verdict:** ESCALATE
+**Lesson:** The deterministic replay lane has been scoring J-01/J-03 `passing` on text that
+pre-existing rows already satisfy. `journey-scripts/J-01.json` step 5 asserts the string
+"2 non-trading" is present on `/data`, and Run History persists every past run — so the assertion
+passes whether or not the job it just submitted ever finished. Worse, `data_provider_runs` contains
+**no row at all** for 01:23-01:24Z when the iter-45 replay ran, i.e. its `fill`+`Start` never created
+a job (the iter-46 LLM tester independently found that plain `.value =` assignment does not update
+React state on those date inputs). A golden script that asserts page-wide text on a page with
+persistent history is a null test.
+**Applies to:** any iteration relying on `demo_runner.py --mode verify` for J-01/J-03 (or any journey
+whose acceptance text also appears in a persisted history panel); any golden-script authoring — assert
+against the NEW run's own row/testid, never page-wide text.
+
+## iter-46 — 2026-08-04T09:15:00Z
+
+**Verdict:** ESCALATE
+**Lesson:** A QA-fix or audit-fix pass that lands after the browser lane silently voids the entire
+lane: this iteration's `warmup.py` (06:17Z) and `data_manager.py` (08:38Z) both changed the exact code
+paths whose rows had failed at 05:49Z, so not one of the eight journeys could be scored on this
+round's own work. Three independent places recorded the problem (`status.json`'s
+`next_action: rerun_browser_lane_then_audit`, audit T1, review MINOR #2) and the iteration still ended
+without re-running it — the note is not self-executing.
+**Applies to:** any iteration that enters fix-mode or audit-fix after browser-qa has run; the
+orchestrator should treat "product code changed after `ui-test-results.md` was written" as a hard
+re-run trigger, not an advisory note.
+

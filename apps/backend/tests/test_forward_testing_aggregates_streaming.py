@@ -426,6 +426,38 @@ def test_forward_agg_run_chunk_accumulator_is_bounded(multi_run_engine, monkeypa
     )
 
 
+# ==================================================================================================
+# ops-hardening iter-52 (J-07): a REAL scheduling yield (`time.sleep(0)`) now runs once per run-id chunk
+# inside `compute_forward_aggregates` -- iter-49/50's own live drills found THIS loop starving
+# `GET /api/health` (19/892 connection-level non-answers, clustered inside `forward_aggregates_warm
+# horizon=20`'s span, `reports/perf-budgets.md` Item S Addendum 10 UT-08) when it was the finalize tail's
+# longest sub-phase that run -- the generalization that motivates yielding in every named loop, not just
+# `factor_lab_all_warm`. Proven the same way `test_forward_agg_run_chunk_accumulator_is_bounded` above
+# proves the accumulator bound: spy on `forward_testing_module.time.sleep`.
+# ==================================================================================================
+def test_compute_forward_aggregates_yields_per_run_chunk(multi_run_engine, monkeypatch):
+    """`compute_forward_aggregates`'s run-id chunk loop calls `time.sleep(0)` exactly once per chunk (4
+    run ids at width 1 -> 4 chunks on this fixture), always with argument 0 (a yield, never a real
+    delay)."""
+    cfg = _cfg_run_chunk(1)  # 4 runs at width 1 -> 4 slices, one run id each
+    sleep_calls: list[float] = []
+    real_sleep = forward_testing_module.time.sleep
+
+    def _spy_sleep(seconds):
+        sleep_calls.append(seconds)
+        return real_sleep(seconds)
+
+    monkeypatch.setattr(forward_testing_module.time, "sleep", _spy_sleep)
+    with Session(multi_run_engine) as session:
+        agg = compute_forward_aggregates(session, 20, cfg)
+
+    assert agg["n_runs"] == 4, "sanity: the zero-FR 5th run must stay excluded"
+    assert len(sleep_calls) == 4, f"expected one yield per chunk (4 run ids at width 1), got {len(sleep_calls)}"
+    assert all(c == 0 for c in sleep_calls), (
+        f"a yield point must be sleep(0) -- scheduling only, never a real delay: {sleep_calls}"
+    )
+
+
 @pytest.mark.parametrize("run_chunk", [1, 2, 4, 100])
 @pytest.mark.parametrize("as_of", [None, HISTORICAL_AS_OF])
 def test_compute_forward_aggregates_chunked_equals_reference_across_run_chunk_widths(

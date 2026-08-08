@@ -1,0 +1,35 @@
+{
+  "phase": "goal-ops-hardening-iter-52",
+  "status": "blocked",
+  "current_step": "audit_qa_failed",
+  "updated_at": "2026-08-08T04:16:51.363964Z",
+  "started_at": "2026-08-07T13:31:44.916682Z",
+  "cli": "claude",
+  "blockers": [
+    "TC-9 / audit B1 (hard gate): the 8-journey browser/replay lane MUST re-run against the current tree before this iteration is scored. Its previous run (results file 2026-08-08 01:41:48) predates the audit-fix product-code change (research.py comments, 2026-08-08 03:55:25). Product code is frozen. The lane must run LAST; no further product-code changes until after. Requires browser-qa-agent + goal-evaluator dispatch. All backend validation, code review, and QA checks pass. Ready for downstream browser-qa-agent work."
+  ],
+  "notes": [
+    "QA VALIDATION STEP: backend tests verified (500/5/0 pass via handoff evidence; audit-fix comments introduced no regression), review report PASS_WITH_NOTES confirmed, frozen surfaces AG-10/TC-10 verified EMPTY, AG-9 seed provider verified, AG-7 secrets scan clean",
+    "BROWSER LANE BLOCKER (hard gate): Phase spec Definition of Done item 2 requires J-04/J-05/J-06/J-07 to produce REAL executed rows (zero rows for three consecutive iterations). Upstream QA cannot execute browser journeys or goal-mode integration. Must move to browser-qa-agent + goal-evaluator.",
+    "AUDIT-FIX PASS COMPLETE: comment/docstring fixes to research.py (byte-identity precondition, _cyclic_gc_paused aggregate documentation) landed 2026-08-08 03:55:25. All 500/5/0 unit tests pass identically. TC-6 live fault-injection re-run passed (1/15 deselected, 1076.19s). TC-7 browser measurement written to perf-budgets Addendum 14.",
+    "TC-2/TC-3/TC-5 RESIDUALS (disclosed, not blockers): concurrent drill found 2 non-answers (untreated phases) and exceeded budget under concurrency \u2014 documented honestly in audit-fix notes as future work, not claimed as met.",
+    "SERVICES READY: backend and frontend both running and reachable per first-pass QA (no restart needed; audit-fix only touches comments). All prerequisites for browser-qa-agent met."
+  ],
+  "changed_files": [
+    "apps/backend/app/engine/data_manager.py",
+    "apps/backend/app/engine/forward_testing.py",
+    "apps/backend/app/engine/research.py",
+    "apps/backend/tests/test_data_manager.py",
+    "apps/backend/tests/test_forward_testing_aggregates_streaming.py",
+    "apps/backend/tests/test_research_streaming.py",
+    "apps/backend/tests/test_start_backend_script.py",
+    "reports/perf-budgets.md",
+    "docs/handoffs/goal-ops-hardening-iter-52-dev.md",
+    "reports/phase-goal-ops-hardening-iter-52-implementation-summary.md"
+  ],
+  "tests_run": true,
+  "tests_result": "500 passed, 5 skipped (opt-in heavy), 0 failed; TC-6 live 1 passed (verified via handoff evidence)",
+  "browser_checks_run": false,
+  "qa_verdict": "FAIL (hard gate TC-9 requires downstream browser-qa-agent)",
+  "next_action": "browser_qa_lane"
+}

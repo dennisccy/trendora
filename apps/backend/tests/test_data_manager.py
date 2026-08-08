@@ -2943,6 +2943,110 @@ def test_persist_per_date_coverage_snapshots_ticks_heartbeat_per_date(
     assert prog.last_progress_at != stale_sentinel  # the loop leaves the heartbeat fresh, not frozen
 
 
+# ==================================================================================================
+# ops-hardening iter-52 (J-07): a REAL scheduling yield (`time.sleep(0)`) now runs alongside each of the
+# `prog.tick()` heartbeat stamps above -- a heartbeat stamp alone never hands the GIL to another thread
+# (iter-49/50/51's own live drills proved this: 9/653 and 19/892 connection-level `GET /api/health`
+# non-answers during a solo/concurrent finalize-tail run, `reports/perf-budgets.md` Items S/T). These tests
+# prove the yield fires at the SAME per-item granularity the heartbeat already does, by spying on
+# `data_manager.time.sleep` -- mirroring how the heartbeat tests above spy on `prog.last_progress_at`.
+# ==================================================================================================
+def test_persist_per_date_coverage_snapshots_yields_per_date(
+    finalize_hook_triple_date_engine, monkeypatch
+):
+    """The per-date COVERAGE warm loop inside `_persist_per_date_coverage_snapshots` calls `time.sleep(0)`
+    once per date in `todo` (a REAL scheduling yield, not just the heartbeat stamp) -- proven by spying on
+    `data_manager.time.sleep` and asserting it is called exactly once per non-current date, always with
+    argument 0 (a yield, never an actual delay). Called directly (isolating THIS loop, mirroring
+    `test_persist_per_date_coverage_snapshots_ticks_heartbeat_per_date` above), so the count is exact."""
+    engine, dates = finalize_hook_triple_date_engine
+    cfg = load_config()
+    sleep_calls: list[float] = []
+    real_sleep = data_manager.time.sleep
+
+    def _spy_sleep(seconds):
+        sleep_calls.append(seconds)
+        return real_sleep(seconds)
+
+    monkeypatch.setattr(data_manager.time, "sleep", _spy_sleep)
+    with Session(engine) as session:
+        prog = JobProgress(job_id="cov-yield-probe", kind="backfill", start=dates[0], end=dates[-1])
+        data_manager._persist_per_date_coverage_snapshots(session, cfg, list(dates), prog)
+
+    assert len(sleep_calls) == len(dates) - 1, (
+        f"expected one yield per non-current new date ({len(dates) - 1}), got {len(sleep_calls)}"
+    )
+    assert all(c == 0 for c in sleep_calls), (
+        f"a yield point must be sleep(0) -- scheduling only, never a real delay: {sleep_calls}"
+    )
+
+
+def test_finalize_hook_yields_at_least_once_per_date_in_market_phase_loop(
+    finalize_hook_multi_date_engine, monkeypatch
+):
+    """The per-date market-phase warm loop inside `_refresh_ingest_aggregates` calls `time.sleep(0)` once
+    per date in `prog.new_snapshot_dates` -- proven the same way `test_finalize_hook_ticks_heartbeat_at_
+    least_once_per_date_in_market_phase_loop` above proves the heartbeat: spy on `data_manager.time.sleep`
+    and count calls against the known date count. A LOWER bound (`>=`), not an exact count: this call
+    drives the WHOLE finalize tail, so earlier phases' own yields (added by this same iteration) also land
+    on the same spy -- unlike the isolated direct call above."""
+    engine, dates = finalize_hook_multi_date_engine
+    cfg = load_config()
+    sleep_calls: list[float] = []
+    real_sleep = data_manager.time.sleep
+
+    def _spy_sleep(seconds):
+        sleep_calls.append(seconds)
+        return real_sleep(seconds)
+
+    monkeypatch.setattr(data_manager.time, "sleep", _spy_sleep)
+    with Session(engine) as session:
+        prog = JobProgress(job_id="phase-yield-probe", kind="backfill", start=dates[0], end=dates[-1])
+        prog.new_snapshot_dates = list(dates)
+        data_manager._refresh_ingest_aggregates(session, cfg, prog)
+
+    assert len(sleep_calls) >= len(dates), (
+        f"expected >= one yield per new-snapshot date ({len(dates)}) in the market-phase loop alone, got "
+        f"{len(sleep_calls)} total across the whole finalize tail"
+    )
+    assert all(c == 0 for c in sleep_calls), (
+        f"a yield point must be sleep(0) -- scheduling only, never a real delay: {sleep_calls}"
+    )
+
+
+def test_finalize_hook_yields_at_least_once_per_horizon_in_forward_aggregates_warm_loop(
+    finalize_hook_engine, monkeypatch
+):
+    """The per-horizon forward-aggregates warm loop inside `_refresh_ingest_aggregates` calls
+    `time.sleep(0)` once per configured `walk_forward.horizons` entry -- proven by spying on
+    `data_manager.time.sleep` and asserting at least one call per configured horizon (a lower bound: the
+    coverage/market-phase phases earlier in the SAME finalize-tail call also contribute yields to the same
+    spy)."""
+    engine, d = finalize_hook_engine
+    cfg = load_config()
+    sleep_calls: list[float] = []
+    real_sleep = data_manager.time.sleep
+
+    def _spy_sleep(seconds):
+        sleep_calls.append(seconds)
+        return real_sleep(seconds)
+
+    monkeypatch.setattr(data_manager.time, "sleep", _spy_sleep)
+    with Session(engine) as session:
+        prog = JobProgress(job_id="forward-agg-yield-probe", kind="backfill", start=d, end=d)
+        prog.new_snapshot_dates = [d]
+        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)
+
+    assert "forward_aggregates" in refreshed  # sanity: the loop under test actually ran to completion
+    assert len(sleep_calls) >= len(cfg.walk_forward.horizons), (
+        f"expected >= one yield per configured horizon ({len(cfg.walk_forward.horizons)}), got "
+        f"{len(sleep_calls)}"
+    )
+    assert all(c == 0 for c in sleep_calls), (
+        f"a yield point must be sleep(0) -- scheduling only, never a real delay: {sleep_calls}"
+    )
+
+
 def test_run_detail_omits_aggregates_refreshed_until_computed():
     """TC-13/TC-14 — mirrors `test_run_detail_omits_breakdown_until_computed`: a not-yet-computed (fresh,
     `_create_run_record`-time) backfill row serves `aggregates_refreshed` null; an INTERRUPTED row whose

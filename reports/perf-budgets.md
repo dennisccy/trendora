@@ -7793,3 +7793,536 @@ phase-specific effect rather than random host noise.
 pass (AG-10 unchanged). The drill's job record shows `"source": null` — a backfill-only job reads the
 committed seed exclusively, no network call (AG-9). This addendum is append-only; no earlier dated section
 was edited.
+
+---
+
+## Item U — cooperative-yield scheduling: the fix lands and passes its own tests, but does NOT close the connection-level `/api/health` non-answer (ops-hardening iter-52, 2026-08-07, developer pass, J-07)
+
+### Addendum 12 (2026-08-07, ops-hardening iter-52 developer pass) — solo, in-app measurement; TC-1 and
+### TC-5 measured NOT MET, disclosed in full rather than rounded up
+
+**What this iteration changes.** Every CPU-bound per-item loop the ingest finalize tail drives directly or
+calls into now calls `time.sleep(0)` once per item, alongside its existing `prog.tick()` heartbeat stamp:
+`_persist_per_date_coverage_snapshots`'s per-date loop, `_refresh_ingest_aggregates`'s per-date
+`market_phase_warm` loop and per-horizon `forward_aggregates_warm` loop (`data_manager.py`);
+`compute_factor_lab_all`'s per-(factor,horizon) loop, `_combination_observations` /
+`_factor_decile_observations` (both passes) / `_all_factor_observations_by_horizon`'s per-run-id-chunk
+loops (`research.py`); `compute_forward_aggregates`'s per-run-id-chunk loop (`forward_testing.py`).
+Scheduling only — no value, algorithm, or ordering change anywhere (TC-4; the full pre-existing
+"byte-identical to a pinned pre-fix reference" regression suite for these exact functions passes unchanged
+with the yield points added — 388 passed, 0 failed, across `test_data_manager.py` / `test_research_
+streaming.py` / `test_forward_testing_aggregates_streaming.py` / `test_forward_testing_streaming.py` /
+`test_factor_lab_all.py` / `test_ingest_finalize_fault_injection.py` / `test_start_backend_script.py`'s
+default subset).
+
+**Why this run exists.** TC-1/TC-3/TC-5 require a real, in-app measurement of the fix's effect on the
+connection-level `/api/health` non-answer Item T Addendum 11 found (9/653, solo, entirely inside
+`factor_lab_all_warm`'s window) and a reconciled finalize-tail wall-clock against the existing 1,200s
+budget. This is a developer-pass measurement — **solo** (no concurrent Factor Lab/Factor Combination
+request issued mid-warm) — mirroring Addendum 11's own precedent (iter-51 developer pass) and Addendum 7's
+(iter-50 developer pass) of deferring the full CONCURRENT drill (TC-2) and the Factor Lab real-browser TTI
+measurement (TC-7) to the browser-qa-agent/audit lane, per the phase spec's own division of labor ("the
+browser lane measures... time-to-interactive").
+
+**Measurement conditions.** Backend launched via `scripts/start-backend.sh` on the DEFAULT project port
+(no `CHAIN_BACKEND_PORT` override — port 8255 on this checkout), AG-10 caps live. A real in-app backfill
+through the product API (`POST /api/data/jobs`, `kind: backfill`, target `2019-02-20` — selected at run
+time from the spawned instance's own `GET /api/data/availability`, the latest unsnapshotted trading day
+with sufficient following calendar; never a hardcoded literal). `"source": null` on the persisted job
+record (TC-11) — a backfill-only job reads the committed seed exclusively, no network call (AG-9).
+`GET /api/health` polled at a ~1s cadence (the poll loop targets a 1.0s period INCLUDING request latency, a
+5.0s client-side timeout per poll) on an independent thread for the whole run.
+
+**Honest limit on this run's own completeness.** The measurement script's own `poll_job_to_terminal` used a
+1,800s (30 min) ceiling before raising, chosen against Addendum 11's 1,072.3s total — this iteration's own
+phases ran 1.3–5.2x longer than that baseline on this date (see table below), and the script's own timeout
+fired while the job was still inside `drawdown_expectations_warm`'s 7th and final claim
+(`factor:rs_spy_3m:h60`), before the job reached its own terminal `status`. The backend was torn down at
+that point (the script's own cleanup path). **The data below is therefore a partial-but-decisive run: 6 of
+7 `drawdown_expectations_warm` claims completed and were timed; the 7th did not, and no post-completion
+30s tail was captured.** This does not weaken the TC-1 finding (already decisively negative on the data
+collected) or the TC-5 finding (the running total already exceeds budget before the 7th claim is even
+added) — it only means the exact final total and the full 30s-post-completion health tail are not in this
+addendum. Re-running to completion was not pursued this pass given the qualitative conclusions below do
+not depend on it; a future pass may re-run with a longer ceiling for a complete number.
+
+### Result — TC-1: NOT MET. Connection-level non-answers persisted, and were MORE numerous than the pre-fix baseline
+
+| | Value |
+|---|---|
+| Job | `a24c8604e0144aaea5e8ba5d04e72157`, `backfill`, `2019-02-20`, `"source": null` |
+| Health polls (this run, up to the script's own timeout) | **1,493** total |
+| HTTP 200 | 1,471 |
+| **Connection-level non-answer** (client timeout, no response at all — the `curl code=000` class) | **22** — Item T Addendum 11's solo baseline was **9** |
+| Latency (200s only) | min 0.096s / median 0.138s / p90 1.187s / p99 3.961s / max 4.999s |
+| Polls > 2.0s (owner-amended bounded-background-compute ceiling) | 94 / 1,471 |
+| Process VmPeak | 4,510,724 kB (4,405.0 MB) vs 8192 MB cap → **3,787.0 MB (46.2%) margin** — healthy |
+
+**Where the 22 non-answers fall, timed against this run's own phase log:**
+
+- **3 non-answers at job-start +24.0s / +29.0s / +40.0s** — inside the `backfill` (snapshot-write) stage
+  itself (which this job's own record shows took 39.64s). **This is a NEW finding, disclosed for the first
+  time**: the `backfill`/snapshot-write stage's own per-date scanning loop (`_do_backfill`, called BEFORE
+  `_refresh_ingest_aggregates`'s finalize tail even starts) is outside this iteration's IN-SCOPE list — it
+  was never given a yield point, and Item T/S's own addenda did not flag it because their drills' first
+  poll landed after this window closed on their (faster) dates. Not fixed this iteration; recorded as a
+  new, previously-unflagged surface for a future iteration's diagnosis.
+- **19 non-answers, all falling between job-start +685.7s and +1,049.8s** — this interval sits entirely
+  inside `factor_lab_all_warm`'s own measured window (+380s to +1,083s, see phase table below). **Zero
+  non-answers occurred in any other finalize-tail phase** (`coverage_membership_timeline_refresh`,
+  `per_date_coverage_warm`, `market_phase_warm`, `forward_aggregates_warm`, `research_hot_keys_warm`,
+  `index_series_warm`, and the 6 timed `drawdown_expectations_warm` claims) — all of which now also carry
+  the same `time.sleep(0)` yield-point fix.
+
+**Read carefully, not rounded up:** the fix's own per-item yield points fire correctly and are verified
+firing by unit test (`test_compute_factor_lab_all_yields_once_per_factor_horizon` et al., all passing) —
+the CODE does exactly what the plan specified. What this live measurement shows is that firing a yield
+point once per (factor, horizon) pair, immediately before that pair's work begins, **does not prevent a
+connection-level non-answer from occurring somewhere inside that pair's own work** for `factor_lab_all_
+warm` specifically. A plausible, code-grounded explanation (not confirmed by profiling this pass): each
+(factor, horizon) entry's body builds an `obs` list and then calls `sorted(obs, key=lambda o: (o.factor,
+o.ticker, o.run_id))` (`research.py:1332`) in ONE call. CPython's `list.sort()`, once invoked, runs its
+comparison phase as a single C-level call that does not yield the GIL mid-sort — a `time.sleep(0)` placed
+before the (factor, horizon) iteration begins cannot interrupt a multi-second sort happening INSIDE that
+same iteration. If this hypothesis is right, the fix needs a yield point WITHIN the sort (chunking it) or
+a bound on the sorted population, not merely one more call at the loop's own top — a candidate for the next
+iteration's "one risky change," not attempted here (an unvalidated, untested change to the sort itself was
+judged out of scope for this pass; see Known Issues in the dev handoff).
+
+**Also disclosed, not something this run can distinguish from the fix's own effect:** iter-51's OWN solo
+baseline (Addendum 11) was ALSO zero-failure in every phase except `factor_lab_all_warm` — a solo run has
+never been the drill that exposed the OTHER phases' vulnerability (that was UT-08's CONCURRENT drill,
+19/892 inside `forward_aggregates_warm` when it was the run's longest phase). This run's zero-failure
+result in `forward_aggregates_warm` and the other now-yielding phases is consistent with the fix helping
+there, but a solo run cannot prove it — only a concurrent re-run (TC-2, deferred to the browser-qa-agent
+lane per this addendum's own division of labor) can.
+
+### Finalize-tail phase timings (from `logs/backend.log`, `job=a24c8604e0144aaea5e8ba5d04e72157`)
+
+`backfill` (snapshot write, outside the finalize-tail total below) 39.64s · `coverage_membership_timeline_
+refresh` 83.26s · `per_date_coverage_warm` 9.10s · `market_phase_warm` 34.71s · `forward_aggregates_warm`
+**210.54s** (h1 48.55 / h5 33.69 / h10 49.66 / h20 32.17 / h60 46.47) · `research_hot_keys_warm` 2.39s ·
+`index_series_warm` 0.12s · `factor_lab_all_warm` **702.99s** (vs Addendum 11's 583.76s — **+20.4%**, the
+honest cost of the added yield-point scheduling overhead on top of this date's own slower baseline) ·
+`drawdown_expectations_warm` **incomplete, 6 of 7 claims timed**: `leadership_score:h20` 61.71s /
+`Breakout-watch:h20` 8.40s / `ma_stack:h20` 153.08s / `vcp_contraction:h20` 122.90s /
+`vcp_contraction:h60` 118.49s / `combination:composite:h20` 163.26s (sum **627.84s**; the 7th claim,
+`rs_spy_3m:h60`, was still running when this run's own 1,800s measurement ceiling fired — see "Honest
+limit" above).
+
+### Result — TC-5: NOT MET. The running total already exceeds the 1,200s finalize-tail budget before the run even finished
+
+**Sum of the 8 phases above (excluding the `backfill` snapshot-write stage, and excluding the 7th,
+uncompleted `drawdown_expectations_warm` claim): 1,670.95s — already 470.95s (39.2%) OVER the existing
+1,200s budget, with one more `drawdown_expectations_warm` claim (baseline 54.54s, but every OTHER claim
+this run measured 1.3–5.2x its own iter-51 baseline) still to add.** This is not a marginal, disclosable
+overage — this run's finalize tail, on this date, plainly breaches the existing budget. Unlike Addendum
+11's single warm-DB sample (1,048.17s, under budget), this run lands the opposite way. Both are honestly
+recorded, single-date, warm-DB-cache samples — the difference is driven by this date (`2019-02-20`)
+requiring substantially more actual compute across nearly every phase (`coverage_membership_timeline_
+refresh` 83.26s vs Addendum 11's 16.18s; `forward_aggregates_warm` 210.54s vs 107.05s; `factor_lab_all_
+warm` 702.99s vs 583.76s; each individually-timed `drawdown_expectations_warm` claim 1.3–5.2x its iter-51
+counterpart) — not primarily by this iteration's own added yield-point overhead (`factor_lab_all_warm`'s
+own +20.4% is the one phase where the scheduling cost is isolable, and it accounts for a small fraction of
+the total overage). **The 1,200s budget itself is not touched or loosened by this addendum** — this
+measurement is recorded as a genuine breach on this date, not as grounds to raise the figure.
+
+### TC-3 — per-poll latency against the owner-amended ≤2s bounded-background-compute ceiling
+
+Recorded honestly above: 94 of 1,471 successfully-answered polls (6.4%) exceeded 2.0s, worst case 4.999s
+(at the 5.0s client-timeout ceiling — some of the "successful but slow" polls sit right at the boundary
+with the connection-level failures). This is a higher rate than Addendum 11's own solo finding (0 of 644
+successful polls exceeded 2s that pass — this run's added yield-point scheduling overhead, and/or this
+date's heavier compute load, both plausibly contribute). Do not read this as the ceiling being newly met;
+it was not met before and is not met now.
+
+### Still deferred, disclosed rather than silently dropped
+
+- **TC-2 (concurrent drill)** — not run this pass; deferred to the browser-qa-agent/audit lane per
+  established precedent (Addendum 7/11). Given TC-1's solo result is already decisively negative, the
+  concurrent scenario is expected to be at least as bad, not better.
+- **TC-7 (Factor Lab real-browser TTI + on-load latency)** — not run this pass; requires actual browser
+  automation, deferred to the browser-qa-agent lane.
+- **This run's own completeness** — see "Honest limit" above: 6 of 7 `drawdown_expectations_warm` claims
+  timed, job did not reach terminal status before this run's own measurement ceiling, no 30s post-
+  completion tail captured. The qualitative TC-1/TC-5 findings do not depend on the missing data, but the
+  exact final total and post-completion tail are not in this addendum.
+
+`git diff --stat` over `config.yaml`, `project-extensions/host-guard/host-guard.env`,
+`scripts/start-backend.sh`, `scripts/dev.sh`, `scripts/start-frontend.sh` — EMPTY before and after this
+pass (AG-10 unchanged). This addendum is append-only; no earlier dated section was edited.
+
+## Item V — the `/api/health` starvation is CLOSED: profiling named the two uninterruptible GIL holders, bounding them took the count to zero and the finalize tail back under budget (ops-hardening iter-52, 2026-08-08, developer FIX PASS after QA FAIL, J-07)
+
+### Addendum 13 (2026-08-08, ops-hardening iter-52 developer fix pass) — TC-1 MET (0 non-answers), TC-5
+### MET (955.75s vs the 1,200s budget), TC-3 improved but still NOT fully met and recorded as such
+
+**Item U above stands unedited.** Its measurement — TC-1 and TC-5 NOT MET, 22 non-answers against a
+pre-fix baseline of 9 — is what made this pass possible, and it was right to publish it. What follows is
+what a diagnosis of that negative result found, and what re-measuring after the fix produced.
+
+### First correction of record: the failure class was mis-named
+
+Item U counted these as **connection-level** non-answers ("no response at all", the `curl code=000`
+class). Re-reading `logs/backend.log` over Item U's own drill window — strictly between the first and last
+`GET /api/data/jobs/a24c8604…` access line — shows **1,476 `GET /api/health` responses, every one HTTP
+200, zero non-200**, against the client's 1,471 answered + 22 unanswered. **The server never refused,
+dropped, or failed a connection; it produced a 200 for every request, and 22 of those answers arrived
+after the client's own 5.0s ceiling.** The class is "slower than the client's timeout", not "dead socket".
+That correction matters: it rules out the accept-backlog / connection-handling explanations and points at
+request latency under GIL contention, which is what the profile below then measured directly.
+
+### Root cause, measured with the offending line named
+
+`_release_process_memory` was excluded first — all six of its logged calls are ≤ 0.21s
+(`gc_collect=… malloc_trim=…` lines).
+
+A GIL-stall profile was then run against the **real committed DB**: `compute_factor_lab_all` on a worker
+thread, a probe thread measuring GIL-acquisition stalls, and **the worker's stack captured at the instant
+each stall resolved**. 571.94s, 69,608,603 observations over 55 (factor, horizon) entries; per-horizon
+pool sizes 1,244,600–1,276,566.
+
+| holder | evidence |
+|---|---|
+| `sorted(obs, key=…)` (`research.py:1332`) | the dominant share of **197 stalls > 0.30s**, each **1.09–1.23s** |
+| gen-2 garbage collection | **154 pauses > 50ms totalling 121.37s** of the phase's 571.94s, worst **1.088s** |
+
+**Why iter-52's first pass could not have worked, stated plainly:** a `list.sort()` comparison phase and a
+garbage collection are each a *single C-level call* that never reaches an eval-breaker check. A
+`time.sleep(0)` placed at the top of an iteration cannot interrupt work happening inside that iteration.
+Item U's own hypothesis about the sort was correct; the garbage-collection half was not known before this
+pass, and it was the larger of the two by total time.
+
+### The fix (three parts, byte-identical, each chosen from a measurement)
+
+1. **`_cooperative_sorted`** — stable sort over contiguous 50,000-row slices, yielding between them, merged
+   with `heapq.merge`. Applied at `compute_factor_lab_all`'s per-(factor,horizon) sort, `_average_ranks`
+   (rank-IC orders ~1.27M values twice per factor at the default horizon) and `_BoundedRankWindow._trim`
+   (~504K keys per trim, `drawdown_expectations_warm`'s PASS 1). At the live scale (800K rows, heavy ties)
+   the worst GIL hold falls **0.99s → 0.037s** and the sort runs **4% faster**. Chunk size read off the
+   measured curve: 50K → 0.037s/−4% · 100K → 0.082s/+7% · 200K → 0.201s/+20%.
+2. **`_cyclic_gc_paused`** — the automatic cyclic collector is paused for ONE (factor,horizon) entry and
+   the previous state restored on every exit path. Everything the entry allocates in bulk is acyclic, so
+   reference counting reclaims all of it either way. A/B over the real per-entry body (6 entries):
+   base worst stall 1.168s / GC 3.5s / 44.6s · +chunked sort 0.282s / 4.7s / 46.7s ·
+   +`gc.freeze()` 0.283s / 3.9s / 46.2s (**measured ineffective, dropped**) ·
+   **+paused collector 0.293s / 0.0s / 42.0s (6% faster)**. Every variant byte-identical to base.
+3. **Bounded release of the spent entry** — the ~1.27M records are dropped in 50,000-row slices before the
+   collector is switched back on. Both steps were forced by measurement: leaving them referenced made the
+   first collection after the window a 0.83s gen-0 pass, and then dropping both lists in one statement
+   became the largest remaining stall (0.42–0.45s), because freeing 1.27M records is itself one
+   uninterruptible sweep.
+
+### Same profile, same inputs, after each step (`sum_n_total` 69,608,603 in every run)
+
+| | pre-fix | +(1)+(2) | +(1)+(2)+(3) |
+|---|---|---|---|
+| `compute_factor_lab_all` wall-clock | 571.94s | 473.17s | **462.49s (−19.1%)** |
+| stalls > 0.30s | 197 | 49 | **50** |
+| worst single stall | 1.23s | 0.69s | **0.453s** |
+| gen-2 GC pauses > 50ms | 154 / 121.37s | 34 / 18.31s | **4 / 0.20s** |
+| VmPeak | 1,904,896 kB | 2,119,420 kB | **1,771,404 kB** |
+
+### The live drill — measurement conditions
+
+Backend launched by `scripts/start-backend.sh` on the project's own default port (8255), AG-10 caps live
+(`ulimit -v` from `config.yaml`'s `memory_cap_mb`, `MALLOC_ARENA_MAX`, `taskset -c 0-15`, BLAS thread caps
+from `host-guard.env`). A real in-app backfill through the product API (`POST /api/data/jobs`,
+`kind: backfill`, target **2019-02-19** — chosen at run time as the latest unsnapshotted trading day with
+≥ 90 trading days of following calendar, read from the instance's own `GET /api/data/availability`, never
+a hardcoded literal). Solo, as in Addenda 7/11/12.
+
+**One methodology change, and it matters.** Addendum 12 polled `/api/health` from a thread inside a busy
+Python process, so a "no answer" could not be distinguished from the CLIENT thread being starved. This
+drill polls from a **dedicated process that does nothing else** — one socket per poll, 5.0s timeout (the
+same failure class Addenda 11/12 counted), recording the connect/first-byte split so a slow server is
+distinguishable from a slow client. Job status is polled by a separate process again.
+
+Boot: **start → first `GET /api/health` 200 in 2.2s** (J-04's ≤ 5s budget, met).
+
+### Result — TC-1: MET. Zero non-answers
+
+| | Addendum 11 (pre-fix, iter-51) | Addendum 12 (iter-52 first pass) | **Addendum 13 (this fix pass)** |
+|---|---|---|---|
+| Job | — | `a24c8604…`, 2019-02-20 | `ba8c202f15d949f28b5ed11b4fa3e1e0`, 2019-02-19, `"source": null` |
+| Job reached terminal status | yes | **no** (1,800s ceiling fired mid-phase) | **yes — `ok`**, 1,005.85s, 1 snapshot, 2,290 forward returns |
+| Health polls | 653 | 1,493 | **1,021** |
+| HTTP 200 | 644 | 1,471 | **1,021 (every single poll)** |
+| **Non-answers (5.0s client ceiling)** | 9 | 22 | **0** |
+| Polls > 2.0s | 0 / 644 | 94 / 1,471 (6.4%) | **16 / 1,021 (1.6%)** |
+| Worst answered latency | — | 4.999s (at the ceiling) | **3.818s** |
+| VmPeak | 3,652.4 MB | 4,405.0 MB | **4,147.4 MB vs the 8,192 MB cap → 4,044.6 MB (49.4%) margin** |
+
+Latency across the whole run: min 0.088s / median 0.231s / p90 0.908s / p99 2.584s / max 3.818s.
+The 30s-past-completion tail Addendum 12 could not capture **was** captured here (the drill held 40s past
+the job's terminal status); no non-answer occurred in it.
+
+### Result — TC-5: MET. 955.75s against the 1,200s budget, on a job that actually finished
+
+| phase | Addendum 12 (partial run) | **Addendum 13** |
+|---|---|---|
+| `coverage_membership_timeline_refresh` | 83.26s | 16.26s |
+| `per_date_coverage_warm` | 9.10s | 11.39s |
+| `market_phase_warm` | 34.71s | 18.46s |
+| `forward_aggregates_warm` | 210.54s | 103.25s (h1 29.36 / h5 18.66 / h10 18.56 / h20 18.45 / h60 18.21) |
+| `research_hot_keys_warm` | 2.39s | 2.03s |
+| `index_series_warm` | 0.12s | 0.02s |
+| `factor_lab_all_warm` | 702.99s | **486.62s** |
+| `drawdown_expectations_warm` | 627.84s (**6 of 7** claims) | **317.72s (all 7 claims)** |
+| **finalize-tail TOTAL** | 1,670.95s, **incomplete** — 470.95s OVER | **955.75s — 244.25s (20.4%) UNDER budget** |
+
+`drawdown_expectations_warm` claims: `leadership_score:h20` 19.92s · `Breakout-watch:h20` 7.12s ·
+`ma_stack:h20` 55.59s · `vcp_contraction:h20` 23.91s · `vcp_contraction:h60` 23.60s ·
+`combination:composite:h20` 107.78s · `rs_spy_3m:h60` 55.81s.
+
+**Read this comparison honestly.** The two drills ran on different single dates, so most of the per-phase
+deltas above mix the fix with ordinary date-to-date variation and should not be attributed to the fix
+alone. **The one row that is genuinely apples-to-apples is `factor_lab_all_warm`**: the ingest warms it
+with `as_of=None` (the all-history payload), so its cost does not depend on which date the job targeted.
+486.62s against Addendum 12's 702.99s, Addendum 11's 583.76s, and 643.32s on a pre-fix job run earlier the
+same day (`bc49c33b…`, whose own tail totalled 1,327.86s) — and the isolated same-DB profile above
+(571.94s → 462.49s, −19.1%) is the controlled version of that same comparison. The budget is **not**
+touched or reinterpreted by this addendum; the number simply landed inside it this time.
+
+### TC-3 — the ≤2s bounded-background-compute ceiling: improved, still NOT fully met, recorded as such
+
+16 of 1,021 answered polls (1.6%) exceeded 2.0s, worst 3.818s — against Addendum 12's 94 of 1,471 (6.4%),
+worst 4.999s. **This is not full compliance and is not claimed as such** (the spec's own "Honest limit"
+anticipated exactly this residual). Where they fall, attributed by anchor timestamp against each phase's
+own logged window:
+
+- 11 in the opening ~90s of the job: 1 in the `backfill`/snapshot-write stage, 2 in
+  `coverage_membership_timeline_refresh`, 3 in `per_date_coverage_warm`, 5 in `market_phase_warm`.
+- 5 clustered at t+696.9s..t+707.6s, at the hand-over into `drawdown_expectations_warm`.
+- **Zero in `factor_lab_all_warm`'s entire 486.62s window** — the phase this fix targeted, and the phase
+  that produced 19 of Item U's 22 non-answers and all 9 of Item T's. That attribution is the cleanest
+  evidence in this addendum that the fix acted where it was aimed.
+
+A separate, un-fixed contributor is disclosed rather than left implicit: **`GET /api/health` is not a
+cheap probe.** Every call runs `SELECT max(date)` and `COUNT(DISTINCT symbol)` over `daily_prices`, plus
+`compute_readiness` and `compute_preflight` — about 0.14s of real database work at rest on this basis,
+which is already above the 0.1s steady-state ceiling before any job runs. Nothing in this pass changed it.
+
+### Still deferred, named rather than quietly dropped
+
+- **TC-2 (the concurrent drill)** — not run this pass; the browser-qa/audit lane's own job, as in Addenda
+  7, 11 and 12. This pass's solo result is decisively positive where Item U's was decisively negative, but
+  a solo run cannot speak for the concurrent case.
+- **TC-7 (Factor Lab real-browser TTI + on-load latency)** — browser-lane work, not run here.
+- **The `_do_backfill` snapshot-write stage and `market_phase_warm`** — both still produce >2s polls and
+  neither was given the treatment above. Named as the strongest candidates for the next iteration.
+- **`GET /api/health`'s own per-call database cost** — a separate, worthwhile piece of work, untouched.
+
+`git diff --stat` over `config.yaml`, `project-extensions/host-guard/host-guard.env`,
+`scripts/start-backend.sh`, `scripts/dev.sh`, `scripts/start-frontend.sh` — EMPTY before and after this
+pass (AG-10 unchanged, TC-10). The drill's job record reads `"source": null` with all eight aggregate
+categories refreshed (AG-9 / TC-11 — a `backfill` never enters the fetch branch, so no live network call
+is reachable). This addendum is append-only; no earlier dated section, Item U included, was edited.
+
+---
+
+## Item W — TC-2 (concurrent), TC-6 (live, re-run on the shipped tree) and TC-7 (Factor Lab browser) closed; the concurrent case is 13.7x better but NOT zero, and the finalize tail goes 5.1% OVER budget under load (ops-hardening iter-52, 2026-08-08, developer AUDIT-FIX pass, J-05/J-06/J-07)
+
+### Addendum 14 (2026-08-08, ops-hardening iter-52 developer audit-fix pass) — the three measurements the iter-52 audit found missing, all taken against the SHIPPED tree
+
+Written to close three findings of `docs/handoffs/goal-ops-hardening-iter-52-audit.md`:
+**B3** (TC-2 never executed), **B4** (TC-6's live evidence predated the shipped implementation) and
+**B2** (TC-7's Factor Lab browser measurement absent — a second consecutive round of debt). It also
+supplies the concurrency evidence the audit's **B5** asked for.
+
+**Sequencing, stated first because it is the point.** The only product-code change in this pass is two
+corrected comments in `apps/backend/app/engine/research.py` (audit item 5 — the `_cyclic_gc_paused`
+"seconds, not the whole phase" overstatement and the unconditional byte-identity claim). That edit landed
+at **2026-08-08 03:55:25**; every measurement below started at **03:58:21 or later**. No product file
+under `apps/backend/` or `apps/frontend/` has been touched since. The 8-journey lane must still re-run
+after this pass (TC-9) — this addendum does not and cannot substitute for it.
+
+Append-only, as every addendum in this file: no earlier dated section, Item V / Addendum 13 included,
+was edited.
+
+---
+
+### TC-2 — the concurrent drill. RUN at last, and it does NOT reach zero: 2 non-answers of 1,285
+
+Same methodology as Addendum 13 in every respect — `scripts/start-backend.sh` on the project's default
+port 8255 with AG-10 caps live, a real `POST /api/data/jobs` backfill on a trading day chosen at run time
+from the instance's own `GET /api/data/availability`, `/api/health` polled once per second by a
+**dedicated process that does nothing else** at the same 5.0s client ceiling, job status polled by
+another process, and a 40s hold past terminal status. **One addition:** a third dedicated process kept
+ONE heavy research request outstanding throughout, alternating
+`GET /api/research/factor-lab?all=true` and `GET /api/research/factor-combination` with a 2s gap —
+UT-08's own shape, and the scenario a solo drill provably cannot cover.
+
+Job `ff98726ddd2942eaa70e88a54dd675eb`, target **2019-02-15**, `"source": null`, terminal status **`ok`**
+in 1,375.67s: 1 snapshot, 2,290 forward returns, all eight aggregate categories refreshed. Boot
+**2.2s** start → first `/api/health` 200 (J-04's ≤5s budget, met again).
+
+| | UT-08 (pre-fix concurrent, iter-50 lane) | Addendum 13 (SOLO, post-fix) | **Addendum 14 (CONCURRENT, post-fix)** |
+|---|---|---|---|
+| Health polls | 892 | 1,021 | **1,285** |
+| HTTP 200 | — | 1,021 | **1,283** |
+| non-200 (a real error status) | — | 0 | **0** |
+| **Non-answers (5.0s client ceiling)** | **19 (2.13%)** | 0 | **2 (0.156%)** |
+| Polls > 2.0s | — | 16 / 1,021 (1.6%) | **34 / 1,283 (2.65%)** |
+| Worst answered latency | — | 3.818s | **4.901s** |
+| Concurrent research requests | 1 | none | **164 (82 + 82), 163 answered 200** |
+| VmPeak | 8,192.0 MB (0% headroom) | 4,147.4 MB | **4,886.2 MB → 3,305.8 MB (40.4%) margin** |
+
+Latency across the whole run: min 0.091s / median 0.220s / p90 1.311s / p99 3.219s / max 4.901s.
+Polls > 1.0s: 224 / 1,283. Polls > 0.5s: 326 / 1,283.
+
+**TC-2 is NOT met. The rate is 13.7x lower than the finding it was written against, and that is the
+honest reading — not "closed".**
+
+**What the two non-answers actually are, and where.** Neither is a dead socket. `poll_health.py` records
+the connect/first-byte split, and both failures have **`connect_s = 0.000`** — the TCP connection was
+accepted instantly and the server then failed to produce a first byte inside 5.0s. The neighbouring polls
+show the same regime, so this is one continuous multi-second-latency window, not a connection-handling
+failure:
+
+| t+ | code | total | connect | ttfb | phase |
+|---|---|---|---|---|---|
+| 151.8s | 200 | 0.283 | 0.000 | 0.283 | `coverage_membership_timeline_refresh` |
+| **152.8s** | **000** | **5.005** | **0.000** | — | `coverage_membership_timeline_refresh` |
+| 157.8s | 200 | 2.144 | 0.000 | 2.144 | `coverage_membership_timeline_refresh` |
+| 186.9s | 200 | 4.221 | 0.000 | 4.221 | `market_phase_warm` |
+| **191.2s** | **000** | **5.005** | **0.000** | — | `market_phase_warm` |
+| 196.2s | 200 | 4.361 | 0.000 | 4.361 | `market_phase_warm` |
+
+Both land in **`coverage_membership_timeline_refresh`** and **`market_phase_warm`** — the two phases
+Addendum 13's own Known Issues named as the un-fixed contributors and which this iteration deliberately
+did not treat. **Zero** non-answers fell in `forward_aggregates_warm` (738.70s of this run) or in
+`factor_lab_all_warm`. Where the 34 slow (>2.0s) polls fall: 15 `forward_aggregates_warm`, 8
+`drawdown_expectations_warm`, 5 `market_phase_warm`, 3 `coverage_membership_timeline_refresh`, 1
+`per_date_coverage_warm`, 1 `factor_lab_all_warm`, 1 outside any timed phase.
+
+**TC-3 under concurrency, recorded honestly and not rounded up:** 34 of 1,283 answered polls (2.65%)
+exceeded the ≤2s ceiling, worst 4.901s. Against the solo post-fix 16 / 1,021 (1.6%, worst 3.818s), the
+concurrent case is meaningfully worse — as it should be, with a second CPU-bound Python compute in the
+same process. The ceiling is **not** met in either drill and is not claimed as met in either.
+
+### TC-5 under concurrency — the finalize tail goes OVER the 1,200s budget. Disclosed, not loosened
+
+| phase | Addendum 13 (solo) | **Addendum 14 (concurrent)** |
+|---|---|---|
+| `coverage_membership_timeline_refresh` | 16.26s | 46.05s |
+| `per_date_coverage_warm` | 11.39s | 17.19s |
+| `market_phase_warm` | 18.46s | 26.26s |
+| `forward_aggregates_warm` | 103.25s | **738.70s** (h1 103.58 / h5 86.34 / h10 88.35 / h20 87.94 / **h60 372.46**) |
+| `research_hot_keys_warm` | 2.03s | 21.26s |
+| `index_series_warm` | 0.02s | 0.02s |
+| `factor_lab_all_warm` | 486.62s | **0.05s** — see below |
+| `drawdown_expectations_warm` | 317.72s | 411.89s |
+| **finalize-tail TOTAL** | 955.75s (**244.25s UNDER**) | **1,261.42s — 61.42s (5.1%) OVER the 1,200s budget** |
+
+**The budget was not touched, reinterpreted, or relaxed.** It is exceeded, and that is stated here rather
+than left to be discovered. The overrun is entirely accounted for by the concurrent load: the same tail
+ran 955.75s solo on the same tree three hours earlier.
+
+**`factor_lab_all_warm` reading 0.05s is not a speed-up — read it carefully.** The concurrent load's own
+`GET /api/research/factor-lab?all=true`, issued at t+270s while `forward_aggregates_warm` was running,
+took longer than the load client's own 600s ceiling and computed the all-history payload itself; by the
+time the finalize tail reached its `factor_lab_all_warm` phase the value was already cached, so the
+phase found nothing to do. **This drill therefore does NOT exercise the phase iter-52's fix targets.**
+The concurrent work simply moved from the finalize tail into the request path — which is the same
+function, with the same chunked sort and the same bounded GC window, so the fix was still in effect;
+it just was not in effect *where this drill's phase table shows it*. Addendum 13 remains the measurement
+that speaks for `factor_lab_all_warm` itself.
+
+**What the concurrent requests cost:** 164 issued, **163 answered 200**, one hit the load client's own
+600s ceiling (above). Their first three were genuinely heavy — 265.60s, 211.48s and the >600s one — and
+then the median fell to **0.044-0.050s** once the caches were warm. The first three are the real
+contention; the remaining ~160 are cache hits and add almost nothing.
+
+**Memory under concurrency — the answer to the audit's B5.** The audit recorded as a GAP that
+`_cyclic_gc_paused` suspends the automatic collector for effectively the whole `factor_lab_all_warm`
+phase, and that the drill which would stress that (TC-2) had not been run. It has now: VmPeak
+**4,886.2 MB** and VmHWM **4,245.6 MB** against the 8,192 MB cap — a **40.4%** VmPeak margin — with a
+1/s health poller and a continuous heavy-request stream alongside the ingest for the full 1,375.67s.
+`logs/backend.log` carries **no `MemoryError`, no traceback and no `ERROR` line** anywhere in the drill
+window. The deferred-collection concern is real and correctly documented, but it did not produce memory
+pressure under the concurrency the spec asks for.
+
+### TC-6 — the live fault-injection test, RE-RUN on the shipped tree (audit B4)
+
+`test_ingest_finalize_factor_lab_all_fault_is_honestly_omitted_health_stays_live`, opt-in via
+`TRENDORA_RUN_HEAVY_INGEST_TEST=1`, spawned backend on a throwaway copy of the dev DB with
+`TRENDORA_FAULT_INJECT_MEMORY_ERROR=factor_lab_all` armed:
+
+**`1 passed, 15 deselected in 1076.19s (0:17:56)`**, 2026-08-08 04:25-04:43.
+
+The audit was right that its only previous live execution (838.77s, 2026-08-07) predated the fix pass's
+rewrap of the very code path it drives — the injection site now sits inside `with _cyclic_gc_paused():`
+(`research.py:1437`, injection at `:1439`). It has now been executed against the shipped tree and still
+holds: the faulted category is honestly omitted from `aggregates_refreshed`, `coverage` still appears,
+`GET /api/health` answered 200 on every poll through the job and for 30s past its completion from one
+continuously-running poller (the "no restart" evidence), and the warmed category still served correctly
+from the same process.
+
+### TC-7 — the Factor Lab browser measurement, owed for two rounds. Both numbers, measured
+
+**(a) On-load API latency, warm, from the same still-running post-ingest process** — taken 40s after the
+TC-2 drill's job reached `ok`, before the backend was torn down:
+
+| run | `GET /api/research/factor-lab?all=true` | factors returned |
+|---|---|---|
+| 1 | **0.0516s** | 11 |
+| 2 | **0.0098s** | 11 |
+| 3 | **0.0646s** | 11 |
+
+**(b) Real-browser page load** — headless Chromium via Playwright at 1440x900 against
+`scripts/dev.sh` (backend + frontend, AG-10 caps live), navigating to `/research/factor-lab`. One
+throwaway navigation ran first so the `next dev` route compile — a dev-server artefact, not the page's
+load time — is excluded from all three measured runs:
+
+| metric | run 1 | run 2 | run 3 |
+|---|---|---|---|
+| `domInteractive` | 25.3 ms | 22.8 ms | 21.0 ms |
+| `domContentLoadedEventEnd` | 25.4 ms | 22.8 ms | 21.0 ms |
+| `loadEventEnd` | 250.5 ms | 251.6 ms | 246.9 ms |
+| Factor Lab heading visible (wall clock from `goto`) | 57.1 ms | 52.8 ms | 57.5 ms |
+| whole page settled (`networkidle`) | 1,252.9 ms | 1,156.0 ms | 1,144.9 ms |
+| on-load `?all=true` resource timing | 101.8 ms + 10.9 ms | 10.2 ms + 12.4 ms | 12.6 ms + 11.6 ms |
+| factor rows rendered | 11 | 11 | 11 |
+
+Two things disclosed rather than smoothed over. **First, the page fires `?all=true` twice per load** —
+React's development double-invoke; both calls are cache hits of ~10ms, so the cost is negligible, but the
+count is real and a production build would fire once. **Second, `networkidle` (~1.15-1.25s) is the honest
+"page fully settled" figure**, five times the `loadEventEnd` mark, because this is a client-rendered page
+whose navigation-timing marks describe only the shell Next.js ships. Both figures are given; neither is
+presented as the other.
+
+**Whose measurement this is, stated plainly.** This is a **developer-lane** measurement, not the browser
+lane's. The audit's B2 correctly refused to transcribe the previous lane run's numbers because they were
+taken against superseded code; these were taken against the shipped tree, after the last product-code
+edit, which is what TC-7 asks for. The lane's own re-run should corroborate it — and if the two disagree,
+the lane's number is the one that governs.
+
+### Anti-goal checks for this pass
+
+`git diff --stat` and `git status --porcelain` over `config.yaml`,
+`project-extensions/host-guard/host-guard.env`, `scripts/start-backend.sh`, `scripts/dev.sh`,
+`scripts/start-frontend.sh` — **EMPTY** before and after (AG-10, TC-10). The drill's persisted job record
+reads **`"source": null`** and `GET /api/health` reports `"provider": "seed"` — a `backfill` is not in
+`_FETCH_KINDS`, so `_resolve_live_provider` is unreachable and no live network call exists on this path
+(AG-9, TC-11). The `source: 'yahoo'` that `POST /api/data/jobs` echoes is the endpoint's own echo of
+`cfg.data_manager.default_source` and is not what the job runs against; the persisted record is.
+`git diff apps/backend | grep -Ei "api[_-]?key|secret|token|password|bearer "` — no hits (AG-7).
+
+### What is still open after this pass, named rather than dropped
+
+- **TC-2 is not met (2 non-answers) and TC-3 is not met in either drill.** Both residuals now sit almost
+  entirely in `coverage_membership_timeline_refresh`, `market_phase_warm` and `forward_aggregates_warm` —
+  the phases that never received the chunked-sort / bounded-GC treatment. Applying it there is the
+  obvious next named change; it is NOT attempted here, because this pass is licensed to fix the audit's
+  listed findings only and a new risky change would invalidate the lane run that must follow it.
+- **The finalize tail exceeds its 1,200s budget under concurrency** (1,261.42s). Either the budget is a
+  solo-only budget and should say so, or the concurrent case needs the work above. An owner call, not an
+  agent one.
+- **The live `?all=true` request path can still block for more than 600s** during an ingest — one of the
+  164 concurrent requests did. It answered nothing to that client. This is the same starvation class,
+  seen from the request side rather than the health-probe side, and it is worth its own measurement.
+- **`GET /api/health` is still not a cheap probe** (~0.14s of real database work at rest). Unchanged, as
+  in Addendum 13.
+- **The 8-journey browser/replay lane must still run, LAST, after this pass** (TC-9). Nothing in this
+  addendum substitutes for it.

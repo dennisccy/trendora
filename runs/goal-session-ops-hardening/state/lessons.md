@@ -344,30 +344,12 @@ especially `apps/backend/app/engine/` memory work.
 **Applies to:** any iteration whose fix is scoped to a data shape (append-forward, latest-only,
 same-version) — verify the live DB contains an instance of that shape during decomposition.
 
-## iter-46 — 2026-08-04T09:15:00Z
-
-**Verdict:** ESCALATE
-**Lesson:** The deterministic replay lane has been scoring J-01/J-03 `passing` on text that
-pre-existing rows already satisfy. `journey-scripts/J-01.json` step 5 asserts the string
-"2 non-trading" is present on `/data`, and Run History persists every past run — so the assertion
-passes whether or not the job it just submitted ever finished. Worse, `data_provider_runs` contains
-**no row at all** for 01:23-01:24Z when the iter-45 replay ran, i.e. its `fill`+`Start` never created
-a job (the iter-46 LLM tester independently found that plain `.value =` assignment does not update
-React state on those date inputs). A golden script that asserts page-wide text on a page with
-persistent history is a null test.
+## iter-46 — 2026-08-04T09:15:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration relying on `demo_runner.py --mode verify` for J-01/J-03 (or any journey
 whose acceptance text also appears in a persisted history panel); any golden-script authoring — assert
 against the NEW run's own row/testid, never page-wide text.
 
-## iter-46 — 2026-08-04T09:15:00Z
-
-**Verdict:** ESCALATE
-**Lesson:** A QA-fix or audit-fix pass that lands after the browser lane silently voids the entire
-lane: this iteration's `warmup.py` (06:17Z) and `data_manager.py` (08:38Z) both changed the exact code
-paths whose rows had failed at 05:49Z, so not one of the eight journeys could be scored on this
-round's own work. Three independent places recorded the problem (`status.json`'s
-`next_action: rerun_browser_lane_then_audit`, audit T1, review MINOR #2) and the iteration still ended
-without re-running it — the note is not self-executing.
+## iter-46 — 2026-08-04T09:15:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration that enters fix-mode or audit-fix after browser-qa has run; the
 orchestrator should treat "product code changed after `ui-test-results.md` was written" as a hard
 re-run trigger, not an advisory note.
@@ -487,3 +469,34 @@ only lane evidence the iteration had. "Fix small things during audit" and "the l
 direct tension; when both are in force, findings-only is the correct resolution and should be stated
 as the expectation, not left to the auditor's judgement each round.
 **Applies to:** any full-depth iter whose spec carries the TC-8 lane-last sequencing rule.
+
+## iter-52 — 2026-08-08T04:34:46Z
+
+**Verdict:** ESCALATE
+**Lesson:** A failed ASGI request leaves **no uvicorn access-log line at all** — grepping
+`logs/backend.log` for `500` after line 205000 returns **zero hits** while three genuine
+`MemoryError` tracebacks sit in that same range (`compute_regime_lab` ->
+`_regime_lab_members_by_horizon`, lines 212191/212240/212296). The only way to find a page whose
+data call died is to grep for the *exception frame*, never for a status code. Compounding it:
+`J-06.json`'s step 11 asserts `expect.text = "Research — Regime Lab"` — the page HEADING — so the
+golden scored PASS on the very load where that page returned no data; `J-06-verify.png` shows the
+shell with an empty body.
+**Applies to:** any iteration scoring a journey off a golden `expect.text` assertion, and any
+log-based availability claim about `apps/backend/` (`ui-test-results.md` rows, `perf-budgets.md`
+drill addenda). Assert a value the endpoint must have produced, not a heading the shell renders.
+
+## iter-52 — 2026-08-08T04:34:46Z (second entry)
+
+**Verdict:** ESCALATE
+**Lesson:** TC-9 ("the 8-journey lane runs LAST, no product-code change afterward") has now broken
+in **six of seven rounds**, and it is an ORDERING property of the pipeline, not a discipline
+failure: the lane is dispatched BEFORE audit and audit-fix, so *any* audit finding that needs a
+code change breaks the rule automatically. This round it broke maximally — the lane ran 01:41:48
+and the iteration's entire deliverable (`research.py` `_cooperative_sorted`/`_cyclic_gc_paused`)
+landed at 02:39:48, so the only independent evidence measured a superseded tree and returned FAIL
+on both target journeys. Five rounds of restating the rule in the spec have not fixed it; moving
+the lane's dispatch to after the audit-fix step would fix it once. Corroborating tell, cheap to
+re-derive: the lane's job appears in `perf-budgets.md` as a "**pre-fix** job run" in the
+developer's own words.
+**Applies to:** every full-depth iteration in this session; any spec author restating TC-8/TC-9;
+anyone diagnosing why a round ends `blocked` at `audit_qa_failed` with `browser_checks_run: false`.

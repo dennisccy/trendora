@@ -910,6 +910,155 @@ def spawned_backend_fault_injected():
             pass
 
 
+# ==================================================================================================
+# ops-hardening iter-52 (J-07 step 4, TC-6) -- the LIVE test above faults `factor_lab_all` via a LIVE
+# REQUEST (`GET /research/factor-lab?all=true`). J-07 step 4 itself describes an induced-pressure abort
+# during a HEAVY DATA JOB, i.e. the finalize tail's OWN `factor_lab_all_warm` call
+# (`data_manager.py`) -- a scenario the request-path drill above cannot exercise, and which
+# `iteration-state.md`/`assumptions.md` record as permission-denied twice this session (UT-05) via the
+# goal-mode harness's own backend-restart path. This drill instead spawns its OWN dedicated backend and
+# drives the SAME confirmed crash frame through a REAL `POST /api/data/jobs` ingest job.
+#
+# Unlike `spawned_backend_fault_injected` above (whose own tests are read-only GETs), THIS drill runs a
+# genuinely MUTATING backfill -- so it launches against a THROWAWAY COPY of the real dev DB (mirroring
+# `spawned_backend_throwaway_db`'s own established rationale: "never the shared committed file"), never
+# the shared committed DB every other test in this session's own history relies on staying stable.
+# ==================================================================================================
+_INGEST_FAULT_TEST_PORT = 19300 + _offset
+
+
+@pytest.fixture()
+def spawned_backend_throwaway_db_fault_injected(tmp_path):
+    """Combines `spawned_backend_throwaway_db`'s THROWAWAY DB COPY (this fixture backs a REAL mutating
+    ingest job -- never the shared committed dev DB) with `spawned_backend_fault_injected`'s
+    `TRENDORA_FAULT_INJECT_MEMORY_ERROR=factor_lab_all` env var (deterministically arming the SAME
+    confirmed crash frame at `compute_factor_lab_all`'s per-(factor,horizon) obs-build+sort -- see that
+    fixture's own docstring for why a deterministic injector is used instead of an organic `ulimit -v`
+    calibration). Opt-in (same gate as every other heavy-ingest fixture in this module): must never spawn
+    a mutating, fault-injected backend by accident on a plain `pytest` run."""
+    if os.environ.get("TRENDORA_RUN_HEAVY_INGEST_TEST") != "1":
+        pytest.skip(
+            "live ingest-finalize fault-injection drill is opt-in -- set TRENDORA_RUN_HEAVY_INGEST_TEST=1 "
+            "(run it only on an idle host with the host-guard protections active)"
+        )
+    if not SCRIPT.exists():
+        pytest.skip(f"{SCRIPT} not found")
+    if not REAL_DB.exists():
+        pytest.skip(f"real dev DB not found at {REAL_DB} -- nothing to copy for a real ingest drill")
+
+    scratch_db = tmp_path / "ingest-fault-throwaway.db"
+    for suffix in ("", "-wal", "-shm"):
+        src = Path(str(REAL_DB) + suffix)
+        if src.exists():
+            shutil.copy2(src, Path(str(scratch_db) + suffix))
+
+    scratch_config = tmp_path / "ingest-fault-throwaway-config.yaml"
+    real_cfg_text = REAL_CONFIG.read_text()
+    new_cfg_text, n = re.subn(
+        r'url:\s*"sqlite:///apps/backend/data/trendora\.db"',
+        f'url: "sqlite:///{scratch_db}"',
+        real_cfg_text,
+        count=1,
+    )
+    assert n == 1, "expected exactly one database.url line to rewrite in the real config.yaml"
+    scratch_config.write_text(new_cfg_text)
+
+    env = dict(os.environ)
+    env["CHAIN_BACKEND_PORT"] = str(_INGEST_FAULT_TEST_PORT)
+    env["CHAIN_FRONTEND_PORT"] = str(_INGEST_FAULT_TEST_PORT + 1000)
+    env["TRENDORA_CONFIG"] = str(scratch_config)
+    env["TRENDORA_FAULT_INJECT_MEMORY_ERROR"] = "factor_lab_all"
+    proc = subprocess.Popen(
+        ["bash", str(SCRIPT)], cwd=str(REPO_ROOT), env=env,
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
+    try:
+        _wait_for_health(_INGEST_FAULT_TEST_PORT, timeout=60.0)
+        yield ThrowawayBackend(
+            pid=proc.pid, port=_INGEST_FAULT_TEST_PORT, scratch_db=scratch_db, scratch_config=scratch_config
+        )
+    finally:
+        if _pid_alive(proc.pid):
+            os.kill(proc.pid, signal.SIGTERM)
+            deadline = time.monotonic() + 15.0
+            while _pid_alive(proc.pid) and time.monotonic() < deadline:
+                time.sleep(0.2)
+            if _pid_alive(proc.pid):
+                os.kill(proc.pid, signal.SIGKILL)
+        try:
+            proc.wait(timeout=10)
+        except ChildProcessError:
+            pass
+
+
+def test_ingest_finalize_factor_lab_all_fault_is_honestly_omitted_health_stays_live(
+    spawned_backend_throwaway_db_fault_injected,
+):
+    """TC-6 (J-07 step 4) -- closes the evidence gap `test_factor_lab_all_survives_repeated_memory_
+    pressure_live` above leaves open: that test faults `factor_lab_all` via a LIVE REQUEST
+    (`GET /research/factor-lab?all=true`); THIS test drives the SAME confirmed crash frame via a REAL
+    ingest job's finalize tail (`POST /api/data/jobs`), so the fault fires inside `factor_lab_all_warm`
+    (data_manager.py), not the request path -- the scenario J-07 step 4 actually describes and UT-05
+    could not reach twice this session (permission-denied both times).
+
+    Asserts: the job's terminal record honestly OMITS "factor_lab_all" from `aggregates_refreshed` while
+    "coverage" (unaffected by the factor_lab_all-only fault, and genuinely warmed by this real new-
+    snapshot backfill) still appears; `GET /api/health` answers 200 throughout the job AND for 30s past
+    its own completion (a single continuously-running poller is itself the "no restart" evidence -- a
+    restart would show up as a connection-refused gap, never an unbroken run of 200s); and a follow-up
+    request for the warmed category still returns the correct, live value from the SAME still-running
+    process -- no restart performed or required."""
+    from app.config import get_config
+
+    backend = spawned_backend_throwaway_db_fault_injected
+    cfg = get_config()
+
+    target_date = _pick_unsnapshotted_trading_day(backend.port, cfg)
+
+    health = _HealthPoller(backend.port)
+    health.start()
+    try:
+        job_id = _post_job(backend.port, "backfill", target_date, target_date)
+        # Generous: the WHOLE finalize tail runs (coverage/market-phase/forward-aggregates/research-hot-
+        # keys/index-series/the faulted-but-still-slow-to-degrade factor-lab-all/drawdown), not just the
+        # faulted category -- iter-51's Item T Addendum 11 measured ~1,048s for a comparable solo run.
+        detail = _poll_job_to_terminal(backend.port, job_id, timeout_s=1800.0)
+        # TC-6: 30s of health polling PAST the job's own completion, same poller/process throughout.
+        time.sleep(30.0)
+    finally:
+        health.stop()
+        health.join(timeout=15.0)
+
+    assert detail.get("status") == "ok", (
+        f"expected an honest 'ok' -- the isolated factor_lab_all fault must never flip the whole job to "
+        f"partial/failed: {detail}"
+    )
+    refreshed = detail.get("aggregates_refreshed") or []
+    assert "factor_lab_all" not in refreshed, (
+        f"the faulted category must be honestly OMITTED, never fabricated as refreshed: {refreshed}"
+    )
+    assert "coverage" in refreshed, (
+        f"coverage is unaffected by the factor_lab_all-only fault and this is a genuine new-snapshot "
+        f"backfill -- it must still be reported refreshed: {refreshed}"
+    )
+
+    assert health.results, "the health poller recorded nothing -- the drill would be measuring an idle process"
+    bad = [(i, r) for i, r in enumerate(health.results) if r.get("status") != 200]
+    assert not bad, (
+        f"GET /api/health must answer 200 throughout the ingest job and 30s past its own completion "
+        f"({len(health.results)} polls, {len(bad)} non-200/no-response). First offenders: {bad[:5]}"
+    )
+
+    # a category that DID warm (coverage) still serves the correct, live value from the SAME process.
+    avail = httpx.get(f"http://127.0.0.1:{backend.port}/api/data/availability", timeout=120.0)
+    assert avail.status_code == 200
+    cells = {c["date"]: c for c in avail.json().get("cells", [])}
+    assert cells.get(target_date, {}).get("snapshot_exists") is True, (
+        f"the just-ingested date {target_date} must show as snapshotted from the SAME live process, no "
+        f"restart -- got {cells.get(target_date)}"
+    )
+
+
 def _distinct_factor_lab_asof_dates(port: int, n: int) -> list[str]:
     """`n` distinct real snapshot as-of dates, read from the SPAWNED INSTANCE's own `GET /api/runs` — never
     hardcoded literals that go stale. Each one is a DIFFERENT `factor_lab_all_cached` key, which is what

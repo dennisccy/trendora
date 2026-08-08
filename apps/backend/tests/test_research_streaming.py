@@ -1930,3 +1930,301 @@ def test_factor_regime_observations_zero_n_cohort_is_honest_empty(chunked_accumu
             session, factor, H, date(2024, 1, 1), "Risk-on", cfg=cfg
         )
     assert members == []
+
+
+# ==================================================================================================
+# ops-hardening iter-52 (J-07): a REAL scheduling yield (`time.sleep(0)`) now runs once per (factor,
+# horizon) pair inside `compute_factor_lab_all` and once per run-id chunk inside `_combination_
+# observations` / `_factor_decile_observations` (both passes) / `_all_factor_observations_by_horizon` --
+# iter-49/50/51's own live drills proved a pure-Python loop does not reliably cede the GIL on its own
+# under this host's contention pattern (9/653 and 19/892 connection-level `GET /api/health` non-answers,
+# `reports/perf-budgets.md` Items S/T). These tests prove the yield actually fires, by spying on
+# `research_module.time.sleep` -- mirroring this file's own `_fr_slice_map`/`_wrapped` spy convention.
+# ==================================================================================================
+def test_compute_factor_lab_all_yields_once_per_factor_horizon(prune_engine, monkeypatch):
+    """`compute_factor_lab_all`'s per-(factor,horizon) loop calls `time.sleep(0)` once per (catalog
+    factor, configured horizon) pair -- a LOWER bound (`>=`), not an exact count: `compute_factor_lab_all`
+    also calls `_all_factor_observations_by_horizon` once internally (its OWN iter-52 per-chunk yield,
+    proven separately by `test_all_factor_observations_by_horizon_yields_per_run_chunk` above), which
+    contributes additional calls to this same spy. The confirmed LONGEST finalize-tail sub-phase (583.76s
+    live, `reports/perf-budgets.md` Item T Addendum 11)."""
+    cfg = load_config()
+    expected = len(cfg.research.factor_lab.factors) * len(cfg.walk_forward.horizons)
+    sleep_calls: list[float] = []
+    real_sleep = research_module.time.sleep
+
+    def _spy_sleep(seconds):
+        sleep_calls.append(seconds)
+        return real_sleep(seconds)
+
+    monkeypatch.setattr(research_module.time, "sleep", _spy_sleep)
+    with Session(prune_engine) as session:
+        compute_factor_lab_all(session, cfg, as_of=None)
+
+    assert len(sleep_calls) >= expected, (
+        f"expected >= one yield per (factor, horizon) pair ({len(cfg.research.factor_lab.factors)} x "
+        f"{len(cfg.walk_forward.horizons)} = {expected}), got {len(sleep_calls)}"
+    )
+    assert all(c == 0 for c in sleep_calls), (
+        f"a yield point must be sleep(0) -- scheduling only, never a real delay: {sleep_calls}"
+    )
+
+
+def test_combination_observations_yields_per_run_chunk(combination_chunked_engine, monkeypatch):
+    """`_combination_observations`'s run-id chunk loop calls `time.sleep(0)` more than once when the
+    fixture's runs are forced into multiple chunks -- proving a genuinely per-chunk yield, not a single
+    yield for the whole call."""
+    cfg = _cfg_batch(1)  # 1 run id per chunk over the fixture's 5 distinct run ids -> 5 chunks
+    factors = [f for f in cfg.research.factor_lab.factors if f.key in ("rs_spy_3m", "high_proximity")]
+    sleep_calls: list[float] = []
+    real_sleep = research_module.time.sleep
+
+    def _spy_sleep(seconds):
+        sleep_calls.append(seconds)
+        return real_sleep(seconds)
+
+    monkeypatch.setattr(research_module.time, "sleep", _spy_sleep)
+    with Session(combination_chunked_engine) as session:
+        observations = _combination_observations(session, factors, H, None, cfg=cfg)
+
+    assert observations, "sanity: the fixture must produce >= 1 observation"
+    assert len(sleep_calls) >= 2, (
+        f"expected a genuinely per-chunk yield (fixture forced to multiple chunks), got {len(sleep_calls)}"
+    )
+    assert all(c == 0 for c in sleep_calls), (
+        f"a yield point must be sleep(0) -- scheduling only, never a real delay: {sleep_calls}"
+    )
+
+
+def test_factor_decile_observations_yields_per_run_chunk_both_passes(chunked_accumulator_engine, monkeypatch):
+    """`_factor_decile_observations`'s two chunked passes (PASS 1's lightweight sort-key sweep, PASS 2's
+    bounded member rebuild) each call `time.sleep(0)` once per run-id chunk -- proving BOTH passes yield,
+    not just one, by spying on the shared `research_module.time.sleep`."""
+    cfg = _cfg_batch(1, run_chunk=1)  # 1 run id per chunk over 5 distinct run ids -> 5 chunks per pass
+    deciles_count = cfg.research.factor_lab.deciles
+    factor = next(f for f in cfg.research.factor_lab.factors if f.key == "leadership_score")
+    sleep_calls: list[float] = []
+    real_sleep = research_module.time.sleep
+
+    def _spy_sleep(seconds):
+        sleep_calls.append(seconds)
+        return real_sleep(seconds)
+
+    monkeypatch.setattr(research_module.time, "sleep", _spy_sleep)
+    with Session(chunked_accumulator_engine) as session:
+        members = research_module._factor_decile_observations(
+            session, factor, H, None, deciles_count, deciles_count, cfg=cfg
+        )
+
+    assert members, "sanity: the last decile must be non-empty on this fixture"
+    assert len(sleep_calls) >= 4, (
+        f"expected >= 4 yields (>= 2 chunks x 2 passes) on this 5-run fixture at run_chunk=1, got "
+        f"{len(sleep_calls)}"
+    )
+    assert all(c == 0 for c in sleep_calls), (
+        f"a yield point must be sleep(0) -- scheduling only, never a real delay: {sleep_calls}"
+    )
+
+
+def test_all_factor_observations_by_horizon_yields_per_run_chunk(prune_engine, monkeypatch):
+    """`_all_factor_observations_by_horizon`'s run-id chunk loop calls `time.sleep(0)` more than once when
+    the fixture's runs are forced into multiple chunks."""
+    cfg = _cfg_batch(1)  # 1 run id per chunk -> multiple chunks on this fixture's >= 2 runs with FRs
+    factors = list(cfg.research.factor_lab.factors)
+    horizons = list(cfg.walk_forward.horizons)
+    sleep_calls: list[float] = []
+    real_sleep = research_module.time.sleep
+
+    def _spy_sleep(seconds):
+        sleep_calls.append(seconds)
+        return real_sleep(seconds)
+
+    monkeypatch.setattr(research_module.time, "sleep", _spy_sleep)
+    with Session(prune_engine) as session:
+        core_records, _pools = _all_factor_observations_by_horizon(session, factors, horizons, None, cfg=cfg)
+
+    assert len(core_records.run_ids) > 0, "sanity: the fixture must produce >= 1 shared-pool observation"
+    assert len(sleep_calls) >= 2, (
+        f"expected a genuinely per-chunk yield (fixture forced to multiple chunks), got {len(sleep_calls)}"
+    )
+    assert all(c == 0 for c in sleep_calls), (
+        f"a yield point must be sleep(0) -- scheduling only, never a real delay: {sleep_calls}"
+    )
+
+
+# ==================================================================================================
+# ops-hardening iter-52 FIX PASS (J-07, TC-1) -- `_cooperative_sorted`.
+#
+# The iteration's FIRST pass added a `time.sleep(0)` at the top of every per-item loop and the live drill
+# got WORSE, not better: 22 connection-level `GET /api/health` non-answers against a pre-fix baseline of 9
+# (`reports/perf-budgets.md` Item U / Addendum 12). A GIL-stall profile of the REAL `compute_factor_lab_all`
+# against the committed DB then located the actual holder by capturing the worker's stack at the instant
+# each stall resolved: `sorted(obs, key=...)` itself, 1.09-1.23s per call over ~1.27M observations. A yield
+# placed BEFORE an iteration cannot interrupt a sort happening INSIDE it -- CPython runs a sort's comparison
+# phase as one C-level call that never reaches an eval-breaker check.
+#
+# These tests pin the NON-NEGOTIABLE half of the fix: chunking the sort changes WHEN the GIL is offered and
+# nothing else. Byte-identity is asserted by object IDENTITY (`is`), not merely equality, so a re-derived
+# but equal value would still fail.
+# ==================================================================================================
+def _tie_heavy_rows(n: int) -> list[tuple]:
+    """`n` rows with deliberately heavy ties on the SORT KEY (only 3 distinct leading values x 3 distinct
+    tickers) and a unique trailing element that is NOT part of the key -- so a merge that failed to
+    preserve stability would reorder the ties and the identity assertion would catch it."""
+    return [((i * 7) % 3, "T%d" % ((i * 5) % 3), i) for i in range(n)]
+
+
+@pytest.mark.parametrize("n", [0, 1, 6, 7, 8, 13, 14, 15, 40])
+def test_cooperative_sorted_is_byte_identical_to_sorted_across_the_chunk_boundary(n, monkeypatch):
+    """`_cooperative_sorted` returns exactly what `sorted()` returns -- the same objects, in the same
+    order -- for populations below, at, and well past the chunk bound, with heavy ties on the key."""
+    monkeypatch.setattr(research_module, "_SORT_YIELD_CHUNK", 7)
+    rows = _tie_heavy_rows(n)
+    key = lambda r: (r[0], r[1])  # noqa: E731 -- deliberately excludes the unique trailing element
+    expected = sorted(rows, key=key)
+    got = research_module._cooperative_sorted(rows, key=key)
+
+    assert len(got) == len(expected)
+    assert all(a is b for a, b in zip(got, expected)), (
+        "chunked sorting must return the SAME objects in the SAME order as sorted() -- a stability or "
+        "merge-order divergence would change a served decile boundary (AG-3)"
+    )
+
+
+def test_cooperative_sorted_without_a_key_is_byte_identical_to_sorted(monkeypatch):
+    """The keyless path (`_BoundedRankWindow._trim`'s plain tuple sort) is covered too."""
+    monkeypatch.setattr(research_module, "_SORT_YIELD_CHUNK", 5)
+    rows = [(float((i * 13) % 7), "T%d" % ((i * 3) % 4), i) for i in range(37)]
+    expected = sorted(rows)
+    got = research_module._cooperative_sorted(rows)
+    assert all(a is b for a, b in zip(got, expected)) and len(got) == len(expected)
+
+
+def test_cooperative_sorted_yields_per_chunk_and_never_below_the_bound(monkeypatch):
+    """The scheduling half: one real `time.sleep(0)` per chunk (plus one before the merge) once the
+    population exceeds the bound, and NONE at or below it -- a small caller pays nothing."""
+    monkeypatch.setattr(research_module, "_SORT_YIELD_CHUNK", 7)
+    sleep_calls: list[float] = []
+    real_sleep = research_module.time.sleep
+
+    def _spy_sleep(seconds):
+        sleep_calls.append(seconds)
+        return real_sleep(seconds)
+
+    monkeypatch.setattr(research_module.time, "sleep", _spy_sleep)
+
+    research_module._cooperative_sorted(_tie_heavy_rows(7))
+    assert sleep_calls == [], "at or below the bound the plain sorted() path must run, yielding nothing"
+
+    research_module._cooperative_sorted(_tie_heavy_rows(22))
+    assert len(sleep_calls) == 5, (  # ceil(22/7) == 4 chunks, + 1 before the merge
+        f"expected one yield per chunk plus one before the merge, got {len(sleep_calls)}"
+    )
+    assert all(c == 0 for c in sleep_calls), (
+        f"a yield point must be sleep(0) -- scheduling only, never a real delay: {sleep_calls}"
+    )
+
+
+def test_compute_factor_lab_all_is_byte_identical_with_the_sort_chunked(prune_engine, monkeypatch):
+    """TC-4, end to end on the REAL builder: forcing every sort in `compute_factor_lab_all` (the
+    per-(factor,horizon) observation sort AND `_rank_ic` -> `_average_ranks`' own ordering) through the
+    chunked path changes NO served figure -- every decile boundary, mean, risk-adjusted, paired drawdown
+    and rank-IC is byte-identical to the unchunked computation on the same fixture."""
+    cfg = load_config()
+    with Session(prune_engine) as session:
+        unchunked = compute_factor_lab_all(session, cfg, as_of=None)
+
+    monkeypatch.setattr(research_module, "_SORT_YIELD_CHUNK", 1)  # every element its own chunk
+    with Session(prune_engine) as session:
+        chunked = compute_factor_lab_all(session, cfg, as_of=None)
+
+    assert json.dumps(chunked, sort_keys=True) == json.dumps(unchunked, sort_keys=True)
+
+
+@pytest.mark.parametrize("decile", [1, 5, 10])
+def test_factor_decile_observations_is_byte_identical_with_the_trim_sort_chunked(
+    chunked_accumulator_engine, monkeypatch, decile,
+):
+    """TC-4 for the OTHER chunked site: `_BoundedRankWindow._trim`'s retention sort. Forcing it through
+    the chunked path must not move a single decile member -- the bounded window's retained SET and the
+    returned slice are unchanged."""
+    cfg = load_config()
+    factor = cfg.research.factor_lab.factors[0]
+    with Session(chunked_accumulator_engine) as session:
+        unchunked = research_module._factor_decile_observations(
+            session, factor, H, None, cfg.research.factor_lab.deciles, decile, cfg=cfg,
+        )
+
+    monkeypatch.setattr(research_module, "_SORT_YIELD_CHUNK", 1)
+    with Session(chunked_accumulator_engine) as session:
+        chunked = research_module._factor_decile_observations(
+            session, factor, H, None, cfg.research.factor_lab.deciles, decile, cfg=cfg,
+        )
+
+    assert json.dumps(chunked, sort_keys=True, default=str) == json.dumps(
+        unchunked, sort_keys=True, default=str
+    )
+
+
+# ==================================================================================================
+# ops-hardening iter-52 FIX PASS (J-07, TC-1) -- `_cyclic_gc_paused`, the OTHER uninterruptible GIL
+# holder the stall profile found: stop-the-world gen-2 collections, 154 pauses totalling 121.37s of
+# `factor_lab_all_warm`'s 571.94s, worst 1.088s each. No yield point can reach a collection already in
+# progress. These tests pin the safety contract -- the pause is bounded to one item and the collector's
+# previous state is ALWAYS restored, including when the entry aborts under (injected) memory pressure.
+# ==================================================================================================
+def test_cyclic_gc_paused_suspends_and_restores_the_collector():
+    """Inside the window the automatic collector is off; on exit the previous state is restored."""
+    import gc as _gc
+
+    assert _gc.isenabled(), "sanity: the test process runs with the collector enabled"
+    with research_module._cyclic_gc_paused():
+        assert not _gc.isenabled(), "the cyclic collector must be paused inside the window"
+    assert _gc.isenabled(), "the collector must be restored on the normal exit path"
+
+
+def test_cyclic_gc_paused_restores_the_collector_on_an_exception():
+    """An exception inside the window must not leave the process with its collector switched off."""
+    import gc as _gc
+
+    with pytest.raises(RuntimeError):
+        with research_module._cyclic_gc_paused():
+            raise RuntimeError("boom")
+    assert _gc.isenabled(), "the collector must be restored when the window exits on an exception"
+
+
+def test_cyclic_gc_paused_leaves_an_already_disabled_collector_disabled():
+    """It RESTORES rather than blindly enabling, so a caller that had already disabled the collector
+    (or a concurrent entry into the same loop from the live `?all=true` request path) is left alone."""
+    import gc as _gc
+
+    _gc.disable()
+    try:
+        with research_module._cyclic_gc_paused():
+            assert not _gc.isenabled()
+        assert not _gc.isenabled(), "an already-disabled collector must not be switched on by the window"
+    finally:
+        _gc.enable()
+
+
+def test_compute_factor_lab_all_restores_the_collector_after_an_injected_memory_error(
+    prune_engine, monkeypatch,
+):
+    """The isolate-and-continue MemoryError path runs INSIDE the paused window and `continue`s out of it
+    -- the collector must still come back on, and the entry must still degrade honestly (AG-8)."""
+    import gc as _gc
+
+    cfg = load_config()
+    monkeypatch.setenv("TRENDORA_FAULT_INJECT_MEMORY_ERROR", "factor_lab_all")
+    with Session(prune_engine) as session:
+        payload = compute_factor_lab_all(session, cfg, as_of=None)
+
+    assert _gc.isenabled(), "the collector must be restored after every faulted (factor,horizon) entry"
+    statuses = {
+        entry.get("status")
+        for row in payload["factors_table"]
+        for entry in row["by_horizon"]
+    }
+    assert statuses == {"unavailable"}, (
+        f"every entry should degrade honestly under the injected fault, got {statuses}"
+    )

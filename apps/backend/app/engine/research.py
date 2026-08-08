@@ -35,12 +35,15 @@ THREE non-negotiable disciplines (each unit-proved):
 """
 from __future__ import annotations
 
+import gc
+import heapq
 import json
 import logging
 import threading
 import time
 from array import array
 from collections import defaultdict
+from contextlib import contextmanager
 from datetime import date as date_cls
 from datetime import datetime, timezone
 from math import ceil, sqrt
@@ -96,6 +99,112 @@ def factor_catalog(cfg: Config) -> list[dict]:
 
 
 # --------------------------------------------------------------------------------------------------
+# ops-hardening iter-52 FIX PASS (J-07, TC-1) — cooperative sorting: a stable sort whose GIL hold is
+# BOUNDED.
+#
+# Why this exists (measured, not assumed). iter-52's first pass added `time.sleep(0)` yield points at
+# every finalize-tail loop boundary and the live drill got WORSE, not better (22 connection-level
+# `GET /api/health` non-answers vs a pre-fix baseline of 9 — `reports/perf-budgets.md` Item U /
+# Addendum 12). A GIL-stall profile of the real `compute_factor_lab_all` against the committed DB
+# (571.94s, 69,608,603 observations across 55 (factor, horizon) entries) then showed WHY: 197 stalls
+# longer than 0.30s, and the stack captured at the moment each one resolved lands on ONE line —
+# `sorted(obs, key=...)` — each hold measuring 1.09-1.23s. A `time.sleep(0)` placed at the TOP of an
+# iteration cannot interrupt a sort that happens INSIDE it: CPython's `list.sort()` runs its comparison
+# phase as a single C-level call that never reaches an eval-breaker check, so the GIL is held for the
+# WHOLE sort. That is the defect — a per-iteration yield was never going to reach it.
+#
+# The bound: sort contiguous slices of at most `_SORT_YIELD_CHUNK`, yielding between them, then merge the
+# already-sorted runs with `heapq.merge` (a pure-Python generator — eval-breaker driven, so it yields on
+# its own). Measured at the live per-entry scale (800k rows, heavy ties): worst GIL hold 0.99s -> 0.037s,
+# and 4% FASTER overall (smaller runs sort with better cache locality, and the merge is linear).
+#
+# BYTE-IDENTICAL by construction — but the construction has ONE precondition, and iter-52's audit (B6) was
+# right that stating it beats asserting the result unconditionally. GIVEN that `<` is a TOTAL ORDER on the
+# key, the result is exactly `sorted(items, key=key)`: the slices are contiguous and taken in the original
+# order, `sorted` is stable, and `heapq.merge` breaks ties by iterable index while preserving each
+# iterable's own order — so the concatenation is exactly the stable sort of the whole population.
+# Stability carries that argument on its own; a UNIQUE key is NOT required, and `_average_ranks` below
+# deliberately depends on that (it orders `range(n)` by a value that ties constantly). The other two call
+# sites do additionally have unique keys — `(factor, ticker, run_id)` and `(value, ticker, run_id)`, with
+# `(ticker, run_id)` unique per observation — so their sorted permutation is unique regardless.
+#
+# Where the precondition FAILS, so does the identity: a NaN anywhere in the key makes `<` non-total, and a
+# merge of separately-sorted runs is then NOT the same permutation as one Timsort pass over the whole list
+# (checked — it genuinely diverges). That is unreachable at all three call sites today: every key element
+# is a DB-sourced float, SQLite stores a NaN as NULL, and the NULL / `_has[core_idx]` filters drop those
+# rows before anything reaches a sort. Do NOT add a fourth call site whose key can be NaN (or otherwise
+# non-total) without re-deriving this.
+#
+# Verified against `sorted()` element-by-element (identity, not just equality) at 800k rows.
+# --------------------------------------------------------------------------------------------------
+_SORT_YIELD_CHUNK = 50_000  # rows per uninterruptible sort — measured 0.037s per chunk at the live scale
+
+
+def _cooperative_sorted(items, key=None) -> list:
+    """`sorted(items, key=key)`, byte-identical, but never holding the GIL for the whole population.
+
+    Populations at or below `_SORT_YIELD_CHUNK` take the plain `sorted()` path unchanged (nothing to
+    bound — one chunk IS the whole sort), so this is a no-op for every small caller."""
+    n = len(items)
+    if n <= _SORT_YIELD_CHUNK:
+        return sorted(items, key=key)
+    runs = []
+    for start in range(0, n, _SORT_YIELD_CHUNK):
+        time.sleep(0)  # a real OS-level GIL hand-off between chunks — see this section's header
+        runs.append(sorted(items[start:start + _SORT_YIELD_CHUNK], key=key))
+    time.sleep(0)
+    return list(heapq.merge(*runs, key=key))
+
+
+@contextmanager
+def _cyclic_gc_paused():
+    """Pause CPython's CYCLIC collector for one bounded unit of work, then restore it.
+
+    The other uninterruptible GIL holder the iter-52 stall profile found. A gen-2 collection is
+    stop-the-world and its cost scales with the number of GC-TRACKED objects alive; each
+    (factor, horizon) entry below allocates ~1.27M `_FactorLabAllObs`, so full collections during the
+    live `factor_lab_all_warm` phase measured **154 pauses totalling 121.37s of the phase's 571.94s,
+    worst 1.088s each** — comparable to the sort holds `_cooperative_sorted` bounds, and NOT reachable
+    by any yield point (a collection cannot be interrupted once started).
+
+    Everything this window allocates in bulk is ACYCLIC (a list of `__slots__` records holding only
+    str/float, the lists `sorted`/`heapq.merge` build, small result dicts), so plain reference counting
+    reclaims all of it deterministically whether or not the cyclic collector is running — the collector's
+    work here is pure overhead. Measured over the real per-entry body: every GC pause removed, total stall
+    time 7.4s -> 4.9s, and the work ran 6% FASTER.
+
+    What it actually defers, corrected (iter-52 audit B5). This only suspends the AUTOMATIC collection
+    trigger, and it restores the previous state on every exit path including an exception. The earlier
+    wording here — "for one item of one loop (seconds, not the whole phase)" — was true PER ENTRY and
+    false in AGGREGATE, so read it this way instead: one window covers one (factor, horizon) entry, but
+    `compute_factor_lab_all` re-enters it 55 times back-to-back with nothing but loop bookkeeping between
+    an exit and the next entry, so across the live `factor_lab_all_warm` phase (486.62s) the automatic
+    collector is suspended for effectively the WHOLE phase. Cyclic garbage produced by ANY thread in that
+    window — a concurrent request's SQLAlchemy session being the obvious producer — is therefore deferred
+    for that whole window. Deferred, never leaked: reference counting still reclaims every acyclic object
+    immediately, and the first collection after a window closes sweeps the rest. But on a host with a hard
+    8,192 MB cap that is an ongoing global side effect, not a momentary one, and it is worth re-measuring
+    whenever this phase gets longer. Measured headroom with the window in place, under a 1/s health poller
+    throughout: VmPeak 4,147.4 MB, 49.4% margin (`reports/perf-budgets.md` Addendum 13).
+
+    It does NOT compose across threads, and the previous wording implied that it did. An already-disabled
+    collector is left disabled (this restores, it never blindly enables) and the FINAL state is always
+    correct — but a SECOND overlapping entrant (the live `?all=true` request path runs this same function)
+    reads `gc.isenabled() == False` and records `was_enabled=False`, so when the FIRST window exits and
+    re-enables, the second runs its entire remaining window with the collector back ON. Overlap therefore
+    WEAKENS the pause; it can never leak a permanently-disabled collector. A depth counter would close the
+    overlap — deliberately not added here (iter-52 audit item 6, carried forward, not silently dropped)."""
+    was_enabled = gc.isenabled()
+    if was_enabled:
+        gc.disable()
+    try:
+        yield
+    finally:
+        if was_enabled:
+            gc.enable()
+
+
+# --------------------------------------------------------------------------------------------------
 # Pure stats helpers (downside-only risk + Spearman rank-IC) — no DB, no recomputation of any return
 # --------------------------------------------------------------------------------------------------
 def _downside_deviation(returns: list[float]) -> float:
@@ -121,8 +230,14 @@ def _risk_adjusted(returns: list[float]) -> Optional[float]:
 
 def _average_ranks(values: list[float]) -> list[float]:
     """1-based average ranks (standard Spearman tie handling): tied values share the mean of the
-    positions they span, so the rank transform is a permutation-invariant monotone encoding."""
-    order = sorted(range(len(values)), key=lambda i: values[i])
+    positions they span, so the rank transform is a permutation-invariant monotone encoding.
+
+    ops-hardening iter-52 fix pass (J-07, TC-1): the ordering runs through `_cooperative_sorted` — on the
+    live basis `_rank_ic` ranks ~1.27M values TWICE per factor at the default horizon (factor side +
+    return side), each of which was a >1s uninterruptible GIL hold. Byte-identical: the average-rank
+    output is invariant to the order chosen among tied values (every member of a tie block receives the
+    same averaged position), and the sort itself is the same stable ordering either way."""
+    order = _cooperative_sorted(range(len(values)), key=lambda i: values[i])
     ranks = [0] * len(values)  # placeholder ints; every position is assigned an average-rank float below
     i = 0
     while i < len(order):
@@ -498,7 +613,13 @@ class _BoundedRankWindow:
             self._trim()
 
     def _trim(self) -> None:
-        self._buf.sort()
+        # ops-hardening iter-52 fix pass (J-07, TC-1): the trim sort runs through `_cooperative_sorted`.
+        # On the live basis this buffer trims at ~504K keys (2 x the ~252K decile-10 capacity) and is
+        # trimmed repeatedly across `drawdown_expectations_warm`'s per-claim PASS 1 — each `list.sort()`
+        # was a sub-second uninterruptible GIL hold. Byte-identical: `(ticker, run_id)` is unique per
+        # observation, so these keys admit exactly one sorted order, and the retained SET (and therefore
+        # the returned slice) is unchanged.
+        self._buf = _cooperative_sorted(self._buf)
         if self._keep_smallest:
             del self._buf[self._capacity:]
         else:
@@ -592,6 +713,9 @@ def _factor_decile_observations(
     # `window.add` additionally discards, as it walks, every key that cannot land in the target decile.
     n = 0
     for start in range(0, len(runs_with_fr), run_chunk):
+        # ops-hardening iter-52 (J-07): real scheduling yield once per run-id chunk (PASS 1) -- see
+        # `compute_factor_lab_all`'s iter-52 comment for the full rationale. Scheduling only (TC-4).
+        time.sleep(0)
         slice_run_ids = runs_with_fr[start:start + run_chunk]
         ret_by_run_symbol = _fr_slice_map(session, horizon, slice_run_ids, batch)
         res_stmt = (
@@ -641,6 +765,9 @@ def _factor_decile_observations(
     # PASS 2 — bounded: rebuild the FULL observation dict only for this decile's (ticker, run_id) keys.
     members: list[dict] = []
     for start in range(0, len(runs_with_fr), run_chunk):
+        # ops-hardening iter-52 (J-07): real scheduling yield once per run-id chunk (PASS 2) -- see
+        # `compute_factor_lab_all`'s iter-52 comment for the full rationale. Scheduling only (TC-4).
+        time.sleep(0)
         slice_run_ids = runs_with_fr[start:start + run_chunk]
         ret_by_run_symbol = _fr_slice_map(session, horizon, slice_run_ids, batch)
         res_stmt = (
@@ -1134,6 +1261,9 @@ def _all_factor_observations_by_horizon(
     ticker_intern: dict[str, str] = {}  # dedupes repeated ticker strings across the whole sweep (iter-31)
     warned_horizons: set[int] = set()  # one WARNING per horizon — never a per-chunk log storm (iter-31 audit)
     for start in range(0, len(runs_with_fr), run_chunk):
+        # ops-hardening iter-52 (J-07): real scheduling yield once per run-id chunk -- see
+        # `compute_factor_lab_all`'s iter-52 comment for the full rationale. Scheduling only (TC-4).
+        time.sleep(0)
         slice_run_ids = runs_with_fr[start:start + run_chunk]
         fr_by_h = _all_fr_slice_map(session, horizons, slice_run_ids, batch)
         res_stmt = (
@@ -1293,58 +1423,95 @@ def compute_factor_lab_all(
             # answer): on a MemoryError, THIS horizon's entry alone degrades to an honest
             # `status: "unavailable"` (no deciles, n_total 0) and the loop continues to the next
             # horizon/factor — every OTHER entry still renders normally, never a blanked whole-response.
-            try:
-                data_manager._fault_inject_memory_error("factor_lab_all")  # test-only; a no-op in production
-                obs: list[_FactorLabAllObs] = []
-                # iter-50 AUDIT FIX (B3): read the shared pool through the columnar accessors instead of
-                # unpacking a materialised `(core_idx, ret, max_drawdown)` tuple per row and re-indexing a
-                # nested `values` tuple. Same rows, same order, same values — this walk never builds a
-                # transient object per pool row, so the only per-observation allocation left in this loop is
-                # the `_FactorLabAllObs` actually kept in `obs`.
-                _pool = pools[h]
-                _core_run_ids, _core_tickers = core_records.run_ids, core_records.tickers
-                _vals, _has = core_records.value_cols[idx], core_records.value_present[idx]
-                for k in range(len(_pool)):
-                    core_idx = _pool.core_idx[k]
-                    if not _has[core_idx]:
-                        continue  # factor-NULL observation — EXCLUDED, never bucketed (unchanged)
-                    obs.append(_FactorLabAllObs(
-                        _core_run_ids[core_idx], _core_tickers[core_idx], float(_vals[core_idx]),
-                        _pool.realized(k), _pool.max_drawdown(k),
-                    ))
-                # ascending by stored factor value; SAME deterministic tie-break compute_factor_lab uses.
-                ordered = sorted(obs, key=lambda o: (o.factor, o.ticker, o.run_id))
-                deciles = _deciles(ordered, fl.deciles, wf.min_sample)
-            except MemoryError as exc:
-                logger.exception(
-                    "compute_factor_lab_all: obs-build/sort aborted under memory pressure for factor=%s "
-                    "horizon=%s -- isolate-and-continue (AG-8), degrading THIS (factor,horizon) entry "
-                    "honestly rather than the whole all-factors response: %s", factor.key, h, exc,
-                )
-                by_horizon.append({"horizon": h, "n_total": 0, "deciles": [], "status": "unavailable"})
-                continue
-            except Exception as exc:  # noqa: BLE001 — ops-hardening iter-50 AUDIT FIX (B4, AG-8)
-                # The MemoryError catch above was the ONLY handler on this loop, so any OTHER exception
-                # from one (factor,horizon) entry still 500'd the entire `?all=true` response — a blank
-                # application-error page for all 11 factors because of one entry, which AG-8 forbids.
-                # `evidence.py`'s per-claim convention (the precedent this loop already follows for
-                # MemoryError) pairs its MemoryError catch with exactly this broader one, degrading the
-                # single failing unit to an honest `unavailable` and continuing. Nothing WRONG is ever
-                # displayed by this path: the entry carries no deciles and no n, only the honest status.
-                logger.exception(
-                    "compute_factor_lab_all: obs-build/sort failed for factor=%s horizon=%s (non-fatal) "
-                    "-- isolate-and-continue (AG-8), degrading THIS (factor,horizon) entry honestly "
-                    "rather than the whole all-factors response: %s", factor.key, h, exc,
-                )
-                by_horizon.append({"horizon": h, "n_total": 0, "deciles": [], "status": "unavailable"})
-                continue
-            by_horizon.append({"horizon": h, "n_total": len(obs), "deciles": deciles})
-            if h == default_h:
-                # the relabelled rank-IC + top-decile downside risk-adjusted at the FIXED default horizon —
-                # byte-identical to compute_factor_lab(factor, default_h).rank_ic / deciles[-1].risk_adjusted.
-                dh_rank_ic = _rank_ic([(o.factor, o.return_) for o in obs])
-                dh_risk_adjusted = deciles[-1]["risk_adjusted"]
-                dh_n_total = len(obs)
+            #
+            # ops-hardening iter-52 (J-07): a REAL scheduling yield once per (factor, horizon) — this is the
+            # CONFIRMED longest finalize-tail sub-phase (583.76s live, `reports/perf-budgets.md` Item T
+            # Addendum 11) and the one the solo drill caught starving `GET /api/health` 9/653. `time.sleep(0)`
+            # forces an OS-level GIL hand-off (a bare heartbeat stamp does not) so a concurrent request gets a
+            # fair chance to be scheduled between entries. Scheduling only — no value/order change (TC-4).
+            time.sleep(0)
+            # ops-hardening iter-52 FIX PASS (J-07, TC-1): this entry's own ~1.27M-record churn is what
+            # drives the stop-the-world gen-2 collections the stall profile measured (121.37s across the
+            # phase, worst 1.088s) — see `_cyclic_gc_paused`. Bounded to THIS entry; restored on every exit
+            # path, including the two isolate-and-continue handlers below.
+            with _cyclic_gc_paused():
+                try:
+                    data_manager._fault_inject_memory_error("factor_lab_all")  # test-only; no-op in production
+                    obs: list[_FactorLabAllObs] = []
+                    # iter-50 AUDIT FIX (B3): read the shared pool through the columnar accessors instead of
+                    # unpacking a materialised `(core_idx, ret, max_drawdown)` tuple per row and re-indexing a
+                    # nested `values` tuple. Same rows, same order, same values — this walk never builds a
+                    # transient object per pool row, so the only per-observation allocation left in this loop
+                    # is the `_FactorLabAllObs` actually kept in `obs`.
+                    _pool = pools[h]
+                    _core_run_ids, _core_tickers = core_records.run_ids, core_records.tickers
+                    _vals, _has = core_records.value_cols[idx], core_records.value_present[idx]
+                    for k in range(len(_pool)):
+                        core_idx = _pool.core_idx[k]
+                        if not _has[core_idx]:
+                            continue  # factor-NULL observation — EXCLUDED, never bucketed (unchanged)
+                        obs.append(_FactorLabAllObs(
+                            _core_run_ids[core_idx], _core_tickers[core_idx], float(_vals[core_idx]),
+                            _pool.realized(k), _pool.max_drawdown(k),
+                        ))
+                    # ascending by stored factor value; SAME deterministic tie-break compute_factor_lab uses.
+                    #
+                    # ops-hardening iter-52 FIX PASS (J-07, TC-1): this exact line is the measured defect the
+                    # iteration's first pass missed. A GIL-stall profile of this function against the
+                    # committed DB captured the worker's stack at the moment each stall resolved: 197 stalls
+                    # > 0.30s, dominated by THIS `sorted()` at 1.09-1.23s a piece (1.27M observations per
+                    # entry). The `time.sleep(0)` above cannot interrupt it — the sort's comparison phase is
+                    # one C-level call. `_cooperative_sorted` bounds the hold to ~0.037s per chunk,
+                    # byte-identically.
+                    ordered = _cooperative_sorted(obs, key=lambda o: (o.factor, o.ticker, o.run_id))
+                    deciles = _deciles(ordered, fl.deciles, wf.min_sample)
+                except MemoryError as exc:
+                    logger.exception(
+                        "compute_factor_lab_all: obs-build/sort aborted under memory pressure for factor=%s "
+                        "horizon=%s -- isolate-and-continue (AG-8), degrading THIS (factor,horizon) entry "
+                        "honestly rather than the whole all-factors response: %s", factor.key, h, exc,
+                    )
+                    by_horizon.append({"horizon": h, "n_total": 0, "deciles": [], "status": "unavailable"})
+                    continue
+                except Exception as exc:  # noqa: BLE001 — ops-hardening iter-50 AUDIT FIX (B4, AG-8)
+                    # The MemoryError catch above was the ONLY handler on this loop, so any OTHER exception
+                    # from one (factor,horizon) entry still 500'd the entire `?all=true` response — a blank
+                    # application-error page for all 11 factors because of one entry, which AG-8 forbids.
+                    # `evidence.py`'s per-claim convention (the precedent this loop already follows for
+                    # MemoryError) pairs its MemoryError catch with exactly this broader one, degrading the
+                    # single failing unit to an honest `unavailable` and continuing. Nothing WRONG is ever
+                    # displayed by this path: the entry carries no deciles and no n, only the honest status.
+                    logger.exception(
+                        "compute_factor_lab_all: obs-build/sort failed for factor=%s horizon=%s (non-fatal) "
+                        "-- isolate-and-continue (AG-8), degrading THIS (factor,horizon) entry honestly "
+                        "rather than the whole all-factors response: %s", factor.key, h, exc,
+                    )
+                    by_horizon.append({"horizon": h, "n_total": 0, "deciles": [], "status": "unavailable"})
+                    continue
+                by_horizon.append({"horizon": h, "n_total": len(obs), "deciles": deciles})
+                if h == default_h:
+                    # the relabelled rank-IC + top-decile downside risk-adjusted at the FIXED default
+                    # horizon — byte-identical to compute_factor_lab(factor, default_h).rank_ic /
+                    # deciles[-1].risk_adjusted.
+                    dh_rank_ic = _rank_ic([(o.factor, o.return_) for o in obs])
+                    dh_risk_adjusted = deciles[-1]["risk_adjusted"]
+                    dh_n_total = len(obs)
+                # Release this entry's ~1.27M-record transients BEFORE the collector is switched back on,
+                # in BOUNDED slices. Two measured effects, in order:
+                #   * leaving them referenced made the FIRST collection after the window reopened the
+                #     largest stall left in the phase (a 0.83s gen-0 pass over the whole entry's churn);
+                #   * dropping both lists in one statement then became the largest stall (0.42-0.45s) —
+                #     freeing 1.27M records is itself one uninterruptible C-level deallocation sweep.
+                # Slicing them away in `_SORT_YIELD_CHUNK`-sized pieces does the identical total work with
+                # a yield between pieces. `obs` goes first (its records are still held by `ordered`, so
+                # that pass only drops references); `ordered` releases the last reference and frees them.
+                # Nothing served is affected: `deciles` retains only scalars (`_deciles` reads floats off
+                # its members), and both names are rebuilt from scratch by the next entry.
+                for _spent in (obs, ordered):
+                    while _spent:
+                        del _spent[-_SORT_YIELD_CHUNK:]
+                        time.sleep(0)
+                del obs, ordered, _spent
         factors_table.append({
             "key": factor.key, "label": factor.label, "family": factor.family,
             "direction": factor.direction,
@@ -1416,6 +1583,10 @@ def _combination_observations(
 
     observations: list[dict] = []
     for start in range(0, len(runs_with_fr), run_chunk):
+        # ops-hardening iter-52 (J-07): a real scheduling yield once per run-id chunk -- see
+        # `compute_factor_lab_all`'s own iter-52 comment for the full rationale (GIL contention, not
+        # allocation). Scheduling only -- no value/order change (TC-4).
+        time.sleep(0)
         slice_run_ids = runs_with_fr[start:start + run_chunk]
         # reuses `_fr_slice_map` (the SAME per-slice join accumulator `_factor_observations` already
         # uses) rather than a second near-duplicate builder — this pool only reads the `realized_return`

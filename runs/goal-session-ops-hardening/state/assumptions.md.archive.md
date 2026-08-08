@@ -2618,3 +2618,90 @@ over the journey text would keep J-07 `failing` for a fifth consecutive round, a
 signal that the availability failure mode actually stopped.
 **Reversible:** yes
 
+
+<!-- condense.sh 2026-08-07T20:10:56Z: moved 3 entries (keep-iters=5) -->
+
+## iter-47 — goal-decomposer
+
+**Ambiguity:** `docs/goal.md` does not rank J-05 (the session's sole `failing` journey, 3 consecutive
+rounds) above J-06/J-07 (both `partial`, sharing one already-diagnosed Evidence-page serving-path
+defect cluster). The priority rubric's rule 1 (regressed first — none this round) and rule 3 (prefer a
+failing journey that unblocks others) do not by themselves resolve which single risky change to take
+this round, and the iter-46 evaluator's own next-step recommendation lists the Evidence-page fix as
+item (2) and J-05's old-day case as item (4) — an explicit but non-binding ordering, not a mandate.
+
+**We chose:** target J-06/J-07 this iteration (the `/api/evidence` cache-thrash fix plus the
+`samples.py:145/156` bound), deferring J-05's old-day-insert fix to a later iteration. Grounds stated
+rather than assumed: (1) the Evidence-page fix is the evaluator's own explicitly-named "one real job"
+for this round, and it closes a defect on the SAME serving path (`/evidence`) implicated in BOTH J-06's
+acceptance and J-07's "no unbounded whole-table ORM materialization remains on the warm or serving
+path" acceptance clause — a genuine two-journey unblocker (rule 3), unlike J-05's fix, which only moves
+J-05 itself; (2) J-05's remaining case is a separate, riskier change to a different subsystem
+(`_membership_timeline`'s order-dependent recompute, per iter-45's own scoping note on
+entries/exits correctness for a historical gap-fill) — bundling it with the Evidence-page work would
+violate rule 5's "never bundle two risky journeys/changes in one iteration"; (3) this iteration's full
+8-journey re-verification (driven by the evaluator's item (1) and by the prior ESCALATE) gives J-05 its
+first dedicated live capture in 3 rounds regardless of whether its own code changes this round, closing
+part of its standing evidence gap at zero extra risk. Cost recorded honestly: J-05 will very likely still
+read `failing` after this iteration (a 4th consecutive round) since its root-cause fix is not attempted
+here. A reader who weighs "the sole failing Must-have journey" above "an evaluator-labeled unblocker for
+two partial journeys sharing one defect cluster" would target J-05 instead this round.
+**Reversible:** yes
+
+## iter-47 — goal-evaluator
+
+**Ambiguity:** AG-9 is marked *(critical)* and says ingest jobs "run only against the committed seed /
+local provider fixtures — no live external network calls or paid data services may be introduced
+without an explicit goal.md amendment." During this iteration `data_provider_runs` id=297 — a `both`
+(fetch+backfill) job for 2026-08-03, 12:47-13:17, 588 bars fetched, `snapshots_created: 1` — ran with
+`provider='yahoo'`, and `apps/backend/app/data_providers/yahoo_provider.py` is a real live HTTP client
+against `query1.finance.yahoo.com`. That job is what moved this working DB's latest bar from
+2026-07-31 to 2026-08-03, which `GET /api/health` now reports as `seed_latest_date`. AG-9's text does
+not say whether a PRE-EXISTING, product-goal-sanctioned live import path being exercised by a test
+lane counts as a live external call "introduced" without an amendment.
+**We chose:** minor and open (ledger iter-47/bh), not a critical violation — so ESCALATE, not
+REGRESSION. Grounds stated rather than assumed: (1) nothing was introduced by this iteration — the
+live import path is declared in `config.yaml` itself ("an import LIVE provider is resolved ONLY by
+the on-demand Data Manager fetch path ... never by the boot lifespan", lines 12-16) and the
+`data_manager.providers` catalog names yahoo "the no-key runbook source, listed first (the default
+import source)" at :30-33, all of it predating this ops-hardening cycle; (2) 27 `provider='yahoo'`
+runs exist in this DB going back to 2026-07-20, spanning many iterations that every prior evaluator
+accepted — re-scoring the same behaviour as critical now would make the verdict depend on which
+evaluator ran; (3) the data is REAL market data, never fabricated or substituted, and my
+methodology's critical enumeration is secrets / unapproved paid dependency / license / backdoor /
+fabricated data — a free, no-key public endpoint is none of those; (4) `apps/backend/data/trendora.db`
+is untracked (`git ls-files` errors on it), so nothing entered version control; (5) a halt exists to
+obtain something only the owner can give, and there is nothing here he must decide. Cost recorded
+honestly: the session's stated premise is "local-first, deterministic, offline against the committed
+seed", and its own automated lanes can reach the internet and permanently move the data basis for
+every later iteration — I have put that in front of the owner in the eval and the log rather than
+absorbing it. A human who reads AG-9 literally ("run ONLY against the committed seed"), or who holds
+that a data basis silently changed by a network fetch breaks determinism for every subsequent
+measurement, would call this critical and return REGRESSION.
+**Reversible:** yes
+
+## iter-47 — goal-evaluator
+
+**Ambiguity:** no lane verified ANY journey against the build this iteration shipped: the only browser
+artifact reads BLOCKED with zero rows for both target journeys, and the six replay rows came from
+scripts I read and confirmed assert almost nothing, on a build that changed three times afterwards.
+Neither `docs/goal.md` nor the methodology says whether a journey whose prior `passing` was earned
+one iteration ago keeps that status when its module changed but its own code path did not, and its
+only fresh "evidence" is a null test.
+**We chose:** keep J-08 and J-09 `passing` while scoring J-01/J-03/J-04/J-06/J-07 `partial` and J-05
+`failing`. Grounds: (1) methodology A.6 — evidence expires with CHANGE, not time, and I verified at
+the source that J-08's and J-09's own producers are untouched by this diff (every `forward_testing.py`
+edit sits on the drawdown-expectations path; `compute_forward_aggregates`,
+`resolved_forward_aggregate_evidence` and `get_background_compute_status` are unchanged); (2) I
+spot-checked both live on the shipped build rather than resting on durability alone — `/api/backtest`
+200 in 0.023 s with `evidence_status: "refreshing"` and a populated scorecard, and
+`/api/health.background_compute` present and honestly idle; (3) the methodology forbids downgrading
+for evidence age alone, and downgrading them would punish the product for a process failure; (4) the
+null-test rows are explicitly NOT what I scored on, and I say so in every artifact. Cost recorded
+honestly: two journeys carry `passing` into the next round without a journey-level check on this
+build, and if the next lane finds either of them broken, this call will have delayed that discovery by
+one iteration. A reader who holds that "no lane ran, therefore nothing is verified" would score both
+`unknown`, which changes no gate (GOAL_ACHIEVED is blocked either way) but would show 0 of 8 journeys
+green rather than 2.
+**Reversible:** yes
+
