@@ -259,6 +259,126 @@ def test_components_breakdown_disclosed_and_explainable():
     assert abs(sum(contribs) - result["severity"]) < 0.1  # contributions reconstruct the severity
 
 
+# ==================================================================================================
+# ops-hardening iter-53 (J-05/J-07, GIL-hold bound — TC-3). A live GIL-stall profile of `market_phase_
+# warm` (probe thread capturing the worker's stack at the instant each stall resolved —
+# `reports/perf-budgets.md`'s iter-53 addendum) found `_severity_reading`'s benchmark-drawdown and
+# ^VIX-gate reads building a symbol's ENTIRE <= D history (up to ~7,500 `Bar` NamedTuples on the live
+# 30y basis) just to read a small trailing slice — 65 stalls / 3.34s in a single `compute_market_phase`
+# call alone. Not a `sorted()` call and not a GC pause (the two culprits iter-52 found in
+# `compute_factor_lab_all`); the fix bounds the real bottleneck instead: `bars_asof_window` (benchmark
+# window + `_trailing_ma_reclaimed`) and `close_on` (^VIX gate) replace the full-history fetch. These
+# tests prove `compute_market_phase`'s served output is unaffected — the hard way, by proving bars
+# OUTSIDE the bounded window (which never should have influenced the result, before or after this fix)
+# still don't, and that the correct trailing value is still read when history is long.
+# ==================================================================================================
+def test_severity_reading_benchmark_window_ignores_bars_older_than_lookback_bound():
+    """A block of OLDER bars at a wildly different price level, prepended far enough back that NEITHER
+    the pre-fix calendar filter NOR the post-fix count-bounded fetch should ever include them, must not
+    change the served severity/drawdown/off_trough/components — proving the bounded fetch is neither too
+    narrow (dropping bars the calendar filter would have kept) nor too wide (leaking the older block in)."""
+    cfg = _small_config()
+    cfg.market_phase.lookback_days = 30  # deliberately small so the bounded fetch is genuinely exercised
+    d = _BASE + timedelta(days=99)
+    recent = [100.0 - 0.3 * i for i in range(40)]  # the only bars that should ever matter (last 40 days)
+
+    engine_bare = _engine()
+    with Session(engine_bare) as session:
+        _insert_bars(session, "SPY", recent, start=d - timedelta(days=39))
+        _insert_run(session, d, "Choppy", 50.0, breadth_200=45.0)
+        session.commit()
+        bare = compute_market_phase(session, d, cfg)
+
+    engine_padded = _engine()
+    with Session(engine_padded) as session:
+        # an OLDER block at a WILDLY different price (5.0, vs. the ~90-100 range above) — would corrupt
+        # the peak-to-trough drawdown / time-underwater calc if it wrongly entered the window.
+        _insert_bars(session, "SPY", [5.0] * 200, start=d - timedelta(days=239))
+        _insert_bars(session, "SPY", recent, start=d - timedelta(days=39))
+        _insert_run(session, d, "Choppy", 50.0, breadth_200=45.0)
+        session.commit()
+        padded = compute_market_phase(session, d, cfg)
+
+    assert bare["available"] is True and padded["available"] is True
+    assert bare["severity"] == padded["severity"]
+    assert bare["drawdown_pct"] == padded["drawdown_pct"]
+    assert bare["off_trough_pct"] == padded["off_trough_pct"]
+    assert bare["p_bear"] == padded["p_bear"]
+    assert bare["components"] == padded["components"]
+
+
+def test_severity_reading_vix_gate_reads_the_latest_close_via_close_on():
+    """`_latest_vix_on_or_before` now reads `close_on` (single-bar) instead of `closes(bars_asof(...))
+    [-1]` (full-history). A LONG ^VIX series (60 bars, far more than any small test window) with a
+    DISTINCTIVE last value must still be read correctly — proving the single-bar accessor did not
+    silently drop or misalign the latest close."""
+    cfg = _small_config()
+    d = _BASE + timedelta(days=59)
+    with Session(_engine()) as session:
+        _insert_bars(session, "SPY", [100.0 for _ in range(60)])
+        _insert_bars(session, "^VIX", [20.0 + i for i in range(59)] + [77.35], start=_BASE)
+        _insert_run(session, d, "Choppy", 50.0, breadth_200=45.0)
+        session.commit()
+        result = compute_market_phase(session, d, cfg)
+    # the raw close (rounded) is disclosed verbatim alongside the scaled component -- the direct proof
+    # that `close_on` read the TRUE last bar (77.35), not a stale or misaligned one.
+    assert result["vix_level"]["value"] == 77.35
+    assert result["vix_level"]["available"] is True
+    vix_component = next(c for c in result["components"] if c["name"] == "vix_gate")
+    assert vix_component["available"] is True
+    # vix_gate = min(1, vix_close / vix_gate_threshold=30.0); 77.35 clamps the scaled component to 1.0.
+    assert vix_component["value"] == 1.0
+
+
+def test_recovery_turn_trailing_ma_bounded_fetch_byte_identical():
+    """`_trailing_ma_reclaimed` (the J-90 recovery-turn confirmation leg) now fetches a bounded trailing
+    window too — the SAME older-block-must-not-leak proof as the benchmark drawdown leg above, applied to
+    the recovery-turn signal path (`_recovery_turn_signal` -> `_trailing_ma_reclaimed`, reached once per
+    `compute_market_phase` call, in scope for `market_phase_warm`)."""
+    cfg = _small_config()
+    # `_small_config()` sets `lookback_days = 10000` ("never clips the synthetic window") -- deliberately
+    # narrowed back down here, alongside `recovery_trailing_ma_days`, so the OLDER padding block below
+    # (placed outside BOTH windows) cannot leak into the UNRELATED drawdown leg either — isolating this
+    # test to `_trailing_ma_reclaimed`'s own bounded fetch, the thing iter-53 actually changed.
+    cfg.market_phase.lookback_days = 40
+    cfg.market_phase.recovery_trailing_ma_days = 20
+    # a decline to a trough, then a fresh exit above the MA -- built to plausibly trigger the recovery
+    # leg's ma_reclaimed read regardless of the exact signal outcome; the assertion below only requires
+    # the TWO scenarios (bare vs. padded with an older, differently-priced block) to agree.
+    down = [100.0 - i for i in range(21)]   # 100 -> 80
+    up = [80.0 + 2 * i for i in range(10)]  # 80 -> 98 (reclaiming the trailing MA)
+    recent = down + up                      # 31 bars, spanning [D-30, D]
+    d = _BASE + timedelta(days=300)         # far enough from day 0 for the padding block below to fit
+    recent_start = d - timedelta(days=len(recent) - 1)
+
+    engine_bare = _engine()
+    with Session(engine_bare) as session:
+        _insert_bars(session, "SPY", recent, start=recent_start)
+        _insert_run(session, d, "Choppy", 50.0, breadth_200=45.0)
+        session.commit()
+        bare = compute_market_phase(session, d, cfg)
+
+    engine_padded = _engine()
+    with Session(engine_padded) as session:
+        # The BINDING window is the drawdown leg's own `lookback_days` (40), which looks back from D =
+        # recent_start + 30 -- its calendar cutoff is `recent_start + 30 - 40 = recent_start - 10`. The
+        # padding block ends 60 days before `recent_start` (a 50-day safety margin past that cutoff) so it
+        # is excluded from BOTH windows' calendar range regardless of fetch mechanism -- a `bars_asof_
+        # window` COUNT-based fetch does not by itself guarantee exclusion (a large enough total bar count
+        # could still admit padding bars by count even when they are calendar-outside the window; the
+        # margin here is deliberately calendar-based, not count-based, to rule that out).
+        padding_end = recent_start - timedelta(days=60)
+        padding_start = padding_end - timedelta(days=199)  # 200 consecutive bars
+        _insert_bars(session, "SPY", [5.0] * 200, start=padding_start)
+        _insert_bars(session, "SPY", recent, start=recent_start)
+        _insert_run(session, d, "Choppy", 50.0, breadth_200=45.0)
+        session.commit()
+        padded = compute_market_phase(session, d, cfg)
+
+    assert bare["severity"] == padded["severity"]  # sanity: the drawdown leg itself is unaffected too
+    assert bare["recovery_turn"] == padded["recovery_turn"]
+
+
 # --------------------------------------------------------------------------------------------------
 # iter-30 (J-89 / J-90) — timeline series, dated downtrend episodes, the FENCED retrospective, and the
 # causal recovery-turn signal. FAST synthetic tests (no seed boot) — the anti-goal-critical legs.

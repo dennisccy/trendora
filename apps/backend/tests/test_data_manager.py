@@ -1912,6 +1912,110 @@ def test_finalize_hook_memory_error_leaves_no_leaked_lock_subsequent_read_succee
     assert payload is not None
 
 
+# ==================================================================================================
+# ops-hardening iter-53 (J-05/J-07, TC-5) — the fault-injection probe ARMED AT THE ACTUAL TREATED SITE
+# (`TRENDORA_FAULT_INJECT_MEMORY_ERROR`, mirroring the existing `factor_lab_all` convention — see
+# `test_research_streaming.py::test_compute_factor_lab_all_restores_the_collector_after_an_injected_
+# memory_error`), not a monkeypatched whole-function stand-in like the tests above. These prove the
+# INNER call this iteration's GIL-hold fix bounds (`universe_resolver.resolve_with_reasons`'s per-symbol
+# `bars_asof_window` fetch; `market_phase._severity_reading`'s benchmark/^VIX bounded fetch) still
+# preserves the iter-8 MemoryError isolate-and-continue contract when the fault fires from INSIDE the
+# real, unmocked treated code path (not merely at the loop's own call site).
+# ==================================================================================================
+def test_finalize_hook_coverage_membership_timeline_fault_injected_releases_memory_honestly(
+    tmp_path, monkeypatch,
+):
+    """`TRENDORA_FAULT_INJECT_MEMORY_ERROR=coverage_membership_timeline` armed against a REAL (unmocked)
+    `universe_resolver.resolve_with_reasons` call over a pool with an admitted-eligible LONG-history
+    candidate (so the injection site — placed AFTER the history-gate short-circuit, at the bounded fetch
+    itself — is actually reached, not skipped): `coverage`/`membership_timeline` are honestly OMITTED
+    from `aggregates_refreshed`, the NEW dedicated `except MemoryError` handler this iteration added for
+    this phase calls `_release_process_memory()`, and the hook itself does not raise."""
+    from app.engine import universe_resolver
+
+    cfg = load_config()
+    engine = make_engine(f"sqlite:///{tmp_path / 'cov-fault.db'}")
+    create_db_and_tables(engine)
+    d = date(2024, 6, 1)
+    start = d - timedelta(days=249)
+
+    def _fake_pool(seed_dir=None):
+        return [{"symbol": "LONG", "sector": "Technology", "source": "test"}]
+
+    monkeypatch.setattr(data_manager, "read_pool", _fake_pool)
+    monkeypatch.setattr(universe_resolver, "read_pool", _fake_pool)
+
+    with Session(engine) as session:
+        for i in range(250):  # comfortably clears history(200)/price($10)/ADV($50M) -> admitted-eligible
+            session.add(DailyPrice(
+                symbol="LONG", date=start + timedelta(days=i), open=50.0, high=50.0, low=50.0,
+                close=50.0, volume=2_000_000.0,
+            ))
+        session.add(ScannerRun(
+            asof_date=d, created_at=datetime(2024, 6, 1), provider="seed", benchmark="SPY",
+            regime_score=50.0, regime_label="Choppy", regime_components_json="{}",
+            new_high_low_json="{}", candidate_counts_json="{}",
+        ))
+        session.commit()
+
+    release_calls = {"n": 0}
+
+    def _count_release():
+        release_calls["n"] += 1
+
+    monkeypatch.setattr(data_manager, "_release_process_memory", _count_release)
+    monkeypatch.setenv("TRENDORA_FAULT_INJECT_MEMORY_ERROR", "coverage_membership_timeline")
+
+    with Session(engine) as session:
+        prog = JobProgress(job_id="cov-fault-probe", kind="backfill", start=d, end=d)
+        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)  # must not raise
+
+    assert "coverage" not in refreshed and "membership_timeline" not in refreshed, (
+        f"the faulted category must be honestly omitted, never a fabricated refresh: {refreshed}"
+    )
+    assert release_calls["n"] >= 1, "_release_process_memory() must be called on the injected MemoryError"
+
+    # TC-4-style recovery check: a genuine SUBSEQUENT read in the same process still succeeds (no leaked
+    # lock/transaction from the aborted call) once the fault is disarmed.
+    monkeypatch.delenv("TRENDORA_FAULT_INJECT_MEMORY_ERROR", raising=False)
+    with Session(engine) as session:
+        payload = data_manager.refresh_coverage_snapshot(session, cfg)
+    assert payload is not None
+
+
+def test_finalize_hook_market_phase_fault_injected_releases_memory_honestly(finalize_hook_multi_date_engine, monkeypatch):
+    """`TRENDORA_FAULT_INJECT_MEMORY_ERROR=market_phase` armed against a REAL (unmocked) `compute_market_
+    phase` -> `_severity_reading` call: the EXISTING per-date `except MemoryError` handler in
+    `_refresh_ingest_aggregates`'s `market_phase_warm` loop (unchanged by this iteration) still fires
+    correctly when the fault originates from INSIDE the newly-bounded fetch, not merely when the whole
+    `market_phase_cached` function is monkeypatched away (the shape the OLDER tests above use)."""
+    engine, dates = finalize_hook_multi_date_engine
+    cfg = load_config()
+
+    release_calls = {"n": 0}
+
+    def _count_release():
+        release_calls["n"] += 1
+
+    monkeypatch.setattr(data_manager, "_release_process_memory", _count_release)
+    monkeypatch.setenv("TRENDORA_FAULT_INJECT_MEMORY_ERROR", "market_phase")
+
+    with Session(engine) as session:
+        prog = JobProgress(job_id="mp-fault-probe", kind="backfill", start=dates[0], end=dates[-1])
+        prog.new_snapshot_dates = dates
+        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)  # must not raise
+
+    assert "market_phase" not in refreshed, (
+        f"the faulted category must be honestly omitted, never a fabricated refresh: {refreshed}"
+    )
+    assert release_calls["n"] >= 1, "_release_process_memory() must be called on the injected MemoryError"
+
+    monkeypatch.delenv("TRENDORA_FAULT_INJECT_MEMORY_ERROR", raising=False)
+    with Session(engine) as session:
+        payload = data_manager.refresh_coverage_snapshot(session, cfg)
+    assert payload is not None
+
+
 def test_finalize_hook_forward_aggregates_memory_error_on_first_horizon_aborts_loop(
     finalize_hook_engine, monkeypatch
 ):

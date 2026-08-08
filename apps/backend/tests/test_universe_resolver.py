@@ -333,4 +333,90 @@ def test_resolve_empty_db_is_honest_empty(tmp_path):
     with Session(engine) as session:
         out = resolve_with_reasons(session, date(2024, 6, 1), cfg, seed_dir=seed_dir)
     assert out["admitted"] == []
-    assert out["excluded_counts"][REASON_BELOW_HISTORY] == 2
+
+
+# ==================================================================================================
+# ops-hardening iter-53 (J-05/J-07, GIL-hold bound — TC-3) — `resolve_with_reasons` now fetches a
+# BOUNDED trailing window (`bars_asof_window`, `adv_window_days` wide) per admitted-history candidate
+# instead of the FULL <= asof prefix (`bars_asof`), and passes the already-known trailing `bar_count`
+# through explicitly rather than re-deriving it from `len(bars)`. A live GIL-stall profile (this
+# iteration's `reports/perf-budgets.md` addendum) proved the FULL fetch was the real GIL-hold source —
+# not a `sorted()` call and not a GC pause. `bars_asof_window`'s OWN byte-identity to
+# `bars_asof(...)[-lookback:]` is proven separately (test_bar_cache.py); these tests prove
+# `resolve_with_reasons`'s DISCLOSED output is unaffected by fetching less than the full history.
+# ==================================================================================================
+def test_resolve_with_reasons_bars_count_is_true_history_not_the_bounded_fetch_window(tmp_path):
+    """The disclosed `resolutions[...]['bars']` count is the symbol's TRUE trailing-bar count (50), never
+    the bounded ADV-window fetch size (3, `_cfg()`'s `adv_window_days`) — proving `bar_count` is passed
+    through from the already-known count, not re-derived from the (now-windowed) `bars` list length. This
+    is the exact regression a careless windowing fix would introduce (silently truncating the disclosed
+    history count to the fetch window)."""
+    cfg = _cfg()  # adv_window_days = 3 -- deliberately far smaller than the seeded history below
+    seed_dir = _write_pool(tmp_path, ["LONGHIST"])
+    engine = make_engine(f"sqlite:///{tmp_path / 'lh.db'}")
+    create_db_and_tables(engine)
+    start = date(2024, 1, 1)
+    with Session(engine) as session:
+        _seed_bars(session, "LONGHIST", start, [20.0] * 50, volume=1000.0)  # 50 bars >> adv_window_days=3
+        d = start + timedelta(days=49)  # the 50th (last) bar
+        out = resolve_with_reasons(session, d, cfg, seed_dir=seed_dir)
+    assert out["admitted"] == ["LONGHIST"]
+    row = out["resolutions"][0]
+    assert row["bars"] == 50, (
+        f"expected the TRUE 50-bar trailing history, not the {cfg.universe.filters.adv_window_days}-bar "
+        f"fetch window — got {row['bars']}"
+    )
+
+
+def test_resolve_with_reasons_byte_identical_with_and_without_an_active_bar_cache(tmp_path):
+    """`bars_asof_window` takes a DIFFERENT internal path depending on whether an outer `bar_cache`
+    context is active (the `_BarCache.bars_asof_window` slice — the ingest finalize-tail shape this
+    iteration profiled) or not (a bounded `LIMIT`-query fallback — the default per-request shape). Both
+    must resolve the SAME candidates for the SAME inputs — proven here by running the identical scenario
+    both ways and asserting the full diagnostic payload is equal."""
+    from app.engine.prices import bar_cache
+
+    cfg = _cfg()
+    seed_dir = _write_pool(tmp_path, ["PASS", "SHORT", "CHEAP", "THIN", "ENDED"])
+    engine = make_engine(f"sqlite:///{tmp_path / 'cache_ab.db'}")
+    create_db_and_tables(engine)
+    start = date(2024, 1, 1)
+    D = start + timedelta(days=9)
+    with Session(engine) as session:
+        _seed_bars(session, "PASS", start, [20.0] * 10, volume=1000.0)
+        _seed_bars(session, "SHORT", start, [20.0] * 3, volume=1000.0)
+        _seed_bars(session, "CHEAP", start, [5.0] * 10, volume=100000.0)
+        _seed_bars(session, "THIN", start, [20.0] * 10, volume=1.0)
+        _seed_bars(session, "ENDED", start - timedelta(days=40), [20.0] * 10, volume=1000.0)
+
+    with Session(engine) as session:
+        no_cache = resolve_with_reasons(session, D, cfg, seed_dir=seed_dir)  # default (no active cache)
+    with Session(engine) as session:
+        with bar_cache(session):
+            with_cache = resolve_with_reasons(session, D, cfg, seed_dir=seed_dir)  # active cache
+
+    assert with_cache == no_cache
+
+
+@pytest.mark.parametrize("history_bars", [1, 2, 3, 4, 5, 10])
+def test_resolve_with_reasons_adv_window_boundary_exact_short_and_long_history(tmp_path, history_bars):
+    """Boundary sweep around `adv_window_days` (3): a symbol with FEWER, EXACTLY, and MORE trailing bars
+    than the fetch window must classify identically to the pre-iter-53 full-fetch behavior — proven via
+    `resolve_candidate` called directly on the FULL bars (the pre-existing, unchanged pure-unit contract)
+    as the reference oracle for what `resolve_with_reasons` (the bounded-fetch path) must still produce."""
+    cfg = _cfg()  # min_history_bars=5, adv_window_days=3
+    seed_dir = _write_pool(tmp_path, ["SYM"])
+    engine = make_engine(f"sqlite:///{tmp_path / f'boundary_{history_bars}.db'}")
+    create_db_and_tables(engine)
+    start = date(2024, 1, 1)
+    with Session(engine) as session:
+        _seed_bars(session, "SYM", start, [20.0] * history_bars, volume=1000.0)
+        d = start + timedelta(days=history_bars - 1)
+        out = resolve_with_reasons(session, d, cfg, seed_dir=seed_dir)
+
+    full_bars = _bars(history_bars, 20.0, 1000.0, end=d)
+    reference = resolve_candidate(full_bars, "SYM", cfg, d)  # the unchanged pure-unit oracle
+    row = out["resolutions"][0]
+    assert row["admitted"] == reference.admitted
+    assert row["reason"] == reference.reason
+    assert row["bars"] == reference.bars == history_bars

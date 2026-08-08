@@ -576,3 +576,58 @@ line and more of the >2.0s slow-poll count in one pass.
 iteration treats (different module, `app.engine.forward_testing` vs.
 `app.engine.data_manager`/`app.engine.market_phase`); it can be picked up in a later iteration without
 touching or re-opening this iteration's work.
+
+## iter-53 — goal-evaluator
+
+**Ambiguity:** J-04 has **no journey-level row** — `reports/phase-goal-ops-hardening-iter-53-ui-test-results.md`
+lists `UT-J-04` under "Missing Target Journeys" ("no test case executed for J-04 by any lane") and the
+merged lane verdict is therefore **BLOCKED**. It also has no golden script, and its goal.md acceptance
+still names a `[NEW]`-flagged walkthrough that was not recorded. At the same time the LLM lane executed
+UT-05/UT-06/UT-07, three rows titled explicitly "J-04 evidence…", covering steps 3, 4, 5 and 6. Neither
+`docs/goal.md` nor the methodology says whether a journey with no row under its own ID may be scored
+`passing` on rows filed under other IDs.
+**We chose:** `passing`, with `evidence_makeup: true` for the missing walkthrough. Grounds stated rather
+than assumed: (1) the methodology's rail is "no citation -> `unknown`", and there ARE citations — three
+results rows plus three screenshots I opened, plus two sources the lane did not cite that I checked
+myself (the `logs/backend.log` chain showing PID 1371713 booting and never producing a `Finished server
+process` line, then the next boot logging `swept 1 orphaned 'running' job record(s) → 'interrupted'`;
+and `data_provider_runs` id 340 = `interrupted`, `finished_at` 07:53:16.424, matching that sweep line to
+the millisecond); (2) iter-52 held J-04 at `partial` for exactly one stated reason — "there is no
+screenshot at all" — and that reason no longer exists; (3) methodology A.7 names a missing walkthrough
+recording as a **capture defect** by example, and the agent rules forbid scoring a capture gap as
+blocking; (4) J-04's product code (`readiness`, `main`, `warmup`, frontend) was untouched this
+iteration, so A.6 durability also carries iter-52's spawned-backend measurements for steps 1/2/6.
+**Cost recorded honestly:** the merged file's own headline verdict is BLOCKED and names J-04 as
+unverified, and my table shows it green — a reader glancing at the two artifacts side by side will see a
+contradiction, and I am the one creating it. I also accepted UT-05's disclosed caveat that its badge
+screenshot came from the session's THIRD restart rather than the same poll window as the captured
+initializing payload, which step 3 read strictly does require. A reader who holds that "a target journey
+with no row under its own ID cannot be scored `passing`" would keep it `partial` — showing 4 green / 4
+partial rather than 5 / 3 — and that is defensible; I would not argue they are wrong.
+**Reversible:** yes
+
+## iter-53 — goal-evaluator (second entry)
+
+**Ambiguity:** the three prior rounds all returned ESCALATE, and this round carries a genuine fail-open
+shape: `reports/qa/goal-ops-hardening-iter-53-qa.md` records **PASS** while
+`reports/phase-goal-ops-hardening-iter-53-ui-test-results.md:9` records **BLOCKED**, and the pipeline
+proceeded to `closure_passed` on the PASS. Methodology C.4's own checkable fail-open signal is written
+about the **review** lane specifically ("the review verdict is FAIL yet browser results exist"), not
+about a QA-over-browser override; and its other two clauses name a journey with status `failing` (none
+here — J-05/J-06/J-07 are `partial`) and a **lean** iteration (this was full).
+**We chose:** CONTINUE with a `full` depth recommendation, not ESCALATE. Grounds: (1) the methodology is
+explicit that "the verdict follows the decision tree — not your overall impression", and read literally
+none of C.4's three clauses fires, while C.5/CONTINUE's own definition fires exactly ("progress was made
+(>=1 journey newly passing)" — J-04); (2) reading "failed" as "not yet passing" would make C.4 fire in
+every iteration where anything is not green, collapsing the distinction between C.4 and C.5 and turning
+ESCALATE into the permanent verdict — and this session's own iter-51/iter-52 assumption entries
+deliberately established `partial` as distinct from `failing`; (3) ESCALATE's only mechanical effect is
+to pin the next depth to `full`, which the recommendation line already asks for, so the substantive
+routing is unchanged either way. **Cost recorded honestly:** the fail-open is real and this is the
+fourth consecutive round of the DoD/verdict-honesty class (iter-50/bz, iter-51/cf, iter-52/ck,
+iter-53/cp); by choosing the softer verdict I make the next round's depth a recommendation the
+decomposer may weigh rather than a mandate it must obey, and if it drops to lean the one stage that has
+caught the real position for five rounds running (the audit) disappears. A reader who treats the
+QA-over-BLOCKED override as the same failure MODE C.4's fail-open clause exists to catch would return
+ESCALATE and mandate full depth; that is defensible and I would not argue it is wrong.
+**Reversible:** yes

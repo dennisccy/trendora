@@ -3253,8 +3253,14 @@ _FAULT_INJECT_MEMORY_ERROR_ENV = "TRENDORA_FAULT_INJECT_MEMORY_ERROR"
 # frozenset (not a duplicate mechanism in research.py) because `research.py` reaches this hook via a lazy
 # `from app.engine import data_manager` import (research.py sits BELOW this module in the dependency
 # graph — data_manager already imports FROM research at module level, so the reverse would be circular).
+# ops-hardening iter-53: "coverage_membership_timeline" and "market_phase" added — the two finalize-tail
+# phases this iteration's GIL-hold profile bounded (`universe_resolver.resolve_with_reasons`'s per-symbol
+# bounded-window fetch; `market_phase._severity_reading`'s benchmark/^VIX bounded-window fetch). Both
+# reach this hook via the SAME lazy `from app.engine import data_manager` import trick (data_manager
+# already imports both modules at module level, so the reverse import would be circular).
 _FAULT_INJECT_SITES = frozenset({
     "forward_aggregates", "drawdown_expectations", "backfill_worker", "factor_lab_all",
+    "coverage_membership_timeline", "market_phase",
 })
 
 
@@ -4098,6 +4104,22 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
                         # persisted above — warmed for free by that SAME call, never a second/separate
                         # derivation.
                         refreshed.append("membership_timeline")
+            # ops-hardening iter-53 (J-05/J-07, TC-5): this phase's per-date resolver sweep
+            # (`membership_timeline_cached`'s cache-miss fallback -> `_excluded_counts_by_date` ->
+            # `universe_resolver.resolve_with_reasons`, the exact chain this iteration's GIL-hold fix
+            # bounds) had NO MemoryError-distinct handler before this iteration — only the generic
+            # `except Exception` below, unlike the market-phase/forward-aggregates/drawdown-expectations
+            # loops this SAME function drives (iter-8's convention). Added here to match: a MemoryError
+            # under real pressure now returns memory to the OS (`_release_process_memory()`) before the
+            # generic handler's "log + continue" runs, instead of leaving the abort to a plain exception
+            # log with no memory recovery. `coverage`/`membership_timeline` are correctly OMITTED from
+            # `refreshed` either way (both `except` branches are reached only from BEFORE the two
+            # `refreshed.append(...)` calls above ever run) — the honesty gate is unchanged.
+            except MemoryError as exc:
+                _log_isolation_failure(
+                    "ingest coverage/membership-timeline refresh aborted — memory pressure: %s", exc,
+                )
+                _release_process_memory()
             except Exception as exc:  # noqa: BLE001 — non-fatal: log + continue to the next aggregate
                 _log_isolation_failure("ingest coverage/membership-timeline refresh failed (non-fatal): %s", exc)
             logger.info(

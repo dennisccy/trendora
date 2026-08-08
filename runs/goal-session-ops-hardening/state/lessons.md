@@ -500,3 +500,35 @@ re-derive: the lane's job appears in `perf-budgets.md` as a "**pre-fix** job run
 developer's own words.
 **Applies to:** every full-depth iteration in this session; any spec author restating TC-8/TC-9;
 anyone diagnosing why a round ends `blocked` at `audit_qa_failed` with `browser_checks_run: false`.
+
+## iter-53 — 2026-08-08T09:55:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** A pipeline ordering property was fixed by writing it into the iteration spec's own
+Definition of Done as a binding rule ("if the audit finds a defect needing a code change, it is filed
+as a note for iter-54 rather than applied as a code-changing audit-fix"), not by asking agents to be
+more careful. TC-9 had broken 6 of the previous 7 rounds under exhortation; the round it became a DoD
+checkbox, it held cleanly — newest `apps/backend/**` mtime 07:05:37 vs earliest lane artifact 08:32:26,
+and the auditor deliberately shipped five findings with zero fixes applied. Exhortation does not fix an
+ordering property; a machine-checkable spec line does.
+**Applies to:** any iteration whose spec depends on stage ordering (browser/replay lane vs audit-fix vs
+review), and any recurring process failure that has survived two or more "try harder" rounds — encode it
+as a DoD/TC item instead of a reminder.
+
+## iter-53 — 2026-08-08T09:55:00Z (second entry)
+
+**Verdict:** CONTINUE
+**Lesson:** Replacing an unbounded fetch with a bounded one is an off-by-one trap whenever the bound
+and the consumer speak different units. `market_phase.py:217`/`:554` fetch `lookback_days` bars **by
+count** and then filter `bar.date >= d - timedelta(days=lookback_days)` — a **calendar** range that is
+`lookback_days + 1` days inclusive — so the oldest qualifying bar can be silently dropped, and the code
+comment's "byte-identical" proof is false as stated. The sibling change in `universe_resolver.py` is
+correct precisely because it is a count bound feeding a count consumer (`_adv_dollar`'s
+`bars[-adv_window_days:]`). The test shape matters just as much: all three new market-phase tests
+compare **treated vs treated** (a bare fixture against the same fixture padded with older bars), which
+can only prove the window is not too *wide*; nothing can detect "too narrow" except a **treated vs
+untreated** comparison, which is what TC-3 actually asked for and what the resolver half did.
+**Applies to:** any iteration bounding a fetch/scan/window (`bars_asof` -> `bars_asof_window`,
+chunking, `LIMIT` pushdown) — check the bound's unit against the consumer's unit, and require the
+byte-identity test to compare against the ORIGINAL implementation, never against another instance of
+the new one.

@@ -27,7 +27,7 @@ Named proofs (each guards a DoD line):
 from __future__ import annotations
 
 import copy
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from sqlmodel import Session, select
 
@@ -376,3 +376,63 @@ def test_cold_compute_coverage_never_prefills_whole_table_and_batches_by_symbol(
         "expected multiple batches (the real committed candidate pool is wider than the default batch "
         f"width {batch_width}) — got only {load_only_calls}, so this test would not catch an un-batched load"
     )
+
+
+# ==================================================================================================
+# ops-hardening iter-53 (J-05/J-07, GIL-hold bound — TC-3). A live GIL-stall profile of
+# `coverage_membership_timeline_refresh` (probe thread capturing the worker's stack at the instant each
+# stall resolved — `reports/perf-budgets.md`'s iter-53 addendum) found `universe_resolver.resolve_with_
+# reasons`'s per-symbol `bars_asof` call building a candidate's ENTIRE <= asof history (up to ~7,500
+# `Bar` NamedTuples on the live 30y basis) just to read its trailing ADV window — not a `sorted()` call
+# and not a GC pause (the two culprits iter-52 found in `compute_factor_lab_all`). The fix (`bars_asof_
+# window`, proven byte-identical at the `resolve_with_reasons` layer in test_universe_resolver.py's own
+# iter-53 tests) is exercised by `_excluded_counts_by_date` through BOTH of its branches — this test
+# proves the INTEGRATION: identical excluded-by-reason totals through the ACTIVE-bar-cache branch (the
+# ingest finalize-tail shape) and the no-cache batched fallback, for a candidate with LONG (250-bar)
+# history that genuinely exercises the bounded fetch (not just the below_history short-circuit).
+# ==================================================================================================
+def test_excluded_counts_by_date_byte_identical_active_cache_vs_batched_long_history(tmp_path, monkeypatch):
+    """A controlled 3-symbol pool — one admitted with LONG history (250 bars, well past `bars_asof_
+    window`'s `adv_window_days` fetch bound), one `below_history` (5 bars), one `below_price` ($5, under
+    the real committed $10 gate) — resolved identically whether `_excluded_counts_by_date` takes its
+    ACTIVE-bar-cache branch or its no-cache batched-fallback branch."""
+    from app.engine import universe_resolver
+
+    cfg = load_config()  # the REAL committed thresholds (min_history_bars=200, min_price=$10) — unmodified
+    engine = make_engine(f"sqlite:///{tmp_path / 'excl.db'}")
+    create_db_and_tables(engine)
+    d = date(2024, 6, 1)
+    start = d - timedelta(days=249)
+
+    def _fake_pool(seed_dir=None):
+        return [{"symbol": s, "sector": "Technology", "source": "test"} for s in ("LONG", "SHORT", "CHEAP")]
+
+    monkeypatch.setattr(universe_resolver, "read_pool", _fake_pool)
+
+    with Session(engine) as session:
+        for i in range(250):  # LONG: comfortably clears history(200)/price($10)/ADV($50M) -> admitted
+            session.add(DailyPrice(
+                symbol="LONG", date=start + timedelta(days=i), open=50.0, high=50.0, low=50.0,
+                close=50.0, volume=2_000_000.0,
+            ))
+        for i in range(5):  # SHORT: 5 < 200 -> below_history
+            session.add(DailyPrice(
+                symbol="SHORT", date=d - timedelta(days=4 - i), open=50.0, high=50.0, low=50.0,
+                close=50.0, volume=2_000_000.0,
+            ))
+        for i in range(250):  # CHEAP: enough history, but $5 < the real $10 min_price gate
+            session.add(DailyPrice(
+                symbol="CHEAP", date=start + timedelta(days=i), open=5.0, high=5.0, low=5.0,
+                close=5.0, volume=2_000_000.0,
+            ))
+        session.commit()
+
+        pool_symbols = {"LONG", "SHORT", "CHEAP"}
+        with prices_module.bar_cache(session):  # ACTIVE cache branch (the ingest finalize-tail shape)
+            active = data_manager._excluded_counts_by_date(session, cfg, [d], pool_symbols)
+        no_cache = data_manager._excluded_counts_by_date(session, cfg, [d], pool_symbols)  # batched fallback
+
+    assert active == no_cache
+    assert active[d]["below_history"] == 1  # SHORT
+    assert active[d]["below_price"] == 1    # CHEAP
+    assert active[d]["stale_series"] == 0 and active[d]["below_adv"] == 0  # LONG is cleanly admitted

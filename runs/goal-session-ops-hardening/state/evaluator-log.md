@@ -4863,3 +4863,176 @@ memory fell to about 4.9 GB against your 8 GB ceiling; adding an old day of hist
 it was tried, and for the first time the app was proven to survive running out of memory mid-job without
 needing a restart; and the checks that would put all of this on the scoreboard were run too early to
 count, so the scoreboard did not move.
+
+## Iteration 53 — goal-ops-hardening-iter-53
+
+**Date:** 2026-08-08T09:55:00Z
+**Verdict:** CONTINUE
+**Depth dispatched:** full (`iter-53/depth-dispatched` = `full`, matching the spec's `Depth: full` /
+`Full trigger: 3`. `runs/goal-ops-hardening-iter-53/status.json` = **`complete`** / `closure_passed`,
+`browser_checks_run: true`, **zero declared blockers** — the first unblocked status.json in three rounds.)
+
+**Journey deltas:**
+- **Newly passing: J-04. Newly failing: none. Regressed: none.** Shape moves 4 passing / 4 partial /
+  0 failing -> **5 passing / 3 partial / 0 failing**. This is the first journey status improvement in
+  this session since iter-45.
+- **J-04 "Non-blocking boot with visible status" — `partial` -> `passing`.** iter-52 held it at
+  `partial` for exactly one reason ("there is no screenshot at all"); that blocker is gone. I opened
+  all three captures myself. `UT-05-result.png`: top-bar badge **"Initializing… history 89/89"** (amber
+  pill) with `provider: seed`, first HTTP 200 at **+1.29s** and payload `readiness:"initializing"`,
+  `warmup 89/89` — step 3. `UT-06-result.png`: badge **"Backend unavailable"** (red) plus the banner
+  **"NO-GO — do not rely on today's board. Backend is unavailable — the preflight check could not run."**
+  — visibly distinct from UT-05, step 4. `UT-07-result.png`: run-history row `2005-06-02 → 2005-06-08`
+  reading **"interrupted"** in muted-neutral styling with progress preserved ("1 snapshots over 5 dates,
+  845 forward…"), directly above a genuinely "running" teal row — step 6. Step 5 I verified at the
+  source rather than accepting the row: `logs/backend.log` carries
+  `=== start-backend.sh: launching at 2026-08-08T07:50:48Z ===` + `Started server process [1371713]` +
+  `Application startup complete`, and **1371713 never appears in a `Finished server process` line
+  anywhere in the file** — boot entries present, no clean-shutdown entry, log ends mid-request. The next
+  boot then logs `boot: swept 1 orphaned 'running' job record(s) → 'interrupted'`, and sqlite confirms
+  `data_provider_runs` id **340** = `interrupted`, `finished_at` 07:53:16.424 — matching the sweep to the
+  millisecond. Steps 1-2 additionally re-measured: Addendum 15 records boot **2.3s** against the ≤5s
+  budget. `evidence_makeup: true` set for the missing `[NEW]` walkthrough (A.7 capture defect).
+- **J-05 "Aggregates are precomputed at ingest" — stays `partial`, with step 4 hugely improved.** Step
+  2(b) verified by me at the source, not from prose: run **341**'s stored `aggregates_refreshed` reads
+  all eight categories (`latest_snapshot, coverage, membership_timeline, market_phase,
+  forward_aggregates, research_hot_keys, factor_lab_all, drawdown_expectations`), byte-matching UT-04's
+  quoted "Refreshed:" line; the row also reads `dates_total=5, snapshots_created=5`. Step 4: the browser
+  lane's own drill answered **764 of 764** health polls, none non-"ready" (iter-52: 47/1007 unanswered).
+  AGAINST: no `/scanner-runs` leaderboard capture for the newly backfilled date this round (step 2(a)
+  half-open — its market-phase half is covered by UT-08); no cold `/api/data` budget number in Addendum
+  15 (step 3); and the developer's harder drill (+dedicated heavy-research stream) still records **1
+  non-answer in 1,643**. `last_passing_iter` stays iter-39.
+- **J-07 "Heavy aggregates never take the service down" — stays `partial`; steps 3 and 4 both met.**
+  Step 3: VmPeak **4,583.1 -> 3,608.9 MB**, 44.1% margin under the 8,192 MB cap (Addendum 15). Step 4
+  re-evidenced live and confirmed by me in sqlite rather than trusted: UT-11 armed two fault sites, run
+  **342** persisted `status='partial'`, `snapshots_created=0`, and `aggregates_refreshed` correctly
+  OMITS `coverage`/`membership_timeline`/`market_phase`/`latest_snapshot` while keeping the other four
+  — an honest abort, 122/122 health polls 200, no restart required. Step 2 still measurably fails: 1
+  non-answer / 1,643 (0.061%, down from 2/1,285) and 14 polls >2.0s (0.85%, down from 34/1,283).
+  `last_passing_iter` stays iter-34.
+- **J-06 "Pages load only what they need" — NOT re-verified this iteration** (not a target, not in the
+  Required-still-passing set, no row in any lane). Carried over `partial`, `last_verified_iter` stays
+  iter-52, `spec_hash` carried forward unchanged. Its two touched surfaces were checked live and are
+  intact (UT-08 severity 29.35 with a breakdown summing to ≈29.36; UT-09 539 admitted + 9 excluded =
+  548 pool).
+- **J-01, J-03, J-08, J-09 KEEP `passing`, on rows the checks themselves caused.** Replay **4/4 PASS**.
+  Read by me in sqlite: run **337** (`dates_total=19`, `already_snapshotted=19`, `non_trading_days=9`,
+  `calendar_days=28` — 9+19=28 exactly), run **338** (weekend span, `dates_total=0`, 2 non-trading of 2
+  calendar), run **339** (`dates_total=283`, `already_snapshotted=283`, `non_trading_days=129`,
+  `calendar_days=412` — 129+283=412, far past the retired 370-day cap). Spot-checked two screenshots I
+  had not opened in prior rounds: `J-03-verify.png` renders the job card "backfill job · 2025-06-01 →
+  2026-07-17"; `J-08-verify.png` renders /backtest "Viewing as-of 2026-08-03 (latest)" with the
+  survivorship-bias disclosure.
+- No `browser-infra.json`; no `journeys-changed.md`; all 8 `spec_hash`es match `goal_gate
+  hash-journeys` run by me. `pending_infra`: cleared everywhere.
+- Anti-goal violations: **TWO CLOSED.** `iter-52/cj` — the lane-runs-last rule, broken 6 of 7 rounds,
+  **HELD cleanly**, and I verified it rather than accepting it (mtimes + an empty `find -newermt`).
+  `iter-52/cm` — the demo recorder's JSON parse error is gone (verdict RECORDED, 6 real steps).
+  **SEVEN NEW OPEN:** `co` (the market-phase off-by-one and its false byte-identity claim), `cp`
+  (review `definition_of_done: complete` + QA `PASS` over a `BLOCKED` lane, fourth round of the class),
+  `cq` (three target journeys with no journey-level row, third round; J-05's golden exists and was not
+  run), `cr` (an undisclosed deleted test assertion), `cs` (the fault site that is not the phase it
+  names), `ct` (the walkthrough residual: 0 `[NEW]` flags, 3 unique frames of 6), `cu` (the same
+  unbounded full-history read surviving on a request path, pre-existing). Ledger now: **109 total, 49
+  unresolved, 0 unresolved critical.** scan-report **CLEAN**; coherence **COHERENCE-PASS** (zero
+  blocking, 2 advisory blueprint-hygiene notes); review **PASS_WITH_NOTES** (1 MINOR,
+  `standards.test_quality: fail`); QA **PASS**; audit **PASS_WITH_GAPS**; browser QA **BLOCKED**
+  (18/18 rows PASS, 3 target-missing); deterministic replay **PASS 4/4**; demo **RECORDED**;
+  ux-regression SKIPPED (wall-clock trim).
+
+**Reasoning:** I checked every load-bearing fact myself instead of reading it off a report.
+(1) **A journey really did move, and I proved it from three independent places.** Not the handoff: two
+screenshots I opened, a logfile chain I traced (PID 1371713 boots and never finishes; the next boot
+sweeps one orphaned job to `interrupted`), and a database row (340 = `interrupted`, finished at
+07:53:16.424, matching the sweep line to the millisecond). J-04's three never-captured steps are
+captured.
+(2) **The rule that the journey checks must run last finally held, and I re-derived it rather than
+believing it.** Newest product mtime 07:05:37; earliest lane artifact 08:32:26;
+`find apps/backend/app apps/frontend -newermt '2026-08-08 08:29:30'` returns nothing. It held because
+this iteration's spec wrote the rule into its own DoD as binding, and the auditor then applied **no fix
+at all** and filed five findings for iter-54 instead. Six rounds of asking agents to try harder did not
+fix an ordering property; one line in a spec did.
+(3) **I re-measured the audit's most serious finding instead of inheriting its severity.** B1 is real —
+`market_phase.py:217`/`:554` fetch `lookback_days` bars by COUNT and then filter a `lookback_days + 1`
+day CALENDAR range, so the oldest qualifying bar can vanish, and the "byte-identical" claim in the code
+comment, the handoff and Addendum 15 is false as stated. But I measured reachability myself against the
+live DB: the maximum bars in any `[d-365, d]` span is **255** against a 365-bar fetch, and in any
+`[d-50, d]` span is **37** against a 50-bar fetch (SPY, 5,391 bars). No served number is wrong today and
+nothing regressed. I considered fail-closing to `critical`; I chose `minor` **because I could measure
+the margin rather than assume it**, and I say so plainly.
+(4) **I counted MemoryErrors per segment, not as a total.** File total 8,093 against iter-52's 8,085 =
+**8 new — and all 8 are the deliberately injected `coverage_membership_timeline` fault** (4 dates x 2
+lines). **Zero real MemoryErrors this round.**
+(5) **I hashed the evidence directory.** 18 files, 17 unique, **zero copied from iter-52**. The one
+duplicate pair is UT-02/UT-08 (the same dashboard frame serving two checks). I also hashed the demo
+frames: 6 files, only **3** unique, and zero `[NEW]` flags.
+(6) **AG-10 checked at the source:** `git diff --stat` AND `git status --porcelain` over all five frozen
+paths are BOTH empty; `config.yaml:1363-1364` still reads 8192 / 2; the launch banner in the log prints
+`memory_cap_mb=8192 malloc_arena_max=2` and `host-guard: cpu_list=0-15 blas_threads=8`.
+(7) **AG-9 checked at the row level:** every run created this round (334-342) is `provider='seed'`;
+`select distinct provider where id >= 334` returns exactly `[('seed',)]`.
+Rejected **REGRESSION (C.1)**: no journey moved `passing`/`already_passing` -> `failing` — the only move
+was upward — and no violation meets the critical list (scan CLEAN; no manifest, lockfile or LICENSE
+touched; AG-10 empty; all ingest seed; no fabricated value — the AG-3 finding is a latent hazard I
+proved unreachable at the committed density, and the served value is unchanged). Rejected **STALLED
+(C.2)**: almost nothing here is human-owned — B1 is a one-character fix plus one honest test, J-05's
+golden already exists and merely needs running, `close_on` is already imported for B3's drop-in, and the
+last stall sits in a named untreated phase. Two items are genuinely the owner's (the off-process
+question and the idle-vs-busy budget question) but owner items among many agent items are not a stall.
+Rejected **GOAL_ACHIEVED (C.3)**: three journeys are `partial`.
+**Rejected ESCALATE (C.4), and this is the call I want on the record.** Three prior rounds returned
+ESCALATE and I did not repeat it reflexively. Read literally, none of C.4's three clauses fires: no
+journey has status `failing` (J-05/J-06/J-07 are `partial`, a distinction this session's own iter-51 and
+iter-52 assumption entries established deliberately); the **review** lane did not fail (PASS_WITH_NOTES);
+and this was not a lean iteration. Reading "failed" as "not yet passing" would make C.4 fire in every
+iteration where anything is not green, collapsing the distinction between C.4 and C.5 — so I did not.
+**Chose CONTINUE (C.5):** its own definition fires plainly — "progress was made (≥1 journey newly
+passing)". I still recommend **full** depth, and the reason is on the merits, not on the tree: the audit
+is the ONLY lane that has caught the round's real position for five consecutive rounds, and dropping to
+lean would remove the one stage that is working.
+**FIVE THINGS I STATE PLAINLY RATHER THAN ROUND AWAY:** (i) **the scoreboard moved for the first time
+since iter-45**, and it moved on evidence I verified in three independent places rather than on a
+narrative. (ii) **the fix worked exactly where it was aimed and the report says so without dressing it
+up.** Both treated phases went from producing a non-answer to zero, `market_phase_warm` fell 26.26s ->
+0.73s, and Addendum 15 still leads with "NOT met, and reads WORSE than Addendum 14" about the 1,559.30s
+finalize tail and explains why (an untouched phase swung 0.05s -> 496.28s on scheduling luck). That is
+the honesty standard this session has been asking for. (iii) **the deepest defect this round is in the
+new code, and only the audit found it** — a window one day too short, with a "byte-identical" claim
+attached that is not true, and a test shape that compares the new code against itself so it cannot
+detect it. (iv) **the report that says "pass" and the report that says "blocked" are STILL both in the
+same folder**, and this time the quality report ticked a J-04 box using screenshots that would not exist
+for another 14 to 45 minutes. Fourth round of that class. (v) **three of this round's own target
+journeys still have no row under their own name, for the third round running** — and one of them,
+J-05, has a saved check script sitting on disk that nobody ran.
+
+**Next-step recommendation:** FULL depth (recommended on the merits, not mandated). Give the next round
+this order. (1) **Fix the one-day-short data window and write the test that would have caught it.** Two
+places in the market-phase calculation ask the database for one day's worth of price data less than they
+then filter for; today nothing you can see changes — I measured the spare room — but the code claims the
+result is identical when it is not. One character each, plus a test that compares the new fast version
+against the old slow version instead of against itself. (2) **Give the three unproven journeys real check
+rows.** J-05 "Aggregates are precomputed at ingest" already has a saved script that simply was not run —
+that is free. J-04 "Non-blocking boot with visible status" and J-07 "Heavy aggregates never take the
+service down" have none; write one each that checks behaviour, not page titles. (3) **Treat the last
+remaining stall**: the health check went unanswered exactly once in 1,643 tries, inside a "per-date
+coverage" step this round did not touch — same shape of problem, same shape of fix. (4) **Apply the same
+speed fix to the retrospective market-phase page**, which still reads a symbol's whole price history
+about 2,900 times per request; the faster reader is already imported in that file. (5) **Make the reports
+agree**: whoever writes the quality report should read the browser report's verdict line first. (6) SMALL
+AND ALREADY WRITTEN DOWN: restore or explain the deleted test line; move the coverage fault switch to the
+step it names; about 40 slower market-phase tests were run by no stage; the data job's finishing work is
+30% over its 20-minute limit when the app is busy, almost entirely from untouched steps. (7) CARRIED,
+untouched: iter-29/b + the badge wording after a permanently failed warm-up (26th round unmade);
+iter-31/e; iter-32/f; iter-35/k; iter-36/n; iter-37/o; iter-37/q; iter-39/u; iter-46/az; iter-46/ba;
+iter-47/bd; iter-47/bf; iter-47/bi; iter-48/bj. Deferred a NINETEENTH time: iter-33/g, the Regime Lab,
+whose data still runs out of memory and whose check still only reads the page title. (8) CAPTURE ONLY,
+never a round's goal: the walkthrough produced 6 steps but only 3 different pictures and no `[NEW]`
+flags; J-04's walkthrough is missing in the very round that proved J-04, and J-07's is 23 rounds
+unrecorded. (9) OWNER: two decisions and three facts. The decisions, both asked before and still
+unanswered — (a) may a future round move the heavy calculation into a separate process? (b) Is the
+20-minute limit on a data job's finishing work meant to hold while the app is also serving people, or
+only when it is idle? The facts — the app now shows an honest "Initializing… 89/89" while starting and an
+honest "Backend unavailable" when killed, both proven with pictures for the first time in this session;
+one of the two sped-up steps went from 26 seconds to 0.7 seconds; and during a real data job the health
+check answered every one of 764 tries in the browser lane's own run.

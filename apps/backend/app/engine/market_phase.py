@@ -47,7 +47,7 @@ from app.config import (
     get_config,
 )
 from app.engine.labels import label_for
-from app.engine.prices import bar_cache, bars_asof, closes
+from app.engine.prices import bar_cache, bars_asof, bars_asof_window, close_on, closes
 from app.engine.research import _dataset_version  # single-sourced cache stamp (J-72) — never duplicated
 from app.models import MacroSeries, MarketPhaseCache, ScannerRun
 
@@ -112,12 +112,25 @@ def _drawdown_components(closes_window: list[float], cfg: Config) -> dict:
 def _latest_vix_on_or_before(session: Session, d: date_cls, cfg: Config) -> Optional[float]:
     """The ^VIX close on/before D (date <= D, no lookahead), or None when no ^VIX bar exists. Reads the
     configured volatility symbol (`etfs.volatility[0]`, the SAME symbol the regime engine's VIX gate
-    reads) via `bars_asof` — a pure causal read; recomputes nothing."""
+    reads) — a pure causal read; recomputes nothing.
+
+    ops-hardening iter-53 (J-05/J-07, GIL-hold bound — profiled, not assumed): this call is inside
+    `_severity_reading`'s per-run loop (`compute_market_phase`, ~2,900 stored runs on the live 30y basis).
+    A live GIL-stall profile of `market_phase_warm` (probe thread capturing the worker's stack at the
+    instant each stall resolved — `reports/perf-budgets.md`'s iter-53 addendum) found EVERY stall
+    resolving HERE: `closes(bars_asof(...))` built ^VIX's entire <= D history (a `Bar` NamedTuple per row,
+    up to ~7,500 on the live basis) just to read `series[-1]` — 65 stalls / 3.34s in a single `compute_
+    market_phase` call alone. Not a `sorted()` call and not a GC pause (the two culprits iter-52 found in
+    `compute_factor_lab_all` — a genuinely different bottleneck; the fix bounds the real one rather than
+    force-fitting that pattern). `close_on(session, symbol, d)` is the EXISTING, already-proven single-bar
+    accessor ("the single-bar form of bars_asof(session, symbol, d)[-1].close ... fetches only the ONE bar
+    instead of materializing the symbol's full pre-history", iter-26/J-16) — byte-identical, including the
+    no-bar -> None case (`closes([])[-1] if [] else None` and `close_on`'s own None both resolve to the
+    SAME "no bar on/before D" NA)."""
     symbols = cfg.etfs.volatility
     if not symbols:
         return None
-    series = closes(bars_asof(session, symbols[0], d))
-    return series[-1] if series else None
+    return close_on(session, symbols[0], d)
 
 
 def _macro_value_asof(session: Session, series_id: str, d: date_cls) -> Optional[float]:
@@ -176,8 +189,32 @@ def _severity_reading(
     bench = cfg.etfs.index[0]  # the benchmark (SPY) — the SAME first index ETF the RS benchmark uses
     d = run.asof_date
 
+    # lazy import — app.engine.data_manager imports FROM this module at module level (`market_phase_
+    # cached`), so a module-level import back would be circular (mirrors the identical trick research.py
+    # and forward_testing.py already use). Used only for the test-only `_fault_inject_memory_error` hook
+    # below (a no-op in production).
+    from app.engine import data_manager
+    # ops-hardening iter-53 (J-05/J-07, TC-5): the fault-injection probe for THIS treated site — see
+    # `_FAULT_INJECT_SITES`'s "market_phase" entry. Placed inside `_severity_reading` itself (the per-run
+    # body `compute_market_phase`'s loop calls once per stored run, ~2,900 times on the live 30y basis —
+    # the ACTUAL treated loop), not at `compute_market_phase`'s or `market_phase_cached`'s own call site,
+    # mirroring `compute_factor_lab_all`'s convention so a drill/test exercises the real treated code path.
+    data_manager._fault_inject_memory_error("market_phase")  # test-only; a no-op in every real deployment
+
     start = d - timedelta(days=mp.lookback_days)
-    window = [bar for bar in bars_asof(session, bench, d) if bar.date >= start]
+    # ops-hardening iter-53 (J-05/J-07, GIL-hold bound — profiled, not assumed): the SAME defect
+    # `_latest_vix_on_or_before` (above) was measured to hold the GIL on — `bars_asof(session, bench, d)`
+    # builds the benchmark's ENTIRE <= D history (up to ~7,500 `Bar` NamedTuples on the live 30y basis)
+    # only to filter it down to the trailing `lookback_days` calendar-day window immediately below.
+    # `bars_asof_window(session, bench, d, mp.lookback_days)` fetches only the trailing `lookback_days`
+    # bars BY COUNT — provably sufficient to reproduce the SAME `>= start` filtered result: the number of
+    # TRADING days within any `lookback_days` CALENDAR days can never exceed `lookback_days` (a trading
+    # day is always one calendar day, so N calendar days admit at most N trading days), and `bars_asof`'s
+    # ascending order means every date >= `start` occupies a trailing SUFFIX of the full series — so a
+    # `lookback_days`-sized trailing-count window is guaranteed to contain that whole suffix regardless of
+    # history density/gaps. Filtering the (now bounded) window with the SAME `>= start` condition below is
+    # therefore byte-identical to filtering the full prefix.
+    window = [bar for bar in bars_asof_window(session, bench, d, mp.lookback_days) if bar.date >= start]
     if len(window) < mp.min_history_bars:
         return None  # insufficient benchmark history -> NA / partial (never fabricated)
     closes_window = closes(window)
@@ -500,14 +537,21 @@ def _downtrend_episodes(timeline: list[dict], as_of: date_cls, cfg: Config) -> l
 
 def _trailing_ma_reclaimed(session: Session, as_of: date_cls, cfg: Config) -> Optional[bool]:
     """Whether the benchmark close on/before D has RECLAIMED its trailing moving average over the config
-    `recovery_trailing_ma_days` window (J-90 confirmation leg). Reads ONLY bars dated <= D via `bars_asof`
-    (no lookahead): the last close vs the mean close over the trailing window. None when there is no bar
-    on/before D (an honest gap — the caller treats a missing reclaim as no-signal, never fabricated). A
-    pure causal read; recomputes nothing, carries no literal (the window is the config key)."""
+    `recovery_trailing_ma_days` window (J-90 confirmation leg). Reads ONLY bars dated <= D (no lookahead):
+    the last close vs the mean close over the trailing window. None when there is no bar on/before D (an
+    honest gap — the caller treats a missing reclaim as no-signal, never fabricated). A pure causal read;
+    recomputes nothing, carries no literal (the window is the config key).
+
+    ops-hardening iter-53 (J-05/J-07, GIL-hold bound): the SAME bounded-window treatment as
+    `_severity_reading`'s benchmark drawdown leg, for the SAME reason and with the SAME byte-identity proof
+    (a `lookback_days`-by-COUNT window is provably a superset of any `lookback_days`-by-CALENDAR-day filter,
+    since trading days are never denser than calendar days) — `_recovery_turn_signal` calls this once per
+    `compute_market_phase` invocation (in scope for `market_phase_warm`); `_recovery_turn_dates_with_context`
+    (below) also calls it, unmodified, and benefits for free."""
     mp = cfg.market_phase
     bench = cfg.etfs.index[0]
     start = as_of - timedelta(days=mp.recovery_trailing_ma_days)
-    window = [bar for bar in bars_asof(session, bench, as_of) if bar.date >= start]
+    window = [bar for bar in bars_asof_window(session, bench, as_of, mp.recovery_trailing_ma_days) if bar.date >= start]
     series = closes(window)
     if not series:
         return None

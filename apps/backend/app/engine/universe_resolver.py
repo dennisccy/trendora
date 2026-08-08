@@ -43,7 +43,7 @@ from sqlalchemy import func
 from sqlmodel import Session, select
 
 from app.config import Config, get_config
-from app.engine.prices import active_bar_cache, bars_asof
+from app.engine.prices import active_bar_cache, bars_asof_window
 from app.engine.universe_screen import read_pool
 from app.models import DailyPrice
 
@@ -81,7 +81,9 @@ def _adv_dollar(bars: list, adv_window_days: int) -> Optional[float]:
     return sum(pairs) / len(pairs)
 
 
-def resolve_candidate(bars: list, symbol: str, cfg: Config, asof: date_cls) -> CandidateResolution:
+def resolve_candidate(
+    bars: list, symbol: str, cfg: Config, asof: date_cls, *, bar_count: Optional[int] = None,
+) -> CandidateResolution:
     """Resolve ONE candidate from its already-fetched bars-as-of-D list (ascending, date <= D) at the
     resolve date `asof` (= D). Pure: no DB access, no config of its own beyond the passed `cfg`. The
     gates are checked in a fixed order (history -> staleness -> price -> ADV) so the recorded `reason`
@@ -97,7 +99,13 @@ def resolve_candidate(bars: list, symbol: str, cfg: Config, asof: date_cls) -> C
     (no lookahead; no magic number — the threshold is `cfg.universe.filters.max_staleness_days`)."""
     filters = cfg.universe.filters
     min_history = cfg.indicators.min_history_bars
-    bar_count = len(bars)
+    # ops-hardening iter-53 (J-05/J-07, GIL-hold bound): `bar_count` is OPTIONAL — a caller with a
+    # cheaper/already-known trailing count (`resolve_with_reasons`, below) passes it explicitly so this
+    # function need not be handed the FULL bars-as-of-D list just to measure its length; `len(bars)`
+    # remains the default for every caller that already passes the full list (every direct unit test in
+    # test_universe_resolver.py — unaffected, byte-identical).
+    if bar_count is None:
+        bar_count = len(bars)
 
     if bar_count < min_history:
         return CandidateResolution(symbol, False, REASON_BELOW_HISTORY, bar_count)
@@ -183,6 +191,33 @@ def resolve_with_reasons(
         bar_count_by_symbol = {sym: int(n or 0) for sym, n in counts_rows}
 
     resolutions: list[CandidateResolution] = []
+    # ops-hardening iter-53 (J-05/J-07, GIL-hold bound — profiled, not assumed): a live GIL-stall profile
+    # of THIS exact call (`coverage_membership_timeline_refresh`'s finalize-tail phase, run against the
+    # committed DB with a probe thread capturing the worker's stack at the instant each stall resolved —
+    # `reports/perf-budgets.md`'s iter-53 addendum) found every stall bottoming out in ONE place:
+    # `_SymbolColumns.__getitem__`'s list comprehension (`prices.py`), building a `Bar` NamedTuple for
+    # EVERY row in a symbol's FULL <= asof history (`bars_asof`, up to ~7,500 rows on the live 30y basis)
+    # — not a `sorted()` call and not a GC pause (the two culprits iter-52 found in `compute_factor_lab_all`
+    # — this is a genuinely different bottleneck; per this iteration's own instructions, the fix below
+    # bounds the real one instead of force-fitting the iter-52 pattern). `resolve_candidate` below reads
+    # only `bars[-1]` (staleness/price) and `_adv_dollar`'s own `bars[-adv_window_days:]` trailing slice —
+    # never anything earlier — so fetching the full prefix just to read its tail is pure waste.
+    # `bars_asof_window(session, symbol, asof, lookback)` is the EXISTING, already-proven bounded sibling
+    # (iter-27/J-16: "BYTE-IDENTICAL to bars_asof(session, symbol, d)[-lookback:] ... without materializing
+    # the discarded earlier prefix"). Fetching exactly `adv_window_days` trailing bars is provably
+    # sufficient: `bars[-1]` is the same last element either way, and `_adv_dollar`'s own
+    # `bars[-adv_window_days:]` slice on an already-`adv_window_days`-sized (or shorter) list is a no-op —
+    # the same content either way. `bar_count` — the count THIS loop already computed via
+    # `bar_count_by_symbol` (proven byte-identical to `len(bars_asof(...))` — see that dict's own build
+    # comment above) — is passed through explicitly so the bounded fetch changes WHAT IS FETCHED, never
+    # what is COMPUTED or DISCLOSED: every `CandidateResolution.bars`/`excluded_counts` value stays
+    # byte-identical (TC-3).
+    window_days = max(1, cfg.universe.filters.adv_window_days)
+    # lazy import — app.engine.data_manager imports FROM this module (`resolve_with_reasons` above), so a
+    # module-level import back would be circular (mirrors research.py's/forward_testing.py's own lazy
+    # imports of data_manager, for the identical reason). Used only for the test-only
+    # `_fault_inject_memory_error` hook below (a no-op in production).
+    from app.engine import data_manager
     for symbol in resolve_symbols:
         bar_count = bar_count_by_symbol.get(symbol, 0)
         if bar_count < min_history:
@@ -191,8 +226,13 @@ def resolve_with_reasons(
                 CandidateResolution(symbol, False, REASON_BELOW_HISTORY, bar_count)
             )
             continue
-        bars = bars_asof(session, symbol, asof)
-        resolutions.append(resolve_candidate(bars, symbol, cfg, asof))
+        # ops-hardening iter-53 (J-05/J-07, TC-5): the fault-injection probe for THIS treated site — see
+        # `_FAULT_INJECT_SITES`'s "coverage_membership_timeline" entry. Placed at the per-symbol bounded
+        # fetch itself (not at `resolve_with_reasons`'s own call site), mirroring `compute_factor_lab_all`'s
+        # convention, so a drill/test exercises the REAL treated code path.
+        data_manager._fault_inject_memory_error("coverage_membership_timeline")  # test-only; no-op in prod
+        bars = bars_asof_window(session, symbol, asof, window_days)
+        resolutions.append(resolve_candidate(bars, symbol, cfg, asof, bar_count=bar_count))
 
     admitted = sorted(r.symbol for r in resolutions if r.admitted)
     excluded_counts = {reason: 0 for reason in EXCLUSION_REASONS}

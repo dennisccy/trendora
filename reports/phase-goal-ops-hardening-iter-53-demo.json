@@ -1,0 +1,121 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-ops-hardening-iter-53",
+  "base_url": "http://localhost:3255",
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Navigate to the Dashboard",
+      "narration": "The dashboard loads normally, showing the current market state without errors.",
+      "point_out": "Look for the Market Phase & Severity card with a real numeric severity score and phase label.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "goto",
+        "url": "/"
+      },
+      "expect": {
+        "text": "Market Phase"
+      }
+    },
+    {
+      "n": 2,
+      "title": "Check the readiness badge at the top right",
+      "narration": "The header's readiness pill shows a solid green state with a clear status.",
+      "point_out": "The pill in the top-right corner should read 'Ready' with a green indicator.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "click",
+        "target": {
+          "role": "link",
+          "name": "Data Manager"
+        }
+      },
+      "expect": {
+        "text": "Dataset coverage"
+      }
+    },
+    {
+      "n": 3,
+      "title": "View the Data Manager and coverage panels",
+      "narration": "The Data Manager page displays the dataset coverage and universe resolution information with real numbers for universe counts and admissions.",
+      "point_out": "The Dataset coverage panel shows the Universe count, Admitted count, and the breakdown of excluded items by reason. All figures should be real numbers, not blanks.",
+      "journey": "J-01",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "click",
+        "target": {
+          "role": "link",
+          "name": "Backtest"
+        }
+      },
+      "expect": {
+        "text": "Snapshots contributing"
+      }
+    },
+    {
+      "n": 4,
+      "title": "View the Backtest page with evidence scorecard",
+      "narration": "The Backtest page shows the forward-test scorecard with real historical data and evidence metrics, confirming that evidence is served from storage, not computed on demand.",
+      "point_out": "Scroll down to the evidence section to see the 'Snapshots contributing' count displayed as a real number, not a loading spinner.",
+      "journey": "J-08",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "click",
+        "target": {
+          "role": "link",
+          "name": "Data Manager"
+        }
+      },
+      "expect": {
+        "text": "Background compute"
+      }
+    },
+    {
+      "n": 5,
+      "title": "Check the background-compute panel on Data Manager",
+      "narration": "The background-compute panel discloses any active or recently-completed background computation, with a footer explaining the scope ('process-lifetime only, never persisted').",
+      "point_out": "Look for either an active in-flight entry or a 'Last outcome' summary, confirming the backend honestly reports its background work.",
+      "journey": "J-09",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "click",
+        "target": {
+          "role": "link",
+          "name": "Dashboard"
+        }
+      },
+      "expect": {
+        "text": "Market Phase"
+      }
+    },
+    {
+      "n": 6,
+      "title": "Confirm badge consistency across Dashboard",
+      "narration": "The readiness badge and preflight banner render consistently in the header across all three pages, confirming a single global element.",
+      "point_out": "The pill in the top-right corner should show the same 'Ready' state and position as it did on the earlier pages.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "click",
+        "target": {
+          "css": "body"
+        }
+      }
+    }
+  ]
+}
