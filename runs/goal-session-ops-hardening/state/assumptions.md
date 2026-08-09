@@ -485,3 +485,72 @@ list that `/data` displays, which would make this critical and the verdict REGRE
 session for the owner. I chose the narrower reading and I am naming it rather than letting it pass
 silently.
 **Reversible:** yes — the owner or a later evaluator can re-score this ledger entry to `critical` and halt.
+
+## iter-55 — goal-decomposer
+
+**Ambiguity:** the iter-54 evaluator's next-step item (1) reads "Make the record honest first (say
+'partial'; list only what really finished)" for the forward-aggregate warm's completeness accounting.
+Read literally this could mean either (a) introduce a new tri-state/partial marker somewhere in the
+persisted record, or (b) apply the SAME drop-on-incomplete convention this row's own sibling flags
+(`drawdown_warmed`, `research_hot_keys`) already use — omit `"forward_aggregates"` from
+`aggregates_refreshed` entirely when not every configured horizon completed. Neither `docs/goal.md`
+nor the evaluator's own text says which shape is required, and the underlying code bug (direct read,
+`data_manager.py:4234-4281`) is unambiguous either way: `forward_aggregates_warmed` is a single bool
+set `True` on ANY horizon's success and never reset on a later horizon's `MemoryError`.
+
+**We chose:** (b) — reuse the existing drop-on-incomplete convention, no new field. Grounds stated
+rather than assumed: (1) the iter-54 lesson this item is drawn from names the defect precisely as "the
+isolate-and-continue path drops a *failed* member from the list... but a *partially completed* member
+keeps its entry — so the honest-omission mechanism has a hole" — closing that hole with the SAME
+mechanism is the direct, minimal fix for the named root cause, not a design gap needing a new
+representation; (2) this session's Data Contract carries a strong, repeated precedent against adding a
+field when an existing mechanism already expresses the needed state (iter-46/iter-49/iter-50 all chose
+"no new field" for comparable honest-omission fixes); (3) the run's own overall `status` field already
+reads `"ok"` correctly for this case (isolate-and-continue is the correct AG-8 resilience behavior —
+the process degraded and kept serving) — introducing a THIRD status value conflates "the run finished
+successfully with one degraded item" (already expressible by omission) with "the run itself failed,"
+which the existing `status` enum does not need. **Cost recorded honestly:** if the evaluator's "say
+partial" phrasing meant a literal new status value or field, this iteration's fix will read as a
+narrower interpretation than intended, and the record will still show `status: "ok"` for a run that
+skipped one of its five configured horizons — a reader who wanted an explicit degraded-status signal
+on the run itself (not just an omission from a list) would find this incomplete and is not wrong to.
+
+**Reversible:** yes — a `status: "partial"` value or a per-item completeness field can be added on top
+of this fix in a later iteration without reopening or re-diagnosing the omission logic itself.
+
+## iter-55 — goal-decomposer (second entry)
+
+**Ambiguity:** the iter-54 evaluator's next-step item (3) names a SEPARATE, newly-surfaced J-06 defect
+(`/api/runs` 3.2-7.5s, `/api/data/availability` 15.1-21.2s against committed budgets, driven by DB
+growth to 8.37 GB / 2,937 `scanner_runs` rows) in the SAME numbered next-step list as items (1)/(2)
+(the forward-aggregate honest-status + GIL-holding fix). Read as one undifferentiated instruction this
+could ask iter-55 to treat both; neither `docs/goal.md` nor the evaluator's own text says whether the
+numbered list is one iteration's bundled scope or a priority-ordered sequence across iterations (the
+list's own item (7) is explicitly a carried/deferred backlog, showing the numbering already spans
+multiple iterations elsewhere in the same document).
+
+**We chose:** treat ONLY items (1)/(2)/(4) this iteration; explicitly defer item (3) (the J-06
+DB-growth latency regression). Grounds stated rather than assumed: (1) items (1)/(2) share one root
+phase (`forward_aggregates_warm`, `app.engine.forward_testing`/`app.engine.data_manager`) and are
+provably ONE fix (the honest-status bug and the GIL-holding stretch are both inside the SAME per-horizon
+loop, confirmed by direct code read); item (3)'s root cause (two DIFFERENT serving endpoints slowed by
+overall DB row-count growth) is architecturally unrelated and completely unprofiled — no prior iteration
+has diagnosed why `/api/runs`/`/api/data/availability` scale the way they do with `scanner_runs` row
+count; (2) this mirrors this session's own repeated precedent (iter-53's `assumptions.md` entry
+deferring `forward_aggregates_warm` itself for the identical reason one iteration earlier; iter-45's
+entry deferring the out-of-process watchdog) — rule 5 bars bundling a second, unprofiled risky diagnosis
+effort alongside an already-diagnosed fix; (3) items (1)/(2)/(4) close a CONNECTION-LEVEL non-answer (a
+poll gets no response at all) and unexecuted verification debt, both higher-severity/higher-priority
+defect classes than a SLOW-but-answered endpoint per this session's own repeated evaluator prioritization
+(iter-53's ambiguity entry: "the higher-priority defect class... connection-level non-answers"). **Cost
+recorded honestly:** J-06 stays `partial` after this iteration for a defect this iteration does nothing
+to close; the evaluator's own text calls it "the single thing keeping 'pages load only what they need'
+from passing" — so this iteration does not move J-06 toward `passing` at all. A reader who takes the
+evaluator's numbered next-step list as one iteration's bundled scope would target J-06's DB-growth
+diagnosis in the SAME iteration as the forward-aggregate fix — a larger, riskier diff spanning four
+modules instead of two, but with a chance of also closing J-06's last gap in one pass.
+
+**Reversible:** yes — the J-06 DB-growth latency regression is a serving-path-only concern on
+`/api/runs`/`/api/data/availability`, architecturally independent of `forward_aggregates_warm`'s
+finalize-tail warm loop; it can be picked up in a later iteration without touching or reopening this
+iteration's work.
