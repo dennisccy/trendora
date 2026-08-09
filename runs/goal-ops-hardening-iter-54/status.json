@@ -1,0 +1,46 @@
+{
+  "phase": "goal-ops-hardening-iter-54",
+  "status": "complete",
+  "current_step": "dev_complete",
+  "updated_at": "2026-08-09T21:59:00Z",
+  "started_at": "2026-08-09T21:39:00Z",
+  "cli": "claude",
+  "blockers": [
+    "TC-6's live HTTP fault-injection drill was not additionally run this dispatch (B2's mechanism is proven by a real unmocked unit test instead; a full live version costs the same ~30-minute wall-clock as the TC-4 drill for marginal additional confidence -- see the dev handoff's Known Issues).",
+    "J-05's existing golden (19-minute wait_for) was not executed this dispatch -- belongs to the regression-replay/browser lane per TC-13 lane-ordering; flagged so it is not silently missed.",
+    "GET /api/runs and GET /api/data/availability read 5-21s live (over the committed <=1.5s budget), a DB-growth-driven condition (8.37 GB, 2,937 scanner_runs rows) not caused by and not fixed by this iteration -- disclosed as a WARN in reports/perf-budgets.md Addendum 18, filed as a next-iteration audit/profile candidate.",
+    "TC-5 (the finalize-tail 1,200s wall-clock budget) still not met (1,820.99s, over by 620.99s) -- the pre-disclosed, expected consequence of deferring forward_aggregates_warm/drawdown_expectations_warm this iteration (assumptions.md iter-54), not a regression."
+  ],
+  "changed_files": [
+    "apps/backend/app/engine/data_manager.py",
+    "apps/backend/app/engine/market_phase.py",
+    "apps/backend/app/engine/universe_resolver.py",
+    "apps/backend/tests/test_data_manager.py",
+    "apps/backend/tests/test_market_phase.py",
+    "apps/backend/tests/test_universe_resolver.py",
+    "docs/handoffs/goal-ops-hardening-iter-53-dev.md",
+    "reports/perf-budgets.md",
+    "docs/handoffs/goal-ops-hardening-iter-54-dev.md",
+    "runs/goal-ops-hardening-iter-54/evidence-drill/measure_page_budgets.py",
+    "runs/goal-session-ops-hardening/journey-scripts/J-04.json",
+    "runs/goal-session-ops-hardening/journey-scripts/J-07.json"
+  ],
+  "tests_run": "full",
+  "browser_checks_run": true,
+  "next_action": "review",
+  "qa_verdict": null,
+  "known_incomplete": {
+    "TC-6_live_http_drill": "not run -- unit-tested mechanism only, disclosed and reasoned in dev handoff",
+    "J-05_golden_execution": "not run this dispatch -- belongs to the regression-replay/browser lane",
+    "api_runs_and_data_availability_latency": "WARN disclosed (perf-budgets.md Addendum 18), not this iteration's scope to fix"
+  },
+  "evidence": {
+    "T5_loaded_engine_suite": "76 passed, 0 failed, 3862.87s -- runs/goal-ops-hardening-iter-54/service-logs/t5-loaded-engine.log",
+    "test_data_manager_full_suite": "201 passed, 0 failed, 305.95s (this dispatch)",
+    "test_universe_resolver_full_suite": "26 passed, 0 failed, 3.45s (this dispatch)",
+    "tc4_tc5_tc6_live_drill": "1822 polls, 0 non-answers in per_date_coverage_warm (down from iter-53's 1), all 6 non-answers in out-of-scope forward_aggregates_warm -- reports/perf-budgets.md Addendum 17, reports/qa/goal-ops-hardening-iter-54-evidence/tc4-drill-out/",
+    "tc16_page_budgets": "all 11 pages TTI 105-138ms vs <=3000ms budget; WARN disclosed for /api/runs and /api/data/availability -- reports/perf-budgets.md Addendum 18, reports/qa/goal-ops-hardening-iter-54-evidence/tc16-page-budgets.json",
+    "j04_j06_golden_recheck": "both PASS in a clean uncontended environment -- reports/qa/goal-ops-hardening-iter-54-evidence/j04-recheck-results.md (resolves the earlier stale FAIL, attributed to concurrent T5 CPU contention at replay time)",
+    "ag10_static_check": "clean -- git status --porcelain over the 5 frozen host-guard paths is empty, re-verified multiple times"
+  }
+}

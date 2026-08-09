@@ -33,9 +33,11 @@ from sqlmodel import Session, select
 import main
 from app.config import ConfigError, load_config
 from app.db import create_db_and_tables, make_engine
+from app.engine import market_phase
 from app.engine.market_phase import (
     PHASE_RECOVERY,
     SCHEMA_VERSION,
+    _benchmark_close_on_or_before,
     _cache_version,
     _filtered_bear_path,
     _severity_velocity_at,
@@ -48,7 +50,7 @@ from app.engine.market_phase import (
     recovery_turn_dates,
     retrospective_cached,
 )
-from app.engine.prices import latest_data_date
+from app.engine.prices import bars_asof, closes as bar_closes, latest_data_date
 from app.engine.research import _dataset_version
 from app.models import DailyPrice, ForwardReturn, MarketPhaseCache, ScannerResult, ScannerRun
 
@@ -377,6 +379,100 @@ def test_recovery_turn_trailing_ma_bounded_fetch_byte_identical():
 
     assert bare["severity"] == padded["severity"]  # sanity: the drawdown leg itself is unaffected too
     assert bare["recovery_turn"] == padded["recovery_turn"]
+
+
+# ==================================================================================================
+# ops-hardening iter-54 (B1 fix, T1/TC-1/TC-2 — iter-53 audit finding B1/T1). The THREE tests above
+# compare treated-vs-treated (a bare fixture against the SAME fixture padded with an older block) — they
+# prove the bounded fetch is not too WIDE, but a treated-vs-treated shape structurally cannot prove it is
+# not too NARROW (the iter-53 lesson on record: "require the byte-identity test to compare against the
+# ORIGINAL implementation, never against another instance of the new one"). The audit proved exactly
+# this gap: at `lookback_days=30` on the shipped fixture, the pre-fix count-bounded fetch
+# (`bars_asof_window(..., lookback_days)`, one bar short of the `[start, d]` inclusive calendar range it
+# feeds) silently dropped the oldest qualifying bar, flipping the served `phase` from `Correction` to
+# `Pullback` — and every treated-vs-treated test above still PASSED throughout. This test instead
+# compares the TREATED `compute_market_phase` (now fetching `lookback_days + 1`, B1's fix) against the
+# UNTREATED oracle: the ORIGINAL, pre-iter-53 shape — no count-window at all, `bars_asof`'s full <= d
+# history filtered by the SAME `>= start` calendar condition — reconstructed by patching
+# `bars_asof_window` to ignore its `lookback` argument and return the unbounded series instead, then
+# running the REAL `compute_market_phase` pipeline on top of it (never a hand-reimplemented partial
+# oracle that could silently drift from the real available-weight blend/rounding).
+# ==================================================================================================
+def test_severity_reading_treated_matches_untreated_bars_asof_oracle_at_lookback_boundary(monkeypatch):
+    """TC-1/TC-2: reuses the EXACT shipped fixture from
+    `test_severity_reading_benchmark_window_ignores_bars_older_than_lookback_bound` at `lookback_days=30`
+    (the iter-53 audit's own B1 reproduction case). The untreated oracle's `phase` is `Correction`
+    (matching the audit's measured table: severity 50.27, drawdown_pct -9.25) — the treated (post-B1-fix)
+    value must equal it exactly. A test written in the pre-fix treated-vs-treated shape at this SAME
+    `lookback_days` would have asserted `phase == "Pullback"` and PASSED even though the served value was
+    wrong; this test would have FAILED against the pre-fix code (proving it has teeth)."""
+    cfg = _small_config()
+    cfg.market_phase.lookback_days = 30  # deliberately small so the boundary is genuinely exercised
+    d = _BASE + timedelta(days=99)
+    recent = [100.0 - 0.3 * i for i in range(40)]
+    engine = _engine()
+    with Session(engine) as session:
+        _insert_bars(session, "SPY", recent, start=d - timedelta(days=39))
+        _insert_run(session, d, "Choppy", 50.0, breadth_200=45.0)
+        session.commit()
+
+        treated = compute_market_phase(session, d, cfg)  # post-B1-fix: fetches lookback_days + 1 by count
+
+        def _unbounded_window(session_, symbol, asof, lookback):  # noqa: ARG001 -- lookback deliberately unused
+            return bars_asof(session_, symbol, asof)  # the pre-iter-53 ORIGINAL shape: no count-window
+
+        monkeypatch.setattr(market_phase, "bars_asof_window", _unbounded_window)
+        untreated = compute_market_phase(session, d, cfg)
+
+    # the untreated oracle reproduces the iter-53 audit's own measured table exactly (the ground truth).
+    assert untreated["available"] is True
+    assert untreated["phase"] == "Correction"
+    assert round(untreated["severity"], 2) == 50.27
+    assert round(untreated["drawdown_pct"], 2) == -9.25
+
+    # the TREATED (post-B1-fix) value equals the untreated oracle -- byte-identical, not merely close.
+    assert treated["available"] is True
+    assert treated["phase"] == untreated["phase"]
+    assert treated["severity"] == untreated["severity"]
+    assert treated["drawdown_pct"] == untreated["drawdown_pct"]
+    assert treated["off_trough_pct"] == untreated["off_trough_pct"]
+    assert treated["components"] == untreated["components"]
+
+
+# ==================================================================================================
+# ops-hardening iter-54 (B3 fix, iter-53 audit finding B3). `_benchmark_close_on_or_before` — a SIBLING
+# per-run loop (`compute_retrospective`'s `bar_cache` block, ~2,900x on the live basis, serving
+# `GET /api/market-phase/retrospective` at request time) survived iter-53's fix untreated: it still read
+# `closes(bars_asof(session, bench, d))[-1]` in full, the exact defect shape iter-53 proved dominant in
+# `_latest_vix_on_or_before`. TC-3: the fixed `close_on`-based read must return the SAME value as the
+# pre-fix full-history read, fixture-backed.
+# ==================================================================================================
+def test_benchmark_close_on_or_before_close_on_matches_pre_fix_full_history_read():
+    """A LONG SPY series (60 bars) with a DISTINCTIVE last close, at a D inside the middle of the series
+    (so a pre-fix VS post-fix mismatch on the boundary would show up either way) — `close_on`'s single-bar
+    read must equal `closes(bars_asof(...))[-1]`, the exact pre-fix expression, evaluated independently."""
+    cfg = _small_config()
+    engine = _engine()
+    d = _BASE + timedelta(days=39)
+    with Session(engine) as session:
+        _insert_bars(session, "SPY", [100.0 + i * 0.5 for i in range(60)])  # 60 bars, D lands mid-series
+        session.commit()
+
+        treated = _benchmark_close_on_or_before(session, d, cfg)
+        pre_fix_reference = bar_closes(bars_asof(session, "SPY", d))
+        pre_fix_value = pre_fix_reference[-1] if pre_fix_reference else None
+
+    assert pre_fix_value is not None
+    assert treated == pre_fix_value == 100.0 + 39 * 0.5  # D = _BASE + 39 days -> the 40th bar (index 39)
+
+
+def test_benchmark_close_on_or_before_no_bar_is_honest_none():
+    """No SPY bar at all -> None (the pre-fix `closes([])[-1] if [] else None` and `close_on`'s own None
+    both resolve to the SAME honest 'no bar on/before D' NA) -- never a fabricated close."""
+    cfg = _small_config()
+    engine = _engine()
+    with Session(engine) as session:
+        assert _benchmark_close_on_or_before(session, _BASE, cfg) is None
 
 
 # --------------------------------------------------------------------------------------------------

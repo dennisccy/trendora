@@ -354,45 +354,17 @@ against the NEW run's own row/testid, never page-wide text.
 orchestrator should treat "product code changed after `ui-test-results.md` was written" as a hard
 re-run trigger, not an advisory note.
 
-## iter-47 — 2026-08-04T17:30:00Z
-
-**Verdict:** ESCALATE
-**Lesson:** A golden replay script can be a null test in a way that is invisible from its PASS row —
-read the script, not the verdict. The six scripts that produced this round's "6/6 PASS" include one
-with a SINGLE step (J-08: load `/backtest`, assert the text "Forward-tested evidence") and one that
-clicks Start and then navigates straight to a PRE-EXISTING run page (J-05 → `/scanner-runs/1882`),
-so both pass on a build where the feature is entirely broken. `git show HEAD:runs/.../journey-scripts/<J>.json`
-costs one command and settles it. Second half of the same lesson: a rebuilt script that is never
-executed buys nothing — this round rebuilt five goldens at 15:46-16:05 and ran none of them.
+## iter-47 — 2026-08-04T17:30:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration that reads a `regression-replay-results.md` PASS as journey evidence,
 and any iteration whose spec mandates re-running a lane after a fix pass (the TC-7 shape) — check
 the results-file mtime against the newest product-code mtime before scoring, because iter-46 and
 iter-47 both ended with every lane naming the requirement and nobody executing it.
 
-
-## iter-48 — 2026-08-05T02:45:00Z
-
-**Verdict:** ESCALATE
-**Lesson:** A finalize-tail phase whose cost swings **102 s → 153 s → 1,334 s across three runs of
-the same work** cannot be characterised from two samples: the dev handoff and `perf-budgets.md` both
-attributed J-05's remaining non-termination to `drawdown_expectations_warm` alone, written from the
-first two runs, and the third run showed `forward_aggregates_warm` ALONE exceeding TC-1's whole
-1,200 s budget (audit B2). The instrumentation this iteration added to
-`apps/backend/app/engine/data_manager.py`'s finalize tail is what made the spread visible — the
-lesson is to read every run's phase table before naming a bottleneck, not the first two.
+## iter-48 — 2026-08-05T02:45:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration attributing a wall-clock blocker to one phase of a multi-phase job —
 especially `_refresh_ingest_aggregates`'s tail.
 
-## iter-48 — 2026-08-05T02:45:00Z (second entry)
-
-**Verdict:** ESCALATE
-**Lesson:** The cure for the session's null-test problem is not "read the golden script" but "read
-the ROW the golden created". J-01's and J-03's replay PASSes became trustworthy only when
-`data_provider_runs` ids 305/306/307 turned out to exist at the replay's own timestamps with exactly
-the counts the scripts assert. Conversely J-06's PASS survived a golden-content read and still had
-to be declined, because `logs/backend.log` recorded two `MemoryError`s on `/research/regime-lab` —
-the route its own step 11 loads — inside the same window. Text assertions and script content are
-both satisfiable without the behaviour; a side-effect row or a log line is not.
+## iter-48 — 2026-08-05T02:45:00Z (second entry)  [condensed: body → lessons.md.archive.md]
 **Applies to:** any evaluator scoring a journey `passing` on a deterministic-replay row; any
 iteration rebuilding a golden for a journey that writes to the DB.
 
@@ -532,3 +504,41 @@ untreated** comparison, which is what TC-3 actually asked for and what the resol
 chunking, `LIMIT` pushdown) — check the bound's unit against the consumer's unit, and require the
 byte-identity test to compare against the ORIGINAL implementation, never against another instance of
 the new one.
+
+## iter-54 — 2026-08-09T23:45:00Z
+
+**Verdict:** ESCALATE
+**Lesson:** A finalize-tail warm can abort part-way and still be persisted as complete: run 351's
+forward-aggregate warm stopped at horizon 20 under real memory pressure (`logs/backend.log:233042`,
+"stopping remaining horizons in this loop" — horizon 60 never ran), yet `data_provider_runs.id=351`
+stores `status='ok'` with `forward_aggregates` still listed in `aggregates_refreshed`. The
+isolate-and-continue path drops a *failed* member from the list (that is how `factor_lab_all`
+disappeared, `:233277`) but a *partially completed* member keeps its entry — so the honest-omission
+mechanism has a hole exactly where a loop aborts mid-iteration. Every future scoring of J-05/J-07 must
+read the finalize-tail sub-phase timing lines for the job (count the horizons) instead of trusting
+`aggregates_refreshed` alone.
+**Applies to:** any iter touching `data_manager._refresh_ingest_aggregates` / `forward_testing`'s warm
+loop, and any lane or evaluator scoring an ingest run from `aggregates_refreshed` / `status`.
+
+## iter-54 (second entry) — 2026-08-09T23:45:00Z
+
+**Verdict:** ESCALATE
+**Lesson:** Poll density decides whether an availability defect is visible at all. The browser lane's
+127 samples over 20m50s recorded "0 non-answers" and passed J-05/J-07; the developer's 1-per-second
+drill over the same tree recorded 6 non-answers and 53 polls over 2.0s. Both are honest measurements of
+the same product — the sparse one simply cannot see a 5-second gap. A lane row asserting "health stayed
+responsive" is only evidence if its sampling interval is shorter than the outage it claims to exclude.
+**Applies to:** any browser-qa or golden script asserting J-05 step 4 / J-07 step 2, and any iteration
+that plans to replace the 1 Hz concurrent drill with in-turn browser polling.
+
+## iter-54 (third entry) — 2026-08-09T23:45:00Z
+
+**Verdict:** ESCALATE
+**Lesson:** A behaviour-asserting golden can fail for the very behaviour it exists to protect. J-04's new
+golden asserts `[data-testid="readiness-badge"][data-state="ready"]` on step 2 and FAILED — because the
+replay started ~1 minute after a backend restart and `J-04-verify.png` shows the badge reading
+"Initializing… history 89/89", which is J-04's own required behaviour. `J-08-verify.png` from the same
+replay minutes later shows "Ready". Goldens that assert a steady state must first `wait_for` that state,
+or they encode a race as a regression.
+**Applies to:** every golden in `runs/goal-session-ops-hardening/journey-scripts/` whose first assertion
+reads a readiness/health-derived attribute (J-04.json step 2, J-07.json step 2).

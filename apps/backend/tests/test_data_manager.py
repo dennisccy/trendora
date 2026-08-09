@@ -1921,16 +1921,25 @@ def test_finalize_hook_memory_error_leaves_no_leaked_lock_subsequent_read_succee
 # `bars_asof_window` fetch; `market_phase._severity_reading`'s benchmark/^VIX bounded fetch) still
 # preserves the iter-8 MemoryError isolate-and-continue contract when the fault fires from INSIDE the
 # real, unmocked treated code path (not merely at the loop's own call site).
+#
+# ops-hardening iter-54 (B2 fix): the `coverage_membership_timeline` injection site RELOCATED from inside
+# `resolve_with_reasons`'s shared per-symbol loop to `_refresh_ingest_aggregates`'s own
+# `coverage_membership_timeline_refresh` phase block (see that function's comment for the full "isolates
+# the wrong phase" finding) — this test's call shape (`_refresh_ingest_aggregates` invoked directly, no
+# live snapshot dates) already reaches the NEW site unchanged, so its assertions still hold; only the
+# docstring below is corrected to say where the fault actually fires now.
 # ==================================================================================================
 def test_finalize_hook_coverage_membership_timeline_fault_injected_releases_memory_honestly(
     tmp_path, monkeypatch,
 ):
     """`TRENDORA_FAULT_INJECT_MEMORY_ERROR=coverage_membership_timeline` armed against a REAL (unmocked)
-    `universe_resolver.resolve_with_reasons` call over a pool with an admitted-eligible LONG-history
-    candidate (so the injection site — placed AFTER the history-gate short-circuit, at the bounded fetch
-    itself — is actually reached, not skipped): `coverage`/`membership_timeline` are honestly OMITTED
-    from `aggregates_refreshed`, the NEW dedicated `except MemoryError` handler this iteration added for
-    this phase calls `_release_process_memory()`, and the hook itself does not raise."""
+    `_refresh_ingest_aggregates` call, immediately before its `coverage_membership_timeline_refresh`
+    phase's own `refresh_coverage_snapshot` call (ops-hardening iter-54, B2 fix — relocated from inside
+    `universe_resolver.resolve_with_reasons`'s shared per-symbol loop, which is also reached from the
+    per-date backfill compute and so could not isolate this phase specifically): `coverage`/
+    `membership_timeline` are honestly OMITTED from `aggregates_refreshed`, the dedicated
+    `except MemoryError` handler this phase carries calls `_release_process_memory()`, and the hook
+    itself does not raise."""
     from app.engine import universe_resolver
 
     cfg = load_config()
@@ -5452,6 +5461,55 @@ def test_diagnostic_query_count_does_not_scale_with_universe_size(tmp_path):
 
     assert small_count == large_count  # O(1) in universe size -- never one extra query per member
     assert small_count <= 4  # sanity bound: calendar (2) + grouped stats (1) + bulk own-dates (1)
+
+
+# ==================================================================================================
+# ops-hardening iter-54 (`per_date_coverage_warm` fix, profiled) -- `_missing_data_diagnostic` no longer
+# ALWAYS derives its own benchmark trading calendar (`_trading_days`, an unbounded per-symbol `bars_asof`
+# fetch up to ~5,400 bars on the live basis, PLUS the `latest_data_date` query it depends on -- 2
+# `daily_prices` queries total, per the query-count test above's own docstring). `_compute_coverage_body`
+# (the sole production caller) already computes this SAME calendar for its own gap table and now passes
+# it through via the new `calendar` parameter, instead of paying for the identical fetch a second time on
+# EVERY `_compute_coverage_body` call (i.e. once per date in `_persist_per_date_coverage_snapshots`'s
+# per-date `per_date_coverage_warm` loop, and once more in `coverage_membership_timeline_refresh`).
+# ==================================================================================================
+def test_diagnostic_calendar_param_eliminates_the_redundant_trading_days_fetch(tmp_path):
+    """Passing `calendar=` removes EXACTLY the two `daily_prices` queries `_trading_days` issues
+    (`latest_data_date` + SPY's own `bars_asof`) -- the query count drops by 2, never more/less -- and
+    the served `diagnostic` payload is BYTE-IDENTICAL either way (the fetch-STRATEGY changes; nothing
+    computed or disclosed does)."""
+    engine = _build_diagnostic_db(tmp_path, ["AAA", "BBB", "CCC", "DDD"])
+    cfg = _diag_cfg_for(["AAA", "BBB", "CCC", "DDD"])
+
+    with Session(engine) as session:
+        calendar = _trading_days(session, cfg)
+    assert calendar  # sanity: the fixture actually has a benchmark calendar to reuse
+
+    without_calendar = _count_daily_prices_selects(engine, cfg)  # derives its own calendar internally
+
+    queries: list[str] = []
+
+    def _count(conn, cursor, statement, parameters, context, executemany):
+        lowered = statement.lower()
+        if "daily_prices" in lowered and lowered.strip().startswith("select"):
+            queries.append(statement)
+
+    event.listen(engine, "before_cursor_execute", _count)
+    try:
+        with Session(engine) as session:
+            with_calendar = _missing_data_diagnostic(session, cfg, calendar=calendar)
+    finally:
+        event.remove(engine, "before_cursor_execute", _count)
+    with_calendar_count = len(queries)
+
+    assert with_calendar_count == without_calendar - 2, (
+        f"expected exactly 2 fewer daily_prices queries when `calendar` is supplied "
+        f"(got {without_calendar} without vs {with_calendar_count} with)"
+    )
+
+    with Session(engine) as session:
+        reference = _missing_data_diagnostic(session, cfg)  # derives its own calendar -- the old behavior
+    assert with_calendar == reference
 
 
 def test_diagnostic_own_dates_streamed_fetch_byte_identical_to_whole_result(diagnostic_engine):

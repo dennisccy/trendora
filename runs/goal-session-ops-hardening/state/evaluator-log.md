@@ -5036,3 +5036,183 @@ only when it is idle? The facts — the app now shows an honest "Initializing…
 honest "Backend unavailable" when killed, both proven with pictures for the first time in this session;
 one of the two sped-up steps went from 26 seconds to 0.7 seconds; and during a real data job the health
 check answered every one of 764 tries in the browser lane's own run.
+
+## Iteration 54 — goal-ops-hardening-iter-54
+
+**Date:** 2026-08-09T23:45:00Z
+**Verdict:** ESCALATE
+**Depth dispatched:** lean (`iter-54/depth-dispatched` = `lean`) — **against this iteration's own spec**,
+which reads `**Depth:** full` / `Full trigger: 1`, and against iter-53's own recommendation. Consequence:
+no `docs/handoffs/goal-ops-hardening-iter-54-audit.md`, no `reports/qa/goal-ops-hardening-iter-54-qa.md`.
+`runs/goal-ops-hardening-iter-54/status.json` = `complete` / `dev_complete`, `browser_checks_run: true`,
+**four declared blockers** (TC-6 live drill not run; J-05's golden not executed; two endpoints 5-21s over
+budget; TC-5's 1,200s finalize tail missed at 1,820.99s).
+
+**Journey deltas:**
+- **Newly passing: none. Newly failing: none. Regressed: none.** Shape holds at **5 passing / 3 partial /
+  0 failing**. The three target journeys (J-05, J-06, J-07) were all recorded **PASS** by the merged
+  browser lane; I score all three **partial**, and the assumption ledger records that call in full.
+- **J-05 "Aggregates are precomputed at ingest" — stays `partial`.** HOLDS: step 1 (run **351** backfilled
+  2018-01-04, `snapshots_created=1`, `provider='seed'` — read by me in sqlite); step 2(a) —
+  `UT-J-05-result.png`, opened by me, renders "Immutable snapshot — as of 2018-01-04 … provider seed ·
+  benchmark SPY" with Market Regime **87.66**/100, and `GET /api/market-phase?as_of=2018-01-04` answered in
+  0.107s; step 3 (cold `/data` from the persisted payload). FAILS: step 4 — the developer's own drill
+  recorded **6 connection-level non-answers** and **53 answered polls >2.0s** across 1,821 rows. The lane's
+  own 127-sample poll was simply too sparse to see them. `last_passing_iter` stays iter-39.
+- **J-06 "Pages load only what they need" — stays `partial`.** HOLDS: all 11 nav pages measured, TTI proxy
+  105-138ms against the ≤3000ms budget (Addendum 18); `UT-J-06-result.png` (opened by me) shows the
+  dashboard's retrospective accordion expanded with real SMOOTHED P(BEAR) / TRUE-BEAR-DATING /
+  FILTER-OBSERVATIONS content — B3's `close_on` read is correct and fast. FAILS: step 2's "assert every
+  measurement is within budget" — Addendum 18's own WARN records `/api/runs` **3.2-7.5s** and
+  `/api/data/availability` **15.1-21.2s** against a committed ≤1.5s budget, `/api/health` 0.18-1.213s
+  against ≤0.1s, `/api/stocks/AAPL/bars` 6.2s. `last_passing_iter` stays iter-45. Also: there is no
+  standalone `/research/market-phase-retrospective` route (404) — the surface is a dashboard accordion,
+  disclosed by both the lane and the developer rather than silently substituted.
+- **J-07 "Heavy aggregates never take the service down" — stays `partial`.** HOLDS: step 3 — VmPeak
+  **4,562,408 kB (4,455.5 MB)**, **45.6% margin** under the 8,192 MB cap (`summary.json`, read by me);
+  step 4 — real, *unforced* memory pressure aborted a warm honestly and the SAME process kept answering
+  `/api/health` 200 and drove the job to a terminal status, no restart. FAILS: step 2, measurably.
+  `last_passing_iter` stays iter-34.
+- **J-01, J-03, J-08, J-09 KEEP `passing`, on rows the checks themselves caused.** Replay **4/4 PASS** on
+  those four. Read by me in sqlite: run **348** (2026-05-02→2026-05-29: `dates_total=19`,
+  `already_snapshotted=19`, `non_trading_days=9`, `calendar_days=28` — 9+19=28), run **349** (weekend span:
+  `dates_total=0`, 2 non-trading of 2 calendar), run **350** (`dates_total=283`, `non_trading_days=129`,
+  `calendar_days=412` — 129+283=412, far past the retired 370-day cap). Spot-checked two screenshots:
+  `J-09-verify.png` reads **"background compute running (1)"**; `J-08-verify.png` renders /backtest
+  "Viewing as-of 2026-08-03 (latest)" with the survivorship-bias disclosure and a green **Ready** badge.
+- **J-04 KEEPS `passing` on an overturned replay FAIL, and I checked the overturn rather than accepting
+  it.** The NEW J-04 golden FAILED at step 2 (`data-state="ready"`); the merged file overturned it as a
+  golden-script false positive. `J-04-verify.png` (the replay's own 23:02 frame, opened by me) visibly
+  shows the top-bar chip reading **"Initializing… history 89/89"** — the backend was still warming when
+  the golden demanded `ready`. `J-08-verify.png`, from the same replay run minutes later, shows **Ready**.
+  So the golden races the boot it is meant to survive; the product behaved exactly as J-04 says it should.
+  `evidence_makeup` kept (the `[NEW]` walkthrough is still unrecorded — no demo lane at lean depth).
+- No `browser-infra.json`; no `journeys-changed.md`; all 8 `spec_hash`es match `goal_gate hash-journeys`
+  run by me. `pending_infra`: cleared everywhere.
+- Anti-goal violations: **FIVE CLOSED** — iter-53's `co` (the market-phase off-by-one AND its false
+  byte-identity claim), `cr` (the undisclosed deleted assertion), `cs` (the fault site that was not the
+  phase it named), `cu` (the unbounded full-history read on a request path), `cq` (three target journeys
+  with no journey-level row). **SIX NEW OPEN:** the horizon-20 warm abort recorded as a completed refresh;
+  `factor_lab_all`'s real memory-pressure drop-out explained away by the lane without opening the log;
+  TC-7 (J-05's golden skipped a second round); the depth mismatch (spec `full`, dispatched `lean`);
+  TC-6's live drill still owed; J-06's budget clause. Ledger now: **115 total, 50 unresolved, 0 unresolved
+  critical.** scan-report **CLEAN**; coherence **COHERENCE-PASS** (0 blocking, 3 advisory); review
+  **PASS_WITH_NOTES** (1 MINOR, `definition_of_done: partial`); audit **DID NOT RUN**; QA **DID NOT RUN**;
+  merged browser QA **PASS 8/8**; deterministic replay **FAIL 4/5** (J-04 overturned in the merged file);
+  demo/ux-regression **DID NOT RUN** (lean depth).
+
+**Reasoning:** I checked every load-bearing fact myself instead of reading it off a report.
+(1) **I re-counted the drill from the raw CSV instead of quoting the addendum, and the raw file agrees
+with the developer — including the parts that do not flatter the round.** `tc4-drill-out/health-polls.csv`
+holds 1,821 rows: 1,815 `http_code=200`, **6 rows of `http_code=000` at the 5.005s client ceiling**, and
+59 rows over 2.0s of which 53 were answered. Addendum 17's "6 non-answers / 53 polls >2.0s" is exactly
+right. The developer published a number that reads worse than last round's (1 non-answer → 6; 0.85% →
+2.92% slow polls) and did not dress it up.
+(2) **I verified the phase attribution myself, because the whole "the fix worked" claim rests on it.**
+From the finalize-tail phase-timing lines for job `21559fae…`: `per_date_coverage_warm` ran t+216s→t+229s;
+`forward_aggregates_warm` ran t+230s→t+1051s. All six non-answers land at t+699.1 … t+783.6 — inside
+`forward_aggregates_warm`, between its h5 and h10 sub-phase boundaries. **Zero** in
+`per_date_coverage_warm`. This iteration's own target is genuinely closed, and the residual sits entirely
+in the phase the spec explicitly deferred before the drill ran.
+(3) **I found the thing no lane reported, by opening the log for the job the lane used to score three
+journeys green.** `logs/backend.log:233042` — "ingest forward-aggregate warm aborted at horizon 20 —
+memory pressure, stopping remaining horizons in this loop". Run 351's sub-phase timings list horizons
+1/5/10/20 and **no horizon 60**; run 347's list all five. Yet sqlite `data_provider_runs` id 351 stores
+`status='ok'` and `aggregates_refreshed` containing `forward_aggregates`, and `/data` renders that list.
+A refresh that stopped part-way is displayed as a completed refresh.
+(4) **I checked the lane's own explain-away and it does not hold.** The UT-J-05 row calls run 351's 7-of-8
+`aggregates_refreshed` "a normal, previously-observed pattern … not a new defect". Every recent
+snapshot-creating run — 320, 325, 326, 332, 333, 334, 336, 341, 347 — carried all **8**. The log names the
+real cause the lane never opened: `logs/backend.log:233277`, `compute_factor_lab_all aborted under memory
+pressure`.
+(5) **I counted MemoryErrors per segment rather than quoting the total, and this time the breakdown makes
+it worse, not better.** File total 8,104 against iter-53's 8,093 = 11 new, and **not one carries the
+`injected at fault-injection site` marker** — all real, all in this round's own runs (the Regime Lab frame
+at 23:22:59, the forward-aggregate abort at 23:26:21, factor-lab at 23:29:59). iter-53's 8 new were all
+deliberate injections; this round's are not.
+(6) **I checked the J-04 overturn by opening the picture rather than trusting the reconciliation footer**
+— see the J-04 bullet above. The replay's own frame shows the app mid-boot.
+(7) **AG-10 checked at the source:** `git diff --stat` AND `git status --porcelain` over all five frozen
+paths are BOTH empty; `config.yaml:1363-1364` still reads 8192 / 2.
+(8) **AG-9 checked at the row level:** `select distinct provider where id>=346` returns exactly
+`[('seed',)]`.
+(9) **I re-read the four code fixes in the source rather than accepting the handoff:** `market_phase.py:230`
+`bars_asof_window(..., mp.lookback_days + 1)` and `:572` `recovery_trailing_ma_days + 1` (B1);
+`market_phase.py:1197` `return close_on(session, bench, d)` (B3); `test_universe_resolver.py:340` restores
+`excluded_counts[REASON_BELOW_HISTORY] == 2` (T2); the fault probe is gone from `universe_resolver.py` and
+now sits at `data_manager.py:4130-4139` (B2). All four landed exactly as specified.
+(10) **The lane-ordering rule held, and by a wide margin.** Newest product-code mtime **2026-08-08
+11:16:14**; earliest lane artifact **2026-08-09 23:02**. `find apps/backend/app apps/frontend -newermt
+'2026-08-09 23:00'` returns nothing. Second consecutive round the rule holds.
+Rejected **REGRESSION (C.1)**: no journey moved `passing`/`already_passing` → `failing` — J-05/J-06/J-07
+were already `partial` and keep it, which is literally their shape. No violation meets the critical list:
+scan CLEAN, no manifest/lockfile/LICENSE touched, AG-10 empty, every ingest row `seed`, no fabricated
+market number — the 2018-01-04 leaderboard is genuinely stored. The horizon-20 finding is a **status
+overstatement**, not fabricated data; I considered fail-closing it to `critical` and scored it `minor`,
+and I say so plainly rather than burying the choice.
+Rejected **STALLED (C.2)**: almost nothing here is human-owned. The six residual non-answers sit in one
+named, un-profiled phase; the status-honesty fix is in the finalize hook that already knows the warm
+aborted; three authored goldens simply need running; the two slow endpoints need a profile. Two items are
+genuinely the owner's (the off-process question and the idle-vs-busy budget question), and owner items
+among many agent items are not a stall.
+Rejected **GOAL_ACHIEVED (C.3)**: three journeys are `partial`.
+**Chose ESCALATE (C.4).** Its third clause fires plainly and mechanically: **this was a lean iteration**
+(`depth-dispatched` = `lean`) — run at lean against its own spec's `Depth: full` — **and it surfaced
+cross-cutting complexity no lane reported**: a heavy warm aborting mid-horizon under real memory pressure
+while the persisted record calls it complete, spanning `data_manager` → `forward_testing` → `research`,
+plus a session-wide, DB-growth-driven latency cliff on two serving endpoints. On the iter-52 reading of
+the first clause it also fires (J-07 has not passed since iter-34, J-05 since iter-39, J-06 since
+iter-45); I do not need that reading, but I record that it agrees. ESCALATE's only mechanical effect is
+to pin the next round to full depth — which is exactly what did not happen this round, and what this
+round's single biggest miss argues for.
+**FIVE THINGS I STATE PLAINLY RATHER THAN ROUND AWAY:** (i) **every code item this round promised was
+delivered and I verified all four in the source — and the scoreboard did not move.** Both facts are true.
+(ii) **the round's own target genuinely closed**: zero non-answers in `per_date_coverage_warm`, down from
+one, on a bigger drill (1,822 polls vs 1,643) — the treatment worked exactly where it was aimed, for the
+third round running. (iii) **the honesty of the reports is the best I have seen in this session**: the
+developer published a non-answer count that went UP, called TC-5 "still NOT met (1,820.99s, over by
+620.99s)", disclosed the spec's own "~40 tests" figure as inaccurate, and filed the two slow endpoints as
+a WARN instead of dropping them; the reviewer wrote `definition_of_done: partial`. (iv) **and yet the one
+lane that would have caught this round's real defect never ran**, because the engine dispatched lean
+against a spec that says full — so the horizon-20 abort reached me unreported, and three journeys carry
+PASS rows written without anyone opening the log. (v) **the same three journeys have now been recorded
+PASS by a lane and `partial` by me two rounds running.** That gap is not a disagreement about facts; it is
+about whether "all the steps in goal.md" or "the browser-visible subset" is the bar. I hold the goal.md
+bar, and I have logged the call so the owner can overrule it in one line.
+
+**Next-step recommendation:** FULL depth (mandatory via ESCALATE). Give the next round this order.
+(1) **Fix the heavy step that runs out of memory, and stop the record from claiming work it did not
+finish.** During a normal data job the app's heaviest calculation ran out of memory part way through and
+skipped the last of its five time settings, but the saved record still says that work was done and the job
+reads "ok". Make the record honest first (say "partial"; list only what really finished) — that is small
+and it is the part that misleads a person reading the screen. Then apply to that step the same bounded,
+take-a-breath treatment that already worked on two other steps.
+(2) **Close the last six moments where the app went silent.** All six are inside that same heavy step, and
+none in the step this round fixed. One job, not many.
+(3) **Find out why two screens' data calls now take 5 to 21 seconds.** The job-history list and the
+data-availability chart got very slow because the stored data grew about fifteen times larger. Nothing
+this round caused it, but it is the single thing keeping "pages load only what they need" from passing.
+(4) **Run the three saved check scripts that exist and were never run** — J-05's has now been skipped
+twice, and the two written this round (J-04, J-07) have never been replayed once. Also make the J-04
+script wait for the app to finish starting, so it stops failing for a reason that is really the app
+behaving correctly.
+(5) **Run the round at the depth its own plan asks for.** This round's plan said deep and the engine ran
+shallow, so the audit never happened — and the audit is the stage that has caught the real story six
+rounds running. This round proves it: nobody reported the memory failure above.
+(6) SMALL AND ALREADY WRITTEN DOWN: the ~20-minute limit on a job's finishing work is still missed (30
+minutes measured); the health check still does real database work on every call; the live fault drill for
+the relocated test switch is still owed.
+(7) CARRIED, untouched: iter-29/b + the badge wording after a permanently failed warm-up (27th round
+unmade); iter-31/e; iter-32/f; iter-35/k; iter-36/n; iter-37/o; iter-37/q; iter-39/u; iter-46/az;
+iter-46/ba; iter-47/bd; iter-47/bf; iter-47/bi; iter-48/bj. Deferred a TWENTIETH time: iter-33/g, the
+Regime Lab — whose data ran out of memory again this round (`logs/backend.log:233007`).
+(8) CAPTURE ONLY, never a round's goal: one screenshot came back completely blank
+(`J-05-job-running.png`, 2 KB of empty dark frame); no walkthrough was recorded at all because lean depth
+skips that stage; J-07's is 24 rounds unrecorded.
+(9) OWNER: two decisions and three facts. The decisions, both asked at rounds 50, 51 and 53 and still
+unanswered — (a) may a future round move the heavy calculation into a separate process? Still the only
+way to guarantee the app never pauses. (b) Does the 20-minute limit on a job's finishing work apply while
+the app is also serving people, or only when it is idle? The facts — the market-phase window bug is fixed
+and now proven against the old slow version instead of against itself; the one step this round targeted
+went from one silent moment to none, on a bigger test; and the app ran out of memory for real, mid-job,
+and kept serving every health check without a restart.

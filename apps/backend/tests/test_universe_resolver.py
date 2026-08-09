@@ -333,6 +333,11 @@ def test_resolve_empty_db_is_honest_empty(tmp_path):
     with Session(engine) as session:
         out = resolve_with_reasons(session, date(2024, 6, 1), cfg, seed_dir=seed_dir)
     assert out["admitted"] == []
+    # ops-hardening iter-54 (T2 fix): restored — the iter-53 audit found this assertion deleted,
+    # undisclosed, and re-ran it independently against the same fixture ("it still passes"). Both pool
+    # candidates (AAA, BBB) have zero bars on a wholly-empty DB, so both are below_history — the honest
+    # "nothing admitted" outcome is backed by a real reason count, never a bare empty list.
+    assert out["excluded_counts"][REASON_BELOW_HISTORY] == 2
 
 
 # ==================================================================================================
@@ -420,3 +425,35 @@ def test_resolve_with_reasons_adv_window_boundary_exact_short_and_long_history(t
     assert row["admitted"] == reference.admitted
     assert row["reason"] == reference.reason
     assert row["bars"] == reference.bars == history_bars
+
+
+# ==================================================================================================
+# ops-hardening iter-54 (B2 fix, iter-53 audit finding B2) — the `coverage_membership_timeline`
+# fault-injection site no longer lives inside THIS function's per-symbol loop (relocated to
+# `data_manager._refresh_ingest_aggregates`'s own `coverage_membership_timeline_refresh` phase block —
+# see this function's own comment for the full "isolates the wrong phase" finding). Proves the negative:
+# arming the site no longer raises from `resolve_with_reasons` itself, which is reached from the PER-DATE
+# BACKFILL COMPUTE (via `resolve_members` -> `scoring.score_stocks`) as well as the finalize tail — the
+# exact call path whose premature abort iter-53's live drill (UT-11) caught.
+# ==================================================================================================
+def test_resolve_with_reasons_unaffected_by_coverage_membership_timeline_fault_injection(
+    tmp_path, monkeypatch,
+):
+    """`TRENDORA_FAULT_INJECT_MEMORY_ERROR=coverage_membership_timeline` armed, then `resolve_with_reasons`
+    called directly (the SAME call shape the per-date backfill's `scoring.score_stocks` uses, via
+    `resolve_members`) over a pool with an admitted-eligible LONG-history candidate — must NOT raise.
+    Before this iteration's B2 fix, the fault probe lived inside this exact per-symbol loop and WOULD have
+    raised here, aborting the per-date backfill compute before the finalize tail's own
+    `coverage_membership_timeline_refresh` phase (the phase this site name claims to gate) was ever
+    reached."""
+    cfg = _cfg()
+    seed_dir = _write_pool(tmp_path, ["LONG"])
+    engine = make_engine(f"sqlite:///{tmp_path / 'b2-fault.db'}")
+    create_db_and_tables(engine)
+    start = date(2024, 1, 1)
+    with Session(engine) as session:
+        _seed_bars(session, "LONG", start, [20.0] * 60, volume=1_000_000.0)  # comfortably admitted-eligible
+        d = start + timedelta(days=59)
+        monkeypatch.setenv("TRENDORA_FAULT_INJECT_MEMORY_ERROR", "coverage_membership_timeline")
+        out = resolve_with_reasons(session, d, cfg, seed_dir=seed_dir)  # must not raise
+    assert out["admitted"] == ["LONG"]

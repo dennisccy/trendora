@@ -213,11 +213,24 @@ def resolve_with_reasons(
     # what is COMPUTED or DISCLOSED: every `CandidateResolution.bars`/`excluded_counts` value stays
     # byte-identical (TC-3).
     window_days = max(1, cfg.universe.filters.adv_window_days)
-    # lazy import — app.engine.data_manager imports FROM this module (`resolve_with_reasons` above), so a
-    # module-level import back would be circular (mirrors research.py's/forward_testing.py's own lazy
-    # imports of data_manager, for the identical reason). Used only for the test-only
-    # `_fault_inject_memory_error` hook below (a no-op in production).
-    from app.engine import data_manager
+    # ops-hardening iter-54 (B2 fix, iter-53 audit): the `coverage_membership_timeline` fault-injection
+    # probe used to live HERE (armed once per admitted-eligible symbol). It was removed from this shared
+    # per-symbol loop because `resolve_with_reasons` is reached from FOUR call sites — this finalize-tail
+    # coverage refresh, the per-date membership-timeline batch loop, AND (via `resolve_members`) the
+    # PER-DATE BACKFILL COMPUTE's own scoring pass (`scoring.score_stocks`), which runs BEFORE the
+    # finalize tail even starts. Arming the site here made every injected MemoryError fire from inside the
+    # per-date backfill compute first, aborting the job before the finalize tail's own
+    # `coverage_membership_timeline_refresh` phase (and its dedicated MemoryError handler) was ever
+    # reached — so a live drill using this site name could not isolate the phase it claimed to name
+    # (confirmed live: `logs/backend.log`, UT-11's drill). The probe now lives at the ONE call site that
+    # is actually inside that finalize-tail phase's own boundary — see
+    # `data_manager._refresh_ingest_aggregates`'s `coverage_membership_timeline_refresh` block — so arming
+    # `TRENDORA_FAULT_INJECT_MEMORY_ERROR=coverage_membership_timeline` now isolates exactly that phase,
+    # never the per-date backfill compute upstream of it. This loop's own MemoryError isolation is
+    # unaffected: a REAL (unfaulted) MemoryError raised anywhere in this loop still propagates to and is
+    # handled by whichever caller wraps it (the per-date backfill's own per-symbol/per-date isolation, or
+    # the finalize tail's phase-level handler) exactly as before — only the deliberate TEST-ONLY fault
+    # probe moved, not this function's real exception behavior.
     for symbol in resolve_symbols:
         bar_count = bar_count_by_symbol.get(symbol, 0)
         if bar_count < min_history:
@@ -226,11 +239,6 @@ def resolve_with_reasons(
                 CandidateResolution(symbol, False, REASON_BELOW_HISTORY, bar_count)
             )
             continue
-        # ops-hardening iter-53 (J-05/J-07, TC-5): the fault-injection probe for THIS treated site — see
-        # `_FAULT_INJECT_SITES`'s "coverage_membership_timeline" entry. Placed at the per-symbol bounded
-        # fetch itself (not at `resolve_with_reasons`'s own call site), mirroring `compute_factor_lab_all`'s
-        # convention, so a drill/test exercises the REAL treated code path.
-        data_manager._fault_inject_memory_error("coverage_membership_timeline")  # test-only; no-op in prod
         bars = bars_asof_window(session, symbol, asof, window_days)
         resolutions.append(resolve_candidate(bars, symbol, cfg, asof, bar_count=bar_count))
 

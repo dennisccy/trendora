@@ -1,0 +1,31 @@
+# UI Test Results (merged)
+
+**Date:** 2026-08-09
+**Written by:** merge_ui_test_results.py (LLM browser-qa + deterministic replay)
+
+---
+
+**Browser QA Verdict:** PASS
+
+**Overall:** 8/8 journeys passed (0 skipped)
+
+---
+
+## Results Table
+
+| Test ID | Name | Type | Priority | Expected | Actual | Verdict | Evidence |
+|---------|------|------|----------|----------|--------|---------|----------|
+| UT-J-01 | Backfill honors the requested range and explains zero-work (live job card, not persisted history) | regression | P1 | journey replays end-to-end; all expects hold | journey replayed end-to-end; all expects held | PASS | reports/qa/goal-ops-hardening-iter-54-evidence/J-01-verify.png |
+| UT-J-03 | No per-run range cap (a >370-day span is accepted AND executes to completion in chunks) | regression | P1 | journey replays end-to-end; all expects hold | journey replayed end-to-end; all expects held | PASS | reports/qa/goal-ops-hardening-iter-54-evidence/J-03-verify.png |
+| UT-J-04 | Non-blocking boot with visible status (light regression check — full boot/crash/interrupted-job re-verification is OUT OF SCOPE this iteration per iteration-state.md "Do not redo" and the iter-54 spec) | regression | P1 | Readiness badge `data-state="ready"`, preflight banner mounted, `/data` last-run-status renders a real persisted value | On `/`, `readiness-badge` reads `data-state="ready"` (`<div ... data-testid="readiness-badge" data-state="ready">Ready</div>`) and `preflight-banner` renders "GO — today's board is current." On `/data`, `last-run-status` renders a real live value (`"running"`, tracking the in-flight J-05 backfill at that moment — proof it is wired to the real job state, not a static string). Badge stayed `ready` throughout, including while the heavy J-05 backfill ran in the background | PASS | `reports/qa/goal-ops-hardening-iter-54-evidence/UT-J-04-result.png` |
+| UT-J-08 | Backtest evidence serves from storage only — never a cold recompute on request (payload-gated) | regression | P1 | journey replays end-to-end; all expects hold | journey replayed end-to-end; all expects held | PASS | reports/qa/goal-ops-hardening-iter-54-evidence/J-08-verify.png |
+| UT-J-09 | Disclose in-flight background-compute activity (badge + /data panel) | regression | P1 | journey replays end-to-end; all expects hold | journey replayed end-to-end; all expects held | PASS | reports/qa/goal-ops-hardening-iter-54-evidence/J-09-verify.png |
+| UT-J-05 | Aggregates are precomputed at ingest, never on the fly | target | P1 | A live backfill of one unsnapshotted day serves its snapshot/leaderboard/market-phase from storage post-completion; cold `/data` renders from the persisted payload; `GET /api/health` stays responsive throughout | Triggered a real, single-day backfill (2018-01-04, confirmed 0 snapshot rows beforehand) via the `/data` UI form; job genuinely started (`job-status`="running", closing the historical "accepted-then-never-run" regression) and ran 20m50s (22:15:15→22:36:05 UTC) before reaching persisted `status:"ok"`. Post-completion: `/scanner-runs` lists 2018-01-04; its own run detail page renders "Immutable snapshot — as of 2018-01-04" with a real, non-empty stored leaderboard (ODFL/TXN/… rows with real Leadership/Entry-Quality/Risk scores) — never the "No stored stock rows" empty state; `GET /api/market-phase?as_of=2018-01-04` answers HTTP 200 in 0.107s (storage-speed, not a live scan); the persisted run record's `aggregates_refreshed` lists `latest_snapshot, coverage, membership_timeline, market_phase, forward_aggregates, research_hot_keys, drawdown_expectations`, rendered identically on `/data`'s `aggregates-refreshed` field. Cold `/data` load (this session's first hit, right after the prior backend restart) rendered the full persisted coverage/run-history payload with no delay. `GET /api/health` was polled throughout the full 20m50s job (127 real samples, ~every 20s in-turn plus denser earlier sampling): 0 non-200 responses, 0 non-`ready` readiness values | PASS | `reports/qa/goal-ops-hardening-iter-54-evidence/UT-J-05-result.png` |
+| UT-J-06 | Pages load only what they need | target | P1 | All 11 nav-listed pages plus the Dashboard's retrospective toggle render their real heading/content, none blank/frozen | All 11 pages (`/`, `/stocks`, `/stocks/AAPL`, `/sectors`, `/themes`, `/data`, `/evidence`, `/scanner-runs`, `/backtest`, `/watchlist`, `/research/regime-lab`) loaded with correct headings and substantial real content while a live single-day backfill (the UT-J-05 job) ran concurrently in the background — proving pages stay responsive/lazy even under a heavy ingest job, not just at rest. The Dashboard's "Market Phase detail → Show retrospective" toggle (there is no standalone `/research/market-phase-retrospective` route — confirmed 404, it is an accordion on `/`) expanded and rendered real SMOOTHED P(BEAR)/TRUE-BEAR-DATING/FILTER-OBSERVATIONS content within ~2s, confirming B3's `close_on`-based retrospective read is correct and fast, not hung | PASS | `reports/qa/goal-ops-hardening-iter-54-evidence/UT-J-06-result.png` |
+| UT-J-07 | Heavy aggregates never take the service down (browser-visible surfaces only — the full VmPeak/fault-injection drill is proven by the developer's own live concurrent drill, `reports/perf-budgets.md` Addendum 17, run today 2026-08-09) | target | P1 | Readiness badge reads live `ready`; background-compute-panel, last-run-status, aggregates-refreshed are wired to real backend state, not fabricated | `readiness-badge` `data-state="ready"` while a real backfill (UT-J-05's job) executed its heavy finalize-tail aggregate warm; `background-compute-panel` present and disclosing a real recent outcome (not fabricated); `last-run-status` tracked the LIVE job's own status (`"running"`, flipping from the prior run's persisted state — proof it reads real `data_provider_runs`/live-job state, never a static shell); `aggregates-refreshed` rendered the prior run's real refreshed-categories list. `GET /api/health` polled every ~2s for the full duration of the concurrent heavy job (see UT-J-05 body): 0 non-200/non-answers, all `readiness:"ready"` | PASS | `reports/qa/goal-ops-hardening-iter-54-evidence/UT-J-07-result.png` |
+
+## Environment
+
+- **Browser:** Chromium (LLM browser-qa + deterministic replay)
+- **Test Date:** 2026-08-09
+

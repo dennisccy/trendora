@@ -68,6 +68,19 @@ within any N CALENDAR days can never exceed N (a trading day is one calendar day
 COUNT-`lookback_days` window is always a superset of the CALENDAR-`lookback_days` filtered result;
 filtering it down afterward reproduces the exact same set every time, regardless of history density.
 
+> **iter-54 correction (B1, filed by the iter-53 audit, fixed iter-54):** the paragraph above is FALSE as
+> stated and is preserved here only as the historical record, not the current claim. The `>= start`
+> calendar filter admits `[start, d]` INCLUSIVE — `lookback_days + 1` calendar days, not `lookback_days`
+> — so it can hold up to `lookback_days + 1` trading days, one MORE than the `lookback_days`-sized count
+> window this iteration actually fetched. The oldest qualifying bar (dated exactly `start`) was silently
+> dropped. Proven on the shipped fixture at `lookback_days=30`: untreated 31 bars vs. treated 30, flipping
+> the served `phase` from `Correction` to `Pullback`. Unreachable at the live committed density (SPY's
+> real trading-day density leaves 255/365 bars of slack at `lookback_days=365` and 37/50 at
+> `lookback_days=50`, measured against the live DB) — a true fact about today's data, not a property the
+> code proved. iter-54 fixed this by fetching `lookback_days + 1` / `recovery_trailing_ma_days + 1`,
+> which IS a provable superset for every density; see `market_phase.py:204-221`'s corrected comment and
+> `docs/handoffs/goal-ops-hardening-iter-54-dev.md` for the fix and its treated-vs-untreated proof.
+
 **MemoryError isolate-and-continue (iter-8 contract), extended where it was missing.**
 `market_phase_warm`'s existing per-date `except MemoryError: ... _release_process_memory(); break`
 handler in `_refresh_ingest_aggregates` was unchanged and re-verified reachable from the new injection

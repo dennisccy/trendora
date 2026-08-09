@@ -1,0 +1,54 @@
+{
+  "job_id": "21559fae99b34615828663bad2844d28",
+  "kind": "backfill",
+  "start": "2019-02-11",
+  "end": "2019-02-11",
+  "source": null,
+  "status": "ok",
+  "symbols_total": 0,
+  "symbols_ok": 0,
+  "symbols_failed": 0,
+  "bars_fetched": 0,
+  "dates_total": 1,
+  "dates_done": 1,
+  "snapshots_created": 1,
+  "forward_returns_inserted": 2285,
+  "calendar_days": 1,
+  "non_trading_days": 0,
+  "already_snapshotted": 0,
+  "error_other": 0,
+  "aggregates_refreshed": [
+    "latest_snapshot",
+    "coverage",
+    "membership_timeline",
+    "market_phase",
+    "forward_aggregates",
+    "research_hot_keys",
+    "factor_lab_all",
+    "drawdown_expectations"
+  ],
+  "chunk_index": 1,
+  "chunk_total": 1,
+  "passers": 0,
+  "omitted_total": 0,
+  "omitted": [],
+  "stages": {
+    "backfill": {
+      "elapsed_seconds": 150.5256,
+      "items_processed": 1,
+      "concurrency": 1,
+      "per_date_seconds_sum": 3.6473,
+      "speedup_factor": 0.0242
+    }
+  },
+  "current_activity": "scanning 2019-02-11 (1/1)",
+  "last_progress_at": "2026-08-09T21:27:24.747664+00:00",
+  "completed_stages": [
+    "backfill"
+  ],
+  "date_failures": [],
+  "message": "backfill: 1 snapshots over 1 dates, 2285 forward returns",
+  "errors": [],
+  "started_at": "2026-08-09T20:55:39.892758+00:00",
+  "finished_at": "2026-08-09T21:28:31.625442+00:00"
+}

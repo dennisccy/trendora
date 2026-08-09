@@ -1,30 +1,40 @@
 # Iteration State — ops-hardening
 
-**After iteration:** 53 · **Date:** 2026-08-08 · **Verdict:** CONTINUE
+**After iteration:** 54 · **Date:** 2026-08-09 · **Verdict:** ESCALATE
 
 ## Journeys
 
-5 passing (J-01 J-03 **J-04** J-08 J-09) · 3 partial (J-05 J-06 J-07) · 0 failing — 8 total. J-04 newly passing (first status move since iter-45); J-06 not re-verified this round (carried from iter-52).
+5 passing (J-01 J-03 J-04 J-08 J-09) · 3 partial (J-05 J-06 J-07) · 0 failing — 8 total
 
 ## Active blockers
 
-- **dev — `market_phase.py:217` and `:554`:** fetch `lookback_days` bars BY COUNT, then filter a `lookback_days + 1` day CALENDAR range, so the oldest qualifying bar can drop. Unreachable at the committed config (measured: 255 bars max in any `[d-365,d]` vs a 365 fetch; 37 vs 50) but the "byte-identical" claim in comment/handoff/Addendum 15 is false. Fix: `+1` each, plus a REAL TC-3 test — the 3 new market-phase tests compare treated-vs-treated and structurally cannot detect it.
-- **dev — verification bookkeeping:** `UT-J-04`/`UT-J-05`/`UT-J-07` have no journey-level row for the 3rd round; `runs/goal-session-ops-hardening/journey-scripts/J-05.json` EXISTS and was not replayed; J-04 and J-07 have no golden at all.
-- **dev — last stall:** 1 `/api/health` non-answer in 1,643 during a data job, inside `per_date_coverage_warm` (`_persist_per_date_coverage_snapshots`) — untreated, same fix shape as the two just fixed.
-- **dev — `market_phase.py:1168`** `_benchmark_close_on_or_before` still does a full-history read ~2,900x per request on `/api/market-phase/retrospective`; `close_on` is already imported in that file.
-- **pipeline honesty:** QA says PASS while the merged browser lane says BLOCKED; QA's TC-6 tick cites screenshots that post-date the QA report by 14-45 min. 4th round of this class.
-- **human (owner), unanswered since iter-50/51:** (a) may heavy compute move off-process? (b) does the 1,200s finalize-tail budget bind while the app serves traffic, or only when idle?
+- **J-05 step 4 / J-07 step 2 (dev):** 6 connection-level `/api/health` non-answers + 53 polls >2.0s
+  across 1,821 — **all inside `forward_aggregates_warm`**, zero in the phase this round fixed.
+  `reports/qa/goal-ops-hardening-iter-54-evidence/tc4-drill-out/health-polls.csv`, Addendum 17.
+- **Honest-status hole (dev):** run 351's warm aborted at horizon 20 (`logs/backend.log:233042`,
+  horizon 60 never ran) yet `data_provider_runs.id=351` stores `status='ok'` with `forward_aggregates`
+  still listed in `aggregates_refreshed`. Fix the record before the performance.
+- **J-06 step 2 (dev):** `/api/runs` 3.2-7.5s, `/api/data/availability` 15.1-21.2s vs ≤1.5s; `/api/health`
+  0.18-1.213s vs ≤0.1s — DB grew to 8.37 GB / 2,937 `scanner_runs` rows. Addendum 18 WARN.
+- **Verification debt (dev):** `journey-scripts/J-05.json` skipped a 2nd round (TC-7); J-04.json and
+  J-07.json authored but never replayed; J-04.json step 2 races the boot — needs a `wait_for`.
+- **Depth mismatch (engine):** spec said `Depth: full`, `iter-54/depth-dispatched` = `lean` → no audit,
+  no QA report. ESCALATE pins iter-55 to full.
+- **Owner, open since iter-50/51:** (a) may heavy compute move off-process? (b) does the 1,200s finalize-tail budget bind while serving traffic, or only when idle?
 
 ## Last 2 verdicts
 
-- iter 53: CONTINUE — J-04 newly passing (badge/crash/interrupted captured, plus logfile chain and DB row verified independently); TC-9 held for the first time in 7 rounds; audit found a latent off-by-one no other lane caught.
-- iter 52: ESCALATE — the round's own fix landed AFTER its lane ran (TC-9 breach), so no journey moved.
+- iter 54: ESCALATE — every code item delivered and verified in source, but zero journey movement, and a
+  lean-dispatched round hid a mid-horizon warm abort that no lane reported.
+- iter 53: CONTINUE — J-04 moved to passing; first scoreboard movement since iter-45.
 
 ## Do not redo
 
-- **J-04's boot/badge/crash/interrupted behavior is proven code AND now proven by evidence** — do not rebuild it; only its `[NEW]` walkthrough is owed (capture-only, `evidence_makeup: true`).
-- **The two named finalize-tail phases are DONE**: `coverage_membership_timeline_refresh` 46.05→40.54s and `market_phase_warm` 26.26→0.73s, both at **zero** non-answers (perf-budgets.md Addendum 15).
-- **AG-10 frozen surfaces are clean** — do not re-diff `config.yaml`, `host-guard.env`, `start-backend.sh`, `dev.sh`, `start-frontend.sh`; both `git diff` and `git status` over all five are empty.
-- **The lane-runs-last rule works when written into the spec's DoD** — keep iter-53's DoD-5/TC-7 wording ("audit files a note for the next iter, never a code-changing fix"); do not re-litigate it.
-- **`forward_aggregates_warm` and `factor_lab_all_warm` are NOT regressions** — Addendum 15's worse 1,559.30s total is scheduling luck on untouched phases; do not chase it as a bug.
-- Deferred a 19th time, still out of scope unless the owner promotes it: iter-33/g the Regime Lab (its data call MemoryErrors; its golden asserts only the page heading — iter-52/cl, iter-52/cn).
+- **B1 off-by-one FIXED** — `market_phase.py:230` fetches `lookback_days + 1`, `:572`
+  `recovery_trailing_ma_days + 1`; byte-identity comment corrected; treated-vs-UNTREATED oracle test ships.
+- **B3 FIXED** — `market_phase.py:1197` `_benchmark_close_on_or_before` returns `close_on(...)`.
+- **B2 FIXED** — fault probe removed from `universe_resolver.py`, now at `data_manager.py:4130-4139`.
+- **T2 FIXED** (`test_universe_resolver.py:340` restored) · **T5 done** (76/76, 3862.87s) ·
+  **`per_date_coverage_warm` FIXED** — zero non-answers there across 1,822 polls (was 1); do not re-treat.
+- **J-04 product behaviour is proven** (boot/badge/crash/interrupted rows, iter-53 + iter-54 replay);
+  AG-9 (`provider='seed'`, runs 346-351) and AG-10 (5 frozen paths clean) re-verified at source iter-54.

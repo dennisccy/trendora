@@ -1114,3 +1114,47 @@ without re-running it — the note is not self-executing.
 orchestrator should treat "product code changed after `ui-test-results.md` was written" as a hard
 re-run trigger, not an advisory note.
 
+
+<!-- condense.sh 2026-08-09T20:39:26Z: moved 3 entries (keep-iters=5) -->
+
+## iter-47 — 2026-08-04T17:30:00Z
+
+**Verdict:** ESCALATE
+**Lesson:** A golden replay script can be a null test in a way that is invisible from its PASS row —
+read the script, not the verdict. The six scripts that produced this round's "6/6 PASS" include one
+with a SINGLE step (J-08: load `/backtest`, assert the text "Forward-tested evidence") and one that
+clicks Start and then navigates straight to a PRE-EXISTING run page (J-05 → `/scanner-runs/1882`),
+so both pass on a build where the feature is entirely broken. `git show HEAD:runs/.../journey-scripts/<J>.json`
+costs one command and settles it. Second half of the same lesson: a rebuilt script that is never
+executed buys nothing — this round rebuilt five goldens at 15:46-16:05 and ran none of them.
+**Applies to:** any iteration that reads a `regression-replay-results.md` PASS as journey evidence,
+and any iteration whose spec mandates re-running a lane after a fix pass (the TC-7 shape) — check
+the results-file mtime against the newest product-code mtime before scoring, because iter-46 and
+iter-47 both ended with every lane naming the requirement and nobody executing it.
+
+## iter-48 — 2026-08-05T02:45:00Z
+
+**Verdict:** ESCALATE
+**Lesson:** A finalize-tail phase whose cost swings **102 s → 153 s → 1,334 s across three runs of
+the same work** cannot be characterised from two samples: the dev handoff and `perf-budgets.md` both
+attributed J-05's remaining non-termination to `drawdown_expectations_warm` alone, written from the
+first two runs, and the third run showed `forward_aggregates_warm` ALONE exceeding TC-1's whole
+1,200 s budget (audit B2). The instrumentation this iteration added to
+`apps/backend/app/engine/data_manager.py`'s finalize tail is what made the spread visible — the
+lesson is to read every run's phase table before naming a bottleneck, not the first two.
+**Applies to:** any iteration attributing a wall-clock blocker to one phase of a multi-phase job —
+especially `_refresh_ingest_aggregates`'s tail.
+
+## iter-48 — 2026-08-05T02:45:00Z (second entry)
+
+**Verdict:** ESCALATE
+**Lesson:** The cure for the session's null-test problem is not "read the golden script" but "read
+the ROW the golden created". J-01's and J-03's replay PASSes became trustworthy only when
+`data_provider_runs` ids 305/306/307 turned out to exist at the replay's own timestamps with exactly
+the counts the scripts assert. Conversely J-06's PASS survived a golden-content read and still had
+to be declined, because `logs/backend.log` recorded two `MemoryError`s on `/research/regime-lab` —
+the route its own step 11 loads — inside the same window. Text assertions and script content are
+both satisfiable without the behaviour; a side-effect row or a log line is not.
+**Applies to:** any evaluator scoring a journey `passing` on a deterministic-replay row; any
+iteration rebuilding a golden for a journey that writes to the DB.
+

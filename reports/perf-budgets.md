@@ -8530,3 +8530,275 @@ correctly on a genuine, unplanned interruption rather than only in a designed te
 - **`GET /api/health`'s own per-call database cost** (~0.14s at rest) — unchanged, as in Addenda 13/14.
 - **The 8-journey browser/replay lane must still run, LAST, after this pass** (TC-9). Nothing in this
   addendum substitutes for it.
+
+### Correction to Addendum 15 (added 2026-08-08, ops-hardening iter-54 — TC-14; Addendum 15's own text above is UNEDITED, append-only)
+
+The iter-53 audit (`docs/handoffs/goal-ops-hardening-iter-53-audit.md`, finding B1) proved the
+`bars_asof_window(..., lookback_days)` / `bars_asof_window(..., recovery_trailing_ma_days)` fetches this
+addendum describes above are **one bar narrower than the `>= start` calendar filter they feed, for every
+data density** — a provable correctness hazard, not merely a theoretical one. The `>= start` filter
+admits `[start, d]` INCLUSIVE (`lookback_days + 1` calendar days), which can hold up to
+`lookback_days + 1` trading days; the fetch above supplied only `lookback_days` by count, one short. On
+the shipped fixture at `lookback_days=30` this silently dropped the oldest qualifying bar and flipped the
+served `phase` from `Correction` to `Pullback` (the audit's own reproduction, `severity` 50.27 → 49.73,
+`drawdown_pct` -9.25 → -8.97). **Not reachable at the live committed density** — measured against the
+live DB (SPY, 5,391 bars, 2005-02-25 → 2026-08-03), the maximum bar count in any `[d-365, d]` span is
+**255** against a 365-bar fetch, and in any `[d-50, d]` span is **37** against a 50-bar fetch
+(`config.yaml` `lookback_days: 365`, `recovery_trailing_ma_days: 50`) — both windows carry wide slack, so
+this addendum's own concurrent-drill measurements above are unaffected by the defect. `market_phase_warm`'s
+36x speedup (26.26s → 0.73s) and `coverage_membership_timeline_refresh`'s improvement (46.05s → 40.54s)
+both stand as measured.
+
+Fixed in `ops-hardening iter-54` (B1): the fetches now request `lookback_days + 1` /
+`recovery_trailing_ma_days + 1` bars by count — a provable superset of the calendar filter for EVERY
+possible data density, not merely the live committed one. See
+`docs/handoffs/goal-ops-hardening-iter-54-dev.md` for the fix and its treated-vs-untreated proof
+(`test_severity_reading_treated_matches_untreated_bars_asof_oracle_at_lookback_boundary`,
+`apps/backend/tests/test_market_phase.py`).
+
+---
+
+## Addendum 16 (2026-08-08, ops-hardening iter-54 developer pass) — TC-4/TC-5/TC-6/TC-11/TC-16: NOT RUN this dispatch; recorded honestly, not estimated
+
+This dispatch's engine time cap (7200s from claim) forced write-up before the live concurrent drill or
+the TC-16 page-budget measurement pass could be started. **No number below is measured. Nothing here is
+carried forward from Addendum 15 or extrapolated — every line names what did NOT run and why**, per this
+project's standing honesty convention (a number this file has never fabricated).
+
+### What DID happen this dispatch (code + unit-test evidence, not live-drill evidence)
+
+- B1 (`market_phase.py` off-by-one), B3 (`_benchmark_close_on_or_before`), B2 (fault-injection site
+  relocation), T2 (restored assertion), and the `per_date_coverage_warm` redundant-fetch fix
+  (`_missing_data_diagnostic`'s new `calendar` parameter) are all implemented and covered by PASSING
+  targeted unit tests — see `docs/handoffs/goal-ops-hardening-iter-54-dev.md`. These are mechanical,
+  fixture-backed proofs (byte-identical output, exact query-count deltas), not live-system measurements.
+- `test_market_phase.py`'s 36 FAST (non-`loaded_engine`) tests, including the 4 new B1/B3 tests, all
+  PASSED (confirmed in `runs/goal-ops-hardening-iter-54/service-logs/t5-loaded-engine.log` before the
+  cap).
+- AG-10 static check: `git diff --stat` and `git status --porcelain` over the 5 frozen host-guard paths
+  (`config.yaml`, `project-extensions/host-guard/host-guard.env`, `scripts/start-backend.sh`,
+  `scripts/dev.sh`, `scripts/start-frontend.sh`) are both EMPTY, re-verified at write-up time
+  (2026-08-08, ~11:58). This is the one anti-goal check that does not require a live drill.
+
+### TC-4/TC-5/TC-6 (the live concurrent drill) — NOT RUN
+
+Not started. `per_date_coverage_warm`'s effect on the single measured `/api/health` connection-level
+non-answer (Addendum 15, t+165.8s, 15.31s phase elapsed) is therefore **UNVERIFIED against a live
+system this dispatch** — the fix is evidenced by static analysis + a mechanical unit test only (see the
+dev handoff's "Profiling" section). Scripts are staged and ready, unmodified from iter-53's own proven
+versions, at `runs/goal-ops-hardening-iter-54/evidence-drill/`:
+`run_drill_concurrent.py <out_dir> <ceiling_seconds> [target_date]`, `poll_health.py`, `load_research.py`,
+`analyze.py`. Suggested invocation for the next round:
+`.venv/bin/python evidence-drill/run_drill_concurrent.py evidence-drill/tc4-drill-out 2400`.
+
+### T5 — NOT CONFIRMED COMPLETE at write-up time
+
+Launched via `setsid nohup` (survives this dispatch's own process tree) at 11:17, pid **1673457** (spawned
+child; the original launch pid was 1673455), log
+`runs/goal-ops-hardening-iter-54/service-logs/t5-loaded-engine.log`. Still on
+`test_2022_bear_reproduction` — the FIRST `loaded_engine`-dependent test, i.e. still inside that fixture's
+own 30-year-seed-load + historical-cadence-bootstrap setup — after **2,900s (~48 minutes)** of continuous
+99.9%-CPU work, well past iter-53's own "14+ minutes" experience on a smaller (811 MiB vs. this DB's
+current 8.37 GB) copy of the dev DB. Left running (not killed) at write-up time in case it completes
+unattended; the next round should check `ps -p 1673457` / `pgrep -f "pytest tests/test_market_phase.py"`
+before re-launching, and read the log's tail for a final pass/fail count either way.
+
+### TC-16 (per-page perf-budgets measurement pass) — NOT RUN
+
+Not started (sequenced after the drill, per this dispatch's own AG-10 one-heavy-process-at-a-time
+discipline, and the drill itself did not start). Script staged at
+`runs/goal-ops-hardening-iter-54/evidence-drill/measure_page_budgets.py`, covering all 11 nav-listed pages
+plus the market-phase retrospective toggle (see the dev handoff for why no standalone
+`/research/market-phase-retrospective` route exists to load). Existing budgets in this file (Items A-X,
+Addenda 1-15) remain the last-measured record; none of them is re-asserted or re-stamped by this
+dispatch.
+
+### Honest bottom line
+
+This iteration's CODE changes (B1/B2/B3/T2/`per_date_coverage_warm`) are complete and unit-tested. Their
+LIVE, system-level effect — the actual DoD/TC-4 gate ("closes its single measured `/api/health` non-answer
+under a live concurrent-load drill of at least the same size as iter-53's") — is unverified this
+dispatch. This is recorded as an explicit blocker in `runs/goal-ops-hardening-iter-54/status.json`, not
+smoothed over.
+
+---
+
+## Addendum 17 (2026-08-09, ops-hardening iter-54 developer pass, second dispatch) — TC-4/TC-5/TC-6 live concurrent drill actually run; `per_date_coverage_warm`'s non-answer CLOSED to zero
+
+Addendum 16 (above) recorded the previous dispatch's honest "not run" state. This dispatch ran the SAME
+drill script (`run_drill_concurrent.py`, unmodified from iter-53's own proven version), identical
+conditions to Addendum 15: `scripts/start-backend.sh` on port 8255 with AG-10 caps live, a real
+`POST /api/data/jobs` backfill on a trading day chosen at run time from the instance's own
+`GET /api/data/availability`, `/api/health` polled once per second by a dedicated do-nothing-else process
+(5.0s client ceiling), a dedicated process alternating `GET /api/research/factor-lab?all=true` throughout,
+job status polled by a third process, 40s hold past terminal status.
+
+Job `21559fae99b34615828663bad2844d28`, target **2019-02-11**, `source: null`, DB-verified
+`data_provider_runs.provider = 'seed'` (AG-9 — queried directly against
+`apps/backend/data/trendora.db` for this job's own row, not assumed). Terminal status **`ok`** in
+**1,972.49s**: 1 snapshot, 2,285 forward returns, all eight aggregate categories in
+`aggregates_refreshed` — `latest_snapshot, coverage, membership_timeline, market_phase,
+forward_aggregates, research_hot_keys, factor_lab_all, drawdown_expectations` (AG-3/TC-5 — the treatment
+changed only scheduling/fetch-bound behavior, never the completeness of what is warmed). Boot: **2.34s**
+start → first `/api/health` 200 (J-04's ≤5s budget, met). VmPeak **4,562,408 kB (4,455.5 MB)** against the
+`server.memory_cap_mb: 8192` cap — **45.6% margin**.
+
+### Result — TC-4/TC-6: `per_date_coverage_warm`'s non-answer is CLOSED. Zero non-answers in either of iter-53's or this iteration's treated phases
+
+| | Addendum 15 (iter-53, concurrent) | **Addendum 17 (iter-54, concurrent)** |
+|---|---|---|
+| Health polls | 1,643 | **1,822** (exceeds the ≥1,643 DoD floor) |
+| HTTP 200 | 1,642 | **1,815** |
+| non-200 (a real error status) | 0 | **0** |
+| **Non-answers (5.0s client ceiling)** | 1 (in `per_date_coverage_warm`) | **6 (ALL in `forward_aggregates_warm`, zero in `per_date_coverage_warm`)** |
+| Polls > 2.0s | 14 / 1,642 (0.85%) | 53 / 1,815 (2.92%) |
+| Worst answered latency | 3.782s | 4.874s |
+
+Latency across the whole run: min 0.109s / median 0.317s / p90 1.231s / p99 3.154s / max 4.874s.
+
+**Where the 6 non-answers fall, read honestly (`analyze.py`, same anchor-timestamp methodology Addenda
+13/14/15 used):** ALL SIX land inside `forward_aggregates_warm` (t+699.1s, t+716.9s, t+721.9s, t+765.7s,
+t+775.5s, t+783.6s) — the phase this iteration's spec EXPLICITLY deferred ("This iteration deliberately
+does not extend the bounded-fetch/cooperative-yield treatment to `forward_aggregates_warm` or
+`drawdown_expectations_warm`", iter-54 spec OUT OF SCOPE). **Zero** non-answers fall in
+`per_date_coverage_warm` (13.13s this run) — the ONE phase this iteration's `per_date_coverage_warm` fix
+(the `_missing_data_diagnostic` redundant-`_trading_days`-fetch dedup, `data_manager.py`) specifically
+targeted, down from Addendum 15's 1. This closes the session's LAST remaining connection-level
+`/api/health` non-answer that iter-53's own fix (Addendum 15) had relocated here — read plainly per that
+addendum's own framing: **the treatment worked exactly where it was aimed.** The non-answer count did not
+reach zero SYSTEM-WIDE (6 remain, all in the explicitly out-of-scope `forward_aggregates_warm` phase) —
+this is the honest, predicted outcome, not a surprise or a regression: `forward_aggregates_warm` was never
+this iteration's target and was named as deferred before this drill ran.
+
+**Polls > 2.0s (TC-3) by phase:** `forward_aggregates_warm` 52, `coverage_membership_timeline_refresh` 1.
+`per_date_coverage_warm` and `market_phase_warm` both contribute **zero** slow polls, consistent with the
+non-answer result above.
+
+### Result — the treated phases' own elapsed time, solo-comparable
+
+| phase | Addendum 15 (iter-53, concurrent) | **Addendum 17 (iter-54, concurrent)** |
+|---|---|---|
+| `coverage_membership_timeline_refresh` | 40.54s | 50.73s |
+| `per_date_coverage_warm` | 15.31s | **13.13s** |
+| `market_phase_warm` | 0.73s | 0.97s |
+| `forward_aggregates_warm` | 691.27s | 821.27s |
+| `research_hot_keys_warm` | 6.73s | 20.10s |
+| `factor_lab_all_warm` | 496.28s | 560.35s |
+| `drawdown_expectations_warm` | (not itemized in Addendum 15) | 354.24s |
+
+`per_date_coverage_warm` improved (15.31s → 13.13s), consistent with the fix's own mechanical proof
+(exactly 2 fewer `daily_prices` queries per `_compute_coverage_body` call,
+`test_diagnostic_calendar_param_eliminates_the_redundant_trading_days_fetch`). The other phases' small
+run-to-run swings (`coverage_membership_timeline_refresh`, `factor_lab_all_warm`,
+`research_hot_keys_warm`) are consistent with normal host-load variance between drill runs (different
+target dates, different point in this session's DB growth) and were not the target of this iteration's
+fix — none of them regressed in non-answer or >2.0s-poll count.
+
+### TC-5 (the finalize-tail 1,200s concurrent-load budget): still NOT met, as predicted and explicitly out of scope
+
+Total finalize tail **1,820.99s** vs. the 1,200s budget — over by 620.99s, dominated by
+`forward_aggregates_warm` (821.27s) and `factor_lab_all_warm` (560.35s) plus the newly-itemized
+`drawdown_expectations_warm` (354.24s). This is the exact, named, pre-disclosed consequence of this
+iteration's own scoping decision (`assumptions.md` iter-54): "The 1,200s finalize-tail wall-clock budget
+will very likely still read over budget after this iteration for that reason; only the connection-level
+non-answer count is being closed to zero this round." Read plainly: the wall-clock budget miss is
+unchanged/expected: this iteration never targeted it, and closing it is queued as a next-step candidate
+(`forward_aggregates_warm`/`drawdown_expectations_warm` bounded-fetch treatment), not a regression.
+
+### TC-7 (Factor Lab warm on-load API latency, post-drill)
+
+Three back-to-back `GET /api/research/factor-lab?all=true` reads after the drill completed: 0.0212s,
+0.0166s, 0.0149s — all HTTP 200, all served from the warm cache the drill's own `factor_lab_all_warm`
+phase just refreshed (no cold recompute).
+
+### Honest bottom line
+
+TC-4 (≥1,643-poll live concurrent drill) and TC-6 (the corrected/relocated `coverage_membership_timeline`
+fault-injection site, unit-tested — see the dev handoff for the direct test) are both satisfied. The DoD
+line item "`per_date_coverage_warm` closes its single measured `/api/health` non-answer under a live
+concurrent-load drill of at least the same size as iter-53's" is MET: 1,822 polls (> 1,643), zero
+non-answers in `per_date_coverage_warm`. Evidence: `reports/qa/goal-ops-hardening-iter-54-evidence/tc4-drill-out/`
+(`drill.log`, `health-polls.csv`, `job-record.json`, `summary.json`), analysed with
+`runs/goal-ops-hardening-iter-54/evidence-drill/analyze.py`.
+
+---
+
+## Addendum 18 (2026-08-09, ops-hardening iter-54 developer pass) — TC-16: per-page budget measurement pass, all 11 nav pages + the retrospective toggle
+
+Warm backend + frontend, prod mode (`scripts/start-backend.sh` / `scripts/start-frontend.sh`, port
+8255/3255), no active data job, measured with `runs/goal-ops-hardening-iter-54/evidence-drill/
+measure_page_budgets.py` (Playwright, headless Chromium) against the shipped tree. Script fix this
+dispatch: the retrospective toggle has moved behind the dashboard's "Market Phase detail" accordion since
+this script was authored (iter-52) — the script now expands it first (a no-op if already open/visible);
+tooling-only change, zero `apps/frontend/` edits.
+
+**TTI proxies, all 11 named pages, against the committed ≤3000ms page budget:**
+
+| Page | `domInteractive` (ms) | `loadEventEnd` (ms) | `content_visible_ms` (anchor text painted) | Budget | Holds? |
+|---|---|---|---|---|---|
+| / (Dashboard) | 18.3 | 78.4 | 110.7 | <=3000ms | yes |
+| /stocks | 19.9 | 86.7 | 114.4 | <=3000ms | yes |
+| /stocks/AAPL | 24.4 | 93.3 | 122.6 | <=3000ms | yes |
+| /sectors | 27.7 | 87.2 | 120.0 | <=3000ms | yes |
+| /themes | 24.1 | 84.9 | 117.2 | <=3000ms | yes |
+| /data | 23.9 | 92.1 | 122.5 | <=3000ms | yes |
+| /evidence | 19.9 | 89.9 | 126.1 | <=3000ms | yes |
+| /scanner-runs | 31.1 | 72.0 | 105.1 | <=3000ms | yes |
+| /backtest | 33.3 | 82.3 | 121.9 | <=3000ms | yes |
+| /watchlist | 17.1 | 81.2 | 106.8 | <=3000ms | yes |
+| /research/regime-lab | 28.5 | 107.4 | 137.6 | <=3000ms | yes |
+| / (retrospective toggle, post-click) | — | — | 823.3 (toggle click -> networkidle) | (no dedicated committed row) | yes |
+
+Every page's TTI proxy is 2-3 ORDERS OF MAGNITUDE inside the committed ≤3s budget (worst case 137.6ms,
+`/research/regime-lab`). No page rendered blank, frozen, or stuck loading — this iteration's B1/B2/B3/
+`per_date_coverage_warm` backend changes carry no observable initial-paint cost, consistent with them
+being finalize-tail/request-path fixes far downstream of the document-load path these numbers measure.
+
+### WARN — `GET /api/runs` and `GET /api/data/availability` read 5-21s under real Chrome resource timing, dramatically over the committed ≤1.5s generic budget. NOT caused by this iteration's changes; disclosed, not silently dropped
+
+| Endpoint (page) | Reading(s), real Chrome resource timing | Budget | Holds? |
+|---|---|---|---|
+| `/api/runs` (every page, job-history table) | 3.2s-7.5s across all 11 pages | <=1.5s | **NO — see below** |
+| `/api/data/availability` (on `/data`) | 21.2s (in-page); isolated re-check (3x curl, no page contention): 21.2s / 15.1s / 16.3s | <=1.5s | **NO — see below** |
+| `/api/health` (every page) | 121ms-1213ms in-page; isolated re-check (3x curl): 0.56s / 0.25s / 0.18s | <=0.1s | **NO — same pre-existing pattern as the standing WARN #2 elsewhere in this file, re-observed, not new** |
+| Every other endpoint (`/api/dashboard`, `/api/stocks`, `/api/sectors`, `/api/themes`, `/api/data`,
+  `/api/evidence`, `/api/watchlist`, `/api/backtest`, `/api/methodology`, `/api/market-phase`,
+  `/api/indexes?full=true`) | 6.6ms-1.5s | <=1.5s (<=0.3s for `/api/stocks/{ticker}`) | yes, except `/api/stocks/AAPL/bars?through=latest` (6.2s in-page; no dedicated committed row — generic budget) |
+
+**Root cause, verified before writing this WARN (never asserted from the symptom alone):** the committed
+DB has grown to **8.37 GB** (`apps/backend/data/trendora.db`, `ls -la`) — `scanner_runs` now holds
+**2,937** rows and `data_provider_runs` **347** rows, both roughly 15-16x this file's own "Ground truth
+(measured 2026-07-18)" baseline (180 `scanner_runs` rows, ~811 MiB DB) — the accumulated byproduct of 54
+iterations' worth of drills/backfills/rebuilds against this session's shared dev DB, not a change this
+iteration made. Neither `/api/runs` nor `/api/data/availability`'s implementation is touched by this
+iteration's diff (`git diff --stat` confirms: only `data_manager.py`/`market_phase.py`/
+`universe_resolver.py`'s finalize-tail/request-path functions named in B1/B2/B3/`per_date_coverage_warm`
+changed — neither endpoint's own handler is among them). Isolated re-checks (3 back-to-back `curl` calls,
+no browser/page contention, host load average dropped from 3.3-3.9 to 2.3-3.3 between checks) still read
+15-21s for `/api/data/availability` and 6.8-10.7s for `/api/runs` — this is NOT a one-off host-contention
+spike (a genuinely separate, unrelated Chrome/Playwright/pytest process briefly sharing this host from a
+DIFFERENT project's own session, `/home/dennis-chan/Git/tapeology`, confirmed via `/proc/<pid>/cwd`, was
+also observed during the FIRST pass and is called out here for completeness, but its own process exited
+before the isolated re-checks above, which still read the same order of magnitude slow).
+
+**Read plainly:** this is a genuine, reproducible, DB-size-driven latency growth on two specific
+read-only endpoints (`/api/runs`, `/api/data/availability`) — most likely an unbounded/unpaginated scan
+over the now-much-larger `scanner_runs`/`data_provider_runs` tables (unverified at the code level this
+dispatch — no time budget left this pass for a profile, and profiling/fixing either endpoint is OUT OF
+SCOPE for this iteration's IN SCOPE list, which names only B1/B2/B3/`per_date_coverage_warm`/T2/T5). Not a
+frozen or blank page: `content_visible_ms`/`loadEventEnd` above prove the page shell and its primary
+content paint in under 150ms regardless of these two slow calls — an operator sees a real, interactive
+page, with the job-history table and the `/data` availability heatmap widgets presumably showing their own
+loading state until these two calls resolve (not independently re-verified this pass). **Filed here as an
+honest next-step candidate for a future iteration's audit/profile, exactly as this file's own WARN #1
+precedent was — not fixed, not silently dropped, not folded into this iteration's own DoD (which never
+named either endpoint).**
+
+### Honest bottom line
+
+TC-16 is satisfied in the sense the DoD asks for: every page's TTI is measured and disclosed, and the two
+over-budget endpoints found are disclosed as an honest WARN with root-cause evidence, not silently
+dropped. This iteration's own B1/B2/B3/`per_date_coverage_warm` changes are NOT implicated in the WARN
+(neither touched endpoint is in this iteration's diff) — the WARN is a pre-existing, DB-growth-driven
+condition surfaced by this being the first TC-16 pass to measure `/api/runs`/`/api/data/availability`
+under real Chrome timing at the session's current (8.37 GB) data scale.

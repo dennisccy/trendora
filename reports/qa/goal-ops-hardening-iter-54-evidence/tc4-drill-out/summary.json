@@ -1,0 +1,37 @@
+{
+  "job_id": "21559fae99b34615828663bad2844d28",
+  "target": "2019-02-11",
+  "status": "ok",
+  "job_seconds": 1972.49,
+  "vmpeak": "VmPeak:\t4562408 kB",
+  "vm": {
+    "VmPeak": "4562408 kB",
+    "VmSize": "3914520 kB",
+    "VmHWM": "3956204 kB",
+    "VmRSS": "2775160 kB"
+  },
+  "boot_seconds": 2.34,
+  "port": 8255,
+  "backend_pid": 81379,
+  "job_started_epoch": 1786308939.8957856,
+  "tc7_factor_lab_all_warm_api": [
+    {
+      "run": 0,
+      "status": 200,
+      "elapsed_s": 0.0212,
+      "n_factors": 11
+    },
+    {
+      "run": 1,
+      "status": 200,
+      "elapsed_s": 0.0166,
+      "n_factors": 11
+    },
+    {
+      "run": 2,
+      "status": 200,
+      "elapsed_s": 0.0149,
+      "n_factors": 11
+    }
+  ]
+}

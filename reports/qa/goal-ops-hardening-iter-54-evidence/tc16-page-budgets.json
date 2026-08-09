@@ -1,0 +1,981 @@
+{
+  "frontend": "http://localhost:3255",
+  "pages": [
+    {
+      "path": "/",
+      "nav_timing_ms": {
+        "domInteractive": 18.299999999813735,
+        "domContentLoadedEventEnd": 18.299999999813735,
+        "loadEventEnd": 78.40000000037253,
+        "duration": 78.40000000037253
+      },
+      "content_visible_ms": 110.7,
+      "networkidle_ms": 4218.0,
+      "api_requests": [
+        {
+          "url": "http://localhost:8255/api/methodology",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/dashboard",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/market-phase",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/sectors",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/themes",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/health",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/health",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/health",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/market-phase?full=true",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/indexes?full=true",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/runs",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/regime-history?full=true",
+          "status": 200
+        }
+      ],
+      "api_resource_timing_ms": [
+        {
+          "name": "http://localhost:8255/api/health",
+          "duration": 147.70000000018626,
+          "startTime": 101.79999999981374
+        },
+        {
+          "name": "http://localhost:8255/api/dashboard",
+          "duration": 9.099999999627471,
+          "startTime": 102.20000000018626
+        },
+        {
+          "name": "http://localhost:8255/api/methodology",
+          "duration": 8.899999999441206,
+          "startTime": 102.40000000037253
+        },
+        {
+          "name": "http://localhost:8255/api/runs",
+          "duration": 3559.600000000559,
+          "startTime": 102.59999999962747
+        },
+        {
+          "name": "http://localhost:8255/api/health",
+          "duration": 135.40000000037253,
+          "startTime": 102.79999999981374
+        },
+        {
+          "name": "http://localhost:8255/api/market-phase",
+          "duration": 27.299999999813735,
+          "startTime": 112.5
+        },
+        {
+          "name": "http://localhost:8255/api/sectors",
+          "duration": 11.5,
+          "startTime": 140.5
+        },
+        {
+          "name": "http://localhost:8255/api/themes",
+          "duration": 6.6000000005587935,
+          "startTime": 152.79999999981374
+        },
+        {
+          "name": "http://localhost:8255/api/health",
+          "duration": 133.6000000005588,
+          "startTime": 239.79999999981374
+        },
+        {
+          "name": "http://localhost:8255/api/indexes?full=true",
+          "duration": 96.90000000037253,
+          "startTime": 414.29999999981374
+        },
+        {
+          "name": "http://localhost:8255/api/regime-history?full=true",
+          "duration": 3281.699999999255,
+          "startTime": 414.40000000037253
+        },
+        {
+          "name": "http://localhost:8255/api/market-phase?full=true",
+          "duration": 87,
+          "startTime": 414.5
+        }
+      ]
+    },
+    {
+      "path": "/stocks",
+      "nav_timing_ms": {
+        "domInteractive": 19.90000000037253,
+        "domContentLoadedEventEnd": 19.90000000037253,
+        "loadEventEnd": 86.70000000018626,
+        "duration": 86.70000000018626
+      },
+      "content_visible_ms": 114.4,
+      "networkidle_ms": 4639.6,
+      "api_requests": [
+        {
+          "url": "http://localhost:8255/api/methodology",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/dashboard",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/methodology",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/themes",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/evidence",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/health",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/stocks",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/health",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/health",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/runs",
+          "status": 200
+        }
+      ],
+      "api_resource_timing_ms": [
+        {
+          "name": "http://localhost:8255/api/health",
+          "duration": 1213,
+          "startTime": 109.70000000018626
+        },
+        {
+          "name": "http://localhost:8255/api/methodology",
+          "duration": 273.59999999962747,
+          "startTime": 110
+        },
+        {
+          "name": "http://localhost:8255/api/runs",
+          "duration": 4022.100000000559,
+          "startTime": 110.29999999981374
+        },
+        {
+          "name": "http://localhost:8255/api/health",
+          "duration": 420.1000000005588,
+          "startTime": 110.59999999962747
+        },
+        {
+          "name": "http://localhost:8255/api/stocks",
+          "duration": 1206.1000000005588,
+          "startTime": 115.59999999962747
+        },
+        {
+          "name": "http://localhost:8255/api/dashboard",
+          "duration": 271.79999999981374,
+          "startTime": 116
+        },
+        {
+          "name": "http://localhost:8255/api/themes",
+          "duration": 281.1000000005588,
+          "startTime": 116.29999999981374
+        },
+        {
+          "name": "http://localhost:8255/api/methodology",
+          "duration": 275.80000000074506,
+          "startTime": 116.59999999962747
+        },
+        {
+          "name": "http://localhost:8255/api/evidence",
+          "duration": 318.70000000018626,
+          "startTime": 117
+        },
+        {
+          "name": "http://localhost:8255/api/health",
+          "duration": 797.7000000001863,
+          "startTime": 532.2000000001863
+        }
+      ]
+    },
+    {
+      "path": "/stocks/AAPL",
+      "nav_timing_ms": {
+        "domInteractive": 24.399999999441206,
+        "domContentLoadedEventEnd": 24.399999999441206,
+        "loadEventEnd": 93.29999999981374,
+        "duration": 93.29999999981374
+      },
+      "content_visible_ms": 122.6,
+      "networkidle_ms": 8097.7,
+      "api_requests": [
+        {
+          "url": "http://localhost:8255/api/methodology",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/stocks/AAPL",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/health",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/health",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/health",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/evidence",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/regime-history",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/stocks/AAPL/bars?through=latest",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/runs",
+          "status": 200
+        }
+      ],
+      "api_resource_timing_ms": [
+        {
+          "name": "http://localhost:8255/api/health",
+          "duration": 795.5,
+          "startTime": 116.8999999994412
+        },
+        {
+          "name": "http://localhost:8255/api/stocks/AAPL",
+          "duration": 153.40000000037253,
+          "startTime": 117.59999999962747
+        },
+        {
+          "name": "http://localhost:8255/api/methodology",
+          "duration": 138.20000000018626,
+          "startTime": 117.8999999994412
+        },
+        {
+          "name": "http://localhost:8255/api/runs",
+          "duration": 7472.299999999814,
+          "startTime": 118.09999999962747
+        },
+        {
+          "name": "http://localhost:8255/api/health",
+          "duration": 582.4000000003725,
+          "startTime": 118.3999999994412
+        },
+        {
+          "name": "http://localhost:8255/api/stocks/AAPL/bars?through=latest",
+          "duration": 6167.0999999996275,
+          "startTime": 278.5
+        },
+        {
+          "name": "http://localhost:8255/api/regime-history",
+          "duration": 2156.2999999998137,
+          "startTime": 279.20000000018626
+        },
+        {
+          "name": "http://localhost:8255/api/evidence",
+          "duration": 860,
+          "startTime": 279.59999999962747
+        },
+        {
+          "name": "http://localhost:8255/api/health",
+          "duration": 210.40000000037253,
+          "startTime": 702.2999999998137
+        }
+      ]
+    },
+    {
+      "path": "/sectors",
+      "nav_timing_ms": {
+        "domInteractive": 27.700000000186265,
+        "domContentLoadedEventEnd": 27.700000000186265,
+        "loadEventEnd": 87.20000000018626,
+        "duration": 87.20000000018626
+      },
+      "content_visible_ms": 120.0,
+      "networkidle_ms": 6100.1,
+      "api_requests": [
+        {
+          "url": "http://localhost:8255/api/methodology",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/sectors",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/health",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/health",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/health",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/runs",
+          "status": 200
+        }
+      ],
+      "api_resource_timing_ms": [
+        {
+          "name": "http://localhost:8255/api/health",
+          "duration": 675.6000000005588,
+          "startTime": 112.3999999994412
+        },
+        {
+          "name": "http://localhost:8255/api/sectors",
+          "duration": 666.5999999996275,
+          "startTime": 113
+        },
+        {
+          "name": "http://localhost:8255/api/methodology",
+          "duration": 367.69999999925494,
+          "startTime": 113.20000000018626
+        },
+        {
+          "name": "http://localhost:8255/api/runs",
+          "duration": 5479.5,
+          "startTime": 113.5
+        },
+        {
+          "name": "http://localhost:8255/api/health",
+          "duration": 676.7999999998137,
+          "startTime": 113.79999999981374
+        },
+        {
+          "name": "http://localhost:8255/api/health",
+          "duration": 121.8999999994412,
+          "startTime": 792.2000000001863
+        }
+      ]
+    },
+    {
+      "path": "/themes",
+      "nav_timing_ms": {
+        "domInteractive": 24.100000000558794,
+        "domContentLoadedEventEnd": 24.100000000558794,
+        "loadEventEnd": 84.90000000037253,
+        "duration": 84.90000000037253
+      },
+      "content_visible_ms": 117.2,
+      "networkidle_ms": 4085.6,
+      "api_requests": [
+        {
+          "url": "http://localhost:8255/api/methodology",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/themes",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/health",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/health",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/health",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/runs",
+          "status": 200
+        }
+      ],
+      "api_resource_timing_ms": [
+        {
+          "name": "http://localhost:8255/api/health",
+          "duration": 632.8999999994412,
+          "startTime": 109.80000000074506
+        },
+        {
+          "name": "http://localhost:8255/api/themes",
+          "duration": 621.7999999998137,
+          "startTime": 110.40000000037253
+        },
+        {
+          "name": "http://localhost:8255/api/methodology",
+          "duration": 377.6000000005588,
+          "startTime": 110.70000000018626
+        },
+        {
+          "name": "http://localhost:8255/api/runs",
+          "duration": 3466.7999999998137,
+          "startTime": 110.90000000037253
+        },
+        {
+          "name": "http://localhost:8255/api/health",
+          "duration": 631.9000000003725,
+          "startTime": 111.20000000018626
+        },
+        {
+          "name": "http://localhost:8255/api/health",
+          "duration": 226.59999999962747,
+          "startTime": 759.6000000005588
+        }
+      ]
+    },
+    {
+      "path": "/data",
+      "nav_timing_ms": {
+        "domInteractive": 23.90000000037253,
+        "domContentLoadedEventEnd": 23.90000000037253,
+        "loadEventEnd": 92.1000000005588,
+        "duration": 92.1000000005588
+      },
+      "content_visible_ms": 122.5,
+      "networkidle_ms": 24285.5,
+      "api_requests": [
+        {
+          "url": "http://localhost:8255/api/methodology",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/health",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/health",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/health",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/data",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/indexes?full=true",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/runs",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/data/availability",
+          "status": 200
+        }
+      ],
+      "api_resource_timing_ms": [
+        {
+          "name": "http://localhost:8255/api/health",
+          "duration": 887.7000000001863,
+          "startTime": 115.90000000037253
+        },
+        {
+          "name": "http://localhost:8255/api/data",
+          "duration": 2583.4000000003725,
+          "startTime": 116.5
+        },
+        {
+          "name": "http://localhost:8255/api/methodology",
+          "duration": 508,
+          "startTime": 116.79999999981374
+        },
+        {
+          "name": "http://localhost:8255/api/runs",
+          "duration": 4209.100000000559,
+          "startTime": 117
+        },
+        {
+          "name": "http://localhost:8255/api/health",
+          "duration": 890.5999999996275,
+          "startTime": 117.20000000018626
+        },
+        {
+          "name": "http://localhost:8255/api/health",
+          "duration": 229,
+          "startTime": 1013.9000000003725
+        },
+        {
+          "name": "http://localhost:8255/api/data/availability",
+          "duration": 21164.199999999255,
+          "startTime": 2617.100000000559
+        },
+        {
+          "name": "http://localhost:8255/api/indexes?full=true",
+          "duration": 116.6000000005588,
+          "startTime": 2764.2999999998137
+        }
+      ]
+    },
+    {
+      "path": "/evidence",
+      "nav_timing_ms": {
+        "domInteractive": 19.90000000037253,
+        "domContentLoadedEventEnd": 19.90000000037253,
+        "loadEventEnd": 89.90000000037253,
+        "duration": 89.90000000037253
+      },
+      "content_visible_ms": 126.1,
+      "networkidle_ms": 6139.6,
+      "api_requests": [
+        {
+          "url": "http://localhost:8255/api/methodology",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/evidence",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/health",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/health",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/health",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/runs",
+          "status": 200
+        }
+      ],
+      "api_resource_timing_ms": [
+        {
+          "name": "http://localhost:8255/api/health",
+          "duration": 673.2999999998137,
+          "startTime": 118.6000000005588
+        },
+        {
+          "name": "http://localhost:8255/api/evidence",
+          "duration": 665.1999999992549,
+          "startTime": 119.30000000074506
+        },
+        {
+          "name": "http://localhost:8255/api/methodology",
+          "duration": 210.30000000074506,
+          "startTime": 119.5
+        },
+        {
+          "name": "http://localhost:8255/api/runs",
+          "duration": 5511.5,
+          "startTime": 119.80000000074506
+        },
+        {
+          "name": "http://localhost:8255/api/health",
+          "duration": 667.7999999998137,
+          "startTime": 120.1000000005588
+        },
+        {
+          "name": "http://localhost:8255/api/health",
+          "duration": 558.2000000001863,
+          "startTime": 796.4000000003725
+        }
+      ]
+    },
+    {
+      "path": "/scanner-runs",
+      "nav_timing_ms": {
+        "domInteractive": 31.100000000558794,
+        "domContentLoadedEventEnd": 31.100000000558794,
+        "loadEventEnd": 72,
+        "duration": 72
+      },
+      "content_visible_ms": 105.1,
+      "networkidle_ms": 6830.3,
+      "api_requests": [
+        {
+          "url": "http://localhost:8255/api/methodology",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/health",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/health",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/health",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/runs",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/runs",
+          "status": 200
+        }
+      ],
+      "api_resource_timing_ms": [
+        {
+          "name": "http://localhost:8255/api/health",
+          "duration": 1144.2000000001863,
+          "startTime": 98.5
+        },
+        {
+          "name": "http://localhost:8255/api/runs",
+          "duration": 6220,
+          "startTime": 99
+        },
+        {
+          "name": "http://localhost:8255/api/methodology",
+          "duration": 556.5,
+          "startTime": 99.20000000018626
+        },
+        {
+          "name": "http://localhost:8255/api/runs",
+          "duration": 6031.4000000003725,
+          "startTime": 99.5
+        },
+        {
+          "name": "http://localhost:8255/api/health",
+          "duration": 1137.7000000001863,
+          "startTime": 99.79999999981374
+        },
+        {
+          "name": "http://localhost:8255/api/health",
+          "duration": 251.09999999962747,
+          "startTime": 1239.1000000005588
+        }
+      ]
+    },
+    {
+      "path": "/backtest",
+      "nav_timing_ms": {
+        "domInteractive": 33.299999999813735,
+        "domContentLoadedEventEnd": 33.299999999813735,
+        "loadEventEnd": 82.29999999981374,
+        "duration": 82.29999999981374
+      },
+      "content_visible_ms": 121.9,
+      "networkidle_ms": 6245.1,
+      "api_requests": [
+        {
+          "url": "http://localhost:8255/api/methodology",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/health",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/health",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/health",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/backtest",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/dashboard",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/themes",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/sectors",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/stocks",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/runs",
+          "status": 200
+        }
+      ],
+      "api_resource_timing_ms": [
+        {
+          "name": "http://localhost:8255/api/health",
+          "duration": 1118.800000000745,
+          "startTime": 107.79999999981374
+        },
+        {
+          "name": "http://localhost:8255/api/backtest",
+          "duration": 1115.5999999996275,
+          "startTime": 108.40000000037253
+        },
+        {
+          "name": "http://localhost:8255/api/methodology",
+          "duration": 543,
+          "startTime": 108.90000000037253
+        },
+        {
+          "name": "http://localhost:8255/api/runs",
+          "duration": 5626.300000000745,
+          "startTime": 109.29999999981374
+        },
+        {
+          "name": "http://localhost:8255/api/health",
+          "duration": 1111.5999999996275,
+          "startTime": 109.70000000018626
+        },
+        {
+          "name": "http://localhost:8255/api/health",
+          "duration": 253,
+          "startTime": 1223.4000000003725
+        },
+        {
+          "name": "http://localhost:8255/api/backtest",
+          "duration": 529.3000000007451,
+          "startTime": 1223.7999999998137
+        },
+        {
+          "name": "http://localhost:8255/api/dashboard",
+          "duration": 10.299999999813735,
+          "startTime": 1756
+        },
+        {
+          "name": "http://localhost:8255/api/sectors",
+          "duration": 19.600000000558794,
+          "startTime": 1756
+        },
+        {
+          "name": "http://localhost:8255/api/themes",
+          "duration": 12.700000000186265,
+          "startTime": 1756.2000000001863
+        },
+        {
+          "name": "http://localhost:8255/api/stocks",
+          "duration": 215.90000000037253,
+          "startTime": 1756.2000000001863
+        }
+      ]
+    },
+    {
+      "path": "/watchlist",
+      "nav_timing_ms": {
+        "domInteractive": 17.09999999962747,
+        "domContentLoadedEventEnd": 17.09999999962747,
+        "loadEventEnd": 81.19999999925494,
+        "duration": 81.19999999925494
+      },
+      "content_visible_ms": 106.8,
+      "networkidle_ms": 4794.6,
+      "api_requests": [
+        {
+          "url": "http://localhost:8255/api/methodology",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/health",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/health",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/watchlist",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/health",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/runs",
+          "status": 200
+        }
+      ],
+      "api_resource_timing_ms": [
+        {
+          "name": "http://localhost:8255/api/health",
+          "duration": 929.7999999998137,
+          "startTime": 105.79999999981374
+        },
+        {
+          "name": "http://localhost:8255/api/watchlist",
+          "duration": 1477.7999999998137,
+          "startTime": 106.3999999994412
+        },
+        {
+          "name": "http://localhost:8255/api/methodology",
+          "duration": 791.1000000005588,
+          "startTime": 106.69999999925494
+        },
+        {
+          "name": "http://localhost:8255/api/runs",
+          "duration": 4179.5,
+          "startTime": 106.8999999994412
+        },
+        {
+          "name": "http://localhost:8255/api/health",
+          "duration": 936.3999999994412,
+          "startTime": 107.29999999981374
+        },
+        {
+          "name": "http://localhost:8255/api/health",
+          "duration": 734.2000000001863,
+          "startTime": 1045.3999999994412
+        }
+      ]
+    },
+    {
+      "path": "/research/regime-lab",
+      "nav_timing_ms": {
+        "domInteractive": 28.5,
+        "domContentLoadedEventEnd": 28.59999999962747,
+        "loadEventEnd": 107.40000000037253,
+        "duration": 107.40000000037253
+      },
+      "content_visible_ms": 137.6,
+      "networkidle_ms": 60168.8,
+      "api_requests": [
+        {
+          "url": "http://localhost:8255/api/methodology",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/health",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/health",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/health",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/runs",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/health",
+          "status": 200
+        }
+      ],
+      "api_resource_timing_ms": [
+        {
+          "name": "http://localhost:8255/api/health",
+          "duration": 902.6000000005588,
+          "startTime": 126.79999999981374
+        },
+        {
+          "name": "http://localhost:8255/api/research/regime-lab?view=pooled",
+          "duration": 902.3999999994412,
+          "startTime": 128.70000000018626
+        },
+        {
+          "name": "http://localhost:8255/api/methodology",
+          "duration": 445.5,
+          "startTime": 129
+        },
+        {
+          "name": "http://localhost:8255/api/runs",
+          "duration": 5003.299999999814,
+          "startTime": 129.20000000018626
+        },
+        {
+          "name": "http://localhost:8255/api/health",
+          "duration": 897.7999999998137,
+          "startTime": 129.5
+        },
+        {
+          "name": "http://localhost:8255/api/health",
+          "duration": 212.6000000005588,
+          "startTime": 1030.2999999998137
+        },
+        {
+          "name": "http://localhost:8255/api/health",
+          "duration": 145.8999999994412,
+          "startTime": 31028.400000000373
+        }
+      ]
+    },
+    {
+      "path": "/ (retrospective toggle -- NO standalone /research/market-phase-retrospective route exists; see dev handoff)",
+      "toggle_found": true,
+      "toggle_to_networkidle_ms": 823.3,
+      "api_requests": [
+        {
+          "url": "http://localhost:8255/api/market-phase",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/market-phase?full=true",
+          "status": 200
+        },
+        {
+          "url": "http://localhost:8255/api/market-phase",
+          "status": 200
+        }
+      ],
+      "api_resource_timing_ms": [
+        {
+          "name": "http://localhost:8255/api/market-phase",
+          "duration": 10.700000000186265,
+          "startTime": 431
+        },
+        {
+          "name": "http://localhost:8255/api/market-phase?full=true",
+          "duration": 402.09999999962747,
+          "startTime": 723.8000000007451
+        },
+        {
+          "name": "http://localhost:8255/api/market-phase",
+          "duration": 332.20000000018626,
+          "startTime": 6192.5
+        }
+      ]
+    }
+  ]
+}

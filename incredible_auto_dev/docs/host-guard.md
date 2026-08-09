@@ -204,6 +204,17 @@ activation by `journalctl -t iad-cstate-limit -b 0` + sysfs `state[23]/disable`
 = 1 on all CPUs, never by unit-file presence or `is-active` (oneshot without
 `RemainAfterExit` reads `inactive (dead)` after success).
 
+2026-08-08 OUTCOME — **falsified in one day.** Fault reset #4 (12:48) fired with
+the unit verifiably active in the dying boot (its journal tag 5 s after boot;
+`host_state` `C2:1,C3:1` until 13 min before death) at 30 W / load1 3.04 /
+84 °C: deep-C-state limiting does NOT prevent this signature on this host. The
+unit was removed the same day (falsified, and it cost thermal headroom — the
+hottest run of the incident, Tctl 90 °C with dispatch deferrals), verified by
+sysfs 32×`0`; per the rule above in reverse, later boots must show ZERO
+`iad-cstate-limit` tag lines. Ladder: **rung 3 — overnight memtest86+
+2026-08-08→09 — in progress**, then JEDEC baseline → SO-DIMM reseat/swap →
+GEEKOM RMA. Full record: `~/.cache/iad/host-guard/soak-log.md`.
+
 `doctor.sh --only ras-logging` verifies what it can read without root (the
 journald drop-in and the rasdaemon unit) and stays silent on hosts that have no
 reset history.

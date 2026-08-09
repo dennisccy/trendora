@@ -47,7 +47,7 @@ from app.config import (
     get_config,
 )
 from app.engine.labels import label_for
-from app.engine.prices import bar_cache, bars_asof, bars_asof_window, close_on, closes
+from app.engine.prices import bar_cache, bars_asof_window, close_on, closes
 from app.engine.research import _dataset_version  # single-sourced cache stamp (J-72) — never duplicated
 from app.models import MacroSeries, MarketPhaseCache, ScannerRun
 
@@ -206,15 +206,28 @@ def _severity_reading(
     # `_latest_vix_on_or_before` (above) was measured to hold the GIL on — `bars_asof(session, bench, d)`
     # builds the benchmark's ENTIRE <= D history (up to ~7,500 `Bar` NamedTuples on the live 30y basis)
     # only to filter it down to the trailing `lookback_days` calendar-day window immediately below.
-    # `bars_asof_window(session, bench, d, mp.lookback_days)` fetches only the trailing `lookback_days`
-    # bars BY COUNT — provably sufficient to reproduce the SAME `>= start` filtered result: the number of
-    # TRADING days within any `lookback_days` CALENDAR days can never exceed `lookback_days` (a trading
-    # day is always one calendar day, so N calendar days admit at most N trading days), and `bars_asof`'s
-    # ascending order means every date >= `start` occupies a trailing SUFFIX of the full series — so a
-    # `lookback_days`-sized trailing-count window is guaranteed to contain that whole suffix regardless of
-    # history density/gaps. Filtering the (now bounded) window with the SAME `>= start` condition below is
-    # therefore byte-identical to filtering the full prefix.
-    window = [bar for bar in bars_asof_window(session, bench, d, mp.lookback_days) if bar.date >= start]
+    # `bars_asof_window(session, bench, d, mp.lookback_days + 1)` fetches the trailing `lookback_days + 1`
+    # bars BY COUNT — provably sufficient to reproduce the SAME `>= start` filtered result.
+    #
+    # ops-hardening iter-54 (B1 fix, iter-53 audit): the `>= start` filter admits `[start, d]` INCLUSIVE —
+    # that is `lookback_days + 1` CALENDAR days, which can hold up to `lookback_days + 1` TRADING days (a
+    # trading day is always one calendar day, so N calendar days admit AT MOST N trading days — but
+    # `[start, d]` inclusive spans `lookback_days + 1` calendar days, not `lookback_days`). The iter-53
+    # fetch supplied only `lookback_days` bars by count — one bar SHORT of that bound — so on a
+    # sufficiently dense series the oldest qualifying bar (dated exactly `start`) was silently dropped
+    # (proven on the shipped fixture at `lookback_days=30`: untreated 31 bars, treated 30, `phase` flips
+    # `Correction` -> `Pullback`). Fetching `lookback_days + 1` by count makes the window a provable
+    # superset of the calendar filter for EVERY possible data density, not merely at the live committed
+    # density (SPY's real trading-day density leaves >100 bars of slack at `lookback_days=365` and >13 at
+    # `lookback_days=50` — safe in practice, but the code's own claim must match what it proves, not what
+    # happens to be true today). `bars_asof`'s ascending order means every date >= `start` occupies a
+    # trailing SUFFIX of the full series, so the `lookback_days + 1`-sized trailing-count window is
+    # guaranteed to contain that whole suffix regardless of history density/gaps. Filtering the (now
+    # bounded) window with the SAME `>= start` condition below is therefore byte-identical to filtering
+    # the full prefix — after this fix, not before it (the pre-fix hazard above is real, not hypothetical;
+    # it was simply unreachable at the live committed density, which is a fact about today's data, not a
+    # property of the code).
+    window = [bar for bar in bars_asof_window(session, bench, d, mp.lookback_days + 1) if bar.date >= start]
     if len(window) < mp.min_history_bars:
         return None  # insufficient benchmark history -> NA / partial (never fabricated)
     closes_window = closes(window)
@@ -543,15 +556,22 @@ def _trailing_ma_reclaimed(session: Session, as_of: date_cls, cfg: Config) -> Op
     recomputes nothing, carries no literal (the window is the config key).
 
     ops-hardening iter-53 (J-05/J-07, GIL-hold bound): the SAME bounded-window treatment as
-    `_severity_reading`'s benchmark drawdown leg, for the SAME reason and with the SAME byte-identity proof
-    (a `lookback_days`-by-COUNT window is provably a superset of any `lookback_days`-by-CALENDAR-day filter,
-    since trading days are never denser than calendar days) — `_recovery_turn_signal` calls this once per
-    `compute_market_phase` invocation (in scope for `market_phase_warm`); `_recovery_turn_dates_with_context`
-    (below) also calls it, unmodified, and benefits for free."""
+    `_severity_reading`'s benchmark drawdown leg, for the SAME reason — `_recovery_turn_signal` calls this
+    once per `compute_market_phase` invocation (in scope for `market_phase_warm`); `_recovery_turn_dates_
+    with_context` (below) also calls it, unmodified, and benefits for free.
+
+    ops-hardening iter-54 (B1 fix): fetches `recovery_trailing_ma_days + 1` bars by count, not
+    `recovery_trailing_ma_days` — see `_severity_reading`'s docstring for the full off-by-one proof (the
+    `>= start` filter admits `lookback_days + 1` CALENDAR days inclusive, which can hold up to
+    `lookback_days + 1` TRADING days; a `+1`-sized count window is the provable superset for every
+    density, not merely the live committed one)."""
     mp = cfg.market_phase
     bench = cfg.etfs.index[0]
     start = as_of - timedelta(days=mp.recovery_trailing_ma_days)
-    window = [bar for bar in bars_asof_window(session, bench, as_of, mp.recovery_trailing_ma_days) if bar.date >= start]
+    window = [
+        bar for bar in bars_asof_window(session, bench, as_of, mp.recovery_trailing_ma_days + 1)
+        if bar.date >= start
+    ]
     series = closes(window)
     if not series:
         return None
@@ -1163,10 +1183,19 @@ def _true_bear_episodes(dated_closes: list[dict], cfg: Config) -> list[dict]:
 def _benchmark_close_on_or_before(session: Session, d: date_cls, cfg: Config) -> Optional[float]:
     """The benchmark (SPY) close on/before D (date <= D, no lookahead) — the SAME first index ETF the
     severity drawdown leg reads. None when no bar exists. A pure causal read used to build the
-    retrospective's per-snapshot-date close series; recomputes nothing."""
+    retrospective's per-snapshot-date close series; recomputes nothing.
+
+    ops-hardening iter-54 (B3 fix, iter-53 audit): reads `close_on` (the single-bar accessor, already
+    imported into this module by iter-53's own fix) instead of `closes(bars_asof(session, bench, d))[-1]`
+    — the EXACT unbounded-full-history-fetch-to-read-one-value shape iter-53 proved dominant elsewhere in
+    this same module (`_latest_vix_on_or_before`, 65 stalls / 3.34s in one call). Called once per stored
+    run inside `compute_retrospective`'s `bar_cache` loop (~2,900x on the live basis) to serve
+    `GET /api/market-phase/retrospective` — a request-time path, not a finalize-tail phase, but the same
+    failure class. Byte-identical to the pre-fix read: `close_on` is the single-bar form of
+    `bars_asof(session, symbol, d)[-1].close` (iter-26, J-16; proven byte-identical then, re-proven here
+    by a fixture-backed equality test against the pre-fix read)."""
     bench = cfg.etfs.index[0]
-    series = closes(bars_asof(session, bench, d))
-    return series[-1] if series else None
+    return close_on(session, bench, d)
 
 
 def compute_retrospective(

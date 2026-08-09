@@ -222,7 +222,9 @@ def _per_symbol_coverage(session: Session, cfg: Config) -> list[dict]:
     return rows
 
 
-def _missing_data_diagnostic(session: Session, cfg: Config) -> dict:
+def _missing_data_diagnostic(
+    session: Session, cfg: Config, *, calendar: Optional[list[date_cls]] = None,
+) -> dict:
     """J-37 — the Missing-data diagnostic: a READ-ONLY honest report of every universe member that is
     INSUFFICIENT FOR ANALYSIS, derived ONCE from the SAME stored bars + `config.universe.symbols` +
     `indicators.min_history_bars` + the benchmark trading calendar the J-36 table / walk-forward already
@@ -239,11 +241,24 @@ def _missing_data_diagnostic(session: Session, cfg: Config) -> dict:
     A member that is fine appears in NO category. The thin threshold and the trading calendar both come
     from config (No magic number). `pullable` flags the rows a one-click pull can act on: no-history and
     intra-series-gap members (a thin member's gap, if any, surfaces as an intra-series-gap row; a thin
-    member with a contiguous-but-short series has no gap to pull and is shown for transparency only)."""
+    member with a contiguous-but-short series has no gap to pull and is shown for transparency only).
+
+    ops-hardening iter-54 (`per_date_coverage_warm` fix, profiled): `calendar` is OPTIONAL — when the
+    caller already computed the benchmark trading calendar (`_trading_days`, an unbounded per-symbol
+    `bars_asof` fetch — up to ~5,400 bars on the live basis), it is passed through here instead of this
+    function re-deriving the SAME calendar itself. `_compute_coverage_body` (the sole production caller)
+    already computes `trading_days` for the gap table two lines above its own call into this function —
+    before this fix, that fetch ran a SECOND time here, every `_compute_coverage_body` invocation (i.e.
+    once per date in `_persist_per_date_coverage_snapshots`'s per-date `per_date_coverage_warm` loop, and
+    once more for the current stamp in `coverage_membership_timeline_refresh`). `None` (every existing
+    test call, and any future standalone caller) preserves the exact prior behavior byte-identically —
+    this function derives its own calendar exactly as before. Passing the caller's calendar changes
+    nothing about what is computed, only how many times the SAME unbounded fetch runs."""
     threshold = cfg.indicators.min_history_bars  # canonical "insufficient-for-analysis" cutoff (config)
     universe = list(cfg.universe.symbols)
     universe_set = set(universe)
-    calendar = _trading_days(session, cfg)  # benchmark (SPY) bar dates, ascending — the SAME calendar
+    if calendar is None:
+        calendar = _trading_days(session, cfg)  # benchmark (SPY) bar dates, ascending — the SAME calendar
     calendar_set = set(calendar)
     preview_cap = cfg.data_manager.gap_preview  # reuse the existing gap-preview display cap (No magic number)
 
@@ -1161,6 +1176,12 @@ def _compute_coverage_body(
 
     snapshot_dates = sorted(session.exec(select(ScannerRun.asof_date)).all())
     snapshot_set = set(snapshot_dates)
+    # ops-hardening iter-54 (`per_date_coverage_warm` fix, profiled): computed ONCE here and passed to
+    # `_missing_data_diagnostic` below (its own `calendar` parameter) instead of that function
+    # re-deriving the SAME benchmark calendar a second time via its own `_trading_days` call — an
+    # unbounded per-symbol `bars_asof` fetch (SPY's entire history, up to ~5,400 bars on the live basis),
+    # architecturally the same shape B1/B3 bounded elsewhere in `market_phase.py` this same iteration.
+    # Every OTHER `_compute_coverage_body` reader of `trading_days` is unaffected (unchanged local var).
     trading_days = _trading_days(session, cfg)
     gaps = [d for d in trading_days if d not in snapshot_set]
     preview = cfg.data_manager.gap_preview
@@ -1209,8 +1230,11 @@ def _compute_coverage_body(
         "per_symbol": _per_symbol_coverage(session, cfg),
         # J-37: the Missing-data diagnostic — three honest categories of universe members insufficient
         # for analysis (no-history / thin / intra-series gap), each with its EXACT shortfall, derived from
-        # the SAME stored bars + threshold + calendar above. Recomputes no canonical value; fabricates nothing.
-        "diagnostic": _missing_data_diagnostic(session, cfg),
+        # the SAME stored bars + threshold + calendar above. Recomputes no canonical value; fabricates
+        # nothing. `calendar=trading_days` (iter-54): reuses the calendar this function already computed
+        # two lines above instead of paying its own second unbounded fetch — see this function's own
+        # `trading_days` comment and `_missing_data_diagnostic`'s `calendar` parameter docstring.
+        "diagnostic": _missing_data_diagnostic(session, cfg, calendar=trading_days),
         # J-94: the per-date coverage diagnostic — for the resolved as-of, the admitted count + the
         # excluded-by-reason counts (below_history / below_price / below_adv) against the candidate-pool
         # denominator. Read-only descriptive derivation over the SAME stored bars + config thresholds.
@@ -3255,9 +3279,16 @@ _FAULT_INJECT_MEMORY_ERROR_ENV = "TRENDORA_FAULT_INJECT_MEMORY_ERROR"
 # graph — data_manager already imports FROM research at module level, so the reverse would be circular).
 # ops-hardening iter-53: "coverage_membership_timeline" and "market_phase" added — the two finalize-tail
 # phases this iteration's GIL-hold profile bounded (`universe_resolver.resolve_with_reasons`'s per-symbol
-# bounded-window fetch; `market_phase._severity_reading`'s benchmark/^VIX bounded-window fetch). Both
-# reach this hook via the SAME lazy `from app.engine import data_manager` import trick (data_manager
-# already imports both modules at module level, so the reverse import would be circular).
+# bounded-window fetch; `market_phase._severity_reading`'s benchmark/^VIX bounded-window fetch).
+# "market_phase" still reaches this hook via the lazy `from app.engine import data_manager` import trick
+# (data_manager already imports `market_phase` at module level, so the reverse import would be circular).
+# ops-hardening iter-54 (B2 fix, iter-53 audit): "coverage_membership_timeline"'s call site RELOCATED —
+# it no longer fires from `resolve_with_reasons` (that shared per-symbol loop is ALSO reached from the
+# per-date backfill compute via `scoring.score_stocks`, which runs BEFORE the finalize tail, so arming it
+# there could not isolate the `coverage_membership_timeline_refresh` phase this site name claims to gate —
+# see `resolve_with_reasons`'s own comment for the full finding). It now fires from directly inside THIS
+# module's `_refresh_ingest_aggregates`, at the top of that phase's own block — no lazy import needed
+# (same module).
 _FAULT_INJECT_SITES = frozenset({
     "forward_aggregates", "drawdown_expectations", "backfill_worker", "factor_lab_all",
     "coverage_membership_timeline", "market_phase",
@@ -4096,6 +4127,16 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
                     # fabricated refresh.
                     pass
                 else:
+                    # ops-hardening iter-54 (B2 fix, iter-53 audit): the `coverage_membership_timeline`
+                    # fault-injection probe now lives HERE — the ONE call site inside THIS phase's own
+                    # boundary — instead of inside `universe_resolver.resolve_with_reasons`'s shared
+                    # per-symbol loop (moved OUT; see that function's own comment for the full "isolates
+                    # the wrong phase" finding). Placed immediately before the heavy compute this phase
+                    # actually exists to run, mirroring `market_phase`'s/`factor_lab_all`'s convention, so
+                    # a live drill arming `TRENDORA_FAULT_INJECT_MEMORY_ERROR=coverage_membership_timeline`
+                    # isolates EXACTLY `coverage_membership_timeline_refresh` — never the per-date backfill
+                    # compute upstream of it, and never `per_date_coverage_warm` (a separate call below).
+                    _fault_inject_memory_error("coverage_membership_timeline")  # test-only; no-op in prod
                     payload = refresh_coverage_snapshot(session, cfg)
                     if payload is not None:
                         refreshed.append("coverage")
