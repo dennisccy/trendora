@@ -650,3 +650,41 @@ recommendation has already been overridden twice and both remaining journeys are
 without the lane that lean depth omits.
 **Reversible:** yes — the engine or the owner can run the next round at any depth; this only sets the
 default and records why.
+
+## iter-59 — goal-decomposer
+
+**Ambiguity:** the iter-58 evaluator's next-step item (3) reads "Measure and then bound the one
+calculation that has never been made memory-safe (`_regime_lab_members_by_horizon`)... Measure first,
+fix second — this session's own rule." This session's own repeated "profile before fix" discipline
+(iter-48/50/53) has, in every prior instance, meant: a dedicated iteration first profiles an
+UN-DIAGNOSED code path and only a LATER iteration ships the bound, once the profile names the actual
+mechanism. Item (3) is phrased as one combined instruction for a single round ("measure AND bound"),
+not two rounds, and nothing says whether iter-59 should ship a code fix or only produce bounded
+diagnostic evidence for iter-60.
+
+**We chose:** ship the bound this iteration, not just a diagnostic. Grounds: (1) unlike every prior
+"never profiled" case in this session, `_regime_lab_members_by_horizon` already carries real profiling
+data from iter-58's own live incident — VmPeak landed EXACTLY on the declared 8192 MB ceiling with the
+warm stalled at 1/5 horizons and a real `MemoryError` traceback naming this function, which is a
+located mechanism, not an unknown one; (2) its own docstring already documents that the underlying DB
+read is bounded (column-projected, `yield_per`-streamed) — what is unbounded is the RESULT retained
+across all horizons at once (`pools = {h: [...] for h in horizons}`), which is the SAME shape this row's
+sibling functions (`_all_factor_observations_by_horizon`, `compute_forward_aggregates`'s per-horizon
+loop) were already bound by iter-46/49/50/51 using an established, low-novelty isolate-and-continue
+pattern — applying a proven pattern to a located site is a smaller risk than the "genuinely new
+diagnosis" case rule 5's tie-break language describes; (3) J-07 has been open 25 rounds and this is the
+evaluator's explicit statement of "what keeps J-07 open" — a diagnostic-only round would defer the
+session's own priority-1 unblocker a further round for a function this iteration can already name the
+fix shape for.
+
+**Cost recorded honestly:** if the profiling step (done first, inside this same dispatch, per the
+literal instruction) finds a DIFFERENT mechanism than the one iter-58's incident data suggests, the
+developer follows the measurement, not this note — consistent with the session's own binding rule that
+profiling output overrides a spec's assumed diagnosis. A reader who holds "measure first, fix second"
+to mean strictly two separate rounds would keep this iteration diagnostic-only and defer the bound to
+iter-60, accepting a further round with J-07 open. I chose the combined reading because the profiling
+data already exists and the fix pattern is already proven elsewhere in this same row.
+
+**Reversible:** yes — if profiling inside this dispatch finds the bound is not safely shippable in one
+risky action alongside J-05's step-3 verification, the developer defers the code change and this
+iteration falls back to diagnostic-only, which is a strict subset of what this note anticipates.
