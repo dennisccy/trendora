@@ -701,3 +701,32 @@ worse than a wrong number, because it invites a destructive-looking action. That
 critical and the verdict REGRESSION, halting the session for the owner. I chose the narrower reading and
 I am naming it rather than letting it pass silently.
 **Reversible:** yes — the owner or a later evaluator can re-score this ledger entry to `critical` and halt.
+
+## iter-57 — goal-decomposer
+
+**Ambiguity:** J-05 is `partial` in `journey-history.json`, but iteration-state.md's binding "Do not
+redo" list marks its two remediation items (aggregates-precomputed-at-ingest fix, golden-date rotation)
+DONE + verified, and nothing in the iter-56 eval's Active blockers names any remaining J-05-specific
+defect. Neither `docs/goal.md` nor this session's own agent instructions say whether a journey whose fix
+work is complete but whose status has not yet been re-scored `passing` should be listed as this
+iteration's Target (inviting the evaluator to re-score it) or only as Required-still-passing (regression
+protection, no explicit invitation to re-score).
+
+**We chose:** list J-05 under Required-still-passing, not Target. Grounds stated rather than assumed:
+(1) this iteration's own scope contains no NEW J-05-specific dev work — the decomposer's own rubric
+defines Target journeys as ones "this iteration addresses," and a re-verification-only journey with no
+new fix is exactly what Required-still-passing exists for; (2) J-05's golden (`journey-scripts/J-05.json`)
+is a single-use, date-consuming fixture (iter-55 lesson) — the deterministic-replay lane runs it and
+consumes the SAME rotated date (2010-11-10) regardless of which list carries its name, so detection
+coverage is identical between the two labels; only the framing differs; (3) the evaluator, not the
+decomposer, owns re-scoring a journey to `passing` (agent instructions: "You do NOT mark journeys as
+passing or failing") — the evaluator can promote J-05 from a clean Required-still-passing replay result
+exactly as readily as from a Target's. **Cost recorded honestly:** a reader who takes "listed as Target"
+as the correct signal for "this journey is ready to close" would target J-05 explicitly this round,
+making its likely promotion to `passing` an intended, load-bearing outcome of the plan rather than an
+incidental one; the practical detection coverage is identical either way, but the emphasis in the spec
+differs, and a reader scanning only the Target line would not expect J-05 to move this round.
+
+**Reversible:** yes — the evaluator can score J-05 `passing` from this iteration's Required-still-passing
+replay result regardless of which list carried it, and a future iteration can list it as an explicit
+Target if new J-05-specific work is ever needed.
