@@ -574,3 +574,31 @@ recoverable at all — keep stamping capture artifacts. Fix: per-run result file
 instead of overwriting.
 **Applies to:** any iteration whose replay lane runs more than once (developer pass + lane pass),
 and any evaluator reading a results table that disagrees with a dev handoff or review report.
+
+## iter-56 — 2026-08-10T06:30:00Z
+
+**Verdict:** ESCALATE
+**Lesson:** Moving a value from "computed on every request" to "warmed at ingest" silently changes
+what the page shows *while an ingest is running*. `availability_from_storage`
+(`apps/backend/app/engine/data_manager.py:1676-1690`) reads only the row matching the current
+`_membership_dataset_version` stamp, and that stamp folds in `count(daily_prices)` — so the first bar
+a job commits invalidates it, the only writer is the finalize-tail warm at the END of the job, and for
+the whole run `/data` renders `availability-heatmap.tsx:230-238`'s "No availability yet — There are no
+stored trading days to chart. Fetch real EOD prices" on a 3.3M-row database. The stale row is still in
+the table; the serving path just refuses it. Any future ingest-time cache must decide, explicitly,
+whether a stamp miss means "serve the previous value with an as-of marker", "say updating", or
+"say empty" — the empty sentinel that is honest on a fresh install is a lie on a mature one.
+**Applies to:** any iteration adding or changing an ingest-warmed cache under
+`app/engine/data_manager.py` / `app/engine/indexes.py` (coverage_snapshot, membership_timeline,
+index_series, availability_heatmap, factor_lab_all), and any browser check that only ever loads a page
+on a warm idle system.
+
+## iter-56 — 2026-08-10T06:30:01Z (second entry)
+
+**Verdict:** ESCALATE
+**Lesson:** A journey's gap list lives in `journey-history.json`, not in the previous round's prose.
+iter-54 recorded FOUR over-budget readings for J-06; iter-55's next-step summarised them as "two slow
+endpoints"; the iter-56 spec was built on the summary, fixed exactly those two, and the journey still
+cannot pass. Read the structured note before planning a journey's closing round.
+**Applies to:** the goal-decomposer choosing a target journey, and any evaluator writing a next-step
+summary of a multi-part gap.

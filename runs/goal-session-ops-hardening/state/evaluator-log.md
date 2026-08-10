@@ -5376,3 +5376,181 @@ finishing work apply while the app is also serving people, or only when it is id
 job record no longer claims work it did not finish, proven by a real job that honestly left one item off
 its list; with nothing else running, the health check answered all 459 times, none slower than 1.7 seconds;
 and peak memory was 4,590 MB against an 8,192 MB ceiling, a 44% margin.
+
+## Iteration 56 — goal-ops-hardening-iter-56
+
+**Date:** 2026-08-10T06:30:00Z
+**Verdict:** ESCALATE
+**Depth dispatched:** lean (`iter-56/depth-dispatched` = `lean`, against the spec's own `**Depth:** full`
+/ `Full trigger: 1` — second depth mismatch in three rounds). `.steps/` holds decomposer, developer,
+review-1, browser-qa, coherence only: no audit, no QA, no closure, no demo, no ux-regression.
+`runs/goal-ops-hardening-iter-56/status.json` is stale at `in_progress` / `dev_complete` /
+`next_action: reviewer` (written 05:00; the lane finished 06:17).
+
+**Journey deltas:**
+- **Newly passing: none. Newly failing: none. Regressed: none.** Shape holds at **5 passing / 3 partial
+  / 0 failing**, unchanged for the THIRD round running.
+- **J-06 "Pages load only what they need" — stays `partial`, and this is the most real progress it has
+  had since iter-45.** CLOSED, verified by me in the source, the database and the picture rather than
+  from the handoff: (1) `apps/backend/app/api/runs.py:38-44` now issues ONE
+  `GROUP BY ScannerResult.run_id` query read into a dict before the loop — I read the final code, not
+  the diff summary; measured 216-433 ms in the real browser and 1.010/1.229/1.073 s by curl, against
+  3.2-7.5 s before. (2) `/api/data/availability` serves one indexed row: I read it in sqlite —
+  `availability_cache`, exactly 1 row, `dataset_version=r2945-rc2945-b2026-08-03-bc3306390-h200`,
+  5,391 cells, `total_symbols=591`, last cell 2026-08-03 which is the DB's own `max(daily_prices.date)`;
+  90 ms in-browser, 0.014-0.402 s by curl, against 15.1-21.2 s before. I cropped and opened
+  `J-06-result.png` and the heatmap renders real coloured per-date cells, not the empty state.
+  STILL FAILS step 2's "assert every measurement is within budget" on the two OTHER readings my own
+  iter-54 note already recorded in this journey's gap list and this round never named:
+  `GET /api/health` at **241/243/245 ms** in this round's own browser run and **0.16 s** at rest in the
+  developer's own pre-handoff check, against a committed **≤0.1 s** ceiling the owner's 2026-07-31
+  amendment explicitly kept binding for steady-state reads; and `/api/stocks/AAPL/bars?through=latest`,
+  last measured 6.2 s and not re-measured this round. `last_passing_iter` stays iter-45.
+- **J-01, J-03, J-04, J-08, J-09 KEEP `passing`.** Deterministic replay **5/5 PASS**, no overturn, no
+  reconciliation footer. Re-derived by me in sqlite instead of read off the rows: run **366**
+  (`dates_total=19`, `already_snapshotted=19`, `non_trading_days=9`, `calendar_days=28` — 9+19=28), run
+  **367** (weekend span: `dates_total=0`, 2 non-trading of 2 calendar), run **368** (`dates_total=283`,
+  `non_trading_days=129`, `calendar_days=412` — 129+283=412, far past the retired 370-day cap); every
+  one `provider='seed'`. Two stable spot-checks opened by me: `J-01-verify.png` renders the Scanner Run
+  detail "Immutable snapshot — as of 2026-05-29" (inside the backfilled May range) with provider seed;
+  `J-08-verify.png` renders /backtest "Viewing as-of 2026-08-03 (latest)" with the survivorship-bias
+  disclosure, the honest "No elapsed forward window for this date yet" empty state and a green **Ready**
+  badge. All six evidence PNGs hashed by me and all six are DISTINCT — last round's byte-identical-
+  screenshot defect did not recur.
+- **J-05 and J-07 not re-verified** — neither is a Target nor in the Required-still-passing set this
+  iteration (J-07 explicitly out of scope; J-05's product fix under binding "Do not redo"). iter-55
+  evidence, evidence paths and `spec_hash`es carried forward unchanged. I did not claim to have checked
+  either. J-05's golden-date rotation IS verified by me: steps 2/3/13/14 and the `name` field now read
+  2010-11-10, and sqlite confirms 2010-11-10 has **0** `scanner_runs` rows while the consumed
+  2010-11-08 has 1.
+- No `browser-infra.json`; no `journeys-changed.md`; all 8 `spec_hash`es match `goal_gate hash-journeys`
+  run by me. `pending_infra`: cleared everywhere. `evidence_makeup` set on J-04/J-05/J-06/J-07 (no
+  walkthrough recorded — the demo lane does not run at lean depth).
+- Anti-goal violations: **ONE CLOSED** — J-05's un-rotated single-use golden date (the one item from
+  iter-55's list this iteration was actually asked to fix, and it is fixed). **EIGHT NEW OPEN, all
+  minor:** the availability empty-state untruth; the depth mismatch; the browser lane's "all within
+  budget" over its own 241 ms health reading; `test_api_runs.py`'s full file never completing;
+  `persisted_this_call=True` after a rolled-back commit; Addendum 20's "1996-2026" label over a
+  2005-2026 calendar; the new heading-only J-06 golden; the MCP `list_runs` duplicate. Ledger now:
+  **131 total, 61 unresolved, 0 unresolved critical.** scan-report **CLEAN**; coherence
+  **COHERENCE-WARN** (0 blocking, 1 advisory); review **PASS_WITH_NOTES** (`definition_of_done:
+  complete`, `scope_creep: none`, 1 MINOR + 1 NOTE); merged browser QA **PASS 6/6**; deterministic
+  replay **PASS 5/5**; audit / QA / closure / demo / ux-regression **DID NOT RUN** (lean depth).
+
+**Reasoning:** I checked every load-bearing fact myself instead of reading it off a report.
+(1) **I verified the two headline fixes in the source and in the database, not in the handoff.** I read
+the final `runs()` body — one grouped query, `int(counts_by_run_id.get(run.id, 0) or 0)`, so a run with
+no stored results honestly defaults to 0 exactly as the old per-run COUNT did. I read the
+`availability_cache` row in sqlite and confirmed its stamp equals what
+`research._membership_dataset_version` (read by me at `research.py:2535-2582`) computes from the live
+DB's own `max(id)`/`count` of `scanner_runs` (2945/2945), `max(daily_prices.date)` (2026-08-03) and
+`count(daily_prices)` (3,306,390). Two independent measurement sources agree (curl and real-browser
+resource timing), and the mechanism explains both.
+(2) **I found the thing no lane reported, by following the cache's own invalidation rule instead of its
+docstring.** `availability_from_storage` NEVER computes — it reads the row for the current stamp or
+returns `{'total_symbols':0,'trading_day_count':0,'cells':[]}`. That stamp folds in
+`count(daily_prices)`, so it changes the instant an ingest commits a bar; the ONLY writer is the
+finalize-tail warm at the END of the job (grepped: `availability_cached_with_status` has exactly one
+production caller). So for the whole job — run 365 took 19 minutes — `/data` renders
+`components/availability-heatmap.tsx:230-238`: **"No availability yet — There are no stored trading
+days to chart. Fetch real EOD prices to populate the dataset"** on a database holding 3,306,390 bars
+over 5,391 trading days. The stale row is still sitting in the table; the serving path just refuses to
+use it. Nothing in goal.md's vision ("the UI tells the truth about the backend's own state") survives
+that sentence. No lane tested `/data` during a job; the audit, which might have, did not run.
+(3) **I checked the second thing no lane reported by opening the golden the lane wrote.**
+`journey-scripts/J-06.json` is 11 `goto` steps each expecting only a page heading — no latency, no
+budget, no heatmap cell. Once J-06 joins the replay set it will report PASS every round while measuring
+nothing. That is the same class as the carried iter-33/g heading-only golden, and the J-04 golden's own
+name explicitly disclaims it ("never a bare page-title/heading match").
+(4) **I re-read my own prior record before scoring J-06, and it does not say what the last two rounds'
+prose said.** iter-55's next-step called J-06's gap "two slow endpoints"; the authoritative
+`journey-history.json` note from iter-54 lists **four** over-budget readings, including
+`GET /api/health` at 0.18-1.213 s against ≤0.1 s and `/api/stocks/AAPL/bars` at 6.2 s. This round
+closed two and never named the other two. The imprecise summary, not the record, is what the iter-56
+spec was built on.
+(5) **I checked the lane's own budget claim and it does not hold.** The browser lane records
+`health 241/243/245ms` on `/` and then writes "All within budget". The committed ceiling is ≤0.1 s
+(`reports/perf-budgets.md:1767`, `:4261`), kept binding for steady-state reads by the owner's
+2026-07-31 amendment. 241 ms is 2.4x it. The developer's own at-rest curl this round read 0.16 s — also
+over, and on an idle host, so the session's old "it is contention, not code" reading no longer covers it.
+(6) **I counted MemoryErrors rather than quoting a total, and this time it is genuinely good news.**
+`logs/backend.log` holds **8,104** — byte-identical to iter-54's and iter-55's counts, so **zero new
+MemoryErrors this round**, and no abort/isolation line carries a 2026-08-10 date.
+(7) **I confirmed the new finalize step actually ran, and that its silence is honest.** Three
+`availability_heatmap_warm` phase-timing lines at 06:02:46 / 06:03:03 / 06:03:11, each 0.01-0.02 s —
+cache HITs — and runs 366/367/368's `aggregates_refreshed` correctly OMIT `availability_heatmap`. That
+is the honesty gate working, not a missing warm.
+(8) **AG-9 checked at the row level:** `select distinct provider from data_provider_runs where id>=360`
+returns exactly `[('seed',)]`. **AG-10 checked at the source:** `git diff --stat` AND
+`git status --porcelain` over all five frozen paths are BOTH empty; `config.yaml:1363-1364` still reads
+8192 / 2; `logs/backend.log` shows `host-guard: cpu_list=0-15 blas_threads=8` on this round's launches.
+(9) **The lane-ordering rule held for the FOURTH consecutive round and I re-derived it.** Newest
+product-code mtime 04:34:48, newest touched test 05:18:33, earliest lane artifact 06:03:08;
+`find apps/backend/app apps/frontend -newermt '2026-08-10 06:03:00'` returns nothing.
+Rejected **REGRESSION (C.1)**: no journey moved `passing`/`already_passing` → `failing` — J-05/J-06/J-07
+were already `partial` and keep it. No violation meets the critical list: scan CLEAN, 7-file diff with
+no manifest/lockfile/LICENSE, both AG-10 checks empty, every ingest row `seed`, and no served number is
+wrong — `n_stocks` is byte-identical across all 2,945 runs and the cached payload matches the DB's own
+bar range. The availability empty-state is a **false status message**, not fabricated data; I considered
+failing it closed to critical and scored it minor, and I name the choice rather than let it pass.
+Rejected **STALLED (C.2)**: C.2 needs EVERY unblock path to be human-owned, and almost none is. The
+empty-state fix is a few lines (serve the prior row with an "as of" marker, or an explicit updating
+state); the health endpoint's per-call DB work is named and never profiled; `/api/stocks/AAPL/bars` has
+never been measured once; the J-06 golden needs real assertions; the MCP duplicate has a named finite
+fix. Two fronts are genuinely the owner's, and owner items among many agent items are not a stall.
+Rejected **GOAL_ACHIEVED (C.3)**: three journeys are `partial`; coherence is WARN, not FAIL, but that is
+not enough on its own.
+**Chose ESCALATE (C.4).** Its third clause fires plainly and mechanically: this was a **lean** iteration
+(`depth-dispatched` = `lean`) run against its own spec's `**Depth:** full` with an explicit
+"Full trigger: 1" justification, **and it surfaced cross-cutting complexity no lane reported** — a fix
+spanning `data_manager` → `api/data` → `availability-heatmap.tsx` that leaves an untrue message on
+screen for the length of every ingest job, plus a golden that would fail open forever. I record the
+mechanical reason I did not simply recommend full again: iter-55 recommended full on the merits and the
+engine dispatched lean anyway; iter-54's ESCALATE mandate WAS honoured. In this session a recommendation
+is advice and an ESCALATE is binding, and this round is exactly why that distinction matters.
+**FIVE THINGS I STATE PLAINLY RATHER THAN ROUND AWAY:** (i) **this round delivered and I verified all of
+it in the source — and the scoreboard still did not move, for the third round running.** Both are true.
+(ii) **the profile-first discipline worked perfectly**: both hypotheses confirmed exactly (2,945 COUNT
+queries = the row count, not "roughly"), then fixed, then proven byte-identical — this is the cleanest
+execution round in a long stretch, and the reviewer's `definition_of_done: complete` is earned.
+(iii) **and the fix put a new untruth on the screen**, which no lane caught because every browser check
+runs against a warm idle system and the audit did not run. (iv) **J-06's gap list has had four items
+since iter-54; the last two rounds of prose said "two", and the spec was built on the prose.** That is
+my predecessors' imprecision and mine to correct, not the developer's. (v) **one sentence in a test
+report — "All within budget", written over a 241 ms reading against a 100 ms ceiling — is currently the
+whole difference between J-06 reading as done and reading as two-thirds done.** I hold the goal.md bar
+and I have logged the call so the owner can overrule it in one line.
+
+**Next-step recommendation:** FULL depth (mandatory via ESCALATE). Give the next round this order.
+(1) **Stop the Data page from telling the user there is no data while a job is running.** The moment a
+data job saves its first price row, the availability chart empties and says "There are no stored trading
+days to chart. Fetch real EOD prices" — for the whole job, about twenty minutes. Show the previous chart
+with an honest "as of <date>" note, or an explicit "updating" state. Small, on screen, and created by
+this round.
+(2) **Close the last two over-budget page calls, so "pages load only what they need" can actually
+pass.** The health check answers in about a fifth of a second against a promised tenth — it still does
+real database work on every call, written down since round 54. The single-stock price call was last
+measured at 6.2 seconds and has not been measured since. Measure both first, then fix.
+(3) **Give the J-06 check script real teeth.** The one written this round only checks page titles; it
+must also assert the two fixed calls stay under their limit, or it will report success every round while
+measuring nothing.
+(4) **Finish the one test file that did not finish** — on its own, early in the round, before anything
+else runs; the same treatment last round gave its own slow file.
+(5) **Run the round at the depth its own plan asks for.** This round's plan said deep and the engine ran
+shallow, so the audit never happened — second time in three rounds — and this round's real defect
+reached me unreported.
+(6) SMALL AND ALREADY WRITTEN DOWN: the tool-side run list still uses the slow one-query-per-run loop the
+web side just dropped (`app/mcp/tools.py:706-731`); a cache write that fails can still be recorded as if
+it succeeded; the measurement note labels a 2005-2026 calendar as 1996-2026.
+(7) CARRIED, untouched: iter-29/b + the badge wording after a permanently failed warm-up (29th round
+unmade); iter-31/e; iter-32/f; iter-35/k; iter-36/n; iter-37/o; iter-37/q; iter-39/u; iter-46/az;
+iter-46/ba; iter-47/bd; iter-47/bf; iter-47/bi; iter-48/bj. Deferred a TWENTY-SECOND time: iter-33/g,
+the Regime Lab.
+(8) CAPTURE ONLY, never a round's goal: no walkthrough exists for J-04, J-05, J-06 or J-07 — the demo
+stage does not run at shallow depth and the recorder script bug is still unfixed.
+(9) OWNER: two decisions and three facts. The decisions, asked at rounds 50, 51, 53, 54, 55 and 56 and
+still unanswered — (a) may a future round move the heavy calculation into a separate process?
+(b) does the twenty-minute limit on a job's finishing work apply while the app is also serving people, or
+only when it is idle? The facts — the run list and the availability chart are genuinely fast again,
+proven three ways; nothing ran out of memory this round; and if you would rather I treat the browser
+lane's PASS as binding, say so in one sentence and this journey turns green next round.

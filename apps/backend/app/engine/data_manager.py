@@ -76,6 +76,7 @@ from app.engine.universe_screen import (
     screen_reasons,
 )
 from app.models import (
+    AvailabilityCache,
     CoverageSnapshot,
     DailyPrice,
     DataProviderRun,
@@ -1605,6 +1606,93 @@ def compute_availability(session: Session, config: Optional[Config] = None) -> d
     }
 
 
+# --------------------------------------------------------------------------------------------------
+# ops-hardening iter-56 (J-06 closure): `AvailabilityCache` ingest-time serving cache for
+# `compute_availability` — replaces the unbounded, uncached full-history `GROUP BY daily_prices.date`
+# scan `GET /api/data/availability` used to run on EVERY request (measured 15.1-21.2s live against the
+# <=1.5s budget on the grown 8.37 GB dev DB, `reports/perf-budgets.md` Addendum 18/20). Mirrors the
+# `index_series_cached_with_status`/`membership_timeline_cached` convention: `compute_availability`
+# itself is UNCHANGED (same producer, same signature) — this is a pure serving/persistence wrapper.
+# --------------------------------------------------------------------------------------------------
+def availability_cached_with_status(
+    session: Session, config: Optional[Config] = None,
+) -> tuple[dict, bool]:
+    """Serve `compute_availability`'s payload from `AvailabilityCache`, returning `(payload,
+    persisted_this_call)` — mirrors `indexes.index_series_cached_with_status`'s honesty-gate contract
+    exactly (the SAME pattern the ingest finalize hook's `aggregates_refreshed` list already reads for
+    every other single-key hot-cache category: `index_series`, `factor_lab_all`).
+
+    On a HIT for the current `_membership_dataset_version` stamp (the SAME narrow stamp
+    `CoverageSnapshot`/`MembershipTimelineCache` already key on — `compute_availability` reads ONLY the
+    stored bars manifest + the `ScannerRun` snapshot set, exactly what that stamp encodes), deserialize
+    the stored payload (NO recompute) and return `persisted_this_call=False`. On a MISS, compute ONCE
+    via the UNCHANGED `compute_availability` (the SOLE producer — this function is a pure serving/
+    persistence wrapper, never a second derivation), persist it under the current stamp, prune any
+    stale rows (any older `dataset_version` — this cache holds exactly one row at a time, mirroring
+    `MembershipTimelineCache`'s single-row-per-dataset-version convention, since `compute_availability`
+    has no as-of/range parameter to key on), and return `persisted_this_call=True`. The returned
+    payload is BYTE-IDENTICAL to `compute_availability(...)` for the same DB state (No recompute in the
+    read path)."""
+    cfg = config or get_config()
+    version = _membership_dataset_version(session, cfg)
+
+    hit = session.exec(
+        select(AvailabilityCache).where(AvailabilityCache.dataset_version == version)
+    ).first()
+    if hit is not None:
+        return json.loads(hit.payload_json), False
+
+    # MISS — compute once (the SOLE producer, unchanged) and persist.
+    payload = compute_availability(session, cfg)
+
+    # prune stale rows (any older dataset_version) so the cache table does not grow unbounded as the
+    # dataset matures; the current-version row is then inserted (idempotent upsert on the unique key).
+    stale = session.exec(
+        select(AvailabilityCache).where(AvailabilityCache.dataset_version != version)
+    ).all()
+    for row in stale:
+        session.delete(row)
+
+    session.add(AvailabilityCache(
+        dataset_version=version, payload_json=json.dumps(payload),
+        created_at=datetime.now(timezone.utc),
+    ))
+    try:
+        session.commit()
+    except Exception:  # a concurrent writer raced us to the same key — best-effort, not a source of truth
+        session.rollback()
+    return payload, True
+
+
+def _availability_not_yet_computed_payload() -> dict:
+    """The honest 'not yet computed' availability sentinel `availability_from_storage` serves when no
+    `AvailabilityCache` row exists yet for the current dataset_version (before the first ingest finalize
+    hook has run, or a warm the MemoryError-isolation convention skipped under memory pressure) —
+    mirrors `_coverage_not_yet_computed_payload`'s honesty convention. Issues ZERO database queries —
+    never the full-history `GROUP BY` scan `compute_availability` exists to avoid on this path (AG-8)."""
+    return {"total_symbols": 0, "trading_day_count": 0, "cells": []}
+
+
+def availability_from_storage(session: Session, config: Optional[Config] = None) -> dict:
+    """`GET /api/data/availability`'s serving path — REPLACES the former request-path call straight to
+    `compute_availability` (an unbounded, uncached full-history `GROUP BY daily_prices.date` scan on
+    EVERY request — the confirmed J-06 latency source, `reports/perf-budgets.md` Addendum 18/20:
+    15.1-21.2s against the committed <=1.5s budget). Reads the persisted `AvailabilityCache` row for the
+    current `_membership_dataset_version` stamp; a genuinely missing row (no ingest has warmed it yet,
+    or a warm was skipped under memory pressure) serves the honest not-yet-computed empty payload —
+    NEVER a live full-table compute on this default request path (AG-8). `compute_availability` itself
+    is UNCHANGED and still used directly by the ingest finalize hook / tests that want a genuine live
+    compute."""
+    cfg = config or get_config()
+    version = _membership_dataset_version(session, cfg)
+    row = session.exec(
+        select(AvailabilityCache).where(AvailabilityCache.dataset_version == version)
+    ).first()
+    if row is not None:
+        return json.loads(row.payload_json)
+    return _availability_not_yet_computed_payload()
+
+
 def compute_capacity(session: Session, config: Optional[Config] = None) -> dict:
     """iter-24 fast-platform item K — the DB storage-footprint snapshot: on-disk file size + row counts
     for the three largest tables (`daily_prices` / `scanner_results` / `forward_returns`). PURE DB
@@ -2296,9 +2384,9 @@ class JobProgress:
     # `MarketPhaseCache` ("for each newly-created snapshot date" — never every stored date).
     # `aggregates_refreshed` is the finalize hook's honest output — the subset of `["latest_snapshot",
     # "coverage", "membership_timeline", "market_phase", "forward_aggregates", "research_hot_keys",
-    # "drawdown_expectations", "index_series", "factor_lab_all"]` it actually refreshed — empty/default
-    # until the hook has actually run (never fabricated on an interrupted/failed row; gated in
-    # `_run_detail()` the SAME way `calendar_days` etc. already are).
+    # "drawdown_expectations", "index_series", "factor_lab_all", "availability_heatmap"]` it actually
+    # refreshed — empty/default until the hook has actually run (never fabricated on an
+    # interrupted/failed row; gated in `_run_detail()` the SAME way `calendar_days` etc. already are).
     new_snapshot_dates: list[date_cls] = field(default_factory=list)
     aggregates_refreshed: list[str] = field(default_factory=list)
     # J-34: chunked-fetch progress. `chunk_index` = number of fully-completed chunks (== the durable
@@ -3970,8 +4058,9 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
     `_warm_membership_timeline`'s non-fatal contract in warmup.py — an aggregate-refresh failure must never
     flip an otherwise-successful ingest job to failed). Returns the subset of `["latest_snapshot",
     "coverage", "membership_timeline", "market_phase", "forward_aggregates", "research_hot_keys",
-    "drawdown_expectations", "index_series", "factor_lab_all"]` ACTUALLY refreshed — never a fabricated
-    category (mirrors the `omitted`/`passers` honesty convention already used elsewhere in this module).
+    "drawdown_expectations", "index_series", "factor_lab_all", "availability_heatmap"]` ACTUALLY
+    refreshed — never a fabricated category (mirrors the `omitted`/`passers` honesty convention already
+    used elsewhere in this module).
 
     ops-hardening iter-4 (F1 fix): calls the bare `prog.tick()` (no `activity` argument — it stamps ONLY
     the `last_progress_at` heartbeat, never overwriting `current_activity`, so an already-pinned "scanning
@@ -4369,6 +4458,42 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
             logger.info(
                 "J-05 finalize-tail phase timing: job=%s phase=%s elapsed=%.2fs",
                 prog.job_id, "index_series_warm", time.monotonic() - _phase_t0,
+            )
+
+            # ops-hardening iter-56 (J-06 closure): warm `AvailabilityCache`'s single dataset-version-
+            # keyed row for `GET /api/data/availability`'s per-trading-date heatmap (`compute_availability`
+            # — an unbounded, uncached full-history `GROUP BY daily_prices.date` scan on EVERY request,
+            # measured 15.1-21.2s live against the <=1.5s budget on the grown 8.37 GB dev DB,
+            # `reports/perf-budgets.md` Addendum 18/20). Mirrors `index_series_warm` immediately above:
+            # unconditional (not gated on `prog.new_snapshot_dates`), because the `_membership_dataset_
+            # version` stamp is GLOBAL — ANY ingest that lands a bar or a snapshot, anywhere, must
+            # invalidate it. A single-key warm (never a per-as-of sweep): `compute_availability` has no
+            # as-of parameter, so there is exactly one row to keep fresh, mirroring `MembershipTimelineCache`'s
+            # single-row convention. `availability_cached_with_status` lives in THIS SAME module (unlike
+            # `indexes.index_series_cached_with_status`), so no deferred import is needed to break a
+            # module-load cycle.
+            #
+            # iter-8 MemoryError-isolation convention: caught distinctly from the generic exception below,
+            # stops immediately (a single key, not a loop — nothing further to attempt) and calls
+            # `_release_process_memory()` before moving on to the next aggregate category.
+            # "availability_heatmap" is appended ONLY when this call actually persisted a new row this run
+            # (`persisted` is False on a cache HIT — an honest "was skipped" omission, never a fabricated
+            # refresh, mirroring `index_series_warm`'s own honesty gate above).
+            _phase_t0 = time.monotonic()
+            try:
+                _, availability_persisted = availability_cached_with_status(session, cfg)
+                if availability_persisted:
+                    refreshed.append("availability_heatmap")
+            except MemoryError as exc:
+                _log_isolation_failure(
+                    "ingest availability-heatmap warm aborted — memory pressure: %s", exc,
+                )
+                _release_process_memory()
+            except Exception as exc:  # noqa: BLE001 — non-fatal: log + continue to the next aggregate
+                _log_isolation_failure("ingest availability-heatmap warm failed (non-fatal): %s", exc)
+            logger.info(
+                "J-05 finalize-tail phase timing: job=%s phase=%s elapsed=%.2fs",
+                prog.job_id, "availability_heatmap_warm", time.monotonic() - _phase_t0,
             )
 
             # ops-hardening iter-51 (J-05/J-06/J-07): warm the Factor Lab's default all-history hot key

@@ -69,6 +69,7 @@ from app.engine.forward_testing import compute_forward_aggregates
 from app.engine.ledger import append_entry
 from app.engine.scoring import score_stocks
 from app.models import (
+    AvailabilityCache,
     CoverageSnapshot,
     DailyPrice,
     DataProviderRun,
@@ -339,6 +340,85 @@ def test_compute_availability_byte_identical_after_fetch_scope_widening(coverage
             {"date": d4, "symbols_with_bars": 1, "total_symbols": 2, "snapshot_exists": False},
         ],
     }
+
+
+# ==================================================================================================
+# ops-hardening iter-56 (J-06 closure) — `availability_cached_with_status` / `availability_from_storage`,
+# the `AvailabilityCache` ingest-time serving cache for `compute_availability` (mirrors the
+# `index_series_cached_with_status`/`coverage_from_storage` proofs above).
+# ==================================================================================================
+def test_availability_cached_with_status_miss_computes_and_persists(coverage_engine):
+    """A cache MISS (no `AvailabilityCache` row yet) computes once via the unchanged `compute_availability`
+    (byte-identical), persists it, and reports `persisted_this_call=True`."""
+    engine, _spy_days = coverage_engine
+    cfg = load_config()
+    with Session(engine) as session:
+        fresh = compute_availability(session, cfg)
+        payload, persisted = data_manager.availability_cached_with_status(session, cfg)
+    assert persisted is True
+    assert payload == fresh
+    with Session(engine) as session:
+        rows = session.exec(select(AvailabilityCache)).all()
+    assert len(rows) == 1
+
+
+def test_availability_cached_with_status_hit_returns_stored_payload_no_recompute(coverage_engine, monkeypatch):
+    """A cache HIT for the current dataset-version stamp returns the stored payload WITHOUT calling
+    `compute_availability` again (No recompute in the read path) and reports `persisted_this_call=False`."""
+    engine, _spy_days = coverage_engine
+    cfg = load_config()
+    with Session(engine) as session:
+        first_payload, _ = data_manager.availability_cached_with_status(session, cfg)
+
+    def _boom(*_a, **_k):
+        raise AssertionError("a cache HIT must never call compute_availability again")
+
+    monkeypatch.setattr(data_manager, "compute_availability", _boom)
+    with Session(engine) as session:
+        second_payload, persisted = data_manager.availability_cached_with_status(session, cfg)
+    assert persisted is False
+    assert second_payload == first_payload
+
+
+def test_availability_from_storage_serves_persisted_row(coverage_engine):
+    """`availability_from_storage` (the `GET /api/data/availability` serving path) reads the persisted
+    row byte-identical to a fresh `compute_availability` call, once a warm has run."""
+    engine, _spy_days = coverage_engine
+    cfg = load_config()
+    with Session(engine) as session:
+        fresh = compute_availability(session, cfg)
+        data_manager.availability_cached_with_status(session, cfg)  # warm it
+    with Session(engine) as session:
+        served = data_manager.availability_from_storage(session, cfg)
+    assert served == fresh
+
+
+def test_availability_from_storage_missing_row_serves_honest_not_yet_computed(coverage_engine, monkeypatch):
+    """TC-8 — a genuinely missing `AvailabilityCache` row (real bars present, but no warm has ever run)
+    serves the honest not-yet-computed empty payload — NEVER a live `compute_availability` call on this
+    default request path (AG-8), even though this fixture has real SPY/AAA bars that WOULD produce
+    non-empty cells if computed live."""
+    engine, _spy_days = coverage_engine
+    cfg = load_config()
+
+    def _boom(*_a, **_k):
+        raise AssertionError("a missing cache row must never trigger a live compute_availability call")
+
+    monkeypatch.setattr(data_manager, "compute_availability", _boom)
+    with Session(engine) as session:
+        served = data_manager.availability_from_storage(session, cfg)
+    assert served == {"total_symbols": 0, "trading_day_count": 0, "cells": []}
+
+
+def test_availability_from_storage_empty_db_matches_honest_fallback():
+    """A genuinely empty / bars-less DB (no cache row, no bars) serves the SAME honest empty payload —
+    coincidentally identical to `compute_availability`'s own empty-DB return, but served with ZERO
+    database queries via the fallback, never a live compute."""
+    engine = make_engine("sqlite:///:memory:")
+    create_db_and_tables(engine)
+    with Session(engine) as session:
+        served = data_manager.availability_from_storage(session, load_config())
+    assert served == {"total_symbols": 0, "trading_day_count": 0, "cells": []}
 
 
 # ==================================================================================================
@@ -1053,7 +1133,8 @@ def test_finalize_hook_persists_coverage_snapshot_and_warms_aggregates(finalize_
     current latest run's per-horizon forward-aggregate cache), `research_hot_keys` (the default hot key),
     `index_series` (ops-hardening iter-13: the fixture's own `SPY` bar is one of `index_chart.symbols`, so
     the hot-key warm has real bars to compute from), `factor_lab_all` (ops-hardening iter-51: the Factor
-    Lab's default all-history hot key)."""
+    Lab's default all-history hot key), `availability_heatmap` (ops-hardening iter-56: the SAME fixture
+    data gives the availability-heatmap warm real bars/snapshot to compute from)."""
     engine, d = finalize_hook_engine
     cfg = load_config()
     with Session(engine) as session:
@@ -1062,7 +1143,7 @@ def test_finalize_hook_persists_coverage_snapshot_and_warms_aggregates(finalize_
         refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)
     assert set(refreshed) == {
         "latest_snapshot", "coverage", "membership_timeline", "market_phase", "forward_aggregates",
-        "research_hot_keys", "index_series", "factor_lab_all",
+        "research_hot_keys", "index_series", "factor_lab_all", "availability_heatmap",
     }
     with Session(engine) as session:
         rows = session.exec(select(CoverageSnapshot)).all()
@@ -1210,6 +1291,100 @@ def test_finalize_hook_index_series_memory_error_isolated_and_not_reported(
         "latest_snapshot", "coverage", "membership_timeline", "market_phase", "forward_aggregates",
         "research_hot_keys",
     } <= set(refreshed)
+
+
+# ==================================================================================================
+# ops-hardening iter-56 (J-06 closure): the finalize hook's NEW `availability_heatmap` warm — mirrors
+# the `index_series` proofs above for the SINGLE dataset-version-keyed `AvailabilityCache` row
+# `GET /api/data/availability`'s per-trading-date heatmap serves from (`compute_availability` has no
+# as-of/range parameter, so there is exactly one row to keep fresh, unlike `IndexSeriesCache`'s
+# multi-key shape).
+# ==================================================================================================
+def test_finalize_hook_warms_availability_heatmap(finalize_hook_engine):
+    """TC-5 — a finalize hook call persists exactly one `AvailabilityCache` row for the current
+    dataset-version stamp and reports "availability_heatmap" as refreshed — the fixture's own SPY bar
+    and stored snapshot give the warm real data to compute from."""
+    engine, d = finalize_hook_engine
+    cfg = load_config()
+    with Session(engine) as session:
+        prog = JobProgress(job_id="availability-heatmap-probe", kind="backfill", start=d, end=d)
+        prog.new_snapshot_dates = [d]
+        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)
+    assert "availability_heatmap" in refreshed
+    with Session(engine) as session:
+        rows = session.exec(select(AvailabilityCache)).all()
+        assert len(rows) == 1
+        assert rows[0].dataset_version == data_manager._membership_dataset_version(session, cfg)
+
+
+def test_finalize_hook_availability_heatmap_byte_identical_to_fresh_compute(finalize_hook_engine):
+    """TC-6 — the persisted payload is byte-identical (field-by-field) to a direct fresh
+    `compute_availability` call for the same session state (AG-3: storage is re-served, never
+    re-derived)."""
+    engine, d = finalize_hook_engine
+    cfg = load_config()
+    with Session(engine) as session:
+        prog = JobProgress(job_id="availability-byte-identity-probe", kind="backfill", start=d, end=d)
+        prog.new_snapshot_dates = [d]
+        data_manager._refresh_ingest_aggregates(session, cfg, prog)
+    with Session(engine) as session:
+        row = session.exec(select(AvailabilityCache)).one()
+        stored = json.loads(row.payload_json)
+        fresh = data_manager.compute_availability(session, cfg)
+    assert stored == fresh
+
+
+def test_finalize_hook_availability_heatmap_second_run_hit_not_reported_as_refreshed(
+    finalize_hook_engine,
+):
+    """Honesty gate — a SECOND finalize hook call with no intervening ingest to any bar/snapshot is a
+    genuine cache HIT (nothing new persisted this run): "availability_heatmap" is honestly ABSENT the
+    second time, mirroring `index_series_warm`'s "was skipped" omission convention."""
+    engine, d = finalize_hook_engine
+    cfg = load_config()
+    with Session(engine) as session:
+        prog1 = JobProgress(job_id="availability-heatmap-first", kind="backfill", start=d, end=d)
+        prog1.new_snapshot_dates = [d]
+        first = data_manager._refresh_ingest_aggregates(session, cfg, prog1)
+    assert "availability_heatmap" in first
+
+    with Session(engine) as session:
+        prog2 = JobProgress(job_id="availability-heatmap-second", kind="backfill", start=d, end=d)
+        prog2.new_snapshot_dates = [d]
+        second = data_manager._refresh_ingest_aggregates(session, cfg, prog2)
+    assert "availability_heatmap" not in second  # a genuine HIT — nothing new persisted this run
+    with Session(engine) as session:
+        rows = session.exec(select(AvailabilityCache)).all()
+    assert len(rows) == 1  # still exactly one row — the second run never wrote a duplicate
+
+
+def test_finalize_hook_availability_heatmap_memory_error_isolated_and_not_reported(
+    finalize_hook_engine, monkeypatch
+):
+    """TC-9 — a `MemoryError` raised while warming the availability-heatmap cache is isolated to that
+    one warm step: it never flips the ingest job's own status (this function never raises), the OTHER
+    aggregates (`coverage`/`membership_timeline`/`market_phase`/`forward_aggregates`/`research_hot_keys`/
+    `index_series`) still refresh normally, no other finalize-tail item's own completeness flag is
+    altered, and "availability_heatmap" is honestly absent (never fabricated)."""
+    engine, d = finalize_hook_engine
+    cfg = load_config()
+
+    def _boom(*_a, **_k):
+        raise MemoryError("forced availability-heatmap memory pressure")
+
+    monkeypatch.setattr(data_manager, "availability_cached_with_status", _boom)
+    with Session(engine) as session:
+        prog = JobProgress(job_id="availability-heatmap-oom-probe", kind="backfill", start=d, end=d)
+        prog.new_snapshot_dates = [d]
+        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)  # must not raise
+    assert "availability_heatmap" not in refreshed
+    assert {
+        "latest_snapshot", "coverage", "membership_timeline", "market_phase", "forward_aggregates",
+        "research_hot_keys", "index_series",
+    } <= set(refreshed)
+    with Session(engine) as session:
+        rows = session.exec(select(AvailabilityCache)).all()
+    assert rows == []  # the aborted warm never persisted a row
 
 
 # ==================================================================================================
@@ -1466,6 +1641,7 @@ def test_finalize_hook_never_raises_even_when_everything_fails(finalize_hook_eng
     monkeypatch.setattr(forward_testing, "forward_aggregates_ingest_cached", _boom)
     monkeypatch.setattr(data_manager, "event_study_cached", _boom)
     monkeypatch.setattr(indexes, "index_series_cached_with_status", _boom)
+    monkeypatch.setattr(data_manager, "availability_cached_with_status", _boom)
     monkeypatch.setattr(data_manager, "factor_lab_all_cached", _boom)
     with Session(engine) as session:
         prog = JobProgress(job_id="all-fail-probe", kind="backfill", start=d, end=d)

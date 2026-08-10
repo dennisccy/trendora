@@ -1,12 +1,12 @@
 {
   "schema_version": 1,
   "journey": "J-05",
-  "name": "Aggregates are precomputed at ingest, never on the fly — a live in-app backfill of ONE unsnapshotted historical trading day (2010-11-08 must have 0 snapshot rows before this runs; re-verify and rotate if a prior lane consumed it), waited out for its real duration, then proven from the run's OWN persisted record and its OWN /scanner-runs row",
+  "name": "Aggregates are precomputed at ingest, never on the fly — a live in-app backfill of ONE unsnapshotted historical trading day (2010-11-10 must have 0 snapshot rows before this runs; re-verify and rotate if a prior lane consumed it), waited out for its real duration, then proven from the run's OWN persisted record and its OWN /scanner-runs row",
   "default_timeout_ms": 20000,
   "steps": [
     {"n": 1, "journey": "J-05", "title": "Open the Data Manager", "action": {"type": "goto", "url": "/data"}, "expect": {"text": "Data Manager"}},
-    {"n": 2, "journey": "J-05", "title": "Target one unsnapshotted historical trading day", "action": {"type": "fill", "target": {"testid": "job-start-date"}, "text": "2010-11-08"}},
-    {"n": 3, "journey": "J-05", "action": {"type": "fill", "target": {"testid": "job-end-date"}, "text": "2010-11-08"}},
+    {"n": 2, "journey": "J-05", "title": "Target one unsnapshotted historical trading day", "action": {"type": "fill", "target": {"testid": "job-start-date"}, "text": "2010-11-10"}},
+    {"n": 3, "journey": "J-05", "action": {"type": "fill", "target": {"testid": "job-end-date"}, "text": "2010-11-10"}},
     {"n": 4, "journey": "J-05", "title": "Start the backfill", "action": {"type": "click", "target": {"role": "button", "name": "Start"}}},
     {"n": 5, "journey": "J-05", "title": "The job actually STARTED (not accepted-then-never-run)", "action": {"type": "wait_for", "ms": 15000}},
     {"n": 6, "journey": "J-05", "action": {"type": "expect", "target": {"testid": "job-status"}}, "expect": {"target": {"testid": "job-status"}}},
@@ -16,8 +16,8 @@
     {"n": 10, "journey": "J-05", "title": "THIS run's own breakdown — a re-run over an already-snapshotted day would read '1 already snapshotted' and fail here", "action": {"type": "expect", "target": {"testid": "backfill-breakdown"}}, "expect": {"text": "1 calendar day · 0 already snapshotted · 0 non-trading"}},
     {"n": 11, "journey": "J-05", "title": "A snapshot was actually created", "action": {"type": "expect", "text": "1 snapshots"}, "expect": {"text": "1 snapshots"}},
     {"n": 12, "journey": "J-05", "title": "TC-10 — the persisted run record lists which finalize-hook aggregates it actually refreshed", "action": {"type": "expect", "target": {"testid": "aggregates-refreshed"}}, "expect": {"target": {"testid": "aggregates-refreshed"}}},
-    {"n": 13, "journey": "J-05", "title": "The new as-of is listed on Scanner Runs", "action": {"type": "goto", "url": "/scanner-runs"}, "expect": {"text": "2010-11-08"}},
-    {"n": 14, "journey": "J-05", "title": "Follow THIS run's own row through to its stored snapshot", "action": {"type": "click", "target": {"text": "2010-11-08"}}, "expect": {"text": "Immutable snapshot — as of 2010-11-08"}},
+    {"n": 13, "journey": "J-05", "title": "The new as-of is listed on Scanner Runs", "action": {"type": "goto", "url": "/scanner-runs"}, "expect": {"text": "2010-11-10"}},
+    {"n": 14, "journey": "J-05", "title": "Follow THIS run's own row through to its stored snapshot", "action": {"type": "click", "target": {"text": "2010-11-10"}}, "expect": {"text": "Immutable snapshot — as of 2010-11-10"}},
     {"n": 15, "journey": "J-05", "title": "The stored leaderboard renders from storage (never the 'No stored stock rows' empty state)", "action": {"type": "expect", "text": "Entry Quality"}, "expect": {"text": "Entry Quality"}}
   ],
   "_notes": [
@@ -26,6 +26,7 @@
     "(b) Wait sizing 1,140,000 ms (19 min): the same in-app backfill measured 11m16s standalone in the iter-50 lane and 18m18s on 2026-08-06 while a full `/research/factor-lab?all=true` compute ran concurrently (reports/perf-budgets.md Addendum 10). 19 min covers both with margin.",
     "Golden discipline (iter-47/48 lessons): steps 10/12/14/15 no longer rest on page-wide text a persisted history panel could satisfy regardless of outcome. Step 10 asserts THIS run's own breakdown counts (a re-run over an already-snapshotted day renders '1 already snapshotted' and FAILS here — the assertion has teeth); step 12 asserts TC-10's `aggregates_refreshed` list, never asserted before; step 14 CLICKS the date's own link through to /scanner-runs/<run_id> and asserts that run detail's own header; step 15 asserts the stored leaderboard table actually rendered rather than the 'No stored stock rows' empty state.",
     "Single-use by construction: the target date must have 0 snapshot rows when this runs (J-05's own defining case is an UNSNAPSHOTTED day). 2010-11-08 was live-confirmed clean at 0 snapshot rows on 2026-08-06 06:40 local, after this pass's own TC-1 drill deliberately consumed 2010-11-09 instead so as not to burn it. 2012-01-04 and 2013-02-14 are already consumed by earlier lanes. Rotate to another 0-row trading day (and update steps 2/3/13/14) if a later lane consumes this one — verify live with GET /api/runs before running.",
-    "Steps 8-12 deliberately stay in the SAME page session started at step 1: `stage-timings`/`job-status` are the LIVE job panel's surfaces, and a reload drops to the reduced persisted-run view which does not render them."
+    "Steps 8-12 deliberately stay in the SAME page session started at step 1: `stage-timings`/`job-status` are the LIVE job panel's surfaces, and a reload drops to the reduced persisted-run view which does not render them.",
+    "ops-hardening iter-56 rotation: 2010-11-08 was consumed by iter-55's live golden replay run (scanner_runs.id=2940). Rotated to 2010-11-10 -- steps 2/3/13/14 updated, name field updated -- re-verified live via a direct scanner_runs query (0 rows) on 2026-08-10, the first of the five iter-55-verified-safe candidate dates named in the prior note (2010-11-09 already consumed by iter-50's own TC-1 drill; 2012-01-04 and 2013-02-14 already consumed by earlier lanes). Test-fixture rotation only -- no product-code change, no re-open of J-05's already-confirmed-built honest-status/GIL-holding fixes."
   ]
 }

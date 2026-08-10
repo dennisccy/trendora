@@ -160,8 +160,17 @@ def data_availability(session: Session = Depends(get_session)) -> dict:
     derived over the SAME stored bars + stored runs `compute_coverage` reads (never a second derivation of
     a coverage figure, never a canonical-value recompute). An empty / bars-less DB returns an empty-but-
     valid payload (`cells: []`, `total_symbols: 0`) — no fabricated cells, no 500. The `/api/data` overview
-    and every existing data endpoint are byte-unchanged; this is one additive read-only route."""
-    return data_manager.compute_availability(session, get_config())
+    and every existing data endpoint are byte-unchanged; this is one additive read-only route.
+
+    ops-hardening iter-56 (J-06 closure): served ONLY from the persisted `AvailabilityCache` row for the
+    current dataset-version stamp — never a live `compute_availability` call on this request path (the
+    unbounded, uncached full-history `GROUP BY daily_prices.date` scan that measured 15.1-21.2s live
+    against the committed <=1.5s budget, `reports/perf-budgets.md` Addendum 18/20). A genuinely missing
+    row serves the honest not-yet-computed empty payload — never a 500, never a fabricated cell. The row
+    is written by the ingest finalize hook (`app.engine.data_manager._refresh_ingest_aggregates`).
+    `compute_availability` itself is UNCHANGED and still used directly by that finalize hook / tests that
+    want a genuine live compute."""
+    return data_manager.availability_from_storage(session, get_config())
 
 
 @router.post("/data/jobs")

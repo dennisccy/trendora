@@ -49,7 +49,13 @@ def data_api_engine(tmp_path):
     has already been through an ingest, so it seeds that row here (via the SAME `refresh_coverage_snapshot`
     the real ingest finalize hook / boot warm-up safety net use — never a second derivation), keeping
     every existing coverage-shape assertion in this file reading the SAME live-equivalent numbers as
-    before this iteration."""
+    before this iteration.
+
+    ops-hardening iter-56 (J-06 closure): `GET /api/data/availability` is now served ONLY from the
+    persisted `AvailabilityCache` row (never a live `compute_availability` call on the request path) —
+    this fixture also warms that row here (via the SAME `availability_cached_with_status` the real
+    ingest finalize hook uses — never a second derivation), so `test_get_data_availability_shape` keeps
+    reading the SAME live-equivalent payload as before this iteration."""
     prev = db_module._engine
     engine = make_engine(f"sqlite:///{tmp_path / 'data_api.db'}")
     create_db_and_tables(engine)
@@ -59,6 +65,8 @@ def data_api_engine(tmp_path):
         session.commit()
     with Session(engine) as session:
         data_manager.refresh_coverage_snapshot(session, get_config())
+    with Session(engine) as session:
+        data_manager.availability_cached_with_status(session, get_config())
     db_module.set_engine(engine)
     yield engine
     db_module.set_engine(prev)
@@ -241,6 +249,24 @@ def test_get_data_availability_empty_db_is_graceful(tmp_path):
     (no 500, no fabricated cells), mirroring the honest empty coverage payload."""
     engine = make_engine(f"sqlite:///{tmp_path / 'avail_empty.db'}")
     create_db_and_tables(engine)
+    with Session(engine) as session:
+        payload = data_availability(session=session)
+    assert payload == {"total_symbols": 0, "trading_day_count": 0, "cells": []}
+
+
+def test_get_data_availability_no_warm_serves_honest_not_yet_computed(tmp_path):
+    """ops-hardening iter-56 (TC-8) — real bars/snapshot exist, but the ingest finalize hook's
+    availability-heatmap warm has never run (no `AvailabilityCache` row): the endpoint returns HTTP 200
+    with the honest not-yet-computed empty payload — NEVER a live `compute_availability` full-history
+    scan on this default request path (AG-8), even though a live compute here would produce non-empty
+    cells."""
+    engine = make_engine(f"sqlite:///{tmp_path / 'avail_no_warm.db'}")
+    create_db_and_tables(engine)
+    with Session(engine) as session:
+        for d in (date(2024, 1, 2), date(2024, 1, 3)):
+            session.add(DailyPrice(symbol="SPY", date=d, open=1.0, high=1.0, low=1.0, close=1.0, volume=1.0))
+        session.commit()
+    # deliberately NO data_manager.availability_cached_with_status(...) warm call here.
     with Session(engine) as session:
         payload = data_availability(session=session)
     assert payload == {"total_symbols": 0, "trading_day_count": 0, "cells": []}

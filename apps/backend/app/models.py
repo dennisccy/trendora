@@ -707,6 +707,56 @@ class MembershipTimelineCache(SQLModel, table=True):
     created_at: datetime
 
 
+# --- ops-hardening iter-56 (J-06) availability-heatmap ingest-time serving cache ------------------
+class AvailabilityCache(SQLModel, table=True):
+    """A STANDALONE, create_all-managed cache of the J-61 per-trading-date availability heatmap
+    (`app.engine.data_manager.compute_availability`), served on `GET /api/data/availability` (the
+    `/data` heatmap widget).
+
+    Like `IndexSeriesCache` / `MembershipTimelineCache` / `CoverageSnapshot`, this is EXPLICITLY NOT a
+    scanner snapshot — the *Snapshots are immutable* critical anti-goal binds ONLY `scanner_runs` /
+    `scanner_results` / `*_scores` / `forward_returns`. This is legitimately mutable derived/cache
+    state: it stores the SERIALIZED `compute_availability(...)` payload keyed by a single
+    dataset-version stamp, so a read serves the stored payload instead of re-deriving it (No recompute
+    in the read path). The cached payload is BYTE-IDENTICAL to a fresh `compute_availability(...)`
+    compute — a cache of the deterministic read-only derivation, never a second computation.
+
+    WHY: `compute_availability` runs an unbounded, uncached `GROUP BY daily_prices.date` scan across
+    the FULL benchmark trading calendar on EVERY request — measured live (`reports/perf-budgets.md`
+    Addendum 18/20): 15.1-21.2s against the committed <=1.5s budget on the grown 8.37 GB dev DB, the
+    confirmed J-06 latency source this cache fixes (goal.md's aggregation candidate #7).
+
+    A STANDALONE table (its own `create_all`-managed table) is used deliberately so the iter-12
+    `_ADDITIVE_COLUMNS` trap does NOT apply — a fresh DB carries it from `create_db_and_tables`, and no
+    existing table gains a column.
+
+    CACHE KEY: `(dataset_version)`:
+      - `compute_availability` has NO as-of/range parameter (it always spans the WHOLE benchmark
+        trading calendar), so there is no as-of slot — exactly one row per dataset version, mirroring
+        `MembershipTimelineCache`'s single-row convention (never `IndexSeriesCache`'s multi-key shape,
+        which exists only because THAT function is parameterized by `range_key`/`full`).
+      - `dataset_version` reuses the SAME narrow `_membership_dataset_version` stamp (J-100)
+        `CoverageSnapshot`/`MembershipTimelineCache` already key on — the snapshot set + bars manifest
+        (`max(daily_prices.date)` + `count(*)`), exactly what `compute_availability` reads (ALL stored
+        bars for `symbols_with_bars`/`total_symbols`, plus the `ScannerRun.asof_date` set for
+        `snapshot_exists`). A read computes the CURRENT stamp and looks up THIS exact key; a stale row
+        keyed to an older stamp is never hit (and is pruned on write), so the cache can NEVER serve a
+        stale heatmap.
+
+    `payload_json` is the full serialized `total_symbols`/`trading_day_count`/`cells` payload. Unique
+    on `dataset_version` so a write is an idempotent upsert."""
+
+    __tablename__ = "availability_cache"
+    __table_args__ = (
+        UniqueConstraint("dataset_version", name="uq_availability_cache_key"),
+    )
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    dataset_version: str = Field(index=True)  # the SAME narrow stamp _membership_dataset_version produces
+    payload_json: str  # the serialized compute_availability(...) payload (byte-identical to a fresh compute)
+    created_at: datetime
+
+
 # --- ops-hardening iter-2 (J-05) coverage derived-aggregate snapshot (a PERFORMANCE cache, not a
 # snapshot) -----------------------------------------------------------------------------------
 class CoverageSnapshot(SQLModel, table=True):
