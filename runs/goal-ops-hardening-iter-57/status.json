@@ -47,5 +47,13 @@
   "tests_run": false,
   "tests_run_note": "No pytest in this pass -- no product code changed; the 336 passing tests from the earlier passes stand. Single-slot rule never at risk.",
   "browser_checks_run": true,
-  "next_action": "audit"
+  "next_action": "audit",
+  "corrections": [
+    {
+      "date": "2026-08-10",
+      "by": "goal-ops-hardening-iter-58 developer",
+      "corrects": "T1 / fix_pass.issues_addressed[3] and blockers[1] above (left unedited -- this is an append-only correction, not a rewrite)",
+      "note": "The T1 drill's own raw log (runs/goal-ops-hardening-iter-57/tc7-health-poll.log) actually recorded 1,212 lines, not 1,211: `wc -l` confirms 1212, and the 1,212th record is a genuine non-answer (`2026-08-10T10:30:00Z 000 10.002641ERR -1`) one second after the reported window's own end (10:29:59Z) -- excluded only because the addendum's segment boundary was hand-picked to stop there. So 'ZERO non-200' is false: the true tally is 1,212 polls, ONE non-answer (`000`/10.002641s) at 2026-08-10T10:30:00Z, inside the reported window. Full correction recorded in reports/perf-budgets.md (new dated addendum, Addendum 23 left unedited) and docs/handoffs/goal-ops-hardening-iter-57-dev.md's Known Issues."
+    }
+  ]
 }

@@ -396,6 +396,19 @@ edited, so the 336 passing tests from the first pass stand unchanged.
   corrected (the old "made the check more forgiving" paragraph replaced with what actually shipped).
 - `reports/qa/goal-ops-hardening-iter-57-evidence/J-06-verify.png` -- replay evidence capture.
 
+### Correction (added 2026-08-10, by the goal-ops-hardening-iter-58 developer — append-only; the T1 section above is left unedited)
+
+T1's own raw drill log (`runs/goal-ops-hardening-iter-57/tc7-health-poll.log`) actually contains
+**1,212 lines** (`wc -l` confirms), not the 1,211 reported above, and the reported "ZERO non-200" is
+false: the 1,212th record is a genuine non-answer, `2026-08-10T10:30:00Z 000 10.002641ERR -1` — a
+≥10-second connection-level failure one second after the reported window's own end (10:29:59Z). It was
+dropped only because the addendum's segment boundary was hand-picked to stop there, not because it fell
+outside the drill's actual runtime. The true, honest tally for that same drill: **1,212 polls, ONE
+non-answer** (`000`/10.002641s) at 2026-08-10T10:30:00Z. Full correction, with the corrected TC-6/TC-7
+record and a fresh, properly-bounded re-drill, is in `reports/perf-budgets.md` (new dated addendum;
+Addendum 23 itself is left unedited) and `runs/goal-ops-hardening-iter-57/status.json`'s new
+`corrections` array.
+
 ### Still-open items after this pass (unchanged, disclosed again for the reader)
 
 - `test_api_runs.py`'s 5 `loaded_engine` tests and `test_bars.py`'s 12 — still unrun (TI-1).

@@ -1708,22 +1708,54 @@ def availability_from_storage(session: Session, config: Optional[Config] = None)
         ONLY case that payload is honest for (never conflated with the stale-serving case below).
       - A row exists and its stamp MATCHES the current one (idle/warm, byte-identical to iter-56):
         `stale: False`, `served_dataset_version` equal to the current (== the row's) stamp.
-      - A row exists but its stamp does NOT match the current one (a stamp mismatch — an ingest is
-        mid-flight and the finalize-tail warm has not yet re-run): serve THAT row's real
+      - A row exists but its stamp does NOT match the current one AND an ingest job is genuinely in
+        flight (`_ingest_job_in_flight` below): serve THAT row's real
         `cells`/`total_symbols`/`trading_day_count` (never empty) with `stale: True` and
         `served_dataset_version` set to the row's OWN (prior, not current) stamp, so the UI can render
         the real previous heatmap plus an honest "as of / updating" banner instead of a false "no data"
         claim. Still ZERO recompute — the payload is the SAME stored JSON blob deserialized, never a
-        live `compute_availability` call on this default request path (AG-8)."""
+        live `compute_availability` call on this default request path (AG-8).
+      - A row exists, its stamp does NOT match the current one, but NO ingest job is in flight (iter-58,
+        B2 fix): serve the SAME stored row with `stale: False`. A stamp bump with nothing running to
+        chase it (a request-path historical view creating a new `ScannerRun`, the boot warm-up's own
+        cadence snapshots, or a finalize warm that was skipped/crashed without landing) is honestly
+        "this is the current best-known reading", not "an update is coming" — the mirror-image honesty
+        fix of the stale-serving case above: iter-57 stopped this endpoint from lying "no data" while a
+        job runs; this stops it lying "updating" when nothing does.
+
+    ops-hardening iter-58 (audit B2): `stale` used to be pure stamp inequality, so ANY stamp bump left
+    the page reading "Data as of `<stamp>` — updating" indefinitely with nothing in flight. `stale` is
+    now (stamp mismatch) AND (a job is genuinely running), gated by `_ingest_job_in_flight` — see that
+    function's own docstring for why it reads `data_provider_runs.status` rather than the in-memory
+    `_JOBS` registry."""
     cfg = config or get_config()
     version = _membership_dataset_version(session, cfg)
     row = session.exec(select(AvailabilityCache)).first()
     if row is None:
         return _availability_not_yet_computed_payload()
     payload = json.loads(row.payload_json)
-    payload["stale"] = row.dataset_version != version
+    stamp_mismatch = row.dataset_version != version
+    payload["stale"] = stamp_mismatch and _ingest_job_in_flight(session)
     payload["served_dataset_version"] = row.dataset_version
     return payload
+
+
+def _ingest_job_in_flight(session: Session) -> bool:
+    """True iff at least one `data_provider_runs` row currently has `status == "running"` — the SAME
+    DB-status-only signal `sweep_orphaned_runs` (this module) already reads to detect an in-flight job.
+
+    ops-hardening iter-58 (`availability_from_storage`'s stale-gating fix, audit B2): DELIBERATELY reads
+    `data_provider_runs.status` rather than the in-memory `_JOBS` registry. The two signals diverge on
+    exactly one case, and it decides which one is safe: a job whose WORKER crashed mid-run leaves its
+    `data_provider_runs` row stuck at `status == "running"` (no terminal transition ever wrote) while the
+    in-memory `_JOBS` entry for it may already be gone (process-local; `_JOBS` is empty on a fresh boot —
+    see `sweep_orphaned_runs`'s own docstring — and a crash never guarantees the entry survives either).
+    An `_JOBS`-only signal would false-negative there: "no live job" while a genuinely stuck/unresolved
+    run sits in the DB, which would let the stale banner disappear on a row nobody is actually finishing.
+    The DB-status-only signal never false-negatives on that case — a stuck `running` row keeps reading as
+    "in flight" until an operator resolves it (the boot sweep, or a terminal transition), which is the
+    conservative, honest reading. One indexed-status read, zero writes."""
+    return session.exec(select(DataProviderRun.id).where(DataProviderRun.status == "running")).first() is not None
 
 
 def compute_capacity(session: Session, config: Optional[Config] = None) -> dict:

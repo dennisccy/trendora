@@ -591,3 +591,18 @@ rounds, then a wedged process). So every J-06 replay leaves a multi-minute whole
 the background of whatever runs next, including the lane's own later steps.
 **Applies to:** any iteration replaying J-06, or scheduling heavy work immediately after the browser lane —
 budget for the regime-lab compute the golden starts, or pin the golden to a lab that serves from storage.
+
+## iter-58 — 2026-08-10T21:55:00Z
+
+**Verdict:** ESCALATE
+**Lesson:** Hashing an evidence directory for distinctness does NOT prove the pictures show anything —
+this round's nine PNGs were all distinct, and one of them (`J-05-job-running.png`, 2,061 bytes) is a
+completely blank frame while two more are viewport crops of the top of `/data` showing none of the state
+their rows assert. Open the files; distinctness is a duplication check, not an evidence check. Second, and
+worse: the SAME iteration that corrected iter-57's "segment boundary hid a failed poll" defect reproduced
+it one lane over — a real 3.474 s health answer at `j05-health-poll.log:114` was written up as "a 4s gap
+(poll-script restart, negligible)" when the log has no missing sample there at all. Re-derive a drill's
+tally from its raw log before believing any prose summary of it, including a summary written by the same
+round that fixed the identical bug.
+**Applies to:** any iteration that produces a latency/health drill or cites screenshots as journey
+evidence; specifically the browser-qa lane's write-ups and any evaluator scoring J-05 step 4 or J-07 step 2.

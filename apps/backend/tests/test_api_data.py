@@ -287,11 +287,12 @@ def test_get_data_availability_no_warm_serves_honest_not_yet_computed(tmp_path):
 
 
 def test_get_data_availability_stale_serves_prior_row_on_stamp_mismatch(tmp_path):
-    """ops-hardening iter-57 (TC-1, at the API layer) — a warm has already run (V1), then a new bar
-    lands WITHOUT the finalize-tail warm re-running (simulating a mid-flight ingest job's first
-    committed bar): the endpoint serves the PRIOR row's real, non-empty cells with `stale: True` and
-    `served_dataset_version` equal to the PRIOR (not current) stamp — never the not-yet-computed empty
-    sentinel while real data exists."""
+    """ops-hardening iter-57 (TC-2, at the API layer), gated (iter-58, audit B2 fix) on a job GENUINELY
+    being in flight: a warm has already run (V1), a `data_provider_runs` row has `status == "running"`,
+    then a new bar lands WITHOUT the finalize-tail warm re-running (simulating a mid-flight ingest job's
+    first committed bar): the endpoint serves the PRIOR row's real, non-empty cells with `stale: True`
+    and `served_dataset_version` equal to the PRIOR (not current) stamp — never the not-yet-computed
+    empty sentinel while real data exists."""
     engine = make_engine(f"sqlite:///{tmp_path / 'avail_stale.db'}")
     create_db_and_tables(engine)
     with Session(engine) as session:
@@ -301,6 +302,9 @@ def test_get_data_availability_stale_serves_prior_row_on_stamp_mismatch(tmp_path
     with Session(engine) as session:
         data_manager.availability_cached_with_status(session, get_config())  # warm it (V1)
         prior_version = data_manager._membership_dataset_version(session, get_config())
+        # a job genuinely in flight (the iter-58 precondition `stale` now requires)
+        session.add(DataProviderRun(provider="seed", started_at=datetime(2024, 1, 3, 12, 0, 0), status="running"))
+        session.commit()
     with Session(engine) as session:
         # a new bar lands — bumps the stamp — but no re-warm runs (mid-flight ingest, finalize pending)
         session.add(DailyPrice(symbol="AAA", date=date(2024, 1, 2), open=2.0, high=2.0, low=2.0, close=2.0, volume=2.0))
@@ -308,6 +312,33 @@ def test_get_data_availability_stale_serves_prior_row_on_stamp_mismatch(tmp_path
     with Session(engine) as session:
         payload = data_availability(session=session)
     assert payload["stale"] is True
+    assert payload["served_dataset_version"] == prior_version
+    assert payload["cells"] != []
+    assert payload["total_symbols"] == 1  # the PRIOR row's count (SPY only) — not the post-bar count
+
+
+def test_get_data_availability_stamp_mismatch_without_job_running_is_not_stale(tmp_path):
+    """TC-1, at the API layer (iter-58, audit B2 fix) — the SAME stamp-bumping setup as the sibling test
+    above, but with NO `data_provider_runs` row at `status == "running"`: the endpoint now serves
+    `stale: False`. The prior row's real cells are still served (never the not-yet-computed empty
+    sentinel) — only the honesty flag changes, so `/data` never renders the false '— updating' banner
+    with nothing actually running."""
+    engine = make_engine(f"sqlite:///{tmp_path / 'avail_not_stale.db'}")
+    create_db_and_tables(engine)
+    with Session(engine) as session:
+        for d in (date(2024, 1, 2), date(2024, 1, 3)):
+            session.add(DailyPrice(symbol="SPY", date=d, open=1.0, high=1.0, low=1.0, close=1.0, volume=1.0))
+        session.commit()
+    with Session(engine) as session:
+        data_manager.availability_cached_with_status(session, get_config())  # warm it (V1)
+        prior_version = data_manager._membership_dataset_version(session, get_config())
+    with Session(engine) as session:
+        # a new bar lands — bumps the stamp — but no job is running at all
+        session.add(DailyPrice(symbol="AAA", date=date(2024, 1, 2), open=2.0, high=2.0, low=2.0, close=2.0, volume=2.0))
+        session.commit()
+    with Session(engine) as session:
+        payload = data_availability(session=session)
+    assert payload["stale"] is False
     assert payload["served_dataset_version"] == prior_version
     assert payload["cells"] != []
     assert payload["total_symbols"] == 1  # the PRIOR row's count (SPY only) — not the post-bar count

@@ -602,3 +602,51 @@ letting a reader assume this round was expected to close them.
 
 **Reversible:** yes — the freshly bounded TC-7 drill this iteration produces is exactly the input a
 wedge-fix iteration needs; nothing about this choice makes that future iteration harder, only later.
+
+## iter-58 — goal-evaluator (1 of 2): the AG-8 memory-ceiling event scored minor, not critical
+
+**Ambiguity:** AG-8 is labelled *(critical)* and requires that widening the data basis "must never crash an
+existing page or exhaust a service's memory". This round the forward-aggregate warm for asof-key
+2026-07-31 stalled at 1 of 5 horizons with VmPeak at **8,388,608 kB — exactly the declared 8192 MB
+`memory_cap_mb`** — and `logs/backend.log` carries a real `MemoryError` traceback from a concurrent
+`/api/research/regime-lab` request (`_regime_lab_members_by_horizon`, the long-known un-chunked
+`forward_returns` read). The tree says an unresolved critical violation is a REGRESSION halt. Nothing says
+whether a memory exhaustion in pre-existing, untouched code, from which the process recovers with no error
+served, is "unresolved".
+**We chose:** severity `minor`, no halt. Grounds stated rather than assumed: (1) the triggering code is
+pre-existing and untouched by this iteration's 8-file diff, which changes one boolean's computation, two
+docstrings and a display gate; (2) degradation was honest and I verified it myself — `logs/backend.log`
+holds 129 HTTP-500s in total and the LAST is at 11:28 local (iter-57's wedge), so **zero 500s after 19:00
+local**; `/api/health` returned 200 in all 227 samples; the same process then completed an 18-minute
+backfill cleanly with no restart; (3) this session's own precedent books this class against J-07 (already
+`partial`) and the owner's response at iter-42 was to RAISE the envelope, not to treat it as a code defect.
+**Cost recorded honestly:** the methodology says to fail closed when unsure, and a reader who holds that a
+*(critical)*-labelled anti-goal is critical whenever the condition it names actually occurs would return
+REGRESSION and halt for the owner — the more so because J-07 step 3's own assertion ("VmPeak stays under
+the declared `memory_cap_mb`") is contradicted by this round's own measurement. That reading is defensible
+and I would not argue it is wrong; I chose the narrower one because nothing broke and no served value was
+affected.
+**Reversible:** yes — the owner or a later evaluator can re-score `iter-58/f` to critical and halt.
+
+## iter-58 — goal-evaluator (2 of 2): ESCALATE chosen over CONTINUE with no journey newly failing
+
+**Ambiguity:** ESCALATE's third clause is "this lean iteration surfaced cross-cutting
+ambiguity/complexity". This round's PRODUCT change is narrow and clean (I verified it in the source); what
+is cross-cutting is the VERIFICATION record — two lanes' write-ups contradicting their own raw logs, a
+blank frame cited as evidence, and an "8/8 journeys passed" headline over two journeys whose steps were not
+all executed. Nothing in the methodology says whether "complexity" means complexity in the product or in
+the round's own evidence, and CONTINUE would have been available (limb 2: no progress but tractable gaps).
+**We chose:** ESCALATE. Grounds: (1) the clause's own condition is literally met — this was a lean
+iteration (`depth-dispatched` = `lean`) run against a spec declaring `**Depth:** full` / `Full trigger: 1`,
+and the audit lane, which caught the byte-identical defect last round as finding B1, did not run; (2) the
+decisive structural fact — **J-05 and J-07 both carry a `[NEW]`-flagged walkthrough clause in their
+acceptance text, and the demo/walkthrough lane runs only at full depth, so neither journey can EVER close
+in a lean round**; (3) in this session a depth recommendation is advice that has twice been overridden
+(iters 55 and 57 both recommended full and got lean), while an ESCALATE binds.
+**Cost recorded honestly:** ESCALATE is meant to be used sparingly, and a reader who holds that "complexity"
+must be product complexity would return CONTINUE with a full-depth recommendation and accept the risk of a
+fourth lean round. The practical difference is one binding word; I chose the binding one because the
+recommendation has already been overridden twice and both remaining journeys are structurally unclosable
+without the lane that lean depth omits.
+**Reversible:** yes — the engine or the owner can run the next round at any depth; this only sets the
+default and records why.

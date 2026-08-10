@@ -1,0 +1,46 @@
+{
+  "phase": "goal-ops-hardening-iter-58",
+  "status": "in_progress",
+  "current_step": "dev_complete",
+  "updated_at": "2026-08-10T19:34:40.000000Z",
+  "started_at": "2026-08-10T18:40:00.000000Z",
+  "cli": "claude",
+  "changed_files": [
+    "apps/backend/app/engine/data_manager.py",
+    "apps/backend/app/models.py",
+    "apps/backend/tests/test_data_manager.py",
+    "apps/backend/tests/test_api_data.py",
+    "apps/frontend/lib/availability-empty-state.ts",
+    "apps/frontend/lib/availability-empty-state.test.ts",
+    "apps/frontend/components/availability-heatmap.tsx",
+    "reports/perf-budgets.md",
+    "docs/handoffs/goal-ops-hardening-iter-57-dev.md",
+    "runs/goal-ops-hardening-iter-57/status.json",
+    "runs/goal-session-ops-hardening/journey-scripts/J-05.json",
+    "runs/goal-session-ops-hardening/state/blueprint.md",
+    "docs/handoffs/goal-ops-hardening-iter-58-dev.md",
+    "docs/handoffs/goal-ops-hardening-iter-58-frontend.md"
+  ],
+  "tests_run": true,
+  "tests_summary": "apps/backend: test_data_manager.py 216 passed, test_api_data.py 55 passed. apps/frontend: npx tsc --noEmit clean; npx tsx lib/availability-empty-state.test.ts 4 passed.",
+  "browser_checks_run": false,
+  "browser_checks_skipped_reason": "developer stage -- browser/golden-replay lane runs later per the lane-ordering rule. This dispatch instead ran two full LIVE backend backfills (offline, provider=seed, AG-9-compliant) through the real finalize tail to produce the TC-7 evidence and to satisfy TC-8's rotation; see docs/handoffs/goal-ops-hardening-iter-58-dev.md 'TC-7 drill account'.",
+  "qa_complete": false,
+  "live_drill_evidence": {
+    "job_1": {
+      "job_id": "ea7503cec15c4bb3b700a5c1daf56a4f",
+      "date": "2010-11-11",
+      "data_provider_run_id": 377,
+      "status": "ok",
+      "note": "completed successfully but its 1Hz health-poll log was truncated mid-drill by a background-task lifecycle issue -- NOT used for TC-7's reported numbers; date now consumed (scanner_runs.id=2947), which is why J-05.json needed a second rotation"
+    },
+    "job_2": {
+      "job_id": "212afe4bb97c4822b8ad5ca9771e554a",
+      "date": "2010-11-02",
+      "data_provider_run_id": 378,
+      "status": "ok",
+      "note": "the drill TC-7 reports on -- see reports/perf-budgets.md Addendum 24. OPEN 2026-08-10T19:10:03Z, CLOSED 19:27:41Z, 834 in-window polls, 0 non-200, 1 latency breach (2.865s vs relaxed 2s ceiling)"
+    }
+  },
+  "next_action": "reviewer"
+}

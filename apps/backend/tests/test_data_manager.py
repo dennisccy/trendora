@@ -463,17 +463,22 @@ def test_availability_from_storage_empty_db_matches_honest_fallback():
 
 
 def test_availability_from_storage_stale_serves_prior_row_on_stamp_mismatch(coverage_engine):
-    """TC-1 — the iter-57 J-06 during-a-job honesty fix: once a row exists but a NEW bar has landed
+    """TC-2 — the iter-57 J-06 during-a-job honesty fix, gated (iter-58, audit B2 fix) on a job
+    GENUINELY being in flight as well as the stamp mismatch: once a row exists, a NEW bar has landed
     without the finalize-tail warm re-running yet (the `_membership_dataset_version` stamp folds in
     `count(daily_prices)`, so a bare INSERT bumps it — exactly what a mid-flight ingest's first
-    committed bar does), `availability_from_storage` serves the PRIOR persisted row — non-empty cells,
-    `stale: True`, `served_dataset_version` equal to the OLD (pre-bar) stamp, never the current one and
-    never the not-yet-computed empty sentinel."""
+    committed bar does), AND a `data_provider_runs` row genuinely has `status == "running"`,
+    `availability_from_storage` serves the PRIOR persisted row — non-empty cells, `stale: True`,
+    `served_dataset_version` equal to the OLD (pre-bar) stamp, never the current one and never the
+    not-yet-computed empty sentinel."""
     engine, spy_days = coverage_engine
     cfg = load_config()
     with Session(engine) as session:
         prior_payload, _ = data_manager.availability_cached_with_status(session, cfg)  # warm it (V1)
         prior_version = data_manager._membership_dataset_version(session, cfg)
+        # a job genuinely in flight (the iter-58 precondition `stale` now requires)
+        session.add(DataProviderRun(provider="seed", started_at=datetime(2024, 1, 3, 12, 0, 0), status="running"))
+        session.commit()
 
     # Simulate an ingest job's first committed bar landing WITHOUT the finalize-tail warm re-running —
     # bumps _membership_dataset_version (count(daily_prices) changes) but leaves AvailabilityCache at V1.
@@ -497,14 +502,76 @@ def test_availability_from_storage_stale_serves_prior_row_on_stamp_mismatch(cove
     assert served["cells"] != []
 
 
+def test_availability_from_storage_stamp_mismatch_without_job_running_is_not_stale(coverage_engine):
+    """TC-1 (iter-58, audit B2 fix) — a stamp mismatch ALONE is no longer enough to mark the served row
+    stale. The SAME stamp-bumping event as the sibling test above (a bare `DailyPrice` INSERT — standing
+    in for any stamp bump with nothing in flight to finish it: a request-path historical view creating a
+    new `ScannerRun`, the boot warm-up's own cadence snapshots, or a finalize warm that was
+    skipped/crashed without landing) now serves `stale: False`, because this fixture has NO
+    `data_provider_runs` row with `status == "running"`. `served_dataset_version` still reads the row's
+    OWN (prior) stamp and the real prior cells are still served — only the honesty flag changes; the
+    page never renders the false '— updating' banner with nothing actually running."""
+    engine, spy_days = coverage_engine
+    cfg = load_config()
+    with Session(engine) as session:
+        prior_payload, _ = data_manager.availability_cached_with_status(session, cfg)  # warm it (V1)
+        prior_version = data_manager._membership_dataset_version(session, cfg)
+
+    with Session(engine) as session:
+        session.add(DailyPrice(
+            symbol="AAA", date=spy_days[2], open=3.0, high=3.0, low=3.0, close=3.0, volume=3.0,
+        ))
+        session.commit()
+
+    with Session(engine) as session:
+        current_version = data_manager._membership_dataset_version(session, cfg)
+        served = data_manager.availability_from_storage(session, cfg)
+
+    assert current_version != prior_version  # sanity: the stamp genuinely moved
+    assert served["stale"] is False  # no job in flight — the iter-58 fix
+    assert served["served_dataset_version"] == prior_version
+    assert served["cells"] == prior_payload["cells"]  # the real prior row, never the empty sentinel
+
+
+def test_availability_from_storage_stuck_running_row_from_crashed_process_still_reads_as_in_flight(coverage_engine):
+    """Error case (iter-58 testing requirements): a `data_provider_runs` row stuck at `status ==
+    "running"` from a process that crashed mid-job — with NO corresponding entry in the in-memory
+    `_JOBS` registry, since that registry is process-local and this test never populates it — must NOT
+    be misread as "no job running". `_ingest_job_in_flight` is DB-status-only (never reads `_JOBS`), so
+    it does not false-negative on this exact case: the stuck row alone is enough to keep `stale: True`
+    honest until an operator resolves it (the boot sweep, or a terminal transition)."""
+    engine, spy_days = coverage_engine
+    cfg = load_config()
+    with Session(engine) as session:
+        assert data_manager._JOBS == {}  # sanity: no live in-memory job registered anywhere in this process
+        prior_payload, _ = data_manager.availability_cached_with_status(session, cfg)  # warm it (V1)
+        # a row orphaned by a crashed worker — no finished_at, no terminal transition ever landed
+        session.add(DataProviderRun(provider="seed", started_at=datetime(2024, 1, 3, 12, 0, 0), status="running"))
+        session.commit()
+
+    with Session(engine) as session:
+        session.add(DailyPrice(
+            symbol="AAA", date=spy_days[2], open=3.0, high=3.0, low=3.0, close=3.0, volume=3.0,
+        ))
+        session.commit()
+
+    with Session(engine) as session:
+        served = data_manager.availability_from_storage(session, cfg)
+
+    assert served["stale"] is True  # the stuck DB row alone is enough — no _JOBS entry needed
+    assert served["cells"] == prior_payload["cells"]
+
+
 def test_availability_from_storage_stale_fallback_never_recomputes(coverage_engine, monkeypatch):
-    """The stale-serving fallback (TC-1) reads ONLY the persisted row — never a live
+    """The stale-serving fallback (TC-2) reads ONLY the persisted row — never a live
     `compute_availability` call on this default request path (AG-8), exactly like the not-yet-computed
     fallback it extends."""
     engine, spy_days = coverage_engine
     cfg = load_config()
     with Session(engine) as session:
         data_manager.availability_cached_with_status(session, cfg)  # warm it (V1)
+        session.add(DataProviderRun(provider="seed", started_at=datetime(2024, 1, 3, 12, 0, 0), status="running"))
+        session.commit()
     with Session(engine) as session:
         session.add(DailyPrice(
             symbol="AAA", date=spy_days[2], open=3.0, high=3.0, low=3.0, close=3.0, volume=3.0,

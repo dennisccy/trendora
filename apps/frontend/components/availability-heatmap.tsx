@@ -5,6 +5,7 @@ import { CalendarDays, Loader2 } from "lucide-react";
 
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/empty-state";
+import { shouldShowAvailabilityEmptyState } from "@/lib/availability-empty-state";
 import { cn } from "@/lib/utils";
 import { formatIsoDate } from "@/lib/dates";
 import type { AvailabilityCell, AvailabilityResponse } from "@/lib/api";
@@ -46,11 +47,19 @@ import type { AvailabilityCell, AvailabilityResponse } from "@/lib/api";
  * ops-hardening iter-57 (J-06 closure): the payload now carries `stale`/`served_dataset_version` (see
  * `AvailabilityResponse` in `lib/api.ts`). `stale: true` means the backend served the MOST RECENT
  * persisted reading rather than the current in-flight one (an ingest is mid-flight; the payload's real
- * cells are shown, exactly as before) — this component now renders a calm "Data as of
- * `<served_dataset_version>` — updating" notice above the grid in that case (mirrors the Coverage
- * panel's existing `coverage-stale-notice` treatment, same tone, same tokens). `stale: false` with
- * non-empty cells renders unchanged; `stale: false` with empty cells is still the ONLY case the "No
- * availability yet" empty state below is honest for (a DB where no row has ever been persisted).
+ * cells are shown, exactly as before) — this component now renders a calm stale notice above the grid
+ * in that case (mirrors the Coverage panel's existing `coverage-stale-notice` treatment, same tone, same
+ * tokens, and — iter-58 — the SAME wording pattern: "as of a prior scan (version …) — refreshes on the
+ * next data job"). `stale: false` with non-empty cells renders unchanged.
+ *
+ * ops-hardening iter-58 (audit B2 + B5 fixes): the backend now only reports `stale: true` when a job is
+ * GENUINELY in flight (`app.engine.data_manager.availability_from_storage`), so this notice can no
+ * longer persist indefinitely with nothing running. Separately (B5), the empty-state gate below no
+ * longer reads `cells.length === 0` alone — it reads the extracted, unit-tested
+ * `shouldShowAvailabilityEmptyState` (`lib/availability-empty-state.ts`), which also requires `!stale`.
+ * A persisted row that happens to be BOTH stale and empty (a narrow precondition) now falls through to
+ * the stale banner above with no grid below it, rather than the "No availability yet" empty state —
+ * that message stays reserved strictly for a DB where no row has ever been persisted.
  */
 
 type DensityBucket = 0 | 1 | 2 | 3 | 4 | 5;
@@ -226,7 +235,7 @@ export function AvailabilityHeatmap({
           className="border-b border-border bg-surface-2 px-4 py-2 text-xs text-text-muted"
           data-testid="availability-stale-notice"
         >
-          Data as of {state.data.served_dataset_version} — updating
+          Data as of a prior scan (version {state.data.served_dataset_version}) — refreshes on the next data job
         </p>
       ) : null}
 
@@ -245,7 +254,7 @@ export function AvailabilityHeatmap({
         </div>
       ) : null}
 
-      {state.kind === "ok" && state.data.cells.length === 0 ? (
+      {state.kind === "ok" && shouldShowAvailabilityEmptyState(state.data) ? (
         <div className="p-4">
           <EmptyState
             icon={CalendarDays}

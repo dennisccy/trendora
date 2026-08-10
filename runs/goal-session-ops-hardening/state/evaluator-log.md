@@ -5694,3 +5694,151 @@ walkthrough frames are the same picture and four QA rows share one screenshot th
 process (the only remaining lever for J-07), and (b) does the twenty-minute finalize budget apply while the
 app is also serving traffic? Plus one thing to know: a drill click made 591 live outbound requests to an
 external provider, nothing was persisted, and a rule now bars that button from drills.
+
+## Iteration 58 — goal-ops-hardening-iter-58
+
+**Date:** 2026-08-10T21:55:00Z
+**Verdict:** ESCALATE
+**Depth dispatched:** lean (`iter-58/depth-dispatched` = `lean`) against a spec whose own header reads
+`**Depth:** full` / `Full trigger: 1` — the third mismatch in four rounds. `.steps/` holds decomposer,
+developer, review-1, browser-qa, coherence only; audit / QA / closure / demo / ux-regression DID NOT RUN.
+`runs/goal-ops-hardening-iter-58/status.json` is still `in_progress` / `dev_complete` (the developer's own
+last write; no later lane updated it).
+
+**Journey deltas:**
+- **Newly passing: none. Newly failing: none. Regressed: none.** Shape unchanged: **6 passing / 2 partial /
+  0 failing**. This is the second round in three with no scoreboard movement.
+- **J-05 and J-07 stay `partial`**, both RE-VERIFIED this round (J-07 for the first time since iter-55),
+  and for the first time BOTH have positively-evidenced remaining gaps rather than assumed ones.
+- No `browser-infra.json`; no `journeys-changed.md`; all 8 `spec_hash`es match `goal_gate hash-journeys`
+  run by me. `pending_infra` cleared everywhere. `evidence_makeup` set on J-04/J-05/J-06/J-07 (no
+  walkthrough — the demo lane does not run at lean depth).
+- Anti-goal violations: **FOUR CLOSED**, each verified by me rather than read off the handoff — the wrong
+  iter-57 health record (TC-6, corrected in all three files, append-only), the always-"updating" banner
+  (B2), the empty-state gate (B5), the `models.py` docstring (B6). **SEVEN NEW OPEN, all minor:** the J-07
+  "0.006s-1.18s" claim over a 2.097 s log; the J-05 3.474 s answer re-labelled a recording gap; a blank
+  screenshot cited as evidence; the "8/8 journeys passed" headline; the depth mismatch; the AG-8
+  memory-ceiling event; the empty abort `reason`. Ledger now: **150 total, 69 unresolved, 0 unresolved
+  critical.** scan-report **CLEAN**; coherence **COHERENCE-PASS** (0 blocking, 0 new advisories); review
+  **PASS** (`definition_of_done: complete`, `scope_creep: none`, `issues: []`); merged browser QA **PASS
+  8/8** (headline overstated — see iter-58/d); deterministic replay **PASS 6/6**.
+
+**Reasoning:** I checked every load-bearing fact myself instead of reading it off a report.
+(1) **The product fix is real and I read it in the source, not the handoff.** `availability_from_storage`
+now sets `payload["stale"] = stamp_mismatch and _ingest_job_in_flight(session)`, and the helper reads
+`DataProviderRun.status == "running"` — the same DB-status-only signal `sweep_orphaned_runs` uses,
+deliberately not the in-memory `_JOBS` registry, so a crashed worker's stuck row keeps reading as in
+flight rather than false-negating. The frontend gate is now the pure `shouldShowAvailabilityEmptyState`
+(`cells.length === 0 && !data.stale`). No new field, no new table, no new endpoint — coherence's Data
+Contract row agrees, and I confirmed the same in the diff myself.
+(2) **The TC-6/TC-7 correction is exemplary and I re-counted it.** `wc -l
+runs/goal-ops-hardening-iter-58/tc7-health-poll-2.log` = **967**; my own awk over the job's own OPEN
+(19:10:03Z) / CLOSED (19:27:41Z) markers returns **834** in-window records, **all 200**, max **2.86519 s**
+— exactly the numbers Addendum 24 publishes, including the breach it did not have to disclose. 53 + 834 +
+31 + 49 = 967 reconciles. The correction itself landed in all three places (perf-budgets Addendum 24, the
+iter-57 dev handoff at :402-406, and a new `corrections` array in the iter-57 `status.json`), append-only,
+with nothing rewritten. TC-5 verified by reading `models.py` and TC-8 by re-querying sqlite (the golden now
+targets 2010-11-05, which holds **0** `scanner_runs` rows).
+(3) **I found the two things no lane reported, by opening the lanes' own logs.** (a) The UT-J-07 row says
+"response times 0.006s-1.18s — comfortably inside the ... <=2s relaxed ceiling"; `j07-health-poll.log`
+holds **2.097052 s at 19:51:25Z** and **2.063784 s at 19:51:55Z**, and **15** of its 227 samples exceed the
+1.18 s claimed maximum. (b) The UT-J-05 write-up lists "4s at 20:07:04-20:07:08 (poll-script restart,
+negligible)"; lines 113/114/115 of `j05-health-poll.log` read 20:07:02 / 20:07:04 / 20:07:08 with **no
+missing sample** — line 114 is a single **3.474644 s** answer, inside the ingest heavy-warm window
+(`logs/backend.log` OPEN 21:06:59 local = 20:06:59Z, CLOSED 21:24:56Z), i.e. **1.74x** the relaxed ceiling,
+never entered in any tally. That is the byte-identical failure mode this very iteration existed to correct.
+(4) **I scored J-05 from the database, and the database carries steps 1-2 while the pictures carry
+nothing.** `data_provider_runs.id=382`, `provider='seed'`, `status='ok'`, 20:06:45.373553Z →
+20:24:56.482173Z; message reads `dates_total=1`, `calendar_days=1`, `non_trading_days=0`,
+`already_snapshotted=0`, `error_other=0`, `snapshots_created=1`, `forward_returns_inserted=1370`, and
+`aggregates_refreshed` lists ALL NINE hooks; `scanner_runs.id=2949 asof_date='2010-11-04'` created
+20:06:58.702906Z. Worth recording: the backfill STAGE took **13.67 s** — the other ~18 minutes are the
+finalize tail. Step 3 was **NOT EXECUTED** (the QA agent may not restart the app and its SIGTERM was
+blocked by the permission classifier), so the journey cannot close.
+(5) **I scored J-07 from its own instrument and step 3 fails on this round's own number.** VmPeak in
+`j07-health-poll.log` climbs 5,485,240 kB → **8,388,608 kB**, which is EXACTLY 8192 MB — the declared
+`config.yaml` `memory_cap_mb` ulimit -v ceiling — and the warm then stalled at 1/5 horizons with a real
+`MemoryError` traceback from a concurrent `/api/research/regime-lab` request. Step 3 asks VmPeak to stay
+UNDER the cap; it landed ON it.
+(6) **I counted MemoryErrors and then checked whether the wedge recurred, and this is the round's real
+good news.** `logs/backend.log` holds **8,131** against iter-57's 8,127 — **4 new**. But the whole file
+holds **129** HTTP-500 responses and the LAST one sits at **11:28 local** (iter-57's wedge): **zero 500s
+after 19:00 local**, so this round's memory event did not wedge the process. `/api/health` answered 200 in
+all 227 samples, and the same process (no restart) then ran an 18-minute backfill to a clean `ok`.
+(7) **AG-9 checked at the row level:** every ingest row this round (377-382) is `provider='seed'`;
+`select ... where provider <> 'seed' and started_at >= '2026-08-10'` returns only id=369, the iter-57 event
+already in the ledger. The iter-57 backfill-only drill rule held. **AG-10 checked at the source:**
+`git status --porcelain` AND `git diff --stat` over all five frozen paths are BOTH empty;
+`config.yaml:1363-1364` still reads 8192 / 2; `host-guard: cpu_list=0-15 blas_threads=8` on this round's
+launches.
+(8) **The lane-ordering rule held for the SIXTH consecutive round and I re-derived it.** Newest
+product-code mtime **19:43:49** (`availability-heatmap.tsx`); earliest lane artifact **20:43:30**;
+`find apps/backend/app apps/frontend -newermt '2026-08-10 20:43:00'` returns nothing.
+(9) **I hashed all nine evidence PNGs — all nine DISTINCT — and then opened them, which is where the
+hashing stops helping.** `J-05-job-running.png` is a **completely blank** 776x432 dark frame (2,061
+bytes); `UT-J-05-result.png` and `J-07-warm-inflight.png` are 776x432 viewport crops of the TOP of `/data`
+showing the Data Manager header and coverage cards — none of the leaderboard, breakdown or
+aggregates-refreshed state their rows assert. My two stable spot-checks (`J-03-verify.png`,
+`J-09-verify.png`, both 1280x800) contradict nothing: J-03 renders the 412-day span accepted, J-09 renders
+2948 / 591 / 5391, which equal my own sqlite counts at capture time (run 2949 did not exist until 20:06:58Z).
+Rejected **REGRESSION (C.1)**: no journey moved `passing`/`already_passing` → `failing`; J-05/J-07 were
+already `partial`. Nothing meets the critical list: scan CLEAN, an 8-file diff with no manifest/lockfile/
+LICENSE, both AG-10 checks empty, every ingest row `seed`, and no served number is wrong. The one
+*(critical)*-labelled candidate — the AG-8 memory event — I scored **minor** and logged in
+`assumptions.md`: pre-existing untouched code, honest degradation, no wedge, and the same class the owner
+answered at iter-42 by RAISING the envelope.
+Rejected **STALLED (C.2)**: C.2 needs EVERY unblock path to be human-owned and almost none is — J-05's
+step 3 is a backend restart the DEVELOPER lane performed several times this same dispatch (only the QA lane
+is barred from it, which is a lane-assignment fix, not a human blocker); the two false measurement records
+are a reporting-discipline fix; `_regime_lab_members_by_horizon` has never been profiled once. One front is
+genuinely the owner's (off-process compute), and one owner item among many agent items is not a stall.
+Rejected **GOAL_ACHIEVED (C.3)**: J-05 and J-07 are `partial`.
+Rejected **CONTINUE (C.5)**: its first limb does not fire (no journey newly passing) and its second would
+leave the next round free to run shallow again — which is the specific thing that let this round's real
+defects reach me unreported.
+**Chose ESCALATE (C.4).** Its third clause fires plainly: this was a **lean** iteration run against its own
+spec's `**Depth:** full` / `Full trigger: 1`, and it surfaced cross-cutting complexity no lane reported —
+two test records contradicting their own raw logs, a blank frame cited as evidence, and an "8/8 passed"
+headline over two journeys whose steps were not all executed. The audit is the lane that caught the
+byte-identical defect last round (B1) and it did not run. And the decisive structural point: **J-05 and
+J-07 both carry a walkthrough clause in their acceptance, and the demo lane runs only at full depth — so
+neither journey can ever be closed by a lean round.** In this session a recommendation is advice and an
+ESCALATE is binding.
+**FIVE THINGS I STATE PLAINLY RATHER THAN ROUND AWAY:** (i) **the developer's work this round was clean and
+I verified all of it** — the fix is minimal and correct in the source, and Addendum 24 is the most honest
+measurement record this session has produced, disclosing a breach it was not obliged to find. (ii) **and
+the same iteration reproduced the exact defect it was written to correct**, one lane over: a slow sample
+re-labelled as a boundary artifact so it never entered a tally. The instruments are fine; the write-ups are
+where the truth is being lost. (iii) **J-07 got closer than the record has ever shown** — the app survived
+its own memory ceiling with zero errors served and no restart, which is most of step 4's property witnessed
+live — while simultaneously failing step 3 outright, because VmPeak landed exactly ON the declared cap.
+Both facts are true and neither cancels the other. (iv) **three of the nine evidence pictures show nothing
+they claim**, including one that is entirely blank; hashing them for distinctness — which prior rounds
+relied on — does not catch this, and opening them does. (v) **the depth mismatch is now a pattern, not an
+accident** (iters 55, 56, 58), and each time it costs the session the one lane that reads instruments
+against claims.
+
+**Next-step recommendation:** FULL depth (mandatory via ESCALATE). Give the next round this order.
+(1) **Finish the one skipped check, with the right team.** J-05 needs a backend restart and a cold Data
+page that still shows its coverage numbers quickly. The browser tester is not allowed to restart the app
+and was blocked when it tried; the developer restarts it routinely. Assign it to the developer.
+(2) **Fix how the health drills are written up before trusting any of them.** Every drill must publish the
+raw log's line count, its slowest answer, and the window it was measured in — exactly the way this round's
+own Addendum 24 does, and the way its two browser-test records did not.
+(3) **Measure and then bound the one calculation that has never been made memory-safe**
+(`_regime_lab_members_by_horizon`). The heavy calculation stopped after 1 of 5 parts at the exact memory
+limit. Measure first, fix second — this session's own rule.
+(4) **Record a walkthrough.** J-05 and J-07 cannot close without one, and the recorder only runs at full
+depth; it rides along with the real work and is never a round's goal.
+(5) SMALL AND ALREADY WRITTEN DOWN: a blank picture saved as evidence; a failed calculation that records
+"failed" with an empty reason; `/api/regime-history` at 1.2-3.0 s never re-measured on a quiet machine; a
+test file that has not finished five rounds running and a test that has never executed.
+(6) CARRIED, untouched: iter-29/b + the badge wording after a permanently failed warm-up (31st round
+unmade); iter-31/e; iter-32/f; iter-35/k; iter-36/n; iter-37/o; iter-37/q; iter-39/u; iter-46/az;
+iter-46/ba; iter-47/bd; iter-47/bf; iter-47/bi; iter-48/bj; iter-57/f; iter-57/l. Deferred a
+TWENTY-FOURTH time: iter-33/g, the Regime Lab.
+(7) OWNER: the same two decisions, asked nine rounds running — (a) may heavy calculation move into its own
+process, and (b) does the twenty-minute finishing budget apply while the app is also serving people? Three
+facts to know: the app survived its memory limit this time with nothing broken and no restart; last round's
+wrong health record is now corrected in writing in three places; and this round ran shallow against a plan
+that asked for deep, for the third time in four rounds.

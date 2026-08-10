@@ -739,9 +739,12 @@ class AvailabilityCache(SQLModel, table=True):
         `CoverageSnapshot`/`MembershipTimelineCache` already key on — the snapshot set + bars manifest
         (`max(daily_prices.date)` + `count(*)`), exactly what `compute_availability` reads (ALL stored
         bars for `symbols_with_bars`/`total_symbols`, plus the `ScannerRun.asof_date` set for
-        `snapshot_exists`). A read computes the CURRENT stamp and looks up THIS exact key; a stale row
-        keyed to an older stamp is never hit (and is pruned on write), so the cache can NEVER serve a
-        stale heatmap.
+        `snapshot_exists`). A read computes the CURRENT stamp and looks up THIS exact key; a stamp
+        mismatch is the EXPECTED, tested, INTENDED case while an ingest job is genuinely in flight
+        (`app.engine.data_manager.availability_from_storage`, iter-57 J-06 / iter-58 B2 fix) — the
+        stamp-mismatched row IS served (with `stale=true`, `served_dataset_version` set to the row's own
+        prior stamp), not skipped. It is pruned on write (this table holds at most one row at a time),
+        so the cache never serves a heatmap OLDER than its own most recent successful warm.
 
     `payload_json` is the full serialized `total_symbols`/`trading_day_count`/`cells` payload. Unique
     on `dataset_version` so a write is an idempotent upsert."""

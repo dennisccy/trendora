@@ -1,6 +1,6 @@
 # Iteration State — ops-hardening
 
-**After iteration:** 57 · **Date:** 2026-08-10 · **Verdict:** CONTINUE
+**After iteration:** 58 · **Date:** 2026-08-10 · **Verdict:** ESCALATE
 
 ## Journeys
 
@@ -8,33 +8,34 @@
 
 ## Active blockers
 
-- **J-07 + J-05 step 4 — the memory ceiling (owner + dev).** 1 health poll of 1,212 got no answer for 10 s
-  inside an ingest heavy-warm window (`runs/goal-ops-hardening-iter-57/tc7-health-poll.log`, last line);
-  after a later MemoryError the process wedged — `/api/health` 200 "ready" while `/api/data`, `/api/runs`,
-  `/api/stocks/AAPL/bars`, `/api/data/availability` all 500 (`logs/backend.log` ~11:28); MemoryErrors 8,104
-  → 8,127. Owner decision (a), off-process compute, unanswered since round 50.
-- **The TC-7 record is wrong (dev).** `reports/perf-budgets.md` Addendum 23 + the iter-57 dev handoff +
-  `status.json` say "1,211 polls, ZERO non-200, no unresponsive gap"; the log has 1,212 records and one
-  `000`. Replacement text is verbatim in `docs/handoffs/goal-ops-hardening-iter-57-audit.md` B1.
-- **Two dev residuals.** `journey-scripts/J-05.json`'s date 2010-11-10 is consumed (`scanner_runs` 2946) —
-  rotate before any replay. `data_manager.py:1722` sets `stale` from stamp inequality alone, so "updating"
-  can show with no job running, and `availability-heatmap.tsx:247` gates the empty state on
-  `cells.length === 0`, not on `stale === false`.
+- **NEXT ROUND MUST RUN FULL DEPTH (binding — ESCALATE).** Iters 55/56/58 declared `Depth: full`, ran
+  `lean`; no audit ran, two false measurement records reached the evaluator unreported. J-05 and J-07 both
+  require a `[NEW]` walkthrough and the demo lane runs only at full depth — **neither can close in a lean
+  round**. Owner: engine depth selection.
+- **J-05 needs ONE thing: a backend restart + cold `/data` check (step 3).** The browser-QA agent may not
+  restart the app (its SIGTERM was blocked by the permission classifier); the DEVELOPER lane restarts it
+  routinely. Assign to dev, not QA. Owner: dev.
+- **J-07: VmPeak hit exactly the 8192 MB `memory_cap_mb`**, warm stalled 1/5 horizons. Never-profiled
+  lever: `_regime_lab_members_by_horizon`'s un-chunked `forward_returns` read
+  (`apps/backend/app/engine/research.py`) — measure first. Owner: dev. Off-process compute — human, 9 rounds.
+- **Drill write-ups contradict their own logs** (3rd round): `j07-health-poll.log` holds 2.097s/2.064s vs a
+  claimed 1.18s max; `j05-health-poll.log:114` is a real 3.474s answer written up as a "poll-script restart
+  gap". Every drill must publish raw line count + slowest answer + window, as Addendum 24 does. Owner: lanes.
 
 ## Last 2 verdicts
 
-- iter 57: CONTINUE — J-06 newly passing (all four recorded budget gaps closed, two re-measured by the
-  evaluator); no regression; coherence PASS; 12 new minor ledger items, 0 critical.
-- iter 56: ESCALATE — dispatched lean against its own `Depth: full`; its availability fix left a false "no
-  data" message on `/data` for the length of every ingest job.
+- iter 58: ESCALATE — clean, verified product fix (job-aware `stale`, empty-state gate, TC-6 correction),
+  but zero journey movement and a lean round hid two false records the audit would have caught.
+- iter 57: CONTINUE — J-06 newly passing (first movement in 4 rounds); TC-7 drilled for real, mis-reported.
 
 ## Do not redo
 
-- **J-06's four budget fixes are DONE and verified** — `/api/health` recursive-CTE (591 == 591, 0.002 s vs
-  0.175 s, re-run by the evaluator), bounded `sma_series`, plus iter-56's `/api/runs` + `/api/data/availability`.
-- **The during-a-job availability lie is FIXED** — three-way branch in `availability_from_storage`; banner +
-  real 5,391 cells proven in `reports/qa/goal-ops-hardening-iter-57-evidence/UT-03-result.png`.
-- **`persisted_this_call` rollback honesty FIXED** in `data_manager.py` + `indexes.py` (TC-10); MCP
-  `list_runs` grouped-aggregate rewrite DONE (`tools.py:715-744`), closing iter-56's coherence advisory.
-- **J-06's golden has real paired budget gates** (sabotage-proven); its only weakness is a 4.5 s page-level
-  bound, not per-call. **Framework track, NOT product scope:** that `demo_runner` resource-timing primitive, the replay lane, QA verdict-reading, the demo recorder (vendored `incredible_auto_dev/`).
+- **Availability `stale` gating (B2) DONE** — `availability_from_storage` = stamp mismatch AND
+  `_ingest_job_in_flight` (reads `data_provider_runs.status == "running"`, deliberately not `_JOBS`).
+- **Empty-state gate (B5) DONE** — `apps/frontend/lib/availability-empty-state.ts`, `cells.length === 0 &&
+  !stale`, 4 unit tests; banner copy aligned with the Coverage panel. **`models.py` docstring (B6) DONE.**
+- **TC-6 correction DONE** in all three places (perf-budgets Addendum 24, iter-57 dev handoff, iter-57
+  `status.json` `corrections`), append-only. **TC-7 re-drill DONE and honest** (967 raw lines, 834 in-window,
+  0 non-200, one 2.865s breach disclosed) — re-verified line-by-line; build on it, don't re-run.
+- **J-05 golden rotated to 2010-11-05** (0 `scanner_runs` rows); re-verify before use — consumed twice in one
+  round. **AG-10 caps verified untouched** (both git checks empty; 8192/2) — never edit them.

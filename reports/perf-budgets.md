@@ -9432,3 +9432,134 @@ iteration (goal.md, iter-57 OUT OF SCOPE) and no code was changed for it; this i
 iter-58 item with the reproduction recorded above. It is also the concrete mechanism behind the
 audit's B5 (a "— updating" banner could persist with no job running): the finalize-tail warm that
 clears the stamp mismatch is exactly the kind of work this failure mode skips.
+
+## Addendum 24 (2026-08-10, ops-hardening iter-58 developer pass) — TC-6 correction to Addendum 23's T1 (the true tally is 1,212 polls / 1 non-200, not 1,211 / ZERO), and a fresh TC-7 drill bounded by the process's own job-window markers
+
+Filed against the iter-57 audit's next-step item and this iteration's own DoD TC-6/TC-7. **Addendum 23's
+own text above is left completely unedited** — this is an append-only correction, per this file's
+standing convention (see Addendum 15→16/TC-14, Addendum 20→21/TC-17 for the same pattern).
+
+### TC-6 — the correction itself
+
+Addendum 23's T1 table reported "Whole window (10:06:44Z → 10:29:59Z) | 1,211 | ... | non-200: **0**".
+That is false. `wc -l runs/goal-ops-hardening-iter-57/tc7-health-poll.log` returns **1212**, not 1211 —
+the raw log the addendum's own table claims to summarize has one more record than the table counted.
+Reading the log directly:
+
+```
+$ wc -l runs/goal-ops-hardening-iter-57/tc7-health-poll.log
+1212 runs/goal-ops-hardening-iter-57/tc7-health-poll.log
+
+$ tail -3 runs/goal-ops-hardening-iter-57/tc7-health-poll.log
+2026-08-10T10:29:58Z 200 0.006873
+2026-08-10T10:29:59Z 200 0.007636
+2026-08-10T10:30:00Z 000 10.002641ERR -1
+```
+
+The 1,212th line is a genuine connection-level non-answer — HTTP status `000` (curl's no-response
+sentinel), a 10.002641s stall against the `--max-time 10` cap, at **2026-08-10T10:30:00Z**, one second
+after the addendum's own reported window end (`10:29:59Z`). The addendum's segment boundary was
+hand-picked to stop at the log's second-to-last line, silently excluding the one record that would have
+changed "ZERO non-200" to "one non-200" — precisely the failure mode this session's own iter-57 lesson
+warned about ("segment boundaries chosen by hand are where failures go to disappear").
+
+**Corrected TC-6 statement, replacing Addendum 23's T1 table for this same drill:** the true tally for
+`runs/goal-ops-hardening-iter-57/tc7-health-poll.log`'s full duration is **1,212 polls, ONE non-200**
+(`000`/10.002641s at 2026-08-10T10:30:00Z) — not the reported 1,211/ZERO. This does not change the
+drill's other reported figures (p50/p95/max for the segments that do not include the dropped record are
+unaffected), and it does not retroactively change Addendum 23's own honest disclosure that the relaxed
+≤2s ceiling was ALSO separately breached once inside the window (the 2.593s poll at 10:23:50Z) — that
+finding stands. It corrects only the "ZERO non-200" / "1,211" claim itself. The same correction is
+appended to `docs/handoffs/goal-ops-hardening-iter-57-dev.md`'s Known Issues and to
+`runs/goal-ops-hardening-iter-57/status.json` (a new `corrections` array; the original text in both
+files is left unedited).
+
+### TC-7 — a fresh drill, bounded by the process's own job-window log markers, not a hand-picked timestamp
+
+The audit's / this iteration's own instruction: re-drill TC-7 and bound the in-window segment using the
+process's OWN logged `ingest heavy-warm window OPEN: job=<id>` / `CLOSED: job=<id>` markers
+(`app/engine/data_manager.py` — `_enter_ingest_heavy_warm`/`_exit_ingest_heavy_warm`, called once each
+around the WHOLE finalize tail of every backfill/rebuild job), rather than a hand-picked window like the
+one that produced the TC-6 defect above.
+
+**Instruments:** `scripts/start-backend.sh`, port 8255 (host-guard caps applied, confirmed via
+`logs/backend.log`'s own `host-guard: cpu_list=...` line each launch) — the SAME launcher/enforcement as
+every prior addendum. Health drill: a 1 Hz `curl -s -o /dev/null -w '%{http_code} %{time_total}' --max-time
+10` loop, log at `runs/goal-ops-hardening-iter-58/tc7-health-poll.log`. Ingest: one live, in-app `POST
+/api/data/jobs` backfill for `2010-11-11` (the SAME rotated, live-verified-clean date this iteration's
+TC-8 rotates `journey-scripts/J-05.json` to — this drill and J-05's own target journey are the SAME
+underlying operation, so this pass also serves as a live exercise of J-05 step 1). AG-9 discipline
+honored: backfill only, never the "Fetch real EOD prices" live-fetch button.
+
+**Result.** The first live attempt (job `ea7503cec15c4bb3b700a5c1daf56a4f`, `2010-11-11`) completed
+cleanly (`status: "ok"`, `data_provider_runs.id=377`) but the poll process backing it was itself
+interrupted partway through by this environment's own background-task lifecycle (a lesson for this
+dispatch, not a product finding) — its log stops at 205 lines / 18:51:56Z, well before the job's own
+CLOSED marker at 19:07:51Z, so that attempt's poll coverage is **incomplete and not used for TC-7**. Its
+date (`2010-11-11`) is now consumed (`scanner_runs.id=2947`), so `journey-scripts/J-05.json` was rotated
+a second time, to `2010-11-02` (live-verified 0 `scanner_runs` rows immediately beforehand — real SPY
+bars confirmed present, a genuine trading day). A second backfill (job
+`212afe4bb97c4822b8ad5ca9771e554a`, `data_provider_runs.id=378`, `provider=seed`) was run with the
+poller kept alive via a detached (`setsid`) process for the whole duration, and this is the drill TC-7
+reports:
+
+| | |
+|---|---|
+| Job | `212afe4bb97c4822b8ad5ca9771e554a` (backfill, `2010-11-02` → `2010-11-02`, `provider=seed`) |
+| `POST /api/data/jobs` | 2026-08-10T19:09:51Z |
+| `ingest heavy-warm window OPEN` (`logs/backend.log`) | **2026-08-10T19:10:03Z** |
+| `ingest heavy-warm window CLOSED` (`logs/backend.log`) | **2026-08-10T19:27:41Z** (== job `finished_at`) |
+| Window duration | 17m38s |
+| Raw poll log | `runs/goal-ops-hardening-iter-58/tc7-health-poll-2.log`, **967 lines** (`wc -l` reconciled exactly — every record below is accounted for) |
+
+Segmented by the job's OWN OPEN/CLOSED markers, not a hand-picked timestamp:
+
+| Segment | Polls | p50 | p95 | max | non-200 |
+|---|---|---|---|---|---|
+| Whole raw log (09:09:08Z pre-start warm-up → 19:29:03Z) | 967 | 41.5 ms | 915.0 ms | 2.865 s | 49 (see below) |
+| Pre-window (before OPEN) | 53 | 11.8 ms | 53.7 ms | 475.5 ms | 0 |
+| **During the ingest heavy-warm window (OPEN..CLOSE, inclusive)** | **834** | 70.4 ms | 954.8 ms | **2.865 s** | **0** |
+| Post-window, backend still up (CLOSE → 19:28:13Z, ~32s) | 31 | — | — | ~12 ms | 0 |
+| Post-window, backend down (19:28:14Z → 19:29:03Z, the log's last line) | 49 | — | — | — | **49** (all `000`, ~0.0002-0.0007s) |
+
+`53 + 834 + 31 + 49 = 967` — reconciles exactly against the raw log's own line count (TC-7's own
+requirement).
+
+**Honest verdict, every record counted (no boundary picked to exclude one):**
+
+- **The binding HTTP-200/no-freeze clause held for the WHOLE 17m38s compute window**: all 834 polls
+  taken between OPEN and CLOSE answered HTTP 200 — zero non-200, zero frozen/unresponsive gaps, matching
+  the owner amendment's binding requirement.
+- **The relaxed ≤2s latency ceiling was breached once, inside the window**: one poll at
+  **2026-08-10T19:10:07Z measured 2.865 s** (a 1.43× overshoot), 4 seconds after OPEN, overlapping the
+  `coverage_membership_timeline_refresh` phase's own 6.98s span (19:10:03Z→19:10:10Z per
+  `logs/backend.log`'s own phase-timing line). Reported as a breach, not rounded away — the SAME honest
+  disclosure pattern Addendum 23 used for its own single breach (2.593s), now against a properly-bounded
+  window instead of a hand-picked one.
+- **The 49 `000` records at the log's tail are NOT an in-window or post-window health-check failure** —
+  they are the poller correctly reporting "connection refused" AFTER the backend process itself received
+  a clean shutdown. `logs/backend.log`'s own tail shows an ORDERLY uvicorn sequence (`Shutting down` →
+  `Waiting for application shutdown.` → `Application shutdown complete.` → `Finished server process
+  [614748]`), not a crash, OOM, or hang — and the polls immediately before it (19:28:12Z/19:28:13Z) were
+  fast, healthy 200s (11-12 ms), 33 seconds after the ingest window had already closed. This is
+  consistent with this environment's own server-cleanup convention (CLAUDE.md: "kill server processes
+  before finishing") reclaiming a manually-started dev backend, not a product-level defect — disclosed in
+  full rather than trimmed from the count, exactly the practice TC-6's own correction above exists to
+  enforce. It is EXCLUDED from the "during window" tally on the documented, defensible grounds that the
+  server was not running for those ticks (a different failure class than a live-but-stalled server's
+  non-answer), not because it is inconvenient.
+
+**Reconciled against the record correction above (TC-6):** this iteration's own fresh drill independently
+reproduces the SAME class of finding Addendum 23's corrected record shows — every poll inside a genuine
+ingest heavy-warm window answers HTTP 200, but the relaxed ≤2 s ceiling is not yet reliably met (one
+breach here, one there). Two data points across two iterations is not yet a trend claim; it is recorded
+honestly as what it is.
+
+### AG-9 / AG-10 verification for this pass
+
+`data_provider_runs` ids 377/378 (both this dispatch's drills) — `select provider from data_provider_runs
+where id in (377,378)` → **`seed`, `seed`** (offline committed-seed backfill only; no live fetch). Both
+launched through `scripts/start-backend.sh` (host-guard caps applied, confirmed via `logs/backend.log`'s
+own `host-guard: cpu_list=...` line at this boot). `git status --porcelain` / `git diff --stat` over
+`config.yaml`, `project-extensions/host-guard/host-guard.env`, `scripts/start-backend.sh`, `scripts/dev.sh`
+are all empty — no cap touched.
