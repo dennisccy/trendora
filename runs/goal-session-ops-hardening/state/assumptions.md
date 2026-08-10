@@ -568,3 +568,37 @@ narrower reading, and I note that this round's own `/api/health` fix is part of 
 to say "ready" at all — before, health 500'd honestly. That is an uncomfortable fact and I am not
 rounding it away.
 **Reversible:** yes
+
+## iter-58 — goal-decomposer
+
+**Ambiguity:** the iter-57 evaluator's next-step item (4) says "Plan the two memory-ceiling events
+together — the ten-second unanswered health check and the wedge where the badge says 'Ready' while
+four pages fail; they are one problem and they are what keeps J-07 open," and the iter-57 auditor's
+closing line says the same two conditions "should be planned together, not as separate cards."
+Neither says whether "plan" for iter-58 means *ship a code fix* this round or *produce correctly-bounded
+diagnostic evidence* for a future round's fix. Both conditions are genuinely dev-actionable (not
+owner-blocked — the owner's two outstanding decisions concern moving heavy compute off-process
+entirely, a larger architectural lever, not these two specific symptoms), but neither has been profiled
+at the code level yet — the TC-7 record that would anchor a diagnosis was itself wrong (audit B1) until
+this iteration corrects it.
+
+**We chose:** this iteration corrects the TC-7 record and re-drills it with bounded segmentation (real,
+freshly-measured evidence), but does NOT attempt a code fix for the wedge/unanswered-poll class itself.
+Grounds: (1) this session's own binding discipline (iter-48/50/53's "profile before fix") — committing to
+a fix shape ahead of a correctly-bounded measurement would repeat the exact mistake (mis-segmented,
+overconfident conclusions) that produced B1 in the first place; (2) rule 5 bars two risky product-code
+actions in one iteration, and this iteration's one risky action is the availability-banner honesty fix
+(B2/B5), a different code path from the wedge; (3) the wedge is a NEW diagnosis effort (no prior
+iteration profiled it) while the banner fix is a scoped, already-diagnosed, small correction — the
+smaller/already-understood fix wins the tie per the decomposer's own priority rubric.
+
+**Cost recorded honestly:** J-05 and J-07 will most likely still read `partial` after this iteration —
+neither of their remaining acceptance gaps (health responsiveness under load, wedge-free memory-pressure
+abort) closes this round. A reader who takes "plan them together" as "fix them together, now" would
+target the wedge directly this iteration and accept carrying the banner fix (B2/B5, "IMPORTANT" but not
+journey-blocking) to iter-59 instead. I chose the measurement-first reading, consistent with this
+session's own repeatedly-successful discipline, and I am naming the journeys this defers rather than
+letting a reader assume this round was expected to close them.
+
+**Reversible:** yes — the freshly bounded TC-7 drill this iteration produces is exactly the input a
+wedge-fix iteration needs; nothing about this choice makes that future iteration harder, only later.
