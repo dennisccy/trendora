@@ -380,24 +380,58 @@ def test_availability_cached_with_status_hit_returns_stored_payload_no_recompute
     assert second_payload == first_payload
 
 
+def test_availability_cached_with_status_rollback_reports_not_persisted(coverage_engine, monkeypatch):
+    """TC-10 — a forced `session.commit()` failure inside `availability_cached_with_status`'s MISS path
+    rolls back (the existing `except: session.rollback()` branch) and MUST report
+    `persisted_this_call=False` — never `True` for a write that did not durably persist (the AG-3
+    honesty gap this iteration closes on the existing `aggregates_refreshed` field). The freshly
+    computed payload is still returned (byte-identical to `compute_availability`), only the honesty flag
+    changes."""
+    engine, _spy_days = coverage_engine
+    cfg = load_config()
+    with Session(engine) as session:
+        fresh = compute_availability(session, cfg)
+
+    with Session(engine) as session:
+        def _boom_commit():
+            raise RuntimeError("forced commit failure (TC-10 fault injection)")
+
+        monkeypatch.setattr(session, "commit", _boom_commit)
+        payload, persisted = data_manager.availability_cached_with_status(session, cfg)
+
+    assert persisted is False
+    assert payload == fresh
+    # nothing durably persisted — a fresh read finds no row
+    with Session(engine) as session:
+        rows = session.exec(select(AvailabilityCache)).all()
+    assert rows == []
+
+
 def test_availability_from_storage_serves_persisted_row(coverage_engine):
-    """`availability_from_storage` (the `GET /api/data/availability` serving path) reads the persisted
-    row byte-identical to a fresh `compute_availability` call, once a warm has run."""
+    """TC-3 — `availability_from_storage` (the `GET /api/data/availability` serving path) reads the
+    persisted row byte-identical to a fresh `compute_availability` call, once a warm has run, PLUS the
+    two new additive iter-57 fields: `stale: False` (the stored row's stamp matches the CURRENT
+    `_membership_dataset_version`) and `served_dataset_version` equal to that current stamp (regression
+    guard for the idle/matching-stamp case — the byte-identity contract predating this iteration is
+    unchanged for every pre-existing field)."""
     engine, _spy_days = coverage_engine
     cfg = load_config()
     with Session(engine) as session:
         fresh = compute_availability(session, cfg)
         data_manager.availability_cached_with_status(session, cfg)  # warm it
+        current_version = data_manager._membership_dataset_version(session, cfg)
     with Session(engine) as session:
         served = data_manager.availability_from_storage(session, cfg)
-    assert served == fresh
+    assert served == {**fresh, "stale": False, "served_dataset_version": current_version}
 
 
 def test_availability_from_storage_missing_row_serves_honest_not_yet_computed(coverage_engine, monkeypatch):
-    """TC-8 — a genuinely missing `AvailabilityCache` row (real bars present, but no warm has ever run)
-    serves the honest not-yet-computed empty payload — NEVER a live `compute_availability` call on this
-    default request path (AG-8), even though this fixture has real SPY/AAA bars that WOULD produce
-    non-empty cells if computed live."""
+    """TC-2 (TC-8 predecessor) — a genuinely missing `AvailabilityCache` row (real bars present, but no
+    warm has EVER run) serves the honest not-yet-computed empty payload — NEVER a live
+    `compute_availability` call on this default request path (AG-8), even though this fixture has real
+    SPY/AAA bars that WOULD produce non-empty cells if computed live. `stale` is `False` and
+    `served_dataset_version` is `None` — the empty sentinel is reserved strictly for "no row has ever
+    been persisted", not conflated with the mid-ingest stale-serving case."""
     engine, _spy_days = coverage_engine
     cfg = load_config()
 
@@ -407,18 +441,83 @@ def test_availability_from_storage_missing_row_serves_honest_not_yet_computed(co
     monkeypatch.setattr(data_manager, "compute_availability", _boom)
     with Session(engine) as session:
         served = data_manager.availability_from_storage(session, cfg)
-    assert served == {"total_symbols": 0, "trading_day_count": 0, "cells": []}
+    assert served == {
+        "total_symbols": 0, "trading_day_count": 0, "cells": [],
+        "stale": False, "served_dataset_version": None,
+    }
 
 
 def test_availability_from_storage_empty_db_matches_honest_fallback():
-    """A genuinely empty / bars-less DB (no cache row, no bars) serves the SAME honest empty payload —
-    coincidentally identical to `compute_availability`'s own empty-DB return, but served with ZERO
-    database queries via the fallback, never a live compute."""
+    """TC-2 — a genuinely empty / bars-less DB (no cache row, no bars) serves the SAME honest empty
+    payload — coincidentally identical to `compute_availability`'s own empty-DB return plus `stale:
+    False`/`served_dataset_version: None`, served with ZERO database queries via the fallback, never a
+    live compute."""
     engine = make_engine("sqlite:///:memory:")
     create_db_and_tables(engine)
     with Session(engine) as session:
         served = data_manager.availability_from_storage(session, load_config())
-    assert served == {"total_symbols": 0, "trading_day_count": 0, "cells": []}
+    assert served == {
+        "total_symbols": 0, "trading_day_count": 0, "cells": [],
+        "stale": False, "served_dataset_version": None,
+    }
+
+
+def test_availability_from_storage_stale_serves_prior_row_on_stamp_mismatch(coverage_engine):
+    """TC-1 — the iter-57 J-06 during-a-job honesty fix: once a row exists but a NEW bar has landed
+    without the finalize-tail warm re-running yet (the `_membership_dataset_version` stamp folds in
+    `count(daily_prices)`, so a bare INSERT bumps it — exactly what a mid-flight ingest's first
+    committed bar does), `availability_from_storage` serves the PRIOR persisted row — non-empty cells,
+    `stale: True`, `served_dataset_version` equal to the OLD (pre-bar) stamp, never the current one and
+    never the not-yet-computed empty sentinel."""
+    engine, spy_days = coverage_engine
+    cfg = load_config()
+    with Session(engine) as session:
+        prior_payload, _ = data_manager.availability_cached_with_status(session, cfg)  # warm it (V1)
+        prior_version = data_manager._membership_dataset_version(session, cfg)
+
+    # Simulate an ingest job's first committed bar landing WITHOUT the finalize-tail warm re-running —
+    # bumps _membership_dataset_version (count(daily_prices) changes) but leaves AvailabilityCache at V1.
+    with Session(engine) as session:
+        session.add(DailyPrice(
+            symbol="AAA", date=spy_days[2], open=3.0, high=3.0, low=3.0, close=3.0, volume=3.0,
+        ))
+        session.commit()
+
+    with Session(engine) as session:
+        current_version = data_manager._membership_dataset_version(session, cfg)
+        served = data_manager.availability_from_storage(session, cfg)
+
+    assert current_version != prior_version  # the stamp genuinely moved (sanity check on the setup)
+    assert served["stale"] is True
+    assert served["served_dataset_version"] == prior_version
+    # the PRIOR row's real cells/total_symbols/trading_day_count — never the empty sentinel
+    assert served["cells"] == prior_payload["cells"]
+    assert served["total_symbols"] == prior_payload["total_symbols"]
+    assert served["trading_day_count"] == prior_payload["trading_day_count"]
+    assert served["cells"] != []
+
+
+def test_availability_from_storage_stale_fallback_never_recomputes(coverage_engine, monkeypatch):
+    """The stale-serving fallback (TC-1) reads ONLY the persisted row — never a live
+    `compute_availability` call on this default request path (AG-8), exactly like the not-yet-computed
+    fallback it extends."""
+    engine, spy_days = coverage_engine
+    cfg = load_config()
+    with Session(engine) as session:
+        data_manager.availability_cached_with_status(session, cfg)  # warm it (V1)
+    with Session(engine) as session:
+        session.add(DailyPrice(
+            symbol="AAA", date=spy_days[2], open=3.0, high=3.0, low=3.0, close=3.0, volume=3.0,
+        ))
+        session.commit()
+
+    def _boom(*_a, **_k):
+        raise AssertionError("a stale-serving fallback must never trigger a live compute_availability call")
+
+    monkeypatch.setattr(data_manager, "compute_availability", _boom)
+    with Session(engine) as session:
+        served = data_manager.availability_from_storage(session, cfg)
+    assert served["stale"] is True
 
 
 # ==================================================================================================

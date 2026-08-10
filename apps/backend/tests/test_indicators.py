@@ -54,6 +54,25 @@ def test_sma_series_rejects_nonpositive_period():
         ind.sma_series([1, 2, 3], 0)
 
 
+def test_sma_series_byte_identical_to_original_unbounded_prefix_implementation():
+    """ops-hardening iter-57 (TC-9, the J-06 `bars?through=latest` latency fix): `sma_series` now
+    bounds each call's slice to `values[max(0, i+1-period):i+1]` instead of the full-growing prefix
+    `values[:i+1]` -- an O(n) copy on every one of `len(values)` iterations that made the whole series
+    O(n^2) (profiled: ~0.178s -> ~0.038s for a real 7,695-bar history across 4 configured MA periods,
+    `reports/perf-budgets.md`). Per the iter-53 lesson ("compare against the ORIGINAL implementation,
+    never another instance of the new one"), this test keeps a literal copy of the PRE-iter-57
+    unbounded-prefix implementation and asserts byte-identity against it -- not merely against a second
+    call of the current function -- across several periods and a warm-up-spanning, non-trivial series."""
+    def _sma_series_original_unbounded_prefix(values, period):
+        return [ind.sma(values[: i + 1], period) for i in range(len(values))]
+
+    values = [3.0, 1.0, 4.0, 1.0, 5.0, 9.0, 2.0, 6.0, 5.0, 3.0, 5.0, 8.0, 9.0, 7.0, 9.0, 3.0]
+    for period in (1, 2, 3, 5, 8, 16, 20):
+        assert ind.sma_series(values, period) == _sma_series_original_unbounded_prefix(values, period)
+    # the empty-series edge case both forms must agree on
+    assert ind.sma_series([], 3) == _sma_series_original_unbounded_prefix([], 3) == []
+
+
 # --- rs_vs ---------------------------------------------------------------------------------
 def test_rs_vs_exact():
     # series +50% over 1 bar, benchmark flat -> RS 1.5

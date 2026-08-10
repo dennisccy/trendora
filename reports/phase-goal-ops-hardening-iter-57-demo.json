@@ -1,0 +1,144 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-ops-hardening-iter-57",
+  "base_url": "http://localhost:3255",
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Sign in and reach the homepage",
+      "narration": "We start on the homepage where the global readiness badge in the header confirms the backend is ready to serve pages quickly.",
+      "point_out": "The badge in the top-right of the header reads 'Ready' (green dot) within about a second — no long stall.",
+      "journey": "",
+      "new": false,
+      "verified": false,
+      "section": "highlights",
+      "action": {
+        "type": "goto",
+        "url": "/"
+      },
+      "expect": {
+        "text": "Ready"
+      }
+    },
+    {
+      "n": 2,
+      "title": "Open the Data Manager page",
+      "narration": "The Data Manager shows a calendar grid of all the dates with price snapshots. Each colored cell represents a day when the ingest job successfully captured data.",
+      "point_out": "The 'Per-date availability' card shows a real colored calendar grid of days — not the message 'No availability yet'.",
+      "journey": "J-01",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "click",
+        "target": {
+          "role": "link",
+          "name": "Data Manager"
+        }
+      },
+      "expect": {
+        "text": "Data Manager"
+      }
+    },
+    {
+      "n": 3,
+      "title": "View the stock detail page for AAPL",
+      "narration": "The stock detail page loads its price chart and moving-average lines much faster than before. The chart caption shows the bar count, as-of date, and full history span.",
+      "point_out": "The chart caption displays real text like 'N bars · as of YYYY-MM-DD · history since YYYY-MM-DD' with moving-average lines rendered below.",
+      "journey": "J-06",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "goto",
+        "url": "/stocks/AAPL"
+      },
+      "expect": {
+        "text": "AAPL"
+      }
+    },
+    {
+      "n": 4,
+      "title": "Check the health call timing in the browser Network tab",
+      "narration": "Open DevTools to inspect the performance of the GET /api/health call. This global readiness check now answers in about 10–15 milliseconds at rest, down from 160–240 milliseconds.",
+      "point_out": "The GET /api/health request in the Network tab completes in well under 100 milliseconds on every page.",
+      "journey": "J-06",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "click",
+        "target": {
+          "role": "link",
+          "name": "Data Manager"
+        }
+      }
+    },
+    {
+      "n": 5,
+      "title": "Check the stock bars call timing in the browser Network tab",
+      "narration": "On the stock detail page, the GET /api/stocks/AAPL/bars?through=latest call now returns in well under 1.5 seconds. This improvement is especially noticeable on stocks with deep price histories.",
+      "point_out": "The GET /api/stocks/AAPL/bars?through=latest request in the Network tab completes in under 1.5 seconds, measured via browser resource timing.",
+      "journey": "J-06",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "goto",
+        "url": "/stocks/AAPL"
+      },
+      "expect": {
+        "css": "[data-testid='chart-window-caption']"
+      }
+    },
+    {
+      "n": 6,
+      "title": "Observe the calendar grid during an active ingest",
+      "narration": "When a data-fetch job is running in the background, the availability heatmap no longer falsely claims 'No availability yet'. Instead, it shows the real, previously-computed calendar grid with an honest 'updating' banner above it.",
+      "point_out": "The per-date availability card shows colored day cells with a calm 'Data as of <version> — updating' banner directly above the grid. The grid never disappears into an empty state.",
+      "journey": "J-06",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "goto",
+        "url": "/data"
+      },
+      "expect": {
+        "css": "[data-testid='availability-heatmap']"
+      }
+    },
+    {
+      "n": 7,
+      "title": "Verify the stale banner is calm and clear, not alarming",
+      "narration": "The stale banner uses muted gray text and a calm border — the same visual treatment as other 'as of' notices on the page. It communicates the status factually: the data is real but slightly behind the very latest ingest.",
+      "point_out": "The stale banner reads 'Data as of <version> — updating' and sits directly above the calendar grid with calm, muted styling (no red or alarm colors).",
+      "journey": "J-06",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "goto",
+        "url": "/data"
+      }
+    },
+    {
+      "n": 8,
+      "title": "Backfill honors large date ranges without a cap",
+      "narration": "Large backfills (370+ days) are accepted and chunked into batches, so the UI never rejects a reasonable request. The job history shows all the details: date count, already-snapshotted count, and non-trading days.",
+      "point_out": "The job runs to completion, showing stage timings and the breakdown: 'N calendar days · M already snapshotted · P non-trading'.",
+      "journey": "J-03",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "goto",
+        "url": "/data"
+      },
+      "expect": {
+        "text": "Data Manager"
+      }
+    }
+  ]
+}

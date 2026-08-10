@@ -9004,3 +9004,431 @@ J-06's last remaining gap (Addendum 18's WARN) is closed: both `/api/runs` and `
 read within the committed ≤1.5s budget on the live, unmodified 8.37 GB dev DB, with the root cause
 confirmed by live query-count profiling (not assumed) and the fix proven byte-identical to the pre-fix
 computation.
+
+---
+
+## Addendum 21 (2026-08-10, ops-hardening iter-57 developer pass) — J-06's last two over-budget calls: `GET /api/health` and `GET /api/stocks/{ticker}/bars?through=latest`, profiled then fixed; calendar-span correction (TC-17)
+
+Closes the iter-56 evaluator's remaining two named gaps — `GET /api/health` (241ms/0.16s vs. the
+committed steady-state ≤0.1s ceiling) and `GET /api/stocks/{ticker}/bars?through=latest` (6.2s,
+Addendum 18, never re-measured) — both PROFILED FIRST on the live dev DB (now **8.37 GB**,
+`apps/backend/data/trendora.db`, `scanner_runs` **2,945** rows, `data_provider_runs` **368** rows — 3
+more than Addendum 20's 365, from intervening drills between dispatches; this iteration's own diff
+creates zero new `data_provider_runs` rows — no ingest job was started).
+
+### `GET /api/health` — profiling result
+
+Isolated the per-request DB cost with a direct `sqlite3` script against the live DB (`EXPLAIN QUERY
+PLAN` + wall-clock, bypassing the ASGI layer to isolate the query itself):
+
+| Query | Query plan | Wall-clock (5x) |
+|---|---|---|
+| `SELECT COUNT(DISTINCT symbol) FROM daily_prices` (the pre-fix query) | `SCAN daily_prices USING COVERING INDEX sqlite_autoindex_daily_prices_1` — a FULL scan of all 3.3M `(symbol, date)` index entries | 0.1189s / 0.1178s / 0.1165s / 0.1161s / 0.1170s |
+| `MAX(date)` (the OTHER health query, for comparison) | uses `ix_daily_prices_date` efficiently | 0.0001s |
+
+**Confirmed exactly as the phase spec's own hypothesis:** `symbol` is the leading column of the
+`(symbol, date)` unique index, but SQLite does not automatically apply a loose-index-scan / skip-scan
+optimization to a plain `COUNT(DISTINCT col)` — it materializes every row. This ~0.117-0.119s alone is
+the confirmed majority of the endpoint's measured 0.16-0.241s steady-state latency.
+
+**Fix:** replaced the plain `COUNT(DISTINCT symbol)` with a recursive-CTE "walk the index for the next
+distinct value" query (the standard SQLite loose-index-scan idiom) — `apps/backend/app/api/health.py`,
+`_distinct_symbol_count`. Confirmed live: `EXPLAIN QUERY PLAN` now shows `SEARCH daily_prices USING
+COVERING INDEX ... (symbol>?)` (an indexed SEEK per distinct value, ~591 of them, instead of a 3.3M-row
+scan), same exact result (**591**), **0.001-0.003s** (roughly 100x faster). This is a pure query-SHAPE
+change: still a fully live, request-time count — no staleness introduced, no persisted/cached value, no
+response field/shape change (the "keep it lazy/indexed, never precomputed-and-stale" contract this
+endpoint already committed to is unchanged).
+
+### `GET /api/stocks/{ticker}/bars?through=latest` — profiling result (the DoD's own "record the query
+plan / row count / wall-clock breakdown" requirement)
+
+Profiled the FULL request-time computation chain in isolation (AAPL, 7,695 real stored bars,
+`?through=latest`'s full un-windowed series):
+
+| Stage | Query plan / shape | Wall-clock |
+|---|---|---|
+| `bars_through_latest` (the DB read `app/engine/prices.py`) | `SEARCH daily_prices USING INDEX sqlite_autoindex_daily_prices_1 (symbol=?)` — a proper indexed search, 7,695 rows | 0.006-0.071s (raw `sqlite3`: 0.006-0.008s; SQLAlchemy ORM materialization into 7,695 `DailyPrice` objects: 0.071s) |
+| `closes()` extraction | pure list comprehension | 0.001s |
+| `sma_series` × 4 configured `indicators.ma_periods` (20/50/150/200) — PRE-FIX | `[sma(values[:i+1], period) for i in range(len(values))]` — an UNBOUNDED, ever-growing prefix slice on every one of `len(values)` iterations, an O(n²) list-copy pattern | 0.178s |
+
+**Honest finding, stated plainly (profile before attributing a cause — iter-48/50 lesson, applied
+literally):** the phase spec's own candidate (`bars_through_latest`, the DB query) is NOT the
+bottleneck — it is fast (both raw and via the ORM). The one genuine algorithmic inefficiency this
+profiling pass found in the full request chain is `sma_series` (`app/engine/indicators.py`), called
+once per configured MA period over the FULL as-of-bounded series: each of its `len(values)` calls to
+`sma(...)` was handed the ENTIRE growing prefix `values[:i+1]` (up to 7,695 elements near the end),
+when `sma()` itself only ever reads the trailing `period` elements — an O(n²) list-copy pattern that
+cost ~0.178s of the endpoint's own compute time on this DB.
+
+Separately, and disclosed for full honesty: a live HTTP re-measurement (below) shows the endpoint is
+ALSO already back within budget for a second reason — Addendum 18's WARN section itself documented that
+`/api/runs` and `/api/data/availability` were BOTH severely broken (N+1 query loop; unbounded/uncached
+full-history scan) on the SAME backend process at the time of the original 6.2s reading, and iter-56
+already fixed both. GIL contention with those two pathological handlers, running concurrently with the
+bars request on the SAME single Python process, plausibly inflated the original 6.2s wall-clock well
+beyond this endpoint's own ~0.2-0.3s compute cost — consistent with `/api/runs`'s own Addendum 18 reading
+(3.2-7.5s) being in the SAME range. This iteration does not rely on that alone: `sma_series`'s real O(n²)
+defect is fixed regardless, both because it is a genuine inefficiency in the exact profiled call path and
+because it would only get worse as the deep basis grows further (goal.md's stated trajectory).
+
+**Fix:** bounded `sma_series`'s slice to `values[max(0, i + 1 - period) : i + 1]` — `sma()`'s own
+`values[-period:]` makes this the SAME window content either way, so the output is byte-identical (TC-9,
+proven by a dedicated regression test comparing against a literal copy of the ORIGINAL unbounded-prefix
+implementation, per the iter-53 lesson). Measured live (`AAPL`, 7,695 bars, all 4 configured periods):
+**0.178s → 0.038s** (~4.7x). `bars_through_latest` itself, `app/api/stocks.py`, and the lazy-indexed-query
+convention (no precompute, no whole-table load) are all UNCHANGED.
+
+### Before/after — live HTTP measurement, idle host, `scripts/start-backend.sh` (port 8257, host-guard
+caps live, fresh restart picking up both fixes)
+
+| Endpoint | Run 1 | Run 2 | Run 3 | Run 4 | Run 5 | Run 6 | Budget | Result |
+|---|---|---|---|---|---|---|---|---|
+| `GET /api/health` (steady-state; run 1 of each batch is a cold first-call, excluded from the steady-state claim per "at rest" — see note) | 0.159s* | 0.011s | 0.010s | 0.159s* | 0.014s | 0.014s | ≤0.1s steady-state | **PASS** (0.010-0.014s steady-state, all 4 non-cold reads; ~7-10x margin) |
+| `GET /api/stocks/AAPL/bars?through=latest` | 0.835s | 0.482s | 0.490s | 0.139s | 0.578s | 0.587s | ≤1.5s | **PASS** (all 6; down from the 6.2s Addendum 18 reading, ~10.6-44.6x) |
+
+\* The first `/api/health` call in each fresh batch of 3 reads 0.159s, consistently — a one-time
+SQLite plan/page-cache warmup effect on the recursive-CTE query, not a query-shape regression (the SAME
+0.159s recurred at the start of a SECOND, later batch of 3 calls after the first batch had already
+warmed it, showing it is not a monotonic one-time-ever warmup either, but IS reproducibly tied to being
+the first `/api/health` call after some idle gap). The committed ≤0.1s ceiling is a STEADY-STATE
+contract (TC-5's own wording: "at rest") — every non-first read across both batches (4 of 6) is
+0.010-0.014s, comfortably inside budget with large margin. Real-browser (Chrome resource timing, TC-6)
+and the bounded-background-compute-window regression guard (TC-7) are QA-stage verification, per this
+session's established developer/QA division of labor (Addendum 20 and earlier followed the same split).
+
+**TC-7 (the relaxed ≤2s bounded-window ceiling) — verified UNCHANGED by code inspection, not re-drilled:**
+this iteration's `/api/health` fix touches ONLY the `symbol_count` query (`_distinct_symbol_count`,
+`app/api/health.py`) — the `readiness`/`preflight`/`background_compute` composition, the
+bounded-background-compute-window handling, and every other line of the handler are byte-unchanged. A
+fresh multi-hour concurrent-ingest drill (Addenda 17/19's own harness) was judged unnecessary and NOT
+re-run this dispatch — AG-10's hardware-protection concern favors not launching another heavy concurrent
+drill on this host without a code-level reason to suspect that SPECIFIC contract regressed, and there is
+none here (a single, isolated, non-overlapping query-shape change to an unrelated field).
+
+### Byte-identity (TC-9)
+
+- `_distinct_symbol_count` vs. a direct `COUNT(DISTINCT symbol)`: **591 == 591** on the live DB; also
+  proven on 3 fast hand-built fixtures (`test_health.py`, multiple symbols/dates, empty DB, single
+  symbol) and on the realistic `loaded_engine` seed fixture — 0 mismatches in every case.
+- `sma_series` (bounded-slice, post-fix) vs. a literal copy of the unbounded-prefix pre-fix
+  implementation: byte-identical across periods 1/2/3/5/8/16/20 on a 16-value warm-up-spanning series,
+  plus the empty-series edge case (`test_indicators.py`) — 0 mismatches.
+
+### AG-9 / AG-10 / TC-16 verification
+
+- `data_provider_runs` row count: 365 (Addendum 20) → 368 now — from OTHER work between dispatches, not
+  this iteration's diff (no ingest job started this dispatch; this iteration's own diff creates 0 new
+  `data_provider_runs` rows).
+- `git status --porcelain` / `git diff --stat` on the 5 frozen host-guard/launch-script paths
+  (`config.yaml`, `project-extensions/host-guard/host-guard.env`, `scripts/start-backend.sh`,
+  `scripts/dev.sh`, `scripts/start-frontend.sh`): **empty** (AG-10, TC-16).
+- The live backend was launched only via `scripts/start-backend.sh` (host-guard caps applied) and
+  stopped/restarted cleanly (once to pick up the `indicators.py` fix, confirmed via a fresh `EXPLAIN
+  QUERY PLAN` + measurement pass after the restart).
+
+### TC-17 — calendar-span correction (append-only; Addendum 20's own entry above is left unedited)
+
+Addendum 20 (line ~8947 of this file) reads: *"`compute_availability`'s direct (pre-fix) call performs
+one unbounded `GROUP BY daily_prices.date` scan across the full **1996-2026** benchmark calendar (5,391
+trading days)."* This mislabels the SPAN. Read directly from source (`app.engine.data_manager._trading_days`)
+and the live DB: the benchmark trading calendar is the SEED symbol `cfg.etfs.index[0]` (**SPY**)'s OWN
+stored bar dates — NOT the full `daily_prices` table's combined min/max across every symbol. Verified
+live:
+
+```sql
+SELECT min(date), max(date), count(*) FROM daily_prices WHERE symbol='SPY';
+-- ('2005-02-25', '2026-08-03', 5391)
+SELECT min(date), max(date) FROM daily_prices;  -- ALL symbols combined, NOT the benchmark calendar
+-- ('1996-01-02', '2026-08-03')
+```
+
+The correct span is **2005-02-25 → 2026-08-03** (**5,391** trading days — the day COUNT in Addendum 20
+was already correct; only the "1996-2026" span label was wrong). "1996" is the earliest bar of the
+WIDEST-history individual symbols in `daily_prices` (e.g. some deep-history names), not SPY's own first
+seed bar — `_trading_days` never reads those other symbols' dates, only SPY's, so `compute_availability`'s
+per-cell loop and `total_symbols` denominator were never affected by this mislabeling (a documentation-only
+error, no code/value defect).
+
+---
+
+## Addendum 22 (2026-08-10, ops-hardening iter-57 developer FIX PASS after reviewer FAIL) — TC-11's missing live `list_runs` timing, and TC-12's golden budget gates: calibrated from measurement, then proven to have teeth
+
+Closes the two `fix_tasks` in `reports/reviews/goal-ops-hardening-iter-57-review.md` (one CRITICAL,
+one MINOR). Append-only: no earlier addendum's text is edited.
+
+### Instruments and conditions
+
+- Backend: `scripts/start-backend.sh` on port 8257 (host-guard caps live, confirmed in
+  `logs/backend-iter57fix.log`), warm, `readiness: "ready"`, no background job active.
+- Frontend: `scripts/start-frontend.sh` on port 3257, PRODUCTION build (the build already baked
+  against backend 8257 — the reason this pass uses 8257/3257 rather than the default 8255/3255).
+- Host: 4 cores (`nproc`), load average 0.7-1.2 during the idle-host readings, deliberately raised to
+  2.2-2.75 for the loaded readings (see "Loaded-host stability" below).
+- Replay: `incredible_auto_dev/scripts/automation/lib/demo_runner.py --mode verify` — the SAME binary
+  the deterministic replay lane runs. The per-step wall-clock numbers come from a probe that IMPORTS
+  that file's own `_do_action` / `_check_expect` (never a re-implementation), so the clock is the
+  replay lane's clock.
+
+### TC-11 — live `list_runs` timing on the CURRENT dev DB (the reviewer's MINOR finding)
+
+The iter-57 first pass proved the grouped-query fix by unit tests (byte-identity + single-query) but
+never timed it live. Measured now, mirroring Addendum 21's methodology (repeated reads, first read
+reported separately), against the live DB holding **2,945 stored `ScannerRun` rows / 1,283,229 total
+stored results**:
+
+| Call | Read 1 | Reads 2-6 | Budget | Result |
+|---|---|---|---|---|
+| `app.mcp.tools.list_runs(session)` — post-fix, one grouped aggregate | 0.137s | 0.077-0.080s | ≤1.5s | **PASS** (~19x margin) |
+| `app.mcp.server.list_runs()` — the MCP tool as the server actually calls it (session open + query + build) | 0.258s | 0.077-0.129s | ≤1.5s | **PASS** (~11.6-19x margin) |
+| … plus JSON serialization of the 863,181-byte response | 0.004s | 0.004-0.005s | — | end-to-end 0.081-0.263s |
+| A literal copy of the PRE-FIX per-run-COUNT loop, same session, same rows | 0.380s | 0.377-0.391s | ≤1.5s | in budget too, ~4.9x slower |
+
+Byte-identity re-confirmed against that literal pre-fix copy on the live DB (not only on fixtures):
+**payloads compare equal, 0 `n_stocks` mismatches across all 2,945 runs**, including the one run
+(`run_id` 1868) with zero stored results, which the grouped query returns via its `0` default exactly
+as the old per-run `COUNT()` did.
+
+**Honest correction to an inherited number.** `tools.py`'s own docstring and the iter-56 coherence
+audit cite **6.8-10.7s** for this call. This dispatch cannot reproduce that magnitude at rest: the
+UNFIXED implementation, re-run here on the current DB, measures 0.377-0.391s. Both figures can be
+true of different conditions (the 6.8-10.7s reading was taken while the box was under heavy
+concurrent load, where a 2,945-iteration query loop pays GIL/scheduler cost per iteration — the same
+convoy effect Addendum 19 documents), but the honest statement is: **on this DB, at rest, the pre-fix
+loop was already inside budget, and the fix takes it 4.9x faster still.** The fix's real value is
+scaling — the loop's cost grows with stored-run count, the grouped query's does not — not a rescue
+from a live budget breach. These readings were taken with 2 of the 4 cores deliberately pinned
+(load average 2.6-2.75), so they are conservative, not idle-host, numbers.
+
+### TC-12 — why the first pass's golden was vacuous, confirmed by experiment
+
+The reviewer's CRITICAL finding was correct, and the mechanism is worse than "8000ms is too loose".
+`demo_runner`'s `goto` action waits for `networkidle` with `min(step timeout_ms, 12000)` and
+**swallows the outcome** (a networkidle timeout is best-effort, never a failure). So the navigation
+step ABSORBS a slow API call, and the following assertion step then finds the value already on
+screen. Measured across 3 idle-host replays of the shipped golden:
+
+| Step | What it asserts | Wall clock |
+|---|---|---|
+| 01 `goto /` | Dashboard heading | 1.24-1.29s (document ready 0.02-0.03s; rest is networkidle) |
+| 02 readiness badge `data-state="ready"` | `/api/health` answered | **0.01-0.02s** |
+| 04 `goto /stocks/AAPL` | AAPL heading | 0.99-1.05s (document ready 0.03s) |
+| 05 `chart-window-caption` | bars answered | **0.02s** |
+| 08 `goto /data` | Data Manager heading | 0.93-1.01s (document ready 0.03-0.04s) |
+| 09 `wait_for 2500ms` | the product's own `AVAILABILITY_FETCH_STAGGER_MS` | 2.50s |
+| 10 `availability-cell` | availability answered | **0.04-0.07s** |
+| 12 `goto /scanner-runs` | Scanner Runs heading | 1.45-1.54s (document ready 0.05-0.06s) |
+| 13 `table tbody tr` | `/api/runs` answered | **0.05-0.07s** |
+
+In-browser per-call timings on the same runs (`performance.getEntriesByType('resource')`):
+`/api/health` 11-38ms · `/api/stocks/AAPL/bars?through=latest` 312-370ms ·
+`/api/data/availability` 32-38ms · `/api/runs` 203-464ms — every one far inside its ≤1.5s budget
+(`/api/health` inside its ≤0.1s steady-state budget), corroborating Addendum 21's isolated curl reads
+with a second, independent instrument.
+
+**Direct proof of the defect the reviewer named.** The golden with its `timeout_ms` values STRIPPED
+(i.e. the first pass's shipped shape, everything inheriting `default_timeout_ms: 8000`), replayed
+against a backend artificially slowed by **+6200ms on `/api/stocks/{ticker}/bars`** — the exact
+Addendum 18 regression this DoD item exists to catch — returned **PASS**. The assertion alone can
+never gate latency; the navigation's absorption window has to be capped too.
+
+### The fix: each budgeted endpoint gets a PAIRED gate (navigation cap + value cap)
+
+| Endpoint | `goto` step cap | assertion step cap | end-to-end tripwire |
+|---|---|---|---|
+| `GET /api/health` | step 01: 2500ms | step 02: 2000ms | 4.5s from navigation start |
+| `GET /api/stocks/AAPL/bars?through=latest` | step 04: 2500ms | step 05: 2000ms | 4.5s (1.7s under the 6.2s regression) |
+| `GET /api/data/availability` | step 08: 2500ms | step 10: 2000ms | 2.0s past the product's own 2500ms stagger — the tightest gate |
+| `GET /api/runs` | step 12: 2500ms | step 13: 2000ms | 4.5s (2.3s under the 6.8-10.7s reading) |
+
+Sizing rationale, from the table above rather than from first principles: the only HARD part of a
+`goto` is document-ready (0.02-0.06s measured), so a 2500ms navigation cap carries ~40x margin on
+what can actually fail it, while bounding absorption to 2.5s; the assertion steps use 0.01-0.07s of
+their 2000ms windows.
+
+### Sabotage matrix — every gate proven to have teeth, one endpoint at a time
+
+A delaying reverse proxy sat on port 8257 in front of the real backend (moved to 8258) and slowed
+exactly ONE endpoint per replay. Product code was never modified for these runs, and the launch
+scripts were not touched (AG-9/AG-10).
+
+| Run | Injected delay | Golden | demo_runner verdict |
+|---|---|---|---|
+| control | none (same proxy, 0ms) | shipped | **PASS** — the proxy itself does not fail a run |
+| health | +5000ms on `^/api/health` | shipped | **FAIL at step 02** |
+| bars | +6200ms on `^/api/stocks/[^/]+/bars` | shipped | **FAIL at step 05** |
+| availability | +3000ms on `^/api/data/availability` | shipped | **FAIL at step 10** |
+| runs | +6800ms on `^/api/runs` | shipped | **FAIL at step 13** |
+| pre-fix control | +6200ms on bars | **timeouts stripped** (first pass's shape) | **PASS** — the defect the reviewer found |
+| headroom | +3000ms on bars | shipped | PASS — not hair-trigger |
+| headroom | +3000ms on `^/api/runs` | shipped | PASS — not hair-trigger |
+
+The gate therefore trips between **+3.0s and +6.2s** of added latency on a call, which is the
+designed behaviour: catch the historical multi-second regressions, ignore ordinary host jitter.
+
+### Loaded-host stability (the first pass's flakiness worry, retired)
+
+The first pass loosened its budgets because tight windows had flaked. With the paired-gate mechanism
+the golden PASSED **3/3** consecutive `--mode verify` runs on an idle host and **3/3** more with 2 of
+this 4-core host's CPUs pinned at 100% (load average rising 1.39 → 2.72). Under that load the
+assertion steps still used only **0.01-0.06s** of their 2000ms windows and the navigations 0.83-1.28s
+of their 2500ms caps. The earlier flakiness was mis-attributed to endpoint concurrency on
+`/stocks/AAPL`; the real mechanism was the absorption behaviour above.
+
+### Honest scope of what this golden proves
+
+A 4.5s page-level end-to-end bound (2.0s for availability past its own stagger) — **not** the literal
+per-call ≤0.1s / ≤1.5s budgets. A Playwright replay measures when a rendered value appears, never an
+HTTP call in isolation. The precise per-call claims stay with the instruments that can carry them:
+isolated curl reads (Addendum 21, TC-5/TC-8) and the in-browser resource timings recorded above.
+
+### AG-9 / AG-10 re-verification for this fix pass
+
+`git status --porcelain` / `git diff` on the five frozen surfaces (`config.yaml`,
+`project-extensions/host-guard/host-guard.env`, `scripts/start-backend.sh`, `scripts/dev.sh`,
+`scripts/start-frontend.sh`): **empty**. Every backend/frontend start in this pass went through
+`scripts/start-backend.sh` / `scripts/start-frontend.sh`; the sabotage proxy is a scratchpad-only
+script that forwards to the script-launched backend and was stopped after each run.
+
+---
+
+## Addendum 23 (2026-08-10, ops-hardening iter-57 developer AUDIT FIX PASS) — the four verification actions the audit named: lane re-run, TC-7 drilled for real, TC-16 moved to AFTER the lane
+
+Filed against `docs/handoffs/goal-ops-hardening-iter-57-audit.md` (verdict FAIL, findings B1/B2/B3 +
+T1). The audit's own instruction was explicit: **"Do not change product code."** Nothing in
+`apps/backend/**` or `apps/frontend/**` was touched in this pass — the newest product-code mtime is
+still `apps/frontend/components/availability-heatmap.tsx` at **07:23:10**, and every artifact below
+was written at 11:17-11:35, so TC-14's mtime ordering is preserved by construction.
+
+### Instruments
+
+| | |
+|---|---|
+| Backend | `scripts/start-backend.sh`, port 8255 (`CHAIN_BACKEND_PORT=8255`) — the same launcher, same host-guard/ulimit enforcement |
+| Frontend | `scripts/start-frontend.sh`, port 3255 — the EXISTING prod `.next` build, not rebuilt (`[start-frontend.sh] existing '.next' build is current relative to sources — skipping rebuild`) |
+| Port sanity | `grep -rho 'localhost:8[0-9][0-9][0-9]' apps/frontend/.next/static/chunks/` → `1  localhost:8255`, matching the backend actually launched (this is the B3 root cause, re-checked before anything ran) |
+| Replay | `demo_runner.py --mode verify`, Chromium/Playwright |
+| Health drill | `curl -w '%{http_code} %{time_total}'` once per second, unbroken, log at `runs/goal-ops-hardening-iter-57/tc7-health-poll.log` |
+
+One lane-mechanics note worth recording: `demo_runner.py`'s `--mode verify` resolves its readiness
+probe from `CHAIN_BACKEND_PORT`, defaulting to **8000**. A first invocation without that variable
+exported returned `verify: backend unreachable (http://localhost:8000/api/health) — 6 journey(s)
+BLOCKED` and overwrote the results file in the process. The first-pass FAIL artifact was preserved
+beforehand at `runs/goal-ops-hardening-iter-57/regression-replay-results.first-pass.md`; the real run
+passes `--backend-health-url` explicitly.
+
+### B2 + B3 — the deterministic lane, re-run against the port-corrected build
+
+`python3 demo_runner.py --mode verify --journeys "J-01,J-03,J-04,J-06,J-08,J-09" --base-url
+http://localhost:3255 --backend-health-url http://localhost:8255/api/health`
+
+**Result: PASS, 6/6 journeys, 0 failed** (10:17:38Z → 10:18:5xZ; evidence PNGs re-captured at 11:18
+local into `reports/qa/goal-ops-hardening-iter-57-evidence/`). The prose "reconciliation" paragraph
+that previously reversed six FAIL rows is gone with the file it annotated — the on-disk lane artifact
+now records a genuine green deterministic result, which is what B3 asked for.
+
+**J-06 (B2) now has a real machine-written row**, replayed from the FINAL `J-06.json` (mtime 09:11:01;
+the earlier `golden-verify/J-06-results.md` at 07:54 verified a superseded golden — that stale result
+is superseded by this one). Re-merging with
+`merge_ui_test_results.py --required J-01,J-03,J-04,J-05,J-08,J-09 --target J-06` turned the merged
+authoritative file from **BLOCKED / "15/16 (1 target-missing)"** into **PASS / "16/17 (1 skipped)"**,
+and its `Missing Target Journeys` section (`UT-J-06 — no test case executed`) is gone.
+
+**J-05 was deliberately NOT re-replayed.** Its golden consumes a single-use unsnapshotted date and the
+LLM lane already consumed it earlier this same iteration: `scanner_runs` id **2946** now holds
+`asof_date='2010-11-10'` (verified read-only in sqlite before the run). A replay would assert
+`"1 calendar day · 0 already snapshotted · 0 non-trading"` against a DB that now answers
+`1 already snapshotted` — a fixture-exhaustion FAIL, not a product regression — and would spend a
+second ~18-minute heavy compute on a host with a declared ceiling. J-05's authoritative row is the
+LLM lane's live PASS (`data_provider_runs` id=370, 09:16:28Z→09:34:17Z, `snapshots_created: 1`),
+which the audit independently confirmed in the DB. Rotating that date stays an iter-58 item, exactly
+as the iter-57 spec's own NOTES require.
+
+### T1 — TC-7 finally drilled, not inspected: 1 Hz `GET /api/health` for 23m15s
+
+The audit's T1 was that TC-7's relaxed ≤2s bounded-window ceiling had only ever been asserted by code
+inspection. It is now measured. One unbroken 1 Hz poll ran across the whole lane window and across a
+real background-compute window that the J-09 replay itself triggered (`/backtest` → "Previous
+available date" → historical forward-aggregate warm for as-of **2026-07-31**, dataset
+`r2946-f6546955`, 10:18:51Z → 10:28:27Z, `duration_ms: 575232`).
+
+| Segment | Polls | p50 | p95 | max | non-200 |
+|---|---|---|---|---|---|
+| Whole window (10:06:44Z → 10:29:59Z) | 1,211 | 12.3 ms | 771 ms | **2.593 s** | **0** |
+| Idle + replay lane (pre-BCW) | 699 | 11.8 ms | 13.4 ms | 224.8 ms | 0 |
+| **During the background-compute window** | 424 | 222.8 ms | 1.051 s | **2.593 s** | 0 |
+| After the window closed | 88 | 13.1 ms | — | 89.7 ms | 0 |
+
+**Honest verdict on TC-7: the binding clause held, the latency ceiling did not, once.** Every one of
+1,211 polls answered **HTTP 200** — no non-200, no frozen window, no unresponsive gap, which is the
+clause the owner amendment calls binding. But **1 poll of 424 inside the window (0.24 %) took 2.593 s
+against the relaxed ≤2 s ceiling** (10:23:50Z), a 1.30× overshoot. Recorded as a breach, not rounded
+away. Two mitigating facts, stated as facts and not as excuses: the window was **9m36s**, ~19× longer
+than the "order ~30 s" the owner amendment describes, and it was a *failed* warm (below) rather than
+a normal one. Filed for iter-58; no code changed here.
+
+The same log also corroborates TC-5's steady-state ≤0.1 s ceiling on a far larger sample than the
+handoff's 3 curl reads: **699 at-rest polls, p95 13.4 ms**, only 3 samples above 0.1 s (max 224.8 ms),
+all three during the replay's own backfill jobs — i.e. never at rest.
+
+### TC-16 re-verified AFTER the lane, which is the point (B1's process fix)
+
+The audit's B1 was not only that a live `yahoo` fetch happened (`data_provider_runs` id=369,
+09:14:13Z, 591 outbound requests) — it was that the AG-9 check ran an hour *before* the lane that
+caused it, so it could not have caught it. The check now runs *after*. Read-only sqlite
+(`?mode=ro`), pre-lane max id recorded as **373**, then post-lane:
+
+| id | provider | status | started | kind |
+|---|---|---|---|---|
+| 374 | **seed** | ok | 10:17:40Z | backfill 2026-05-02 → 2026-05-29 (J-01) |
+| 375 | **seed** | ok | 10:17:58Z | backfill 2026-05-02 → 2026-05-03 (J-01 zero-work) |
+| 376 | **seed** | ok | 10:18:02Z | backfill 2025-06-01 → 2026-07-17 (J-03) |
+
+`select distinct provider from data_provider_runs where id > 373` → **`seed`** only.
+`select id, provider from data_provider_runs where provider <> 'seed' and started_at >= '2026-08-10'`
+→ **`(369, 'yahoo')` and nothing else** — the pre-existing breach, no new one. AG-10's five frozen
+surfaces: `git status --porcelain` and `git diff --stat` over `config.yaml`,
+`project-extensions/host-guard/host-guard.env`, `scripts/start-backend.sh`, `scripts/dev.sh`,
+`scripts/start-frontend.sh` are both **empty**. Every service in this pass started through the
+launch scripts; the AG-9 event itself is logged for the owner in
+`runs/goal-session-ops-hardening/state/assumptions.md` (iter-57 developer entry) together with the
+standing drill rule that closes it.
+
+### NEW, and the most important thing in this pass: a failed warm leaves the process serving `/api/health` and 500-ing everything else
+
+Not an audit finding — discovered by this pass's own drill, ~10 minutes after the lane had already
+passed, and disclosed rather than left in a log. The 2026-07-31 forward-aggregate warm above did not
+merely run long, it **failed**: `MemoryError` at the declared `ulimit -v` ceiling
+(`background_compute.recent_outcomes[0].outcome = "failed"`). Afterwards, in that same process:
+
+```
+VmPeak / VmSize:  8388604 kB     (ulimit -v = 8388608 kB — pinned AT the cap, never released)
+GET /api/health                       200   0.008 s   readiness: "ready"
+GET /api/data/availability            500   0.016 s   MemoryError @ data_manager.py:1719-1720
+GET /api/runs?limit=5                 500   0.006 s
+GET /api/stocks/AAPL/bars?...=latest  500   0.008 s
+GET /api/data                         500   0.011 s
+```
+
+`SIGTERM` did not complete inside the 120 s graceful window (`--timeout-graceful-shutdown 120`);
+`SIGKILL` was required. A **fresh** process recovers completely, which is the evidence that this is a
+process-state condition at the memory ceiling and **not** a defect introduced by this iteration's
+code:
+
+| Endpoint (fresh process) | Budget | Measured |
+|---|---|---|
+| `GET /api/health` | ≤ 0.1 s | **0.007 s** |
+| `GET /api/data/availability` | ≤ 1.5 s | **0.079 s** — `stale=false`, `served_dataset_version=r2946-rc2946-b2026-08-03-bc3306390-h200`, `total_symbols=591`, `trading_day_count=5391`, `cells=5391` |
+| `GET /api/runs?limit=5` | ≤ 1.5 s | **0.298 s** |
+| `GET /api/stocks/AAPL/bars?through=latest` | ≤ 1.5 s | **0.249 s** |
+| `GET /api/data` | ≤ 1.5 s | **0.282 s** |
+
+Why it matters beyond this pass: J-07's step-4 acceptance says a memory-pressure abort must leave the
+same process "serving `/api/health` and previously cached reads". Here `/api/health` survived and
+**every previously cached read did not** — `/api/data/availability` is a single stored row and it
+still 500s. `/api/health` simultaneously reported `readiness: "ready"` while the application was
+unusable, which is the honest-status clause of the same journey. J-07 is explicitly out of scope this
+iteration (goal.md, iter-57 OUT OF SCOPE) and no code was changed for it; this is filed as an
+iter-58 item with the reproduction recorded above. It is also the concrete mechanism behind the
+audit's B5 (a "— updating" banner could persist with no job running): the finalize-tail warm that
+clears the stamp mismatch is exactly the kind of work this failure mode skips.

@@ -11,11 +11,14 @@ the committed seed once).
 from __future__ import annotations
 
 import json
+from datetime import date, datetime, timedelta
 
 from fastapi.testclient import TestClient
-from sqlmodel import Session
+from sqlalchemy import event, func
+from sqlmodel import Session, select
 
 import main
+from app.db import create_db_and_tables, make_engine
 from app.engine import ledger as ledger_mod
 from app.engine.snapshot_serving import (
     dashboard_payload,
@@ -26,6 +29,7 @@ from app.engine.snapshot_serving import (
     themes_payload,
 )
 from app.mcp import tools
+from app.models import DailyPrice, ScannerResult, ScannerRun
 
 
 def _json(obj):
@@ -247,6 +251,94 @@ def test_verify_edge_certifies_a_real_factor_cohort(loaded_engine, tmp_path):
         out2 = tools.verify_edge(session, claim, ledger_path, register_date="2026-06-30")
     assert out2["verdict"]["n_trials_at_test"] == 2
     assert ledger_mod.count_trials(ledger_path) == 2
+
+
+# ==================================================================================================
+# ops-hardening iter-57 (TC-11) — `tools.list_runs`'s `n_stocks` grouped-aggregate fix (closes the
+# coherence-auditor's iter-56 advisory: this MCP tool still ran the pre-iter-56 per-run `ScannerResult`
+# COUNT-in-a-loop pattern `app.api.runs.runs` already fixed). A fast, hand-built fixture (mirrors
+# `multi_run_engine` in test_api_runs.py) — NOT `loaded_engine` — so these run in milliseconds.
+# ==================================================================================================
+def _multi_run_engine(tmp_path):
+    """THREE `ScannerRun` rows carrying 3/0/2 `ScannerResult` children respectively — deliberately
+    includes a ZERO-result run so the grouped query's "absent from GROUP BY" default path is exercised."""
+    engine = make_engine(f"sqlite:///{tmp_path / 'mcp_multi_run.db'}")
+    create_db_and_tables(engine)
+    with Session(engine) as session:
+        session.add(DailyPrice(
+            symbol="SPY", date=date(2024, 1, 2), open=1.0, high=1.0, low=1.0, close=1.0, volume=1.0,
+        ))
+        session.commit()
+        for i, n_results in enumerate((3, 0, 2)):
+            run = ScannerRun(
+                asof_date=date(2024, 1, 2) + timedelta(days=i), created_at=datetime(2024, 1, 2 + i),
+                provider="seed", benchmark="SPY", regime_score=50.0, regime_label="Choppy",
+                regime_components_json="[]", new_high_low_json="{}", candidate_counts_json="{}",
+            )
+            session.add(run)
+            session.commit()
+            session.refresh(run)
+            for j in range(n_results):
+                session.add(ScannerResult(
+                    run_id=run.id, ticker=f"T{i}{j}", name=f"T{i}{j} Corp", leadership_score=1.0,
+                    leadership_bucket="Leader", entry_quality_score=1.0, entry_quality_bucket="Good",
+                    risk_score=1.0, risk_bucket="Low", setup_status="Actionable", rank=j + 1,
+                    record_json="{}",
+                ))
+            session.commit()
+    return engine
+
+
+def test_list_runs_n_stocks_single_grouped_query_not_per_run(tmp_path):
+    """TC-11 — the number of `ScannerResult` queries issued for ONE `list_runs` call is a small constant
+    that does NOT scale with the number of stored runs (never one COUNT query per run — the exact
+    stale-duplicate pattern the coherence audit flagged)."""
+    engine = _multi_run_engine(tmp_path)
+    statements: list[str] = []
+
+    def _capture(conn, cursor, statement, parameters, context, executemany):
+        if "scanner_results" in statement.lower():
+            statements.append(statement)
+
+    event.listen(engine, "before_cursor_execute", _capture)
+    try:
+        with Session(engine) as session:
+            n_runs = session.exec(select(func.count()).select_from(ScannerRun)).one()
+            if isinstance(n_runs, tuple):
+                n_runs = n_runs[0]
+            result = tools.list_runs(session)
+    finally:
+        event.remove(engine, "before_cursor_execute", _capture)
+
+    assert n_runs == 3  # sanity: this fixture's own 3 runs
+    assert len(result["runs"]) == n_runs
+    assert len(statements) == 1, (
+        f"expected exactly 1 grouped ScannerResult query, saw {len(statements)} for {n_runs} stored runs"
+    )
+
+
+def test_list_runs_n_stocks_byte_identical_to_per_run_count(tmp_path):
+    """TC-11 — every stored run's `n_stocks` from `list_runs` is byte-identical to a direct per-run
+    COUNT (the pre-fix per-run computation) — the grouped-query rewrite changes only the query plan,
+    never the served value. Exercises the 3/0/2-result spread, including the ZERO-result run."""
+    engine = _multi_run_engine(tmp_path)
+    with Session(engine) as session:
+        result = tools.list_runs(session)
+        run_ids = [r.id for r in session.exec(select(ScannerRun)).all()]
+        expected_by_run_id = {
+            rid: int(
+                session.scalar(
+                    select(func.count()).select_from(ScannerResult).where(ScannerResult.run_id == rid)
+                ) or 0
+            )
+            for rid in run_ids
+        }
+
+    assert result["runs"]
+    assert len(result["runs"]) == len(expected_by_run_id) == 3
+    assert sorted(expected_by_run_id.values()) == [0, 2, 3]  # the fixture's own 3/0/2 spread, sanity
+    for row in result["runs"]:
+        assert row["n_stocks"] == expected_by_run_id[row["run_id"]]
 
 
 # ==================================================================================================

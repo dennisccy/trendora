@@ -5554,3 +5554,143 @@ still unanswered — (a) may a future round move the heavy calculation into a se
 only when it is idle? The facts — the run list and the availability chart are genuinely fast again,
 proven three ways; nothing ran out of memory this round; and if you would rather I treat the browser
 lane's PASS as binding, say so in one sentence and this journey turns green next round.
+
+## Iteration 57 — goal-ops-hardening-iter-57
+
+**Date:** 2026-08-10T18:55:00Z
+**Verdict:** CONTINUE
+**Depth dispatched:** full (`iter-57/depth-dispatched` = `full`, matching the spec's own `**Depth:** full`
+/ `Full trigger: 3` — the two-round depth mismatch did NOT recur). `.steps/` holds decomposer + coherence;
+`runs/goal-ops-hardening-iter-57/status.json` reads `complete` / `closure_passed`, and every lane artifact
+exists: review, QA, audit, browser QA, replay, demo, ux-regression, closure.
+
+**Journey deltas:**
+- **Newly passing: J-06 "Pages load only what they need" — the first journey status change in four rounds.**
+  Shape moves **5 passing / 3 partial → 6 passing / 2 partial / 0 failing**.
+- **Newly failing: none. Regressed: none.**
+- **J-05 and J-07 stay `partial`**, and for the first time J-05's remaining gap is POSITIVELY evidenced
+  rather than assumed (see reasoning 3).
+- No `browser-infra.json`; no `journeys-changed.md`; all 8 `spec_hash`es match `goal_gate hash-journeys`
+  run by me. `pending_infra` cleared everywhere. `evidence_makeup` set on J-04/J-05/J-06/J-07.
+- Anti-goal violations: **SEVEN CLOSED** — iter-56's during-a-job availability untruth (this round's own
+  target), the depth mismatch, the "All within budget" claim written over a 241 ms health reading, the
+  `persisted_this_call=True`-after-rollback lie, the "1996-2026" calendar mislabel, the heading-only J-06
+  golden, and the MCP `list_runs` duplicate. **TWELVE NEW OPEN, all minor:** the AG-9 live yahoo fetch; the
+  TC-7 record contradicting its own log; the "updating" banner firing without a live job; the empty state
+  not gated on `stale`; the AG-8 memory-ceiling wedge; TC-12 only partially met; the `models.py` docstring;
+  four QA rows sharing one screenshot; five of eight walkthrough frames identical; `test_api_runs.py`'s
+  fourth non-completion; a health byte-identity test that has never executed; `/api/regime-history` at
+  1.2-3.0 s. Ledger now: **143 total, 66 unresolved, 0 unresolved critical.** scan-report **CLEAN**;
+  coherence **COHERENCE-PASS** (0 blocking, 1 advisory); review **PASS_WITH_NOTES**
+  (`definition_of_done: complete`, `scope_creep: none`) after a properly fix-passed FAIL; audit
+  **PASS_WITH_GAPS** after a FAIL fix-passed with ZERO product-code change (TC-14); QA **PASS** /
+  **UI-PASS**; merged browser QA **PASS 16/17** (1 skipped); deterministic replay **PASS 6/6**; demo
+  **RECORDED_WITH_NOTES**; ux-regression **UX-REGRESSION-PASS**; closure **CLOSURE-PASS**.
+
+**Reasoning:** I checked every load-bearing fact myself instead of reading it off a report.
+(1) **I re-measured the headline performance fix against the live database rather than trusting the
+addendum.** I ran BOTH forms of `/api/health`'s distinct-symbol query read-only against
+`apps/backend/data/trendora.db`: the shipped recursive-CTE returns **591** in **0.0020-0.0023 s** warm; the
+retired `COUNT(DISTINCT symbol)` returns **591** in **0.175-0.241 s**. That is byte-identity AND the ~100x
+claim, measured by me, and it independently explains the 0.16-0.241 s → 0.010-0.014 s curl result. The
+0.1002 s first call I measured also matches the developer's honestly-disclosed cold-first-call effect
+instead of contradicting it.
+(2) **I proved the round's user-visible fix from the picture, and the picture is internally
+self-consistent.** I cropped `UT-03-result.png` (a genuine 785x28532 full-page capture) to the availability
+card: it renders **"Data as of r2945-rc2945-b2026-08-03-bc3306390-h200 — updating"** directly above a real
+coloured 5,391-cell calendar. I then read `availability_cache` in sqlite: **exactly one row**, stamp
+`r2946-…`, 591 symbols / 5,391 cells / 5,391 trading days. The frame's stamp is the PRIOR one while the
+stored row carries the NEW one — which is only possible if the capture really was taken mid-job. iter-56's
+"No availability yet — Fetch real EOD prices" over a 3.3M-row DB is gone.
+(3) **I found J-05's failure in the raw log, and it is the opposite of what the record says.**
+`runs/goal-ops-hardening-iter-57/tc7-health-poll.log` has **1,212** records, not the 1,211 published: its
+last line is `2026-08-10T10:30:00Z 000 10.002641` — ten seconds with no answer — plus one poll at
+**2.593 s** against the relaxed ≤2 s ceiling. I cross-read `logs/backend.log`: that poll sits inside the
+ingest heavy-warm window `OPEN 10:16:41 → CLOSED 10:34:17` for job `682b13b4…`, which is J-05's own backfill
+(`data_provider_runs` id=370, 09:16:28→09:34:17 UTC — the one-hour offset is UTC-vs-BST, checked before I
+believed the contradiction). So **J-05 step 4's "assert it stays responsive throughout" demonstrably
+failed**, and `reports/perf-budgets.md` Addendum 23, the dev handoff and `status.json` all state "ZERO
+non-200 … no unresponsive gap". The audit found this first (B1); I re-counted it rather than quoting it.
+(4) **I verified the second performance fix by reading the algorithm, not the benchmark.** `sma_series` now
+slices `values[max(0, i+1-period) : i+1]`; `sma` reads `values[-period:]` and NA-tests `len < period`. For
+`i+1 ≥ period` both forms hand `sma` the same trailing window; for `i+1 < period` the bounded slice IS the
+full prefix and both take the same NA branch. Byte-identity holds by construction, so the 6.2 s → 0.139-0.835 s
+result costs no correctness.
+(5) **I checked the anti-goals at the row level, not by citation.** AG-9: `data_provider_runs` id=369 is a
+real breach — `provider='yahoo'`, 591 live outbound requests — but `bars_fetched: 0` and the other **18** of
+19 rows created on 2026-08-10 are `seed`, so the deterministic basis is untouched. AG-10: `git status
+--porcelain` AND `git diff --stat` over all five frozen paths are BOTH empty, and `config.yaml:1363-1364`
+still reads 8192 / 2. AG-3: `/data`'s 2946 / 591 / 5391 match my own sqlite counts exactly.
+(6) **I counted MemoryErrors and this time the number moved.** `logs/backend.log` holds **8,127**, against
+8,104 in each of the last three rounds — **23 new**. I then read the block: at 11:28 local, after the lane
+finished, a forward-aggregate dispatch died at the ceiling and the process **wedged** — `/api/health` 200
+"ready" while `/api/data`, `/api/data/availability`, `/api/runs` and `/api/stocks/AAPL/bars` returned 500
+(4+1+1+1, counted by me).
+(7) **The lane-ordering rule held for the FIFTH consecutive round and I re-derived it.** Newest product-code
+mtime **07:23:10** (`availability-heatmap.tsx`); earliest lane artifact **11:18:01**;
+`find apps/backend/app apps/frontend -newermt '2026-08-10 11:18:00'` returns nothing. The audit-fix pass
+changed zero product code, exactly as TC-14 binds.
+(8) **I hashed both evidence directories.** The six `J-*-verify.png` replay frames are all DISTINCT and
+provenance-stamped 11:18:01→11:18:54; but four QA rows share one 800x457 image that shows neither the
+heatmap nor the absence of the banner, and five of the eight walkthrough frames are byte-identical.
+(9) **I opened two stable spot-checks I had not seen** — `J-01-verify.png` (Scanner Run "Immutable snapshot
+— as of 2026-05-29", provider seed) and `J-04-verify.png` (green Ready badge; 2946/591/5391 matching my own
+DB reads). Neither contradicts its recorded status.
+Rejected **REGRESSION (C.1)**: no journey moved `passing`/`already_passing` → `failing`. On the critical
+list: scan CLEAN, no manifest/lockfile/LICENSE in the 14-file diff, AG-10 empty on both checks, and no
+served value is wrong. The two candidates I weighed seriously and scored **minor**, naming both in
+`assumptions.md`: the AG-9 live fetch (0 bars persisted; the identical-but-worse iter-47 event, which DID
+persist 588 bars, is already in this ledger as minor; process rules adopted this round), and the AG-8
+memory wedge (pre-existing code untouched by this diff, self-healing on restart, and the same class the
+owner answered at iter-42 by RAISING the envelope). I considered scoring J-04 `failing` on the wedge's
+"Ready"-while-broken badge and did not: J-04's steps are boot/crash-scoped and this session's own precedent
+books the memory-ceiling outage against J-07.
+Rejected **STALLED (C.2)**: C.2 needs EVERY unblock path to be human-owned and almost none is — the TC-7
+record correction is a paste of text the audit already wrote; gating the banner on the live job signal is a
+few lines in a file that already renders that signal; rotating J-05's golden date is a four-line edit; the
+`models.py` docstring is one paragraph. One front is genuinely the owner's (decision (a), off-process
+compute), and one owner item among many agent items is not a stall.
+Rejected **GOAL_ACHIEVED (C.3)**: J-05 and J-07 are `partial`, and J-05's gap is now positively evidenced.
+Rejected **ESCALATE (C.4)**: none of its three clauses fires literally — no journey has status `failing`
+(J-05/J-07 are `partial`, the distinction iters 51-56 established deliberately); the review lane did NOT
+fail open (it FAILed, the developer fix-passed, and the re-review is PASS_WITH_NOTES — the retry policy
+working); and this was **not** a lean iteration (`depth-dispatched` = `full`), which is the clause iter-56
+fired on. ESCALATE from full to full buys only the mandate, and my instructions say to use it sparingly.
+**Chose CONTINUE (C.5):** its FIRST limb fires plainly for the first time in four rounds — a journey is
+newly passing — and coherence is PASS, so no consolidation pass is mandated. I recommend **full** depth on
+the merits.
+**FIVE THINGS I STATE PLAINLY RATHER THAN ROUND AWAY:** (i) **the scoreboard finally moved, and it moved on
+evidence I re-derived myself** — J-06 passes because all four readings this record has listed as its fails
+since iter-54 are closed, two of them re-measured by me, not because a lane said PASS. (ii) **the round's
+best work and its worst record are in the same artifact**: TC-7 was drilled for real for the first time
+ever — 1,212 polls across a genuine heavy-compute window, which is exactly the rigour five previous rounds
+lacked — and the write-up then dropped the one poll that failed and declared "ZERO non-200". The audit
+caught it; a lean round would not have. (iii) **the app is still not safe at its memory ceiling, and this
+round it got slightly worse** (23 new MemoryErrors after three clean rounds), including a wedge in which
+the badge says "Ready" while four pages return errors — the honesty layer this whole cycle built does not
+cover that state. (iv) **one click during a drill made 591 live requests to an outside data service**; it
+persisted nothing, it is the sixth time this class has happened, and it is the FIRST time anyone caught it
+— the two process rules adopted this round are the real fix, and they cost nothing. (v) **the golden now
+has teeth but not the right teeth**: it trips between +3.0 s and +6.2 s of added latency, so the 241 ms
+health regression this very round existed to fix would still pass it. That is a framework limit, honestly
+disclosed in the golden's own notes, not a dodge.
+
+**Next-step recommendation:** FULL depth (recommended on the merits, not mandated). (1) Correct the health
+record first — the audit already wrote the replacement text word-for-word — then re-drill it counting every
+line, including failures, and bounded by the app's own job markers. (2) Stop the Data page from saying
+"updating" when no job is running, and only show "no data yet" when the data has genuinely never been
+saved. (3) Rotate the J-05 check script's date before it is replayed; this round used up 10 November 2010.
+(4) Plan the two memory-ceiling events together — the ten-second unanswered health check and the wedge
+where the badge says "Ready" while four pages fail; they are one problem and they are what keeps J-07 open.
+(5) SMALL AND ALREADY WRITTEN DOWN: the `models.py` comment that now says the opposite of the shipped
+behaviour; `/api/regime-history` at 1.2-3.0 s on a busy host, never re-measured at rest; a test file that
+has failed to finish four rounds running and a test written this round that has never executed (both
+ticketed in `docs/test-infra-tickets.md`). (6) CARRIED, untouched: iter-29/b + the badge wording after a
+permanently failed warm-up (30th round unmade); iter-31/e; iter-32/f; iter-35/k; iter-36/n; iter-37/o;
+iter-37/q; iter-39/u; iter-46/az; iter-46/ba; iter-47/bd; iter-47/bf; iter-47/bi; iter-48/bj. Deferred a
+TWENTY-THIRD time: iter-33/g, the Regime Lab. (7) CAPTURE ONLY, never a round's goal: five of eight
+walkthrough frames are the same picture and four QA rows share one screenshot that proves neither claim.
+(8) OWNER: the same two decisions, now asked seven rounds running — (a) may heavy compute move into its own
+process (the only remaining lever for J-07), and (b) does the twenty-minute finalize budget apply while the
+app is also serving traffic? Plus one thing to know: a drill click made 591 live outbound requests to an
+external provider, nothing was persisted, and a rule now bars that button from drills.

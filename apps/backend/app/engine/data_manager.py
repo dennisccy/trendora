@@ -1661,36 +1661,69 @@ def availability_cached_with_status(
         session.commit()
     except Exception:  # a concurrent writer raced us to the same key — best-effort, not a source of truth
         session.rollback()
+        # ops-hardening iter-57 (AG-3 honesty fix): a rolled-back commit did NOT durably persist —
+        # `persisted_this_call=True` here would be a false claim that fed the `aggregates_refreshed`
+        # list's "availability_heatmap" entry even though nothing was written. The freshly computed
+        # `payload` is still returned (byte-identical to `compute_availability`, still correct to serve
+        # THIS call), only the honesty flag changes.
+        return payload, False
     return payload, True
 
 
 def _availability_not_yet_computed_payload() -> dict:
-    """The honest 'not yet computed' availability sentinel `availability_from_storage` serves when no
-    `AvailabilityCache` row exists yet for the current dataset_version (before the first ingest finalize
-    hook has run, or a warm the MemoryError-isolation convention skipped under memory pressure) —
-    mirrors `_coverage_not_yet_computed_payload`'s honesty convention. Issues ZERO database queries —
-    never the full-history `GROUP BY` scan `compute_availability` exists to avoid on this path (AG-8)."""
-    return {"total_symbols": 0, "trading_day_count": 0, "cells": []}
+    """The honest 'not yet computed' availability sentinel `availability_from_storage` serves when NO
+    `AvailabilityCache` row has EVER been persisted (before the first ingest finalize hook has ever run,
+    or a warm the MemoryError-isolation convention skipped under memory pressure on a DB with no prior
+    row) — mirrors `_coverage_not_yet_computed_payload`'s honesty convention. Issues ZERO database
+    queries — never the full-history `GROUP BY` scan `compute_availability` exists to avoid on this path
+    (AG-8). ops-hardening iter-57: carries the SAME two additive `stale`/`served_dataset_version` keys
+    `availability_from_storage` adds to every response shape — `stale: False` (there is no prior payload
+    to be stale relative to) and `served_dataset_version: None` (no stamp has ever been served)."""
+    return {
+        "total_symbols": 0, "trading_day_count": 0, "cells": [],
+        "stale": False, "served_dataset_version": None,
+    }
 
 
 def availability_from_storage(session: Session, config: Optional[Config] = None) -> dict:
     """`GET /api/data/availability`'s serving path — REPLACES the former request-path call straight to
     `compute_availability` (an unbounded, uncached full-history `GROUP BY daily_prices.date` scan on
     EVERY request — the confirmed J-06 latency source, `reports/perf-budgets.md` Addendum 18/20:
-    15.1-21.2s against the committed <=1.5s budget). Reads the persisted `AvailabilityCache` row for the
-    current `_membership_dataset_version` stamp; a genuinely missing row (no ingest has warmed it yet,
-    or a warm was skipped under memory pressure) serves the honest not-yet-computed empty payload —
-    NEVER a live full-table compute on this default request path (AG-8). `compute_availability` itself
-    is UNCHANGED and still used directly by the ingest finalize hook / tests that want a genuine live
-    compute."""
+    15.1-21.2s against the committed <=1.5s budget). `compute_availability` itself is UNCHANGED and
+    still used directly by the ingest finalize hook / tests that want a genuine live compute.
+
+    ops-hardening iter-57 (J-06 closure, this iteration's headline fix): the iter-56 MISS-fallback only
+    ever checked the row for the CURRENT `_membership_dataset_version` stamp, so ANY stamp mismatch
+    (true for the ENTIRE duration of a mid-flight ingest job — the stamp folds in `count(daily_prices)`,
+    which bumps on the job's FIRST committed bar, while the ONLY writer is the finalize-tail warm at the
+    job's END) served the not-yet-computed empty sentinel over a multi-million-row DB — a false "no
+    data" claim (AG-3/AG-8). `AvailabilityCache` is unique on `dataset_version` and pruned-on-write by
+    `availability_cached_with_status` (every MISS write deletes every OTHER-stamped row first), so it
+    holds AT MOST ONE row at any time — "the most recent persisted row" is simply "the row, if any",
+    with no need for a second ORDER BY/created_at tie-break.
+
+    Three cases, by row presence + stamp:
+      - NO row exists at all (no ingest has EVER completed a warm): the honest not-yet-computed empty
+        sentinel (`stale: False`, `served_dataset_version: None`) — UNCHANGED from iter-56, and the
+        ONLY case that payload is honest for (never conflated with the stale-serving case below).
+      - A row exists and its stamp MATCHES the current one (idle/warm, byte-identical to iter-56):
+        `stale: False`, `served_dataset_version` equal to the current (== the row's) stamp.
+      - A row exists but its stamp does NOT match the current one (a stamp mismatch — an ingest is
+        mid-flight and the finalize-tail warm has not yet re-run): serve THAT row's real
+        `cells`/`total_symbols`/`trading_day_count` (never empty) with `stale: True` and
+        `served_dataset_version` set to the row's OWN (prior, not current) stamp, so the UI can render
+        the real previous heatmap plus an honest "as of / updating" banner instead of a false "no data"
+        claim. Still ZERO recompute — the payload is the SAME stored JSON blob deserialized, never a
+        live `compute_availability` call on this default request path (AG-8)."""
     cfg = config or get_config()
     version = _membership_dataset_version(session, cfg)
-    row = session.exec(
-        select(AvailabilityCache).where(AvailabilityCache.dataset_version == version)
-    ).first()
-    if row is not None:
-        return json.loads(row.payload_json)
-    return _availability_not_yet_computed_payload()
+    row = session.exec(select(AvailabilityCache)).first()
+    if row is None:
+        return _availability_not_yet_computed_payload()
+    payload = json.loads(row.payload_json)
+    payload["stale"] = row.dataset_version != version
+    payload["served_dataset_version"] = row.dataset_version
+    return payload
 
 
 def compute_capacity(session: Session, config: Optional[Config] = None) -> dict:

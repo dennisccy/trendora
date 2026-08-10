@@ -52,10 +52,22 @@ def sma_series(values: Sequence[float], period: int) -> list[Optional[float]]:
     `period` values ending at `i`, or NA (`None`) for the warm-up prefix with fewer than `period`
     prior values. Built by reusing `sma` over each prefix, so there is ONE MA definition and the
     invariant `sma_series(values, p)[-1] == sma(values, p)` holds by construction (single source:
-    the chart overlay, the invalidation level and the scoring MA components never disagree)."""
+    the chart overlay, the invalidation level and the scoring MA components never disagree).
+
+    ops-hardening iter-57 (J-06 closure): each call is bounded to AT MOST the last `period` values
+    (`values[max(0, i + 1 - period) : i + 1]`) instead of the full prefix (`values[: i + 1]`). `sma`
+    itself only ever reads its own trailing `period` values (`values[-period:]`), so passing it the
+    full ever-growing prefix on every one of `len(values)` calls was pure waste — an O(n) list COPY on
+    every iteration made the whole series O(n^2). Byte-identical output for every input (proven by a
+    dedicated regression test): the bounded slice's `[-period:]` inside `sma` is the SAME window
+    content either way, and the NA/warm-up length check (`len(...) < period`) triggers at the exact
+    same `i` in both forms. Confirmed live (`reports/perf-budgets.md`, dated addendum): the profiled
+    `GET /api/stocks/{ticker}/bars?through=latest` bottleneck (this function, called once per
+    configured `indicators.ma_periods` entry over the full as-of-bounded series) dropped from
+    ~0.178s to ~0.038s for AAPL's real 7,695-bar history across the 4 configured periods."""
     if period <= 0:
         raise ValueError(f"sma_series period must be positive, got {period}")
-    return [sma(values[: i + 1], period) for i in range(len(values))]
+    return [sma(values[max(0, i + 1 - period): i + 1], period) for i in range(len(values))]
 
 
 def rs_vs(series: Sequence[float], benchmark: Sequence[float], window: int) -> Optional[float]:

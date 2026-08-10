@@ -1,0 +1,51 @@
+{
+  "phase": "goal-ops-hardening-iter-57",
+  "status": "complete",
+  "current_step": "closure_passed",
+  "updated_at": "2026-08-10T17:47:54.554503Z",
+  "started_at": "2026-08-10T05:54:07.432832Z",
+  "cli": "claude",
+  "fix_pass": {
+    "audit": "docs/handoffs/goal-ops-hardening-iter-57-audit.md",
+    "mode": "verification-only (audit instruction: 'Do not change product code'; DoD item 9 / TC-14 binds audit findings to notes for iter-58)",
+    "issues_addressed": [
+      "B2 -- target journey J-06 had no verification row in any lane: replayed the FINAL J-06.json via demo_runner.py --mode verify against the script-launched backend (8255) + prod frontend (3255); re-merged with --target J-06. Merged authoritative file went BLOCKED/'15/16 (1 target-missing)' -> PASS/'16/17 (1 skipped)'; the Missing Target Journeys section is gone",
+      "B3 -- the deterministic replay lane's stored result was FAIL 0/6 reversed by prose: re-ran the lane against the port-corrected frontend build (baked NEXT_PUBLIC_API_URL re-verified as localhost:8255 before launch). Result PASS 6/6 for J-01/J-03/J-04/J-06/J-08/J-09; first-pass FAIL artifact archived at runs/goal-ops-hardening-iter-57/regression-replay-results.first-pass.md",
+      "B1 -- AG-9 breach (data_provider_runs id=369, live yahoo fetch, 591 requests, 0 bars persisted) logged as an owner-visible event in runs/goal-session-ops-hardening/state/assumptions.md with the 5 prior uncaught occurrences named; two process rules adopted (drills use backfill only, never the 'Fetch real EOD prices' button; TC-16 verified against the DB AFTER the lane). Post-lane re-query: rows 374/375/376 all provider='seed', id=369 the only non-seed row on 2026-08-10",
+      "T1 -- TC-7 (relaxed <=2s bounded-window health ceiling) drilled for real instead of inspected: 1 Hz curl poll for 23m15s across a genuine 9m36s background-compute window. 1,211 polls, ZERO non-200; 1 of 424 in-window polls measured 2.593s against the <=2s ceiling -- reported as a breach, filed for iter-58",
+      "T3 -- the never-executed -k-deselected health byte-identity test filed as docs/test-infra-tickets.md TI-2 (not run: it needs the loaded_engine fixture that TI-1 documents as never completing inside a dispatch)",
+      "B4/B5/B6 + remaining T-items -- carried into iter-58 as scoped, written items (dev handoff 'Carry to iter-58'), not applied: each needs a product-code or framework change that TC-14 forbids in an audit-fix pass"
+    ],
+    "product_code_changed": false,
+    "newest_product_code_mtime": "2026-08-10T07:23:10 (apps/frontend/components/availability-heatmap.tsx)",
+    "lane_artifact_mtimes": "11:18-11:35 -- strictly after the product-code freeze (TC-14 holds)"
+  },
+  "blockers": [
+    "NEW, out of scope, disclosed not fixed: after a forward-aggregate warm failed with MemoryError at the declared ulimit -v ceiling, the process stayed pinned at VmSize 8388604 kB and served /api/health 200 ('ready') while /api/data/availability, /api/runs, /api/stocks/AAPL/bars and /api/data all returned 500; SIGTERM did not complete inside the 120s graceful window. A fresh process recovers every endpoint inside budget, so this is a process-state condition at the memory ceiling, not a defect introduced by iter-57. J-07 class; filed for iter-58",
+    "TC-7 latency ceiling breached once (2.593s vs <=2s) during a 9m36s failed background-compute window; the binding HTTP-200/no-freeze clause held on all 1,211 polls",
+    "J-05 has no deterministic replay row this round (its single-use golden date was consumed by this same iteration's LLM lane); its evidence is the LLM lane's live PASS + data_provider_runs id=370. Golden date rotation is an iter-58 action",
+    "test_api_runs.py's 5 loaded_engine tests still do not complete inside a dispatch (TI-1); TI-2 depends on the same fixture"
+  ],
+  "changed_files": [
+    "reports/phase-goal-ops-hardening-iter-57-regression-replay-results.md",
+    "reports/phase-goal-ops-hardening-iter-57-ui-test-results.md",
+    "reports/qa/goal-ops-hardening-iter-57-evidence/J-01-verify.png",
+    "reports/qa/goal-ops-hardening-iter-57-evidence/J-03-verify.png",
+    "reports/qa/goal-ops-hardening-iter-57-evidence/J-04-verify.png",
+    "reports/qa/goal-ops-hardening-iter-57-evidence/J-06-verify.png",
+    "reports/qa/goal-ops-hardening-iter-57-evidence/J-08-verify.png",
+    "reports/qa/goal-ops-hardening-iter-57-evidence/J-09-verify.png",
+    "reports/perf-budgets.md",
+    "runs/goal-session-ops-hardening/state/assumptions.md",
+    "docs/test-infra-tickets.md",
+    "docs/handoffs/goal-ops-hardening-iter-57-dev.md",
+    "reports/phase-goal-ops-hardening-iter-57-implementation-summary.md",
+    "runs/goal-ops-hardening-iter-57/regression-replay-results.first-pass.md",
+    "runs/goal-ops-hardening-iter-57/tc7-health-poll.log",
+    "runs/goal-ops-hardening-iter-57/status.json"
+  ],
+  "tests_run": false,
+  "tests_run_note": "No pytest in this pass -- no product code changed; the 336 passing tests from the earlier passes stand. Single-slot rule never at risk.",
+  "browser_checks_run": true,
+  "next_action": "audit"
+}

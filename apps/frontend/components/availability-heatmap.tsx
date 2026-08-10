@@ -42,6 +42,15 @@ import type { AvailabilityCell, AvailabilityResponse } from "@/lib/api";
  *
  * iter-5 nested-interactive guard: each day is a single `<button>` (the click target); the snapshot
  * marker and the hover tooltip are non-interactive `<span>`s INSIDE it — no nested interactive element.
+ *
+ * ops-hardening iter-57 (J-06 closure): the payload now carries `stale`/`served_dataset_version` (see
+ * `AvailabilityResponse` in `lib/api.ts`). `stale: true` means the backend served the MOST RECENT
+ * persisted reading rather than the current in-flight one (an ingest is mid-flight; the payload's real
+ * cells are shown, exactly as before) — this component now renders a calm "Data as of
+ * `<served_dataset_version>` — updating" notice above the grid in that case (mirrors the Coverage
+ * panel's existing `coverage-stale-notice` treatment, same tone, same tokens). `stale: false` with
+ * non-empty cells renders unchanged; `stale: false` with empty cells is still the ONLY case the "No
+ * availability yet" empty state below is honest for (a DB where no row has ever been persisted).
  */
 
 type DensityBucket = 0 | 1 | 2 | 3 | 4 | 5;
@@ -211,6 +220,15 @@ export function AvailabilityHeatmap({
           as-of date.)
         </p>
       </div>
+
+      {state.kind === "ok" && state.data.stale ? (
+        <p
+          className="border-b border-border bg-surface-2 px-4 py-2 text-xs text-text-muted"
+          data-testid="availability-stale-notice"
+        >
+          Data as of {state.data.served_dataset_version} — updating
+        </p>
+      ) : null}
 
       {state.kind === "loading" ? (
         <div className="flex items-center gap-2 p-6 text-sm text-text-muted" data-testid="availability-loading">

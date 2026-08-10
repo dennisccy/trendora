@@ -278,6 +278,12 @@ def index_series_cached_with_status(
         session.commit()
     except Exception:  # a concurrent writer raced us to the same key — the cache is best-effort, not a
         session.rollback()  # source of truth; the freshly computed payload is still byte-identical, so return it
+        # ops-hardening iter-57 (AG-3 honesty fix, mirrors the SAME fix on data_manager.py's sibling
+        # `availability_cached_with_status`): a rolled-back commit did NOT durably persist —
+        # `persisted_this_call=True` here would be a false claim feeding the `aggregates_refreshed`
+        # list's "index_series" entry even though nothing was written. `payload` is still returned
+        # (byte-identical to `compute_index_series`, still correct to serve THIS call).
+        return payload, False
     return payload, True
 
 

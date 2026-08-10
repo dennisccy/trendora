@@ -32,7 +32,7 @@ introduced (previously visible only by reconstructing it from raw DB timestamps)
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import distinct, func, select
+from sqlalchemy import func, select, text
 from sqlmodel import Session
 
 from app.config import get_config
@@ -42,6 +42,37 @@ from app.models import DailyPrice
 
 router = APIRouter(tags=["health"])
 
+# ops-hardening iter-57 (J-06 closure): a plain `SELECT COUNT(DISTINCT symbol) FROM daily_prices` makes
+# SQLite do a full COVERING INDEX SCAN of every (symbol, date) row to compute the distinct count — live
+# profiling on the grown 8.37 GB dev DB (3.3M rows) measured this ALONE at 0.117-0.119s (`EXPLAIN QUERY
+# PLAN`: `SCAN daily_prices USING COVERING INDEX ...`), the confirmed majority of this endpoint's
+# 0.16-0.241s steady-state latency against the committed <=0.1s budget (`reports/perf-budgets.md`, new
+# dated addendum). `symbol` is the LEADING column of that same unique index, so a recursive-CTE "walk
+# the index for the next distinct value" query (the standard SQLite loose-index-scan idiom) makes SQLite
+# do ~591 indexed SEARCHes (one per distinct symbol) instead of a 3.3M-row scan — confirmed live:
+# `EXPLAIN QUERY PLAN` shows `SEARCH daily_prices USING COVERING INDEX ... (symbol>?)`, same exact
+# result (591), 0.001-0.003s (roughly 100x). This is a pure query-SHAPE change — still a fully live,
+# request-time count (no staleness introduced, no persisted/cached value, no response field/shape
+# change) — the SAME "keep it lazy/indexed, never precomputed-and-stale" convention this endpoint's
+# contract already commits to.
+_DISTINCT_SYMBOL_COUNT_SQL = text(
+    """
+    WITH RECURSIVE syms(sym) AS (
+        SELECT (SELECT MIN(symbol) FROM daily_prices)
+        UNION ALL
+        SELECT (SELECT MIN(symbol) FROM daily_prices WHERE symbol > sym) FROM syms WHERE sym IS NOT NULL
+    )
+    SELECT COUNT(*) FROM syms WHERE sym IS NOT NULL
+    """
+)
+
+
+def _distinct_symbol_count(session: Session) -> int:
+    """The distinct count of symbols with >= 1 stored `daily_prices` bar — byte-identical to
+    `SELECT COUNT(DISTINCT symbol) FROM daily_prices` for the SAME DB state, via the fast indexed-walk
+    query above instead of a full covering-index scan."""
+    return int(session.execute(_DISTINCT_SYMBOL_COUNT_SQL).scalar_one() or 0)
+
 
 @router.get("/health")
 def health(session: Session = Depends(get_session)) -> dict:
@@ -49,7 +80,7 @@ def health(session: Session = Depends(get_session)) -> dict:
     provider = cfg.provider
     try:
         latest = session.scalar(select(func.max(DailyPrice.date)))
-        symbol_count = int(session.scalar(select(func.count(distinct(DailyPrice.symbol)))) or 0)
+        symbol_count = _distinct_symbol_count(session)
         db_ok = True
     except Exception:  # pragma: no cover - DB unreachable is surfaced, never faked
         latest = None

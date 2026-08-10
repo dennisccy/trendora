@@ -709,15 +709,28 @@ def list_runs(session: Session) -> dict:
 
     NOTE: `/api/runs` keeps its read inline in the router (no engine function to delegate to), so this
     is the one tool that MIRRORS the router's stored-row read rather than calling a shared engine helper
-    — it still recomputes nothing (a plain SELECT over the immutable snapshot rows)."""
+    — it still recomputes nothing (a plain SELECT over the immutable snapshot rows).
+
+    ops-hardening iter-57 (coherence-auditor iter-56 advisory, closed as a low-risk rider): `n_stocks`
+    is now read from ONE grouped `GROUP BY ScannerResult.run_id` aggregate query, mirroring the SAME
+    fix `app.api.runs.runs` already applied in iter-56 — replacing the per-run `ScannerResult` COUNT
+    query that used to run once PER stored `ScannerRun` row (the exact N+1 pattern iter-56's live
+    profiling measured issuing one query per row; the coherence audit separately measured this tool's
+    own un-fixed copy at 6.8-10.7s on the live DB). Same tool, same response shape, byte-identical
+    `n_stocks` per run — a run with zero stored results is honestly `0` (absent from the grouped
+    result, defaulted below), exactly as the old per-run `COUNT()` returned for it."""
     if latest_data_date(session) is None:
         raise ValueError("no price data available")
     run_rows = session.exec(select(ScannerRun).order_by(ScannerRun.asof_date.desc())).all()
+    counts_by_run_id = dict(
+        session.exec(
+            select(ScannerResult.run_id, func.count())
+            .select_from(ScannerResult)
+            .group_by(ScannerResult.run_id)
+        ).all()
+    )
     out = []
     for run in run_rows:
-        n_stocks = session.scalar(
-            select(func.count()).select_from(ScannerResult).where(ScannerResult.run_id == run.id)
-        )
         out.append(
             {
                 "run_id": run.id,
@@ -725,7 +738,7 @@ def list_runs(session: Session) -> dict:
                 "created_at": run.created_at.isoformat(),
                 "regime": {"label": run.regime_label, "score": run.regime_score},
                 "candidate_counts": json.loads(run.candidate_counts_json),
-                "n_stocks": int(n_stocks or 0),
+                "n_stocks": int(counts_by_run_id.get(run.id, 0) or 0),
             }
         )
     return {"runs": out}

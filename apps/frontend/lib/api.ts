@@ -2715,11 +2715,24 @@ export interface AvailabilityCell {
 
 /** J-61: the per-trading-date availability payload (GET /api/data/availability). `cells` is one entry per
  *  benchmark trading day, ascending. An empty / bars-less DB → `cells: []`, `total_symbols: 0` (no
- *  fabricated cells). Descriptive metadata only — no canonical value is recomputed. */
+ *  fabricated cells). Descriptive metadata only — no canonical value is recomputed.
+ *
+ *  ops-hardening iter-57 (J-06 closure): two additive fields close the during-a-job honesty gap where the
+ *  backend used to serve the not-yet-computed empty sentinel for the ENTIRE duration of any ingest job
+ *  (the cache's dataset-version stamp bumps on the job's first committed bar, but the cache row is only
+ *  re-warmed at the job's END) — falsely telling the operator no data exists over a multi-million-row DB.
+ *  `stale: true` now means: this `cells`/`total_symbols`/`trading_day_count` payload is the MOST RECENT
+ *  persisted reading, not the current in-flight one (an ingest is mid-flight and its finalize warm has not
+ *  yet re-run). `served_dataset_version` is the dataset_version stamp that payload actually reflects —
+ *  `null` only when NO `AvailabilityCache` row has EVER been persisted (the genuinely never-ingested case,
+ *  the ONLY case the empty sentinel remains honest for). `stale: false` (the pre-existing, unchanged
+ *  behavior) means the payload matches the CURRENT dataset version. */
 export interface AvailabilityResponse {
   total_symbols: number;
   trading_day_count: number;
   cells: AvailabilityCell[];
+  stale: boolean;
+  served_dataset_version: string | null;
 }
 
 /** J-61: GET /api/data/availability — the per-trading-date availability heatmap source. Throws on a

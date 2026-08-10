@@ -226,14 +226,21 @@ def test_get_data_availability_shape(data_api_engine):
     """J-61 — GET /api/data/availability returns the per-trading-date availability payload over the SAME
     bars `compute_coverage` reads. On the tiny fixture (two SPY days, no other symbols, no snapshots):
     two cells (one per trading day), each SPY-only (`symbols_with_bars == 1`) with `snapshot_exists`
-    false, and `total_symbols == 1` (== the coverage symbol_count). The `/api/data` overview is unchanged."""
+    false, and `total_symbols == 1` (== the coverage symbol_count). The `/api/data` overview is unchanged.
+
+    ops-hardening iter-57 (TC-3): the fixture warms the cache once with no DB mutation afterward, so the
+    stamp still matches — `stale: False` and `served_dataset_version` equal to the current stamp (the
+    two new additive iter-57 fields)."""
     with Session(data_api_engine) as session:
         payload = data_availability(session=session)
         overview = data_overview(session=session)
+        current_version = data_manager._membership_dataset_version(session, get_config())
 
-    assert set(payload) == {"total_symbols", "trading_day_count", "cells"}
+    assert set(payload) == {"total_symbols", "trading_day_count", "cells", "stale", "served_dataset_version"}
     assert payload["total_symbols"] == overview["coverage"]["symbol_count"] == 1
     assert payload["trading_day_count"] == overview["coverage"]["trading_day_count"] == 2
+    assert payload["stale"] is False
+    assert payload["served_dataset_version"] == current_version
     cells = payload["cells"]
     assert len(cells) == 2
     for c in cells:
@@ -246,20 +253,24 @@ def test_get_data_availability_shape(data_api_engine):
 
 def test_get_data_availability_empty_db_is_graceful(tmp_path):
     """J-61 — on an empty / bars-less DB the availability endpoint returns an empty-but-valid payload
-    (no 500, no fabricated cells), mirroring the honest empty coverage payload."""
+    (no 500, no fabricated cells), mirroring the honest empty coverage payload. TC-2: `stale: False`,
+    `served_dataset_version: None` — no `AvailabilityCache` row has EVER been persisted."""
     engine = make_engine(f"sqlite:///{tmp_path / 'avail_empty.db'}")
     create_db_and_tables(engine)
     with Session(engine) as session:
         payload = data_availability(session=session)
-    assert payload == {"total_symbols": 0, "trading_day_count": 0, "cells": []}
+    assert payload == {
+        "total_symbols": 0, "trading_day_count": 0, "cells": [],
+        "stale": False, "served_dataset_version": None,
+    }
 
 
 def test_get_data_availability_no_warm_serves_honest_not_yet_computed(tmp_path):
-    """ops-hardening iter-56 (TC-8) — real bars/snapshot exist, but the ingest finalize hook's
-    availability-heatmap warm has never run (no `AvailabilityCache` row): the endpoint returns HTTP 200
-    with the honest not-yet-computed empty payload — NEVER a live `compute_availability` full-history
-    scan on this default request path (AG-8), even though a live compute here would produce non-empty
-    cells."""
+    """ops-hardening iter-56 (TC-8) / iter-57 (TC-2) — real bars/snapshot exist, but the ingest finalize
+    hook's availability-heatmap warm has never run (no `AvailabilityCache` row EVER persisted): the
+    endpoint returns HTTP 200 with the honest not-yet-computed empty payload (`stale: False`,
+    `served_dataset_version: None`) — NEVER a live `compute_availability` full-history scan on this
+    default request path (AG-8), even though a live compute here would produce non-empty cells."""
     engine = make_engine(f"sqlite:///{tmp_path / 'avail_no_warm.db'}")
     create_db_and_tables(engine)
     with Session(engine) as session:
@@ -269,7 +280,37 @@ def test_get_data_availability_no_warm_serves_honest_not_yet_computed(tmp_path):
     # deliberately NO data_manager.availability_cached_with_status(...) warm call here.
     with Session(engine) as session:
         payload = data_availability(session=session)
-    assert payload == {"total_symbols": 0, "trading_day_count": 0, "cells": []}
+    assert payload == {
+        "total_symbols": 0, "trading_day_count": 0, "cells": [],
+        "stale": False, "served_dataset_version": None,
+    }
+
+
+def test_get_data_availability_stale_serves_prior_row_on_stamp_mismatch(tmp_path):
+    """ops-hardening iter-57 (TC-1, at the API layer) — a warm has already run (V1), then a new bar
+    lands WITHOUT the finalize-tail warm re-running (simulating a mid-flight ingest job's first
+    committed bar): the endpoint serves the PRIOR row's real, non-empty cells with `stale: True` and
+    `served_dataset_version` equal to the PRIOR (not current) stamp — never the not-yet-computed empty
+    sentinel while real data exists."""
+    engine = make_engine(f"sqlite:///{tmp_path / 'avail_stale.db'}")
+    create_db_and_tables(engine)
+    with Session(engine) as session:
+        for d in (date(2024, 1, 2), date(2024, 1, 3)):
+            session.add(DailyPrice(symbol="SPY", date=d, open=1.0, high=1.0, low=1.0, close=1.0, volume=1.0))
+        session.commit()
+    with Session(engine) as session:
+        data_manager.availability_cached_with_status(session, get_config())  # warm it (V1)
+        prior_version = data_manager._membership_dataset_version(session, get_config())
+    with Session(engine) as session:
+        # a new bar lands — bumps the stamp — but no re-warm runs (mid-flight ingest, finalize pending)
+        session.add(DailyPrice(symbol="AAA", date=date(2024, 1, 2), open=2.0, high=2.0, low=2.0, close=2.0, volume=2.0))
+        session.commit()
+    with Session(engine) as session:
+        payload = data_availability(session=session)
+    assert payload["stale"] is True
+    assert payload["served_dataset_version"] == prior_version
+    assert payload["cells"] != []
+    assert payload["total_symbols"] == 1  # the PRIOR row's count (SPY only) — not the post-bar count
 
 
 def test_post_job_defaults_source_when_omitted(data_api_engine):

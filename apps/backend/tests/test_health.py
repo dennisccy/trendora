@@ -1,16 +1,20 @@
 """GET /api/health via FastAPI TestClient against the loaded temp DB."""
 from __future__ import annotations
 
+from datetime import date
+
 from fastapi.testclient import TestClient
-from sqlalchemy import event
+from sqlalchemy import event, func, select as sa_select
 from sqlmodel import Session, select
 
 import main
+from app.api.health import _distinct_symbol_count
 from app.config import load_config
+from app.db import create_db_and_tables, make_engine
 from app.engine import readiness
 from app.engine.scanner import get_run_for_date
 from app.engine.warmup import _warmup_dates
-from app.models import ScannerRun
+from app.models import DailyPrice, ScannerRun
 
 
 def test_health_returns_ok_shape(loaded_engine):
@@ -261,3 +265,60 @@ def test_readiness_grouped_existence_query_matches_per_date_check(loaded_engine)
             session.exec(select(ScannerRun.asof_date).where(ScannerRun.asof_date.in_(cadence_dates))).all()
         )
     assert grouped_persisted == manual_persisted
+
+
+# ==================================================================================================
+# ops-hardening iter-57 (TC-5) -- `_distinct_symbol_count`'s fast indexed-walk replaces the per-request
+# `COUNT(DISTINCT symbol)` covering-index scan (0.117-0.119s live on the grown dev DB, the confirmed
+# majority of GET /api/health's steady-state latency against the committed <=0.1s budget). Fast,
+# hand-built fixtures -- NOT `loaded_engine` -- so these run in milliseconds, mirroring `coverage_engine`
+# in test_data_manager.py rather than the slow 30-year-seed session fixture.
+# ==================================================================================================
+def test_distinct_symbol_count_byte_identical_to_naive_count_distinct(tmp_path):
+    """TC-5 byte-identity: the fast indexed-walk query returns the SAME value as a plain
+    `SELECT COUNT(DISTINCT symbol)` for the same DB state -- multiple symbols, multiple dates per
+    symbol, and one symbol repeated across every date (proving it counts distinct SYMBOLS, not rows)."""
+    engine = make_engine(f"sqlite:///{tmp_path / 'symcount.db'}")
+    create_db_and_tables(engine)
+    with Session(engine) as session:
+        for sym in ("SPY", "AAA", "BBB"):
+            for d in (date(2024, 1, 2), date(2024, 1, 3), date(2024, 1, 4)):
+                session.add(DailyPrice(symbol=sym, date=d, open=1.0, high=1.0, low=1.0, close=1.0, volume=1.0))
+        session.commit()
+
+    with Session(engine) as session:
+        fast = _distinct_symbol_count(session)
+        naive = int(session.execute(sa_select(func.count(func.distinct(DailyPrice.symbol)))).scalar_one() or 0)
+    assert fast == naive == 3
+
+
+def test_distinct_symbol_count_empty_db_is_zero(tmp_path):
+    """An empty / bars-less DB reports 0 -- never an error, never a fabricated count."""
+    engine = make_engine(f"sqlite:///{tmp_path / 'symcount_empty.db'}")
+    create_db_and_tables(engine)
+    with Session(engine) as session:
+        assert _distinct_symbol_count(session) == 0
+
+
+def test_distinct_symbol_count_single_symbol(tmp_path):
+    """A DB with exactly one symbol across several dates counts 1, not the row count (4)."""
+    engine = make_engine(f"sqlite:///{tmp_path / 'symcount_one.db'}")
+    create_db_and_tables(engine)
+    with Session(engine) as session:
+        for d in (date(2024, 1, 2), date(2024, 1, 3), date(2024, 1, 4), date(2024, 1, 5)):
+            session.add(DailyPrice(symbol="SPY", date=d, open=1.0, high=1.0, low=1.0, close=1.0, volume=1.0))
+        session.commit()
+    with Session(engine) as session:
+        assert _distinct_symbol_count(session) == 1
+
+
+def test_health_symbol_count_matches_naive_count_distinct_on_loaded_engine(loaded_engine):
+    """TC-5 byte-identity on the realistic seeded fixture: `GET /api/health`'s `symbol_count` (now served
+    by `_distinct_symbol_count`) equals a plain `COUNT(DISTINCT symbol)` for the SAME DB state -- proving
+    the query-shape change introduced no value drift on real data, not just the small hand-built cases
+    above."""
+    with Session(loaded_engine) as session:
+        naive = int(session.execute(sa_select(func.count(func.distinct(DailyPrice.symbol)))).scalar_one() or 0)
+    with TestClient(main.app) as client:
+        body = client.get("/api/health").json()
+    assert body["symbol_count"] == naive

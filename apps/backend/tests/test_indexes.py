@@ -651,6 +651,36 @@ def test_index_series_cached_miss_computes_persists_and_matches_engine_output(tm
     assert rows[0].full is True
 
 
+def test_index_series_cached_rollback_reports_not_persisted(tmp_path, monkeypatch):
+    """TC-10 — ops-hardening iter-57 AG-3 honesty fix: a forced `session.commit()` failure inside
+    `index_series_cached_with_status`'s MISS path rolls back (the existing `except: session.rollback()`
+    branch) and MUST report `persisted_this_call=False` — never `True` for a write that did not durably
+    persist (mirrors the SAME fix on `data_manager.availability_cached_with_status`, the sibling
+    contract). The freshly computed payload is still returned; only the honesty flag changes."""
+    cfg = _cfg(tmp_path)
+    engine = _engine_with_bars()
+    with Session(engine) as session:
+        _insert_bars(session, "SPY", [100.0, 101.0, 102.0])
+        _insert_bars(session, "QQQ", [50.0, 51.0, 52.0])
+        session.commit()
+        expected = compute_index_series(
+            session, as_of=None, range_key=cfg.index_chart.default_range, config=cfg, full=True
+        )
+
+    with Session(engine) as session:
+        def _boom_commit():
+            raise RuntimeError("forced commit failure (TC-10 fault injection)")
+
+        monkeypatch.setattr(session, "commit", _boom_commit)
+        payload, persisted = index_series_cached_with_status(session, cfg)
+
+    assert persisted is False
+    assert payload == expected
+    with Session(engine) as session:
+        rows = session.exec(select(IndexSeriesCache)).all()
+    assert rows == []
+
+
 def test_index_series_cached_hit_serves_without_recompute(tmp_path, monkeypatch):
     cfg = _cfg(tmp_path)
     engine = _engine_with_bars()

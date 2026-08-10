@@ -1158,3 +1158,80 @@ both satisfiable without the behaviour; a side-effect row or a log line is not.
 **Applies to:** any evaluator scoring a journey `passing` on a deterministic-replay row; any
 iteration rebuilding a golden for a journey that writes to the DB.
 
+
+<!-- condense.sh 2026-08-10T17:30:40Z: moved 6 entries (keep-iters=5) -->
+
+## iter-49 — 2026-08-05T12:50:00Z
+
+**Verdict:** ESCALATE
+**Lesson:** A per-phase log MESSAGE is not a per-phase ATTRIBUTION — read the traceback under it.
+`logs/backend.log`'s "evidence drawdown-expectations warm aborted — memory pressure" line at
+10:36:03.525 was published in the round's headline report as the ingest finalize tail (this
+iteration's own target); the traceback printed directly beneath it reads
+`warmup.py", line 198, in _warm_drawdown_expectations` — the BOOT/re-warm path, whose only
+distinguishing marker is the word "evidence" vs "ingest" in an otherwise identical message. Getting
+this right is what turns audit finding B2 (an uninterlocked second heavy loop) from a theoretical
+risk into a proven live contributor to a 12 m 45 s process death.
+**Applies to:** any iteration reading `data_manager` / `warmup` finalize-or-warm phase logs, and any
+agent attributing a MemoryError or timing outlier to a specific loop — always confirm the frame, not
+the message.
+
+## iter-49 — 2026-08-05T12:50:00Z (second entry)
+
+**Verdict:** ESCALATE
+**Lesson:** A bound proven on an idle host with a throwaway DB copy is not a bound proven in the
+product. This round's 1,200 s termination bound held 3/3 in isolated drills (1,019.6/1,052.5/1,049.2 s
+sampler spans) while the SAME job shape in the live app never terminated at all — the difference was
+ordinary concurrent page traffic, not code. Record both numbers or the drill becomes a way of passing
+without shipping.
+**Applies to:** any iteration whose acceptance is a wall-clock or memory bound (J-05, J-07, and any
+future perf-budget work) — require at least one measurement through the app's own pages, under
+concurrent reads, before the journey moves up.
+
+## iter-50 — 2026-08-06T07:45:00Z
+
+**Verdict:** ESCALATE
+**Lesson:** A raw `grep -c MemoryError logs/backend.log` total is an actively misleading metric in
+this session and I nearly used it as one. The count went 7,083 → 7,862 this round (+779), which reads
+as a catastrophe; segmenting by `start-backend.sh: launching at` banner shows 770 of them are the
+developer's own deliberately fault-injected TC-2 memory-pressure drills (segments 13:58 and 14:14),
+9 are the browser lane, and **0** are the post-fix TC-1 drill. Always split the count per backend
+segment before drawing any conclusion from it.
+**Applies to:** any iter scoring J-05/J-06/J-07 or any memory-bounding work; any evaluator or auditor
+citing a `logs/backend.log` MemoryError count.
+
+## iter-50 — 2026-08-06T07:45:00Z
+
+**Verdict:** ESCALATE
+**Lesson:** Bounding memory cannot close a responsiveness requirement, and this round proved it
+cleanly: `compute_factor_lab_all`'s footprint fell 7.76 GB → 3.13 GB with zero MemoryErrors across a
+1,522 s concurrent drill, and `GET /api/health` still breached its ≤2 s ceiling 96 times out of 1,179
+(worst 10.06 s) in that same drill — because the cause is GIL contention between two CPU-bound Python
+computes in one process, not allocation. J-07 step 2 is a *scheduling* problem wearing a memory
+problem's clothes; three consecutive iterations aimed memory fixes at it.
+**Applies to:** any iter targeting J-07's health-poll ceiling, or proposing a memory bound as the
+remedy for a latency/availability journey.
+
+## iter-51 — 2026-08-07T10:05:11Z
+
+**Verdict:** ESCALATE
+**Lesson:** Uvicorn access-log lines in `logs/backend.log` carry NO timestamp of their own, so any
+"nearest preceding timestamped line" attribution manufactures phantom multi-minute dead windows that
+land exactly on the longest CPU-bound phase — because that phase logs only at its end. My first pass
+showed a 583 s gap with zero `/api/health` lines during `factor_lab_all_warm`; re-counting the lines
+BUCKETED at that anchor found **248** health responses, all 200. Always count access lines per anchor
+before claiming an unresponsive window; the wrong reading would have driven a REGRESSION halt.
+**Applies to:** any iter scoring J-07/J-05 responsiveness, or reading `logs/backend.log` for outage,
+wedge, or latency evidence.
+
+## iter-51 — 2026-08-07T10:05:11Z (second entry)
+
+**Verdict:** ESCALATE
+**Lesson:** TC-8/TC-13 ("the journey lane runs LAST, no product-code change afterward") held for the
+first time in six rounds, and the reason is that the auditor applied **zero** fixes — it wrote B3/T1
+up as findings precisely because editing `apps/backend/app/**` post-lane would have invalidated the
+only lane evidence the iteration had. "Fix small things during audit" and "the lane runs last" are in
+direct tension; when both are in force, findings-only is the correct resolution and should be stated
+as the expectation, not left to the auditor's judgement each round.
+**Applies to:** any full-depth iter whose spec carries the TC-8 lane-last sequencing rule.
+
