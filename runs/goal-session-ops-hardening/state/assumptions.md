@@ -612,3 +612,36 @@ fail-open clause exists to catch, or who counts five consecutive rounds of the c
 "cross-cutting complexity", would return ESCALATE and mandate full depth. That reading is
 defensible and I would not argue it is wrong; it is one owner sentence away from being the rule.
 **Reversible:** yes
+
+## iter-56 — goal-decomposer
+
+**Ambiguity:** the iter-55 evaluator's next-step items (2) "stop the checking tool from deleting
+its own results" and (3) "make the quality report read the browser report's verdict line first"
+name real, repeatedly-observed defects (item 3 flagged 5 rounds running) but do not say WHERE the
+fix lives. `docs/goal.md` and this session's own agent instructions do not say whether a
+goal-decomposer spec may direct a "developer" pass at pipeline/tooling code (the replay lane that
+writes `reports/phase-<iter>-regression-replay-results.md`, and the QA verdict-reading logic) the
+same way it directs product code.
+
+**We chose:** exclude both items from this iteration's IN SCOPE and flag them again in BACKGROUND/
+NOTES rather than assign them to the developer. Grounds stated rather than assumed: (1) a direct
+search (`grep -rl "regression-replay" --include="*.sh"`, `find -iname "*replay*"`) found the
+replay-lane implementation (`lib/replay-lane.sh`, `lib/replay_trace.py`) and QA-agent verdict
+logic living ONLY under the vendored `incredible_auto_dev/scripts/automation/` tree, not under
+this product's own `apps/backend`/`apps/frontend`/`scripts/automation/` — this is the neutral
+framework asset source CLAUDE.md names ("edit the neutral source, never the generated `.claude/`
+mirrors"), governed by `.claude/maintenance-protocol.md`, not product-iteration scope; (2) the
+goal-decomposer's own instructions say "You do NOT write code" and route developer work at
+`apps/backend`/`apps/frontend` — nothing in scope names framework pipeline scripts as a directable
+surface; (3) this session's own memory/precedent keeps framework-subtree changes on a separate
+track from goal-mode product iterations (pushed via "clone-and-apply", not authored inside a goal
+iteration). **Cost recorded honestly:** this is the fifth consecutive round the QA-verdict-reading
+defect goes unfixed, and a sixth round's evaluator will likely see it again; a reader who holds
+that the product repo's own `scripts/automation/` tree (present locally, distinct from the
+vendored copy) is fair game for a goal-mode developer pass would direct this iteration to fix it
+there — I would not say that reading is wrong, but I did not find evidence the local tree, rather
+than the vendored source, is actually what executes during a dispatched run, so directing a fix at
+the wrong copy risks a no-op fix that looks resolved and is not.
+
+**Reversible:** yes — a future iteration or the owner can redirect this fix once the correct
+editable copy (vendored source vs. rendered local tree) is confirmed.
