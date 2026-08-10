@@ -4231,7 +4231,18 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
             try:
                 latest_run_date = scanner._latest_stored_run_date(session)
                 if latest_run_date is not None:
-                    forward_aggregates_warmed = False
+                    # ops-hardening iter-55 (honest-status fix): count horizons that ACTUALLY completed
+                    # rather than latching a single bool True the moment any one horizon succeeds. Live
+                    # incident evidence (run 351, logs/backend.log:233042): horizons 1/5/10 succeeded,
+                    # horizon 20 raised MemoryError, horizon 60 was never attempted — the OLD single-bool
+                    # gate (set True inside the per-horizon try, never reset on the later break) still
+                    # appended "forward_aggregates" to `refreshed`, claiming full completion for a warm
+                    # that aborted 2 of 5 configured horizons short. `cfg.walk_forward.horizons` is a
+                    # small, fixed, known-in-advance list (unlike the variable-length per-date/per-claim
+                    # loops this function also runs), so "warmed" now means ALL of them completed this
+                    # run, not merely "at least one did."
+                    _forward_horizons_total = len(cfg.walk_forward.horizons)
+                    _forward_horizons_completed = 0
                     for h in cfg.walk_forward.horizons:
                         prog.tick()  # F1-style heartbeat stamp before each horizon's compute (a cold-cache
                                      # compute here can take up to ~35s pre-warm; 5 sequential horizons could
@@ -4239,9 +4250,12 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
                         # ops-hardening iter-52 (J-07): real scheduling yield alongside the heartbeat stamp
                         # above -- see `_refresh_ingest_aggregates`'s docstring for the full rationale.
                         time.sleep(0)
-                        # ops-hardening iter-8 (J-05 REGRESSION fix): a `MemoryError` on one horizon is caught
-                        # HERE, distinctly, so a horizon that already succeeded before it is still honestly
-                        # reported — the outer `except Exception` below (unchanged for every OTHER exception
+                        # ops-hardening iter-8 (J-05 REGRESSION fix), iter-55 (honest-status fix): a
+                        # `MemoryError` on one horizon is caught HERE, distinctly, so horizons that already
+                        # completed before it still count toward `_forward_horizons_completed` — but (iter-55)
+                        # the aggregate-level completeness claim below now requires ALL configured horizons
+                        # to have completed, so a partial count no longer reports "forward_aggregates" as
+                        # refreshed. The outer `except Exception` below (unchanged for every OTHER exception
                         # type) has no per-horizon granularity, so a non-memory failure still aborts the whole
                         # block exactly as before (no regression to that existing behavior). On MemoryError
                         # this loop stops immediately (no further horizons attempted) and forces memory back
@@ -4264,7 +4278,7 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
                                 forward_testing.forward_aggregates_ingest_cached(
                                     session, h, cfg, as_of=latest_run_date
                                 )
-                                forward_aggregates_warmed = True
+                                _forward_horizons_completed += 1
                             except MemoryError as exc:
                                 _log_isolation_failure(
                                     "ingest forward-aggregate warm aborted at horizon %s — memory pressure, "
@@ -4277,6 +4291,13 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
                                 "J-05 finalize-tail sub-phase timing: job=%s phase=%s horizon=%s elapsed=%.2fs",
                                 prog.job_id, "forward_aggregates_warm", h, time.monotonic() - _horizon_t0,
                             )
+                    # ops-hardening iter-55: "forward_aggregates" is refreshed ONLY when every configured
+                    # horizon completed this run — a mid-loop MemoryError break leaves this False even
+                    # though one or more EARLIER horizons genuinely succeeded (their compute results are
+                    # still cached/persisted by `forward_aggregates_ingest_cached` itself; only the
+                    # run-level COMPLETENESS claim in `aggregates_refreshed` is corrected). The run's own
+                    # overall `status` field is untouched — isolate-and-continue behavior is unchanged.
+                    forward_aggregates_warmed = _forward_horizons_completed == _forward_horizons_total
                     if forward_aggregates_warmed:
                         refreshed.append("forward_aggregates")
             except Exception as exc:  # noqa: BLE001 — non-fatal: log + continue to the next aggregate

@@ -1,6 +1,6 @@
 # Iteration State — ops-hardening
 
-**After iteration:** 54 · **Date:** 2026-08-09 · **Verdict:** ESCALATE
+**After iteration:** 55 · **Date:** 2026-08-10 · **Verdict:** CONTINUE
 
 ## Journeys
 
@@ -8,33 +8,33 @@
 
 ## Active blockers
 
-- **J-05 step 4 / J-07 step 2 (dev):** 6 connection-level `/api/health` non-answers + 53 polls >2.0s
-  across 1,821 — **all inside `forward_aggregates_warm`**, zero in the phase this round fixed.
-  `reports/qa/goal-ops-hardening-iter-54-evidence/tc4-drill-out/health-polls.csv`, Addendum 17.
-- **Honest-status hole (dev):** run 351's warm aborted at horizon 20 (`logs/backend.log:233042`,
-  horizon 60 never ran) yet `data_provider_runs.id=351` stores `status='ok'` with `forward_aggregates`
-  still listed in `aggregates_refreshed`. Fix the record before the performance.
-- **J-06 step 2 (dev):** `/api/runs` 3.2-7.5s, `/api/data/availability` 15.1-21.2s vs ≤1.5s; `/api/health`
-  0.18-1.213s vs ≤0.1s — DB grew to 8.37 GB / 2,937 `scanner_runs` rows. Addendum 18 WARN.
-- **Verification debt (dev):** `journey-scripts/J-05.json` skipped a 2nd round (TC-7); J-04.json and
-  J-07.json authored but never replayed; J-04.json step 2 races the boot — needs a `wait_for`.
-- **Depth mismatch (engine):** spec said `Depth: full`, `iter-54/depth-dispatched` = `lean` → no audit,
-  no QA report. ESCALATE pins iter-55 to full.
-- **Owner, open since iter-50/51:** (a) may heavy compute move off-process? (b) does the 1,200s finalize-tail budget bind while serving traffic, or only when idle?
+- **J-05's golden is a live landmine (dev, cheap, DO FIRST).** `journey-scripts/J-05.json` needs a
+  0-snapshot trading day; it consumed 2010-11-08 (`scanner_runs.id=2940`) and was not rotated, so the
+  next replay FAILS for a fixture reason, not a product one. Verified swaps: 2010-11-10/11/12/15/16.
+- **The replay lane erases its own results (dev).** A 5-journey run at 02:32 overwrote the 7-row file
+  holding this session's only J-05/J-07 rows; `replay-lane/verify-run.log` truncated to 0 bytes.
+- **QA reports PASS over a BLOCKED lane (dev, 5th round).** `reports/qa/…-iter-55-qa.md:7,110` cites
+  replay rows deleted 6 min earlier; `status.json` blockers omit the BLOCKED lane.
+- **J-06's only gap is unprofiled (dev).** `/api/runs` 3.2–7.5s, `/api/data/availability` 15.1–21.2s vs
+  a ≤1.5s budget, driven by DB growth to 8.37 GB. Deferred twice; never measured once.
+- **Availability ceiling (HUMAN — owner decision (a), open since iter-50).** 11/1,839 non-answers vs
+  6/1,821 last round. Addendum 19 proves the per-compute-yield lever exhausted. Do not retry it.
+- **Demo recorder broken (dev, ~5 min):** "invalid demo script: step[6] fill requires text" — no walkthrough at all; costs J-04/J-05/J-07 their `[NEW]` captures.
 
 ## Last 2 verdicts
 
-- iter 54: ESCALATE — every code item delivered and verified in source, but zero journey movement, and a
-  lean-dispatched round hid a mid-horizon warm abort that no lane reported.
-- iter 53: CONTINUE — J-04 moved to passing; first scoreboard movement since iter-45.
+- iter 55: CONTINUE — honest-status fix built and verified 3 ways (code, tests, live run 356); no
+  journey moved; TC-5 regressed 6→11; audit found the consumed golden + destroyed rows.
+- iter 54: ESCALATE — dispatched lean against its own `Depth: full` spec, so no audit ran and the
+  horizon-20 warm abort (persisted as a complete refresh) reached the evaluator unreported.
 
 ## Do not redo
 
-- **B1 off-by-one FIXED** — `market_phase.py:230` fetches `lookback_days + 1`, `:572`
-  `recovery_trailing_ma_days + 1`; byte-identity comment corrected; treated-vs-UNTREATED oracle test ships.
-- **B3 FIXED** — `market_phase.py:1197` `_benchmark_close_on_or_before` returns `close_on(...)`.
-- **B2 FIXED** — fault probe removed from `universe_resolver.py`, now at `data_manager.py:4130-4139`.
-- **T2 FIXED** (`test_universe_resolver.py:340` restored) · **T5 done** (76/76, 3862.87s) ·
-  **`per_date_coverage_warm` FIXED** — zero non-answers there across 1,822 polls (was 1); do not re-treat.
-- **J-04 product behaviour is proven** (boot/badge/crash/interrupted rows, iter-53 + iter-54 replay);
-  AG-9 (`provider='seed'`, runs 346-351) and AG-10 (5 frozen paths clean) re-verified at source iter-54.
+- **`forward_aggregates` completeness fix DONE + verified** — `data_manager.py:4300` (`_completed ==
+  _total` after the loop); escape hatch closed by `config.py:766` `min_length=1`.
+- **Intra-chunk GIL yield DONE, byte-identical, and USELESS** — `forward_testing.py:1139`; h10
+  438.40s post-fix vs 336–438s pre-fix. Do not extend it.
+- **J-04's golden race FIXED** (`J-04.json` step 2 `wait_for`, replayed PASS) and its product behavior
+  (boot/badge/crash/interrupted) proven — do not rebuild either.
+- **AG-9/AG-10 re-verified** (all runs `provider='seed'`; both git checks empty on all 5 frozen paths;
+  `config.yaml:1363-1364` = 8192 / 2) and the **lane-ordering rule held a 3rd round** — keep both.

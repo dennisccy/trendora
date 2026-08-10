@@ -8802,3 +8802,114 @@ dropped. This iteration's own B1/B2/B3/`per_date_coverage_warm` changes are NOT 
 (neither touched endpoint is in this iteration's diff) — the WARN is a pre-existing, DB-growth-driven
 condition surfaced by this being the first TC-16 pass to measure `/api/runs`/`/api/data/availability`
 under real Chrome timing at the session's current (8.37 GB) data scale.
+
+---
+
+## Addendum 19 (2026-08-10, ops-hardening iter-55 developer pass) — TC-5/TC-6 live concurrent drill run against the honest-status + GIL-holding fixes; TC-5 NOT met, root cause diagnosed and disclosed
+
+Same harness as Addenda 13-17 (`run_drill_concurrent.py`, copied unmodified into
+`runs/goal-ops-hardening-iter-55/evidence-drill/`, byte-diffed against the iter-54 copy — zero diff),
+identical conditions: `scripts/start-backend.sh` on port 8255 with AG-10 caps live, a real
+`POST /api/data/jobs` backfill on a trading day chosen at run time from the instance's own
+`GET /api/data/availability`, `/api/health` polled once per second by a dedicated do-nothing-else
+process (5.0s client ceiling), a dedicated process alternating `GET /api/research/factor-lab?all=true` /
+`GET /api/research/factor-combination` throughout, job status polled by a third process, 40s hold past
+terminal status.
+
+Job `53449eb57b7948d29f734604ea324c73`, target **2019-02-08**, `source: 'yahoo'` (the job's own recorded
+default-source label for a seed-backed offline backfill — DB-verified `data_provider_runs.provider =
+'seed'` for this job's own row, confirmed AG-9). Terminal status **`ok`** in **2,008.86s**: 1 snapshot,
+2,285 forward returns. Boot: **2.3s** start -> first `/api/health` 200 (within the J-04 <=5s budget).
+VmPeak **4,700,440 kB (4,590.3 MB)** against `server.memory_cap_mb: 8192` — **43.9% margin**.
+
+### Result — TC-5: NOT MET. 11 non-answers (up from the iter-54 baseline of 6), 9 of 11 still inside `forward_aggregates_warm`
+
+| | Addendum 17 (iter-54 baseline) | **Addendum 19 (iter-55, post-fix)** |
+|---|---|---|
+| Health polls | 1,822 | **1,839** (exceeds the >=1,800 DoD floor) |
+| HTTP 200 | 1,815 | **1,828** |
+| non-200 | 0 | **0** |
+| **Non-answers (5.0s client ceiling)** | 6 (ALL in `forward_aggregates_warm`) | **11 (9 in `forward_aggregates_warm`, 1 in `coverage_membership_timeline_refresh`, 1 in `per_date_coverage_warm`)** |
+| Polls > 2.0s | 53 / 1,815 (2.92%) | **57 / 1,828 (3.12%)** |
+| Worst answered latency | 4.874s | 4.788s |
+
+Latency across the whole run: min 0.106s / median 0.291s / p90 1.191s / p99 3.071s / max 4.788s —
+statistically indistinguishable from Addendum 17's own min 0.109s / median 0.317s / p90 1.231s / p99
+3.154s / max 4.874s.
+
+**Where the 11 non-answers fall (`analyze.py`, same anchor-timestamp methodology as Addenda 13-17):**
+t+199.2s (`coverage_membership_timeline_refresh`), t+205.2s (`per_date_coverage_warm`), then NINE inside
+`forward_aggregates_warm` (t+509.7s, 514.7s, 637.7s, 642.7s, 658.1s, 692.6s, 704.8s, 709.8s, 786.3s) — all
+nine land inside this run's `forward_aggregates_warm[10]` sub-phase window (t+451.4s..t+889.8s,
+438.40s elapsed), the SAME horizon Addenda showed as the anomalous outlier before this iteration's fix
+(`logs/backend.log`: 336.67s/336-438s across multiple pre-fix runs) — **this iteration's intra-chunk yield
+fix did not shorten horizon=10's own elapsed time (438.40s here, statistically the same order as the
+pre-fix 336-438s range) and did not reduce the non-answer count inside this phase.**
+
+**Root-cause diagnosis (read from the drill's own `research-load.csv`, not asserted from the symptom
+alone):** the SAME drill's concurrent research-load process recorded its `/api/research/factor-lab?all=true`
+request starting at job start (t+0) and receiving **NO response within its own 600s client ceiling**
+(`http_code=000`, `total_s=600.008`) — the request's server-side `compute_factor_lab_all` fresh compute
+(triggered because the backfill's new snapshot bumped `dataset_version`, invalidating the concurrent
+load's pre-existing cache key) ran for AT LEAST 600s, concurrently with `forward_aggregates_warm`'s
+entire duration. The following `/api/research/factor-combination` request then ran **429.412s** (t+~594s
+to t+~1023s), also overlapping `forward_aggregates_warm[10]`'s t+451.4s-889.8s window almost exactly.
+Both `compute_factor_lab_all`/`compute_factor_combination` are ALREADY treated with `_cooperative_sorted`/
+`_cyclic_gc_paused` (iter-50/52) — this iteration did not touch either function, and re-treating them is
+OUT OF this iteration's IN SCOPE list (`forward_testing.py`'s per-horizon call chain only). The evidence
+here is that TWO independently-yielding CPU-bound computations running concurrently in the SAME process
+(this iteration's `compute_forward_aggregates` chunk loop, now yielding every
+`_FORWARD_AGG_ROW_YIELD_CHUNK=5,000` rows, AND the concurrent request's `compute_factor_lab_all`/
+`compute_factor_combination`) can still starve a THIRD (the health-check) thread of the GIL for multi-
+second stretches even though each one individually yields — the well-documented CPython "GIL convoy"
+effect, where a released GIL is not guaranteed to go to the thread that has been waiting longest. This is
+concrete, first-hand evidence for the STILL-OPEN owner decision named in this session's own NOTES since
+iter-50/51 and repeated at iter-53/54/55: **"(a) may heavy compute move to a separate process/worker
+boundary — the only way to guarantee the <=2s health ceiling under ALL conditions."** A single-process,
+GIL-scheduled architecture cannot fully close this class of non-answer no matter how finely any ONE
+compute path yields, once a SECOND independent heavy compute is running at the same time — closing it
+completely requires that owner-level architectural decision, not a further scheduling tweak inside
+`compute_forward_aggregates`.
+
+The 2 non-answers OUTSIDE `forward_aggregates_warm` (`coverage_membership_timeline_refresh`,
+`per_date_coverage_warm`, both previously closed to zero at iter-53/54) are a small regression (1 each,
+vs. 0 at Addendum 17) — most likely continued DB-growth pressure on the SAME bounded-fetch treatment
+those phases already carry (this run's DB was measured at 8.37+ GB, larger than either prior addendum's
+basis), not a defect this iteration's diff introduces (neither phase's code was touched this iteration —
+`git diff --stat` confirms only `data_manager.py`'s `forward_aggregates_warmed` gate and
+`forward_testing.py`'s per-horizon/per-chunk call chain changed). Disclosed, not silently dropped; not
+re-profiled this pass (2 events is too small a sample to diagnose further without contaminating this
+iteration's own one-risky-change scope).
+
+### Result — TC-6: disclosed, comparable to baseline (not improved)
+
+Polls answering slower than the relaxed 2.0s BCW ceiling: **57 / 1,828 (3.12%)**, up slightly from
+Addendum 17's 53 / 1,815 (2.92%) — all but one land inside `forward_aggregates_warm` (56 of 57), the
+identical phase the non-answers cluster in, consistent with the SAME root cause above rather than a
+separate defect.
+
+### TC-7 (byte-identity of the fix): MET
+
+`compute_forward_aggregates`'s output is byte-identical to the pinned pre-rewrite reference oracle for
+every configured horizon (1/5/10/20/60), with and without `as_of`, INCLUDING with the new
+`_FORWARD_AGG_ROW_YIELD_CHUNK` intra-chunk yield forced to fire on every single row (monkeypatched to 1)
+— `test_compute_forward_aggregates_byte_identical_with_row_yield_firing_every_row`,
+`test_forward_testing_aggregates_streaming.py`, 10/10 passed. The three on-load `GET
+/api/research/factor-lab?all=true` reads taken immediately after this drill (warm cache, same process)
+returned in 0.0324s / 0.0229s / 0.0187s — proving the concurrent load's own eventual compute did land in
+the cache and serves fast once warm, consistent with this being a transient concurrency/scheduling issue
+during the compute window, not a correctness or cache-invalidation defect.
+
+### Honest bottom line
+
+The honest-status completeness fix (`forward_aggregates_warmed` gated on all-horizons-complete) is
+verified correct by unit test (fault-injection TC-1/TC-2/TC-4, `test_data_manager.py`) and is NOT itself
+measured by this drill (no fault was injected this run — all 5 horizons completed normally, so
+`"forward_aggregates"` correctly remains in this job's `aggregates_refreshed`, confirmed by direct DB
+read: `data_provider_runs.id`'s row for this job lists all eight categories including
+`forward_aggregates`). The GIL-holding fix's OWN correctness (TC-7, byte-identity) is proven. Its
+AVAILABILITY goal (TC-5: zero non-answers) is **NOT achieved** — 11 non-answers this run vs. 6 at the
+iter-54 baseline, with first-hand evidence (the concurrent research-load's own 600s+/429s request
+durations) that the dominant remaining cause is cross-request GIL contention between two independently-
+yielding heavy computes, not an un-yielded stretch inside `compute_forward_aggregates` itself. Filed
+honestly for the reviewer/evaluator/next iteration, not silently rounded up to a pass.

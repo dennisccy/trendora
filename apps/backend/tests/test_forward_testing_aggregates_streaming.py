@@ -376,6 +376,42 @@ def test_compute_forward_aggregates_zero_fr_run_excluded_from_runs_with_fr(multi
 
 
 # ====================================================================================================
+# ops-hardening iter-55 (J-05/J-07, TC-7) — the intra-chunk `time.sleep(0)` yield bound.
+#
+# `_FORWARD_AGG_ROW_YIELD_CHUNK` (forward_testing.py, above `_forward_agg_slice_map`) inserts a real
+# GIL hand-off every N rows inside BOTH `_forward_agg_slice_map`'s row loop and `compute_forward_
+# aggregates`'s own per-observation loop -- the fix for the six connection-level `/api/health`
+# non-answers the iter-54 concurrent drill localized to this exact non-yielding stretch. The
+# TC-1/TC-2 tests above already prove byte-identity at the shipped chunk width (5,000 rows), but this
+# fixture (4-5 runs, 12 symbols/run) never reaches even ONE full row-yield-chunk, so those tests never
+# actually exercise the new `time.sleep(0)` call. This test monkeypatches the row-yield width down to 1
+# so EVERY row triggers a yield, then re-runs the SAME byte-identity comparison against the pinned
+# pre-rewrite reference oracle for every configured horizon, with and without `as_of` -- proving the
+# yield is scheduling-only (a `time.sleep(0)` call has no side effect on any computed value, order, or
+# output; this test makes that explicit rather than relying on it never firing).
+# ====================================================================================================
+@pytest.mark.parametrize("horizon", HORIZONS)
+@pytest.mark.parametrize("as_of", [None, HISTORICAL_AS_OF])
+def test_compute_forward_aggregates_byte_identical_with_row_yield_firing_every_row(
+    multi_run_engine, monkeypatch, horizon, as_of
+):
+    """TC-7: with `_FORWARD_AGG_ROW_YIELD_CHUNK` forced to 1 (a `time.sleep(0)` GIL hand-off after
+    EVERY row in both the slice-map build and the per-observation loop), `compute_forward_aggregates`
+    still returns a dict `==` to the pinned pre-rewrite reference implementation, for every configured
+    horizon (1/5/10/20/60) and both `as_of=None` and a historical `as_of` — the intra-chunk yield never
+    changes a computed value, only how often the GIL is handed off."""
+    monkeypatch.setattr(forward_testing_module, "_FORWARD_AGG_ROW_YIELD_CHUNK", 1)
+    cfg = load_config()
+    with Session(multi_run_engine) as session:
+        new_payload = compute_forward_aggregates(session, horizon, cfg, as_of=as_of)
+        reference_payload = _reference_compute_forward_aggregates(session, horizon, cfg, as_of=as_of)
+    assert new_payload == reference_payload, (
+        f"row-yield-every-row broke byte-identity at horizon={horizon} as_of={as_of}"
+    )
+    assert new_payload["overall"]["n"] > 0  # sanity: this comparison is non-trivial
+
+
+# ====================================================================================================
 # ops-hardening iter-30 (AG-8, J-07) — `compute_forward_aggregates`'s OWN join-accumulator chunking.
 #
 # iter-14 above bounded the two SOURCE queries (streamed `.all()` -> `yield_per`); iter-30 bounds the

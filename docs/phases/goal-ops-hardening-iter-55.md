@@ -1,0 +1,131 @@
+# Goal Iteration 55 — Honest completeness accounting and the last GIL-holding health non-answers in the forward-aggregate warm
+
+<!-- machine-readable goal-mode metadata -->
+## Goal Mode Metadata
+
+- **Session ID:** ops-hardening
+- **Iteration:** 55
+- **Mode:** next
+- **Depth:** full
+- **Full trigger:** 3 — the prior evaluator verdict (iter-54) was `ESCALATE`; per this session's binding rule, ESCALATE mandates full depth for the next iteration with no exceptions.
+- **Frontend Present:** no
+- **Target journeys:** J-05, J-07
+- **Required-still-passing journeys:** J-01, J-03, J-04, J-08, J-09
+- **Anti-goal reminders:**
+  - **AG-1:** A score, ranking, or "edge" MUST NOT be presented as proven/confident unless it is backed by a **passing certified-claim entry** in the evidence ledger (out-of-sample, control-beating). Unbacked values MUST render a "not yet proven" state. *(critical)*
+  - **AG-2 — Decision-quality only:** never present return promises, price targets, "buy/sell" signals, or alpha claims; never place or simulate orders. *(critical)*
+  - **AG-3:** A journey passes ONLY if the **displayed numbers are correct** — they match the engine's computation for the same as-of date — not merely that the page renders. *(critical)*
+  - **AG-4 — No overfit edges:** any pattern surfaced as "proven" must have survived the referee (sealed out-of-sample holdout + controls + multiple-testing correction), never in-sample fit alone. *(critical)*
+  - **AG-5 — Preserve determinism and no-lookahead:** scoring uses bars ≤ as-of; forward returns use bars > as-of; never introduce lookahead anywhere. *(critical)*
+  - **AG-6:** No iteration ships if its evidence-derived claims (if any) lack a passing referee verdict from the post-decompose gate. *(critical)*
+  - **AG-7:** No hard-coded credentials, API keys, or tokens in source files. *(critical)*
+  - **AG-8 — Resilience to data-shape and data-scale change:** widening the data basis (new nulls, broader pools, deeper history) must never crash an existing page or exhaust a service's memory — every existing consumer of a widened field is re-validated, the UI degrades gracefully (contained error boundary, honest "—"/NA placeholder, never a blank application-error page), and unbounded whole-table ORM loads are forbidden on the deep basis. *(critical)*
+  - **AG-9 — Offline-deterministic ingest:** ingest jobs (fetch/backfill/rebuild) run only against the committed seed / local provider fixtures — no live external network calls or paid data services may be introduced without an explicit goal.md amendment. *(critical)*
+  - **AG-10 — Host resource ceiling (hardware protection):** heavy compute — backfills, full-universe rebuilds, measurement passes, load drills, test-suite bursts — MUST be launched only via the project launch scripts (`scripts/dev.sh` / `scripts/start-backend.sh`), and those scripts MUST apply the host caps declared in `project-extensions/host-guard/host-guard.env` whenever that file is present (CPU-affinity mask, BLAS/OMP thread caps, `memory_cap_mb`, `malloc_arena_max`). Never remove, weaken, or bypass these caps: stripping a HOST-GUARD marked block from a launch script is a REGRESSION regardless of test outcomes. The ceilings are a physical constraint of the current host (two instant hardware resets under all-core vectorized ingest bursts: 2026-07-20 19:17, 2026-07-21 10:33), not a performance budget to optimize away. *(Owner amendment 2026-07-31, two corrections of record — nothing above is relaxed: `memory_cap_mb` / `malloc_arena_max` live in `config.yaml`, not in `host-guard.env`; and the 2026-07-20/21 resets were subsequently attributed to an uncorrected hardware data-fabric fault (`host-guard.env`, 2026-07-30), so the ceiling VALUES are an owner-set envelope — re-set by the dated entry in "Additional binding notes" below — while this paragraph's prohibition on agents removing, weakening, or bypassing caps is unchanged.) *(critical)*
+
+## GOAL
+
+Stop the finalize tail from recording a forward-aggregate warm as fully refreshed when it actually aborted part-way under memory pressure, close the connection-level `/api/health` non-answers that live inside that same warm's per-horizon compute, and give J-04/J-05/J-07's already-authored goldens their first real replay execution this session.
+
+## BACKGROUND
+
+The iter-54 evaluator (ESCALATE) found, by opening the log the browser lane never opened: run 351's `forward_aggregates_warm` aborted at horizon 20 under real memory pressure (`logs/backend.log:233042`, "stopping remaining horizons in this loop" — horizon 60 never ran), yet `data_provider_runs.id=351` stores `status='ok'` with `"forward_aggregates"` still listed in `aggregates_refreshed`, and three target journeys carried browser-lane PASS rows written without anyone opening that log. A direct read of the code (`data_manager.py:4234-4281`) confirms the exact mechanism: `forward_aggregates_warmed` is a single bool set `True` the moment ANY configured horizon succeeds (line 4267, inside the per-horizon loop) and is never reset to `False` on a later horizon's `MemoryError` `break` — so horizons 1/5/10 succeeding is enough for `"forward_aggregates"` to be appended to `refreshed` regardless of whether horizons 20/60 ever ran. This is the same class of hole the iter-54 lesson names: the isolate-and-continue mechanism drops a *fully-failed* member honestly (as it does for `drawdown_expectations`/`research_hot_keys` on total failure) but has no path for a *partially-completed* member. Separately, the developer's own 1,821-row, 1 Hz health-poll drill localized all six connection-level non-answers (`http_code=000`) to the SAME phase, between the h5 and h10 sub-phase boundaries (`reports/perf-budgets.md` Addendum 17, t+699.1s–783.6s) — inside the per-horizon compute call itself (`forward_testing.forward_aggregates_ingest_cached` → `compute_forward_aggregates`), not at the loop's existing per-horizon yield points (`prog.tick()` / `time.sleep(0)`, already added at iter-52). Both defects live in the one root phase this iteration targets.
+
+Depth is **full**, mandatory: the iter-54 verdict was ESCALATE, and this session's binding rule requires full depth on the next iteration with no exceptions — the evaluator's own recommendation line is explicit and binding by default. This is not read as a second, independent full trigger (the change itself is contained to two functions in two closely-coupled modules, `app.engine.data_manager` and `app.engine.forward_testing`) — it is the ESCALATE mandate alone (trigger 3), which is sufficient on its own per the agent instructions.
+
+This iteration deliberately scopes to items (1)/(2)/(4) of the iter-54 evaluator's next-step list and explicitly **defers item (3)** — the newly-surfaced `/api/runs` (3.2–7.5s) / `/api/data/availability` (15.1–21.2s) latency regression driven by DB growth (8.37 GB, 2,937 `scanner_runs` rows), which the evaluator's own text calls "the single thing keeping 'pages load only what they need' from passing" (J-06). That defect is architecturally unrelated to `forward_aggregates_warm`, completely unprofiled, and would be a second, undiagnosed risky change bundled with this iteration's already-diagnosed fix — rule 5 bars that, and this session has repeatedly deferred exactly this shape of second diagnosis effort (iter-45, iter-53). Logged in full, with grounds, at `runs/goal-session-ops-hardening/state/assumptions.md` iter-55 (two entries: the J-06 deferral, and the "drop from the list" vs. "new partial field" interpretation of the evaluator's "say partial" phrasing). J-06 therefore stays `partial` after this iteration and is NOT a target journey this round.
+
+Per the binding TC-9/TC-13 lane-ordering rule (carried forward verbatim, proven at iter-53/iter-54): if the audit finds a defect requiring a product-code change after this iteration's 8-journey lane has already run, it is filed as a note for iter-56 rather than applied as a code-changing audit-fix, so this iteration's own lane evidence stays valid for the tree it measured. Per this session's ESCALATE-cadence guidance, Required-still-passing widens to a full regression of all five currently-passing journeys (J-01, J-03, J-04, J-08, J-09), not a narrow subset.
+
+## IN SCOPE
+
+### Backend
+- [ ] **Honest-status fix:** `data_manager.py:4234-4281`'s `forward_aggregates_warmed` flag must read `True` only when EVERY horizon in `cfg.walk_forward.horizons` completed for that run; a `MemoryError` `break` on any horizon leaves it `False`, so `"forward_aggregates"` is omitted from `refreshed`/`aggregates_refreshed` for that run — mirroring the SAME drop-on-incomplete convention this row's sibling `drawdown_warmed`/`research_hot_keys` flags already use (`assumptions.md` iter-55 records the interpretation: reuse the existing mechanism, no new field or status value). The run's own overall `status` field is unaffected (isolate-and-continue remains the AG-8-compliant behavior) — only the completeness claim for this one aggregate is corrected.
+- [ ] **GIL-holding fix, profile-first:** profile the per-horizon compute call chain (`forward_testing.forward_aggregates_ingest_cached` → `compute_forward_aggregates`) to find the actual stretch that holds the GIL/allocates heavily during a single horizon's compute (the developer's own drill localized this to the h5-h10 window, not to the outer loop's existing per-horizon boundary yields) — do not assume the cause or force-fit a prior iteration's specific mechanism (`_cooperative_sorted`/`_cyclic_gc_paused`/`bars_asof_window`) without re-profiling first (binding iter-48/50/53 discipline). Apply whichever bounded/chunked/cooperative-yield construct the profile actually supports. Byte-identical output required for every horizon (1/5/10/20/60), with and without `as_of`, against a pinned pre-fix reference oracle (AG-3/AG-5). SAME canonical producer (`compute_forward_aggregates`), SAME three call sites (`GET /api/backtest`, MCP `query_backtest`, the ingest finalize warm), no second producer.
+
+### Frontend
+None — Frontend Present: no. Zero `apps/frontend/` changes; both defects are backend finalize-tail correctness/scheduling, and the golden-script fixes below are QA tooling, not product UI.
+
+### Verification & test infrastructure
+- [ ] Execute the EXISTING `runs/goal-session-ops-hardening/journey-scripts/J-05.json` golden as part of this iteration's regression-replay lane — skipped two consecutive rounds (TC-7, iter-54 eval.md).
+- [ ] Execute the EXISTING `runs/goal-session-ops-hardening/journey-scripts/J-07.json` golden as part of this iteration's regression-replay lane — authored (iter-52), never replayed.
+- [ ] Execute the EXISTING `runs/goal-session-ops-hardening/journey-scripts/J-04.json` golden as part of this iteration's regression-replay lane — authored (iter-54), never replayed. Fix its step 2 FIRST, before replaying: it currently asserts `[data-testid="readiness-badge"][data-state="ready"]` immediately after a fresh backend restart with no wait, and failed on exactly its own required behavior (the badge honestly reading "Initializing…" mid-boot, `J-04-verify.png`, iter-54). Add a `wait_for` on the readiness/health-derived state reaching a steady value before asserting `data-state` (binding iter-54 lesson: "Goldens that assert a steady state must first `wait_for` that state, or they encode a race as a regression").
+- [ ] A fault-injection test reproducing the exact live incident (horizons 1/5/10 succeed, horizon 20 raises `MemoryError`, horizon 60 never attempted) asserts the persisted run's `aggregates_refreshed` omits `"forward_aggregates"` and that every other member it legitimately warmed is still present and correct.
+- [ ] **Lane-ordering rule (carried forward verbatim, binding this iteration):** if the audit step subsequently finds a defect needing a product-code change, it is filed as a note for iter-56 rather than applied as a code-changing audit-fix, so this iteration's own 8-journey-lane evidence stays valid for the tree it measured.
+
+### New user-facing capability
+None — this iteration corrects an internal completeness-accounting bug and a scheduling defect in already-shipped ops/performance work; no new feature.
+
+### New information displayed
+None. The existing `aggregates_refreshed` field on `/data`'s run-detail panel becomes accurate for the partial-completion case; no new field is added.
+
+### New user actions
+None.
+
+### UI surface changes
+None (Frontend Present: no).
+
+### Product surface delta
+`/data`'s run-detail `aggregates_refreshed` list stops claiming `"forward_aggregates"` was refreshed when the warm aborted before completing all five configured horizons. `GET /api/health` stays responsive (HTTP 200, zero connection-level non-answers) throughout `forward_aggregates_warm` for the first time this session, closing the last of the six non-answers the iter-54 drill measured. J-04, J-05, and J-07's authored goldens produce real executed rows for the first time in the replay lane.
+
+### Blueprint conformance
+No new surfaces. Every touched value keeps its EXISTING Information-Architecture home per `blueprint.md`: `/data` (Job history & per-date exclusion reasons row; Backfill run-summary contract row) and the global readiness badge / `/backtest` (unaffected computation, re-verified live). `blueprint.md` was additively updated this iteration: a new top-level `iter-55 update` changelog paragraph; iter-55 entries on the "Job history & per-date exclusion reasons" and "Backfill run-summary contract" rows describing the completeness-accounting fix and the profiled GIL-holding fix; and a retag of the "Regime score, market phase, realized forward-returns" and "Coverage payload" rows' iter-54 entries from "targeted, not yet built" to "BUILT + EVALUATOR-CONFIRMED" per the iter-54 coherence-auditor's advisory (the iter-54 evaluator independently re-read all four fixes in the source).
+
+### Data-contract additions
+None. This iteration corrects the completeness-accounting logic of an ALREADY-REGISTERED field (`aggregates_refreshed`, Backfill run-summary contract row) and the scheduling behavior of an ALREADY-REGISTERED computing module (`app.engine.forward_testing`, Regime score / market phase / realized forward-returns row) — no new field, no new computing module, no new serving endpoint. Never introduce a second computation or endpoint for forward-aggregate values; read/write through the modules already named in `blueprint.md`.
+
+## OUT OF SCOPE
+
+- J-06's `/api/runs` (3.2–7.5s) / `/api/data/availability` (15.1–21.2s) DB-growth-driven latency regression — explicitly deferred (`assumptions.md` iter-55, second entry); a separate, unprofiled diagnosis effort on a different code path, and rule 5 bars bundling it with this iteration's already-diagnosed fix. J-06 stays `partial`.
+- All previously-carried, untouched ledger items from iteration-state.md's carried list (iter-29/b through iter-48/bj) — not re-itemized here, still deferred.
+- The two standing OWNER decisions, unanswered since iter-50/51, repeated at iter-53/54: (a) may heavy compute move to a separate process/worker boundary; (b) does the 1,200s finalize-tail budget bind while the app serves traffic, or only when idle. Not re-planned as agent work (both are human-owned per rule 6); flagged again in NOTES.
+- The Regime Lab's data-call MemoryError and its heading-only golden (iter-33/g) — 20th deferral, unless the owner promotes it.
+- Any new frontend surface, page, route, or nav entry.
+- Walkthrough/demo-recording completeness as a goal in itself (rule 7) — the standard showcase pipeline still runs at full depth, but capturing it is not this iteration's Definition of Done target.
+- Rebuilding or re-verifying J-04's boot/badge/crash/interrupted product behavior — it is proven code and proven by evidence (iteration-state.md "Do not redo"); only its golden SCRIPT's `wait_for` fix is in scope, as regression-hardening, not as a Target journey.
+- A literal `status: "partial"` value on the run record (`assumptions.md` iter-55, first entry records the chosen interpretation and its cost) — this iteration reuses the existing drop-on-incomplete convention instead.
+
+## DEFINITION OF DONE
+
+- [ ] Target journeys J-05, J-07 scored by browser-qa-agent / goal-evaluator using real behavioral evidence (DB rows, HTTP statuses, log phase-timing lines) — never a lane's sparse-poll summary alone
+- [ ] Required-still-passing journeys J-01, J-03, J-04, J-08, J-09 remain green via deterministic replay, with LLM-lane fallback for any journey whose golden is missing that iteration
+- [ ] `forward_aggregates_warmed` only remains `True` when every configured horizon completes; a fault-injected mid-horizon `MemoryError` leaves `"forward_aggregates"` OMITTED from the persisted run's `aggregates_refreshed`, proven by a new unit test
+- [ ] Every other member the warm actually completed (e.g. `coverage`, `market_phase`, `latest_snapshot`) is still present in `aggregates_refreshed` after the fix — the fix narrows only the `forward_aggregates` gate, never any sibling gate
+- [ ] A live, ≥1,800-poll (1 Hz) concurrent health drill spanning `forward_aggregates_warm` records zero connection-level non-answers (`http_code=000`), down from the iter-54 baseline of 6/1,821, disclosed in a new dated `reports/perf-budgets.md` addendum
+- [ ] The SAME drill's `forward_aggregates_warm` byte-identity is proven for every horizon (1/5/10/20/60), with and without `as_of`, against a pinned pre-fix reference oracle
+- [ ] `journey-scripts/J-05.json`, `journey-scripts/J-04.json`, `journey-scripts/J-07.json` each produce a real executed row (never SKIPPED/BLOCKED) in `regression-replay-results.md` this iteration
+- [ ] `J-04.json` step 2 gates on a `wait_for` for the readiness/health-derived steady state before asserting `data-state`, and passes against a backend that is mid-boot at replay start (no boot-race failure)
+- [ ] If the audit finds a defect needing a product-code change, it is filed as a note for iter-56, not applied as a code-changing fix — no `apps/backend/**`/`apps/frontend/**` file's mtime postdates the 8-journey lane's own artifacts
+- [ ] AG-3 (`aggregates_refreshed` completeness), AG-8 (isolate-and-continue), AG-9 (`provider='seed'`), AG-10 (5 frozen host-guard paths untouched) all independently re-verified this iteration, not inherited from a prior round's numbers
+- [ ] Unit tests pass; no regressions
+- [ ] Dev handoff written at `docs/handoffs/goal-ops-hardening-iter-55-dev.md`
+
+## TESTING REQUIREMENTS
+
+- Browser: J-05, J-07 (targets); J-01, J-03, J-04, J-08, J-09 (required-still-passing) — the full 8-journey lane, dispatched LAST per the binding TC-9/TC-13 lane-ordering rule below (J-06 not exercised as a target this round; its regression-replay row, if any, is informational only).
+- Unit/integration: `data_manager.py`'s `forward_aggregates_warmed` gating logic (all-horizons-complete vs. mid-horizon-abort); `forward_testing.py`'s `compute_forward_aggregates`/`forward_aggregates_ingest_cached` (byte-identity for every horizon, with/without `as_of`, pre- vs. post-fix); the new fault-injection test for the exact live incident shape (horizons 1/5/10 succeed, 20 aborts, 60 never attempted).
+- Error cases: a `MemoryError` fault-injected at horizon 20 still triggers isolate-and-continue with no wedge/restart required, the overall run reaches a terminal `status`, and `"forward_aggregates"` is absent from `aggregates_refreshed`; a `MemoryError` fault-injected at the FIRST horizon (1) also omits `"forward_aggregates"` (the zero-horizons-completed edge case).
+
+Test-first contract:
+
+- TC-1: given a live ingest job whose forward-aggregate warm completes horizons 1, 5, and 10 then raises `MemoryError` on horizon 20 (horizon 60 never attempted), when the run finalizes, then the persisted `data_provider_runs` row's `aggregates_refreshed` does NOT include `"forward_aggregates"`, and the run's own `status` field is unaffected by this fix (isolate-and-continue behavior unchanged).
+- TC-2: given the SAME fault-injected scenario, when every OTHER finalize-tail item that actually completed (e.g. `coverage`, `market_phase`, `latest_snapshot`) is checked, then each is still present in `aggregates_refreshed` — the fix changes only the `forward_aggregates` gate.
+- TC-3: given a forward-aggregate warm where ALL five configured horizons complete with no fault, when the run finalizes, then `aggregates_refreshed` still includes `"forward_aggregates"` exactly as before this fix (no regression to the success path).
+- TC-4: given a `MemoryError` fault-injected on the FIRST horizon attempted (zero horizons complete), when the run finalizes, then `aggregates_refreshed` omits `"forward_aggregates"` (the boundary case, not merely the "some succeeded" case).
+- TC-5: given a live, full-deep-basis ingest job with `GET /api/health` polled once per second for the full duration of `forward_aggregates_warm` (≥1,800 samples), when the poll log is read, then zero polls return a connection-level non-answer (`http_code=000`) — down from the iter-54 baseline of 6/1,821 — recorded in a new dated `reports/perf-budgets.md` addendum.
+- TC-6: given the SAME drill, when polls answered during `forward_aggregates_warm` are counted, then the number answering slower than 2.0s is measured and disclosed (not silently dropped) in the SAME addendum, whether it improved from the iter-54 baseline of 53/1,821 or not.
+- TC-7: given the profiled fix applied to `compute_forward_aggregates`'s per-horizon call chain, when its output is compared against a pinned pre-fix reference oracle for every configured horizon (1/5/10/20/60), with and without `as_of`, then every returned value is byte-identical.
+- TC-8: given `runs/goal-session-ops-hardening/journey-scripts/J-05.json` already exists, when this iteration's regression-replay lane runs, then it is EXECUTED (not skipped) and its result row appears in `regression-replay-results.md` for J-05.
+- TC-9: given `runs/goal-session-ops-hardening/journey-scripts/J-07.json` already exists, when this iteration's regression-replay lane runs, then it is EXECUTED (not skipped) and its result row appears in `regression-replay-results.md` for J-07.
+- TC-10: given `runs/goal-session-ops-hardening/journey-scripts/J-04.json`'s step 2 is fixed to `wait_for` the readiness/health-derived steady state before asserting `data-state`, when it is replayed against a backend that is still warming at replay start, then step 2 waits for the steady state instead of asserting immediately and failing on the mid-boot "Initializing…" value.
+- TC-11: given the audit step runs after the 8-journey lane, when the audit finds a defect requiring a product-code change, then it is filed as a note for iter-56 and NO file under `apps/backend/**`/`apps/frontend/**` has a modification time later than the 8-journey lane's own earliest artifact (verified via mtime comparison, matching the iter-53/iter-54 TC-9/TC-13 precedent).
+- TC-12: given this iteration's ingest/replay drills run, when `data_provider_runs` rows created this iteration are queried, then every row's `provider` field reads `'seed'` (AG-9), AND `git diff --stat` / `git status --porcelain` over the 5 frozen host-guard paths (`config.yaml`, `host-guard.env`, `start-backend.sh`, `dev.sh`, `start-frontend.sh`) are both empty (AG-10).
+- TC-13: given this iteration's work is complete, when the developer writes the dev handoff, then `docs/handoffs/goal-ops-hardening-iter-55-dev.md` exists and names both the completeness-accounting fix and the GIL-holding-stretch fix's outcomes with cited evidence (file:line, a measured number, or a test name) for each.
+
+## NOTES
+
+- **Lessons applied (cited per the Rules section):** the iter-54 lesson ("A finalize-tail warm can abort part-way and still be persisted as complete... Every future scoring of J-05/J-07 must read the finalize-tail sub-phase timing lines for the job instead of trusting `aggregates_refreshed` alone") is the direct spec for the honest-status fix (TC-1/TC-2/TC-4). The iter-54 lesson on poll density ("A lane row asserting 'health stayed responsive' is only evidence if its sampling interval is shorter than the outage it claims to exclude") is why TC-5/TC-6 require a ≥1,800-sample, 1 Hz drill, not a lane's sparse poll. The iter-54 lesson on golden races ("A behaviour-asserting golden can fail for the very behaviour it exists to protect... Goldens that assert a steady state must first `wait_for` that state") is the direct spec for TC-10. The iter-48/50/53 profile-first discipline drives the GIL-holding fix's instruction to profile before applying a mechanism.
+- **OWNER decisions still open, unanswered since iter-50/51, repeated at iter-53/54 (not this iteration's scope, per rule 6):** (a) may heavy compute move to a separate process/worker boundary — the only way to guarantee the ≤2s health ceiling under all conditions; (b) does the 1,200s finalize-tail wall-clock budget bind while the app is also serving traffic, or only when idle.
+- **Assumptions logged:** `assumptions.md` iter-55 records two interpretation calls — (1) the "say partial" phrasing is read as "reuse the existing drop-on-incomplete convention" (no new field/status value), not a literal new tri-state marker; (2) J-06's DB-growth latency regression (evaluator next-step item 3) is deferred as a separate, unprofiled diagnosis effort, not bundled with this iteration's already-diagnosed fix.
+- **J-04 is not a Target journey** (it is already `passing` as of iter-53, product behavior proven and unchanged) — its golden's `wait_for` fix in this iteration's scope is regression-hardening for the Required-still-passing set, not a rebuild of its product behavior.
+- If profiling `compute_forward_aggregates`'s per-horizon call chain finds the GIL-holding stretch is neither a bounded-fetch shape nor a `sorted()`/GC-pause shape nor a chunked-accumulator shape (the three mechanisms this session has already proven elsewhere), apply whichever chunked/bounded construct the profile actually supports and document the diagnosis in the dev handoff — the same license the iter-53/iter-54 specs used, which is what let those iterations find the real cause instead of guessing.

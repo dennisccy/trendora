@@ -4,10 +4,10 @@
       "id": "J-01",
       "name": "Backfill honors the requested range and explains zero-work",
       "status": "passing",
-      "last_verified_iter": "goal-ops-hardening-iter-54",
-      "last_passing_iter": "goal-ops-hardening-iter-54",
+      "last_verified_iter": "goal-ops-hardening-iter-55",
+      "last_passing_iter": "goal-ops-hardening-iter-55",
       "first_seen_iter": "goal-ops-hardening-iter-0",
-      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-54-evidence/J-01-verify.png",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-55-evidence/J-01-verify.png",
       "spec_hash": "06b26eaaf82dcdb532465e5c287f1177681a6c8697e4f96cfadddb4fc60b29ad",
       "note": "iter-54: deterministic replay PASS. Verified by me in sqlite rather than from the row: data_provider_runs id 348 (2026-05-02->2026-05-29) reads dates_total=19, already_snapshotted=19, non_trading_days=9, calendar_days=28 (9+19=28 exactly); id 349 (weekend span 2026-05-02->2026-05-03) reads dates_total=0, non_trading_days=2 of 2 calendar days. Both provider='seed'."
     },
@@ -15,10 +15,10 @@
       "id": "J-03",
       "name": "No per-run range cap",
       "status": "passing",
-      "last_verified_iter": "goal-ops-hardening-iter-54",
-      "last_passing_iter": "goal-ops-hardening-iter-54",
+      "last_verified_iter": "goal-ops-hardening-iter-55",
+      "last_passing_iter": "goal-ops-hardening-iter-55",
       "first_seen_iter": "goal-ops-hardening-iter-0",
-      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-54-evidence/J-03-verify.png",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-55-evidence/J-03-verify.png",
       "spec_hash": "5457740bbb0cea982e9b1241f19ca50836ff584bbb960a5a088f7168d820c271",
       "note": "iter-54: deterministic replay PASS. Verified in sqlite: data_provider_runs id 350 (2025-06-01->2026-07-17) reads dates_total=283, already_snapshotted=283, non_trading_days=129, calendar_days=412 (129+283=412) — far past the retired 370-day max_range_days cap. provider='seed'."
     },
@@ -26,10 +26,10 @@
       "id": "J-04",
       "name": "Non-blocking boot with visible status",
       "status": "passing",
-      "last_verified_iter": "goal-ops-hardening-iter-54",
-      "last_passing_iter": "goal-ops-hardening-iter-54",
+      "last_verified_iter": "goal-ops-hardening-iter-55",
+      "last_passing_iter": "goal-ops-hardening-iter-55",
       "first_seen_iter": "goal-ops-hardening-iter-0",
-      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-54-evidence/UT-J-04-result.png",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-55-evidence/J-04-verify.png",
       "spec_hash": "4074a9c952a9a143dc543efef3c8d3e0a1e33a848ab250ec90c7c2f568dbcff8",
       "note": "iter-54: the NEW J-04 golden FAILED at step 2 in the deterministic replay (data-state=\"ready\" expect) and the merged file overturned it to PASS on the LLM lane's live DOM read. I checked the overturn rather than accepting it: J-04-verify.png (the replay's own 23:02 frame) visibly shows the top-bar chip reading 'Initializing... history 89/89', i.e. the backend was still warming when the golden asserted 'ready' — a golden-script race, and itself a re-demonstration of J-04's own visible-boot-status behaviour; J-08-verify.png from the same replay run minutes later shows the badge reading 'Ready'. evidence_makeup kept: the [NEW]-flagged walkthrough is still unrecorded (no demo lane at lean depth).",
       "evidence_makeup": true
@@ -38,12 +38,13 @@
       "id": "J-05",
       "name": "Aggregates are precomputed at ingest, never on the fly",
       "status": "partial",
-      "last_verified_iter": "goal-ops-hardening-iter-54",
+      "last_verified_iter": "goal-ops-hardening-iter-55",
       "last_passing_iter": "goal-ops-hardening-iter-39",
       "first_seen_iter": "goal-ops-hardening-iter-0",
-      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-54-evidence/UT-J-05-result.png",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-55-evidence/J-05-verify.png",
       "spec_hash": "63dd5bf0983454e48338557d0f2b1e5ce9726d7aa247c20174ac9323f637564b",
-      "note": "iter-54: browser lane recorded PASS; I score partial. HOLDS: step 1 (run 351 backfilled 2018-01-04, snapshots_created=1, provider='seed'); step 2(a) — UT-J-05-result.png, opened by me, renders 'Immutable snapshot - as of 2018-01-04 ... provider seed · benchmark SPY' with Market Regime 87.66/100 and GET /api/market-phase?as_of=2018-01-04 answering in 0.107s; step 3 (cold /data rendered from the persisted coverage payload). FAILS: step 4 — the developer's own 1,822-poll drill (Addendum 17, health-polls.csv, re-counted by me: 1,815x HTTP 200, 6x http_code 000 at the 5.005s client ceiling, 53 answered polls >2.0s) shows GET /api/health did NOT stay responsive throughout a heavy ingest job; the lane's own 127-sample poll simply sampled too sparsely to see it. Step 2(b) honesty gap found by me in logs/backend.log:233042 — run 351's forward-aggregate warm ABORTED at horizon 20 under real memory pressure ('stopping remaining horizons in this loop', horizon 60 never warmed) and factor_lab_all aborted too (:233277), yet the persisted record still lists forward_aggregates in aggregates_refreshed and status='ok'."
+      "note": "iter-54: browser lane recorded PASS; I score partial. HOLDS: step 1 (run 351 backfilled 2018-01-04, snapshots_created=1, provider='seed'); step 2(a) — UT-J-05-result.png, opened by me, renders 'Immutable snapshot - as of 2018-01-04 ... provider seed · benchmark SPY' with Market Regime 87.66/100 and GET /api/market-phase?as_of=2018-01-04 answering in 0.107s; step 3 (cold /data rendered from the persisted coverage payload). FAILS: step 4 — the developer's own 1,822-poll drill (Addendum 17, health-polls.csv, re-counted by me: 1,815x HTTP 200, 6x http_code 000 at the 5.005s client ceiling, 53 answered polls >2.0s) shows GET /api/health did NOT stay responsive throughout a heavy ingest job; the lane's own 127-sample poll simply sampled too sparsely to see it. Step 2(b) honesty gap found by me in logs/backend.log:233042 — run 351's forward-aggregate warm ABORTED at horizon 20 under real memory pressure ('stopping remaining horizons in this loop', horizon 60 never warmed) and factor_lab_all aborted too (:233277), yet the persisted record still lists forward_aggregates in aggregates_refreshed and status='ok'.",
+      "evidence_makeup": true
     },
     "J-06": {
       "id": "J-06",
@@ -60,21 +61,22 @@
       "id": "J-07",
       "name": "Heavy aggregates never take the service down",
       "status": "partial",
-      "last_verified_iter": "goal-ops-hardening-iter-54",
+      "last_verified_iter": "goal-ops-hardening-iter-55",
       "last_passing_iter": "goal-ops-hardening-iter-34",
       "first_seen_iter": "goal-ops-hardening-iter-14",
-      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-54-evidence/UT-J-07-result.png",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-55-evidence/J-07-verify.png",
       "spec_hash": "1c7c67c3d6cd933820eeac29de54a7442c33e19d3ede0e6353fc044b929bf991",
-      "note": "iter-54: browser lane recorded PASS; I score partial. HOLDS: step 1 for the drill run (run 347 warmed horizons 1/5/10/20/60 and listed all 8 aggregates); step 3 — VmPeak 4,562,408 kB (4,455.5 MB), 45.6% margin under the 8,192 MB cap (Addendum 17 / summary.json, read by me); step 4 — real, unforced memory pressure aborted the warm honestly in run 351 and the SAME process kept answering /api/health 200 and drove the job to a terminal status with no restart. FAILS: step 2 — 6 connection-level non-answers and 53 answered polls >2.0s across 1,821 recorded polls in the developer's own drill (counted by me from tc4-drill-out/health-polls.csv). I confirmed the phase attribution independently from the finalize-tail phase-timing lines: all 6 fall inside forward_aggregates_warm (t+699.1s..t+783.6s, between the h5 and h10 sub-phase boundaries), ZERO in per_date_coverage_warm (which ran t+216..t+229) — this iteration's own fix target is genuinely closed. Non-answers moved 1/1,643 (iter-53) -> 6/1,821 and >2.0s polls 0.85% -> 2.92%, in untreated phases, on a DB that grew ~15x since the baseline."
+      "note": "iter-54: browser lane recorded PASS; I score partial. HOLDS: step 1 for the drill run (run 347 warmed horizons 1/5/10/20/60 and listed all 8 aggregates); step 3 — VmPeak 4,562,408 kB (4,455.5 MB), 45.6% margin under the 8,192 MB cap (Addendum 17 / summary.json, read by me); step 4 — real, unforced memory pressure aborted the warm honestly in run 351 and the SAME process kept answering /api/health 200 and drove the job to a terminal status with no restart. FAILS: step 2 — 6 connection-level non-answers and 53 answered polls >2.0s across 1,821 recorded polls in the developer's own drill (counted by me from tc4-drill-out/health-polls.csv). I confirmed the phase attribution independently from the finalize-tail phase-timing lines: all 6 fall inside forward_aggregates_warm (t+699.1s..t+783.6s, between the h5 and h10 sub-phase boundaries), ZERO in per_date_coverage_warm (which ran t+216..t+229) — this iteration's own fix target is genuinely closed. Non-answers moved 1/1,643 (iter-53) -> 6/1,821 and >2.0s polls 0.85% -> 2.92%, in untreated phases, on a DB that grew ~15x since the baseline.",
+      "evidence_makeup": true
     },
     "J-08": {
       "id": "J-08",
       "name": "Backtest evidence serves from storage only — never a cold recompute on request",
       "status": "passing",
-      "last_verified_iter": "goal-ops-hardening-iter-54",
-      "last_passing_iter": "goal-ops-hardening-iter-54",
+      "last_verified_iter": "goal-ops-hardening-iter-55",
+      "last_passing_iter": "goal-ops-hardening-iter-55",
       "first_seen_iter": "goal-ops-hardening-iter-16",
-      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-54-evidence/J-08-verify.png",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-55-evidence/J-08-verify.png",
       "spec_hash": "8a159d44a2eaf98e595f4e358a9db965b3e9e9d46ec8189768802bee577add21",
       "note": "iter-54: deterministic replay PASS. Spot-checked by me: J-08-verify.png renders /backtest 'Viewing as-of 2026-08-03 (latest)' with the survivorship-bias disclosure, the honest 'No elapsed forward window for this date yet' empty state, and a green 'Ready' badge."
     },
@@ -82,10 +84,10 @@
       "id": "J-09",
       "name": "The backend discloses its own background-compute activity",
       "status": "passing",
-      "last_verified_iter": "goal-ops-hardening-iter-54",
-      "last_passing_iter": "goal-ops-hardening-iter-54",
+      "last_verified_iter": "goal-ops-hardening-iter-55",
+      "last_passing_iter": "goal-ops-hardening-iter-55",
       "first_seen_iter": "goal-ops-hardening-iter-24",
-      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-54-evidence/J-09-verify.png",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-55-evidence/J-09-verify.png",
       "spec_hash": "40d29150860c17a467851359d82af4524204a0cc874c7c3eb568255977363a61",
       "note": "iter-54: deterministic replay PASS. Spot-checked by me: J-09-verify.png's top bar reads 'background compute running (1)' next to 'provider: seed', with /data's Dataset coverage panel rendering 2,937 snapshot dates / 5,391 trading days from the persisted payload."
     }
@@ -869,28 +871,36 @@
       "anti_goal": "AG-3 -- a journey passes ONLY if the displayed numbers are correct, and AG-8's honest-status clause: the UI/persisted record must tell the truth about what actually happened.",
       "severity": "minor",
       "evidence": "logs/backend.log:233042 (2026-08-09 23:26:21,547) 'ingest forward-aggregate warm aborted at horizon 20 -- memory pressure, stopping remaining horizons in this loop' + forward_testing.py:1287 MemoryError traceback; run 351's finalize-tail sub-phase timing lines list horizons 1/5/10/20 and NO horizon 60 (run 347's list all five). Yet sqlite data_provider_runs id 351 stores status='ok' and aggregates_refreshed containing 'forward_aggregates', and /data renders that same list. A refresh that stopped part-way is displayed as a completed refresh. I considered scoring this critical (fail-closed) and chose minor: no market number is fabricated (provider='seed', the 2018-01-04 leaderboard rows are genuinely stored), the defect is a status/completeness overstatement.",
-      "resolved": false
+      "resolved": true,
+      "resolved_iter": "goal-ops-hardening-iter-55",
+      "resolved_evidence": "apps/backend/app/engine/data_manager.py:4300 now computes forward_aggregates_warmed = _forward_horizons_completed == _forward_horizons_total AFTER the per-horizon loop (read in source by the evaluator); config.py:766 pins horizons min_length=1 so the 0==0 escape hatch is unreachable; tests/test_data_manager.py forward_aggregates suite 5 passed; live run 356 honestly OMITS drawdown_expectations while listing the 7 members it did warm, and logs/backend.log:237446-237702 shows all five horizons completed for that run."
     },
     {
       "iter": "goal-ops-hardening-iter-54",
       "anti_goal": "AG-8 -- widening the data basis must never exhaust a service's memory; and the evidence-honesty convention (a lane must not explain away a signal it did not check).",
       "severity": "minor",
       "evidence": "Run 351's factor_lab_all warm aborted for real under memory pressure -- logs/backend.log:233277 (2026-08-09 23:29:59,947) 'compute_factor_lab_all aborted under memory pressure ... degrading the response honestly' at research.py:1061 -- which is why id 351's aggregates_refreshed holds 7 members instead of 8. reports/phase-goal-ops-hardening-iter-54-ui-test-results.md's UT-J-05 row calls the 7-of-8 shape 'a normal, previously-observed pattern in this session's own run history ... not a new defect'; sqlite shows every recent snapshot-creating run (320, 325, 326, 332, 333, 334, 336, 341, 347) carried all 8, so it is NOT the recent pattern, and the log names the real cause the lane never opened.",
-      "resolved": false
+      "resolved": true,
+      "resolved_iter": "goal-ops-hardening-iter-55",
+      "resolved_evidence": "Zero recurrence: logs/backend.log total MemoryError lines 8,104 -- byte-identical to the iter-54 count, so 0 new MemoryErrors this iteration; grep for 'aborted'/'isolation' on 2026-08-10 returns nothing. Completeness accounting is now honest at source (see the entry above)."
     },
     {
       "iter": "goal-ops-hardening-iter-54",
       "anti_goal": "Iteration Definition of Done / TC-7: 'given journey-scripts/J-05.json already exists, when this iteration's regression-replay lane runs, then it is EXECUTED (not skipped) and its result row appears in regression-replay-results.md for J-05.'",
       "severity": "minor",
       "evidence": "reports/phase-goal-ops-hardening-iter-54-regression-replay-results.md lists exactly 5 rows (UT-J-01, UT-J-03, UT-J-04, UT-J-08, UT-J-09). No J-05 row. Second consecutive round in which J-05's already-authored golden was left unexecuted, and this round it was an explicit named DoD item. The J-07 and J-06 goldens authored this round were likewise never replayed.",
-      "resolved": false
+      "resolved": true,
+      "resolved_iter": "goal-ops-hardening-iter-55",
+      "resolved_evidence": "J-05.json executed for real: it drove data_provider_runs.id=356 (2010-11-08, snapshots_created=1, already_snapshotted=0, non_trading_days=0, calendar_days=1) creating scanner_runs.id=2940 with 263 stored results; reports/qa/goal-ops-hardening-iter-55-evidence/J-05-verify.png (PNG tEXt Created=2026-08-10T02:09:47, Source=demo_runner.py --mode verify) renders that run's own stored leaderboard. J-07.json and J-04.json also executed (J-07-verify.png 02:09:49; J-04-verify.png 02:32:51). Superseded by a NEW entry this iteration: the result ROWS were then destroyed by the 02:32 lane overwrite."
     },
     {
       "iter": "goal-ops-hardening-iter-54",
       "anti_goal": "Pipeline-depth integrity: the iteration spec's own machine-readable metadata binds the depth the engine runs.",
       "severity": "minor",
       "evidence": "docs/phases/goal-ops-hardening-iter-54.md declares '**Depth:** full' with 'Full trigger: 1', and the iter-53 evaluator recommended full; runs/goal-session-ops-hardening/iter-54/depth-dispatched reads 'lean'. Consequence: no docs/handoffs/goal-ops-hardening-iter-54-audit.md and no reports/qa/goal-ops-hardening-iter-54-qa.md exist. The audit lane has produced the round's load-bearing finding for six consecutive rounds; this round nobody reported the horizon-20 warm abort above.",
-      "resolved": false
+      "resolved": true,
+      "resolved_iter": "goal-ops-hardening-iter-55",
+      "resolved_evidence": "docs/phases/goal-ops-hardening-iter-55.md declares '**Depth:** full' / 'Full trigger: 3' and runs/goal-session-ops-hardening/iter-55/depth-dispatched reads 'full'. The audit and QA lanes both ran; the audit produced this round's two load-bearing findings (T1, T2)."
     },
     {
       "iter": "goal-ops-hardening-iter-54",
@@ -905,7 +915,63 @@
       "severity": "minor",
       "evidence": "reports/perf-budgets.md Addendum 18 WARN: GET /api/runs 3.2-7.5s and GET /api/data/availability 15.1-21.2s against the committed <=1.5s budget; GET /api/health 0.18-1.213s against <=0.1s; /api/stocks/AAPL/bars 6.2s. Honestly disclosed with a verified root cause (DB grown to 8.37 GB / 2,937 scanner_runs rows, ~15x the file's own 2026-07-18 baseline) and neither endpoint is in this iteration's diff -- pre-existing and out of scope, but it is what keeps J-06 at partial.",
       "resolved": false
+    },
+    {
+      "iter": "goal-ops-hardening-iter-55",
+      "anti_goal": "AG-3/AG-8 evidence-honesty: a lane's blocking verdict must not be overridden downstream by a report citing rows that do not exist.",
+      "severity": "minor",
+      "evidence": "reports/qa/goal-ops-hardening-iter-55-qa.md:7 records **Verdict: PASS** and :110 asserts 'Target journeys J-05 and J-07 were executed (both PASS per regression-replay-results.md)' -- those rows were already absent from that file when QA wrote at 02:38 (the file was overwritten at 02:32 and now holds 5 rows: J-01/J-03/J-04/J-08/J-09). reports/phase-goal-ops-hardening-iter-55-ui-test-results.md:8 reads 'Browser QA Verdict: BLOCKED' with :35-36 'no test case executed for J-05/J-07 by any lane'. runs/goal-ops-hardening-iter-55/status.json blockers list only TC-5 and omit the BLOCKED lane; the pipeline reached closure_passed. FIFTH consecutive round of this class (iter-50/bz, iter-51/cf, iter-52/ck, iter-53/cp).",
+      "resolved": false
+    },
+    {
+      "iter": "goal-ops-hardening-iter-55",
+      "anti_goal": "Iteration Definition of Done items 1 and 7 (TC-8/TC-9): 'journey-scripts/J-05.json, J-04.json, J-07.json each produce a real executed row (never SKIPPED/BLOCKED) in regression-replay-results.md this iteration'.",
+      "severity": "minor",
+      "evidence": "The rows were produced and then destroyed. A second, five-journey replay lane ran at 02:32 and overwrote reports/phase-goal-ops-hardening-iter-55-regression-replay-results.md wholesale; it now reads 'Overall: 5/5' with no J-05 or J-07 row and no trace of the dev handoff's '6/7 PASS + reconciliation note'. runs/goal-ops-hardening-iter-55/replay-lane/verify-run.log is 0 bytes. The reviewer read the 7-row file at 02:25 and cited J-05/J-07 as PASS; the audit reconstructed the same from mtimes. The lane needs per-run files or a row merge.",
+      "resolved": false
+    },
+    {
+      "iter": "goal-ops-hardening-iter-55",
+      "anti_goal": "Verification-fixture integrity: a single-use golden's target date must be rotated after it is consumed, or the next replay fails for a non-product reason.",
+      "severity": "minor",
+      "evidence": "runs/goal-session-ops-hardening/journey-scripts/J-05.json step 10 asserts '1 calendar day - 0 already snapshotted - 0 non-trading' and its own _notes require rotation once consumed. This iteration consumed 2010-11-08 (scanner_runs.id=2940, created 2026-08-10 00:49:13 UTC by data_provider_runs.id=356) and left the script un-rotated; the failure mode is already demonstrated in this iteration's own data (a second concurrent demo_runner instance recorded already_snapshotted=1 as data_provider_runs.id=359). Audit T1 verified replacement candidates with 466 seed bars and 0 snapshots: 2010-11-10/11/12/15/16.",
+      "resolved": false
+    },
+    {
+      "iter": "goal-ops-hardening-iter-55",
+      "anti_goal": "Iteration Definition of Done / spec line 44: 'profile the per-horizon compute call chain ... do not assume the cause or force-fit a prior iteration's specific mechanism' (binding iter-48/50/53 profile-first discipline).",
+      "severity": "minor",
+      "evidence": "apps/backend/app/engine/forward_testing.py:1124 cites '24,272-51,778 rows live against the real committed DB (iter-55 profiling note, reports/perf-budgets.md)' -- that note does not exist in reports/perf-budgets.md, and runs/goal-ops-hardening-iter-55/ holds no profiler artifact (only the four unmodified drill scripts and tc5-drill-out/). Dangling citation. The consequence is measurable: horizon=10 elapsed 438.40s post-fix vs 336.67-437.89s pre-fix -- the treated stretch was not the dominant one.",
+      "resolved": false
+    },
+    {
+      "iter": "goal-ops-hardening-iter-55",
+      "anti_goal": "Iteration Definition of Done / TC-5: 'a live, >=1,800-poll (1 Hz) concurrent health drill spanning forward_aggregates_warm records zero connection-level non-answers (http_code=000), down from the iter-54 baseline of 6/1,821'.",
+      "severity": "minor",
+      "evidence": "NOT MET and moved the wrong way. Re-counted by the evaluator from the raw CSV runs/goal-ops-hardening-iter-55/evidence-drill/tc5-drill-out/health-polls.csv: 1,839 polls, 1,828 x 200, **11 x 000**, 57 answered >2.0s, worst answered 4.788s -- matching reports/perf-budgets.md Addendum 19 exactly. 9 of the 11 sit inside forward_aggregates_warm[10]; 2 re-opened phases previously closed to zero at iter-53/54 (coverage_membership_timeline_refresh, per_date_coverage_warm). Root-caused with first-hand data to cross-request GIL contention (research-load.csv: /api/research/factor-lab?all=true got no response in 600.008s; /api/research/factor-combination took 429.412s). This is J-05 step 4 and J-07 step 2.",
+      "resolved": false
+    },
+    {
+      "iter": "goal-ops-hardening-iter-55",
+      "anti_goal": "Evidence hygiene: distinct assertions must not be evidenced by one image.",
+      "severity": "minor",
+      "evidence": "reports/qa/goal-ops-hardening-iter-55-evidence/UT-01-result.png, UT-02-result.png and UT-04-result.png are byte-identical (md5 4b6046907870798099348cfa77b17e2e, re-hashed by the evaluator), and UT-03-result.png is 2,105 bytes. Three distinct rows in ui-test-results.md:23,24,26 rest on one frame. The UT-02/UT-04 claims are separately corroborated (DB run 365; UT-04-health-poll.log 459/459), so this is hygiene, not a false claim.",
+      "resolved": false
+    },
+    {
+      "iter": "goal-ops-hardening-iter-55",
+      "anti_goal": "J-05/J-07 acceptance 'Walkthrough: a [NEW]-flagged walkthrough ... viewable via demo.sh ops-hardening --session-live'; capture-only, never an iteration goal.",
+      "severity": "minor",
+      "evidence": "reports/phase-goal-ops-hardening-iter-55-demo-results.md reads 'Demo Verdict: SKIPPED' with zero captured steps and the soft note 'invalid demo script: step[6] fill requires text'. No walkthrough was recorded this iteration. J-04's is now 3 rounds unrecorded; J-07's 25 rounds. Rides the evidence_makeup lane.",
+      "resolved": false
+    },
+    {
+      "iter": "goal-ops-hardening-iter-55",
+      "anti_goal": "Iteration Definition of Done: 'Unit tests pass; no regressions'.",
+      "severity": "minor",
+      "evidence": "apps/backend/tests/test_forward_testing.py (93 tests, session-scoped loaded_engine over the 30-year basis) started, ran ~30 minutes and was killed by the harness background-task ceiling -- disclosed by the developer, the reviewer (NOTE) and the audit (T4). The four files exercising the touched functions all pass (202 + 89 + 2; the audit independently re-ran 5 and 58). A dedicated early-session re-run is owed for a clean signal on that one file.",
+      "resolved": false
     }
   ],
-  "updated_at": "2026-08-09T23:45:00Z"
+  "updated_at": "2026-08-10T03:03:34Z"
 }

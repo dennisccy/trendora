@@ -2054,9 +2054,16 @@ def test_finalize_hook_forward_aggregates_memory_error_on_first_horizon_aborts_l
 def test_finalize_hook_forward_aggregates_memory_error_after_partial_success_reports_honestly(
     finalize_hook_engine, monkeypatch
 ):
-    """TC-5 — a MemoryError on the SECOND of N configured horizons: the first horizon's real warm still
-    counts (honest partial report — 'forward_aggregates' IS in `refreshed`), and no horizon after the
-    second is attempted."""
+    """TC-1/TC-4 (iter-55 INVERTED from the pre-fix behavior this test used to encode) — a MemoryError on
+    the SECOND of N configured horizons: the FIRST horizon's real warm still ran, but completeness (ALL
+    configured horizons), not any-succeeded, is now the bar for claiming 'forward_aggregates' was
+    refreshed. Before iter-55 this test asserted `"forward_aggregates" in refreshed` after only 1 of
+    N>=3 horizons completed — i.e. it encoded the PRE-FIX (buggy) behavior as correct: the live-incident
+    evidence (run 351, `logs/backend.log:233042`) showed exactly this shape (some early horizons succeed,
+    a later one aborts under memory pressure, the rest are never attempted) still being reported as a full
+    refresh. This test now asserts the OPPOSITE: `"forward_aggregates"` is OMITTED whenever fewer than
+    ALL configured horizons complete, even though the first horizon's compute genuinely ran and its
+    result is still cached/persisted — only the run-level completeness CLAIM changes."""
     engine, d = finalize_hook_engine
     cfg = load_config()
     n_horizons = len(cfg.walk_forward.horizons)
@@ -2076,7 +2083,56 @@ def test_finalize_hook_forward_aggregates_memory_error_after_partial_success_rep
         prog.new_snapshot_dates = [d]
         refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)  # must not raise
     assert calls["n"] == 2, "the loop must stop right after the SECOND (raising) horizon"
-    assert "forward_aggregates" in refreshed  # the FIRST horizon's real warm still counts honestly
+    assert "forward_aggregates" not in refreshed, (
+        "iter-55: a mid-loop MemoryError must omit forward_aggregates even though the FIRST horizon "
+        f"completed successfully -- completeness (ALL horizons), not any-succeeded, is the bar: {refreshed}"
+    )
+
+
+def test_finalize_hook_forward_aggregates_live_incident_shape_omits_but_preserves_siblings(
+    finalize_hook_engine, monkeypatch
+):
+    """TC-1/TC-2/TC-4 — the EXACT live-incident shape (run 351, `logs/backend.log:233042`): with
+    `cfg.walk_forward.horizons == [1, 5, 10, 20, 60]` (config.yaml:777, 5 configured horizons), horizons
+    1, 5, and 10 succeed, horizon 20 raises `MemoryError`, and horizon 60 is never attempted. TC-1/TC-4:
+    `aggregates_refreshed` OMITS `"forward_aggregates"` even though 3 of 5 horizons genuinely completed;
+    the run's own `status` field is unaffected (isolate-and-continue unchanged -- this fixture's hook call
+    itself must not raise). TC-2: every OTHER finalize-tail member this fixture's data legitimately warms
+    (`coverage`, `membership_timeline`, `market_phase`, `latest_snapshot`, `research_hot_keys`,
+    `index_series`, `factor_lab_all`) is STILL present in `refreshed` -- the fix narrows only the
+    `forward_aggregates` gate, never any sibling gate."""
+    engine, d = finalize_hook_engine
+    cfg = load_config()
+    assert cfg.walk_forward.horizons == [1, 5, 10, 20, 60], (
+        "this test's live-incident shape (3 succeed, 1 MemoryErrors, 1 never attempted) is pinned to the "
+        f"real config.yaml:777 horizon list; got {cfg.walk_forward.horizons}"
+    )
+    real = forward_testing.forward_aggregates_ingest_cached
+    calls = {"n": 0}
+
+    def _three_succeed_then_boom(session, horizon, config=None, *, as_of=None):
+        calls["n"] += 1
+        if calls["n"] <= 3:  # horizons 1, 5, 10
+            return real(session, horizon, config, as_of=as_of)
+        raise MemoryError("simulated memory pressure at horizon 20")  # horizon 60 never reached
+
+    monkeypatch.setattr(forward_testing, "forward_aggregates_ingest_cached", _three_succeed_then_boom)
+    with Session(engine) as session:
+        prog = JobProgress(job_id="fa-live-incident-probe", kind="backfill", start=d, end=d)
+        prog.new_snapshot_dates = [d]
+        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)  # must not raise
+    assert calls["n"] == 4, "3 horizons succeed (1/5/10), the 4th call (horizon 20) raises and stops the loop"
+    assert "forward_aggregates" not in refreshed, (
+        f"TC-1/TC-4: 3 of 5 horizons completing is still incomplete -- must be omitted: {refreshed}"
+    )
+    for sibling in (
+        "coverage", "membership_timeline", "market_phase", "latest_snapshot", "research_hot_keys",
+        "index_series", "factor_lab_all",
+    ):
+        assert sibling in refreshed, (
+            f"TC-2: sibling aggregate {sibling!r} must remain refreshed -- the fix narrows ONLY the "
+            f"forward_aggregates gate: {refreshed}"
+        )
 
 
 def test_finalize_hook_drawdown_expectations_memory_error_on_first_claim_aborts_loop(

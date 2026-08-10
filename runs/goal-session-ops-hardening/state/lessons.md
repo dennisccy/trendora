@@ -542,3 +542,35 @@ replay minutes later shows "Ready". Goldens that assert a steady state must firs
 or they encode a race as a regression.
 **Applies to:** every golden in `runs/goal-session-ops-hardening/journey-scripts/` whose first assertion
 reads a readiness/health-derived attribute (J-04.json step 2, J-07.json step 2).
+
+## iter-55 — 2026-08-10T03:00:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** A verification fixture that CONSUMES its own precondition is a guaranteed future
+false-regression. `journey-scripts/J-05.json` requires a trading day with zero snapshot rows and
+asserts "0 already snapshotted"; running it creates that snapshot, so the very act of passing it
+makes the next run fail. This round consumed 2010-11-08 (`scanner_runs.id=2940`) and left the
+script un-rotated — and the failure mode is already demonstrated in this round's own data: a
+second concurrent `demo_runner` instance hit the same date and recorded `already_snapshotted=1`
+(`data_provider_runs.id=359`). A lean round would see the FAIL, have no audit to explain it, and
+could score J-05 `regressed` and halt the session on a fixture artifact. Either rotate the date in
+the same commit that runs the golden, or make single-use goldens pick their target date at run
+time from `GET /api/data/availability`.
+**Applies to:** any golden script whose assertions depend on a one-shot state the script itself
+changes (single-use dates, "first time" flags, one-off job outcomes) — and any evaluator scoring a
+replay FAIL on such a journey.
+
+## iter-55 (second entry) — 2026-08-10T03:00:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** The replay lane writes `reports/phase-<iter>-regression-replay-results.md` wholesale,
+so a NARROWER later run silently erases a BROADER earlier one. This round a 7-journey developer
+run at ~02:09 (which produced the only J-05/J-07 rows this session has ever had) was overwritten
+at 02:32 by a 5-journey lane run; `replay-lane/verify-run.log` was truncated to 0 bytes at the
+same time. The reviewer had read the 7-row file at 02:25 and cited it; six minutes later QA cited
+the same rows and they no longer existed. Nothing detected this except mtimes and the PNG
+provenance stamps (`Created=2026-08-10T02:09:47`), which is the only reason the evidence was
+recoverable at all — keep stamping capture artifacts. Fix: per-run result files, or merge rows
+instead of overwriting.
+**Applies to:** any iteration whose replay lane runs more than once (developer pass + lane pass),
+and any evaluator reading a results table that disagrees with a dev handoff or review report.

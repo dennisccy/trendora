@@ -554,3 +554,61 @@ modules instead of two, but with a chance of also closing J-06's last gap in one
 `/api/runs`/`/api/data/availability`, architecturally independent of `forward_aggregates_warm`'s
 finalize-tail warm loop; it can be picked up in a later iteration without touching or reopening this
 iteration's work.
+
+## iter-55 — goal-evaluator
+
+**Ambiguity:** J-05 and J-07 are this iteration's Target journeys and have **no results row in any
+lane file** — `reports/phase-goal-ops-hardening-iter-55-ui-test-results.md:35-36` states "no test
+case executed for J-05/J-07 by any lane". The methodology's rail is "no citation → the journey's
+status is `unknown`", but the citation it names is "results row + screenshot filename", and here
+the screenshot and a large body of primary behavioral evidence exist while the row does not.
+Neither `docs/goal.md` nor the methodology says whether a destroyed results row voids evidence
+that demonstrably existed and whose primary sources survive.
+**We chose:** score both from primary evidence and keep them `partial` (their prior status), not
+`unknown`. Grounds stated rather than assumed: (1) the iteration spec's own DoD item 1 requires
+exactly this — "scored by browser-qa-agent / **goal-evaluator** using real behavioral evidence (DB
+rows, HTTP statuses, log phase-timing lines) — never a lane's sparse-poll summary alone" — so
+primary evidence is the specified bar, not a fallback; (2) the evidence is first-hand and I opened
+all of it: `data_provider_runs.id=356` matches J-05's golden step 10/11 assertions exactly, its
+`scanner_runs.id=2940` leaderboard is byte-exact against `J-05-verify.png` row by row, and
+`logs/backend.log:237446-237702` shows all five horizons completing; (3) the PNG provenance stamps
+(`Created=2026-08-10T02:09:47` / `02:09:49`, two seconds apart) show one process running the two
+journeys in sequence, and the J-05 frame is the run-detail page, reachable only past the golden's
+teeth-bearing step 10; (4) the reviewer read the 7-row file at 02:25 and cited it contemporaneously
+before the 02:32 overwrite. **Cost recorded honestly:** the merged lane file names both journeys as
+unverified and my table shows a status for both — a reader comparing the two artifacts sees a
+contradiction, and I am creating it. Scoring them `unknown` would be defensible and would make the
+evidence loss visible in the scoreboard rather than only in the ledger; it changes no gate
+(GOAL_ACHIEVED is blocked either way and both stay short of `passing`). I would not argue that
+reader is wrong.
+**Reversible:** yes
+
+## iter-55 — goal-evaluator (second entry)
+
+**Ambiguity:** this round carries the same fail-open shape as iter-53 and iter-54, one step worse:
+`reports/qa/goal-ops-hardening-iter-55-qa.md:7` records **PASS** and `:110` cites J-05/J-07 replay
+rows that had already been deleted six minutes earlier, over a merged lane whose own headline is
+**BLOCKED**, and `status.json`'s blocker list omits the BLOCKED lane entirely — yet the pipeline
+reached `closure_passed`. Methodology C.4's checkable fail-open signal is written about the
+**review** lane specifically ("the review verdict is FAIL yet browser results exist"); review here
+is PASS_WITH_NOTES. Its other two clauses name a journey with status `failing` (none — three are
+`partial`) and a **lean** iteration (this was full).
+**We chose:** CONTINUE with a `full` depth recommendation, not ESCALATE. Grounds: (1) the
+methodology is explicit that "the verdict follows the decision tree — not your overall impression",
+and read literally none of C.4's three clauses fires, while C.5's second limb fires exactly ("no
+progress this iter but failing journeys remain that are tractable" — the J-05 date rotation, the
+non-destructive lane, the QA verdict read, and J-06's unprofiled endpoints are all named and
+agent-owned); (2) my own agent instructions define ESCALATE as "a **lean** iteration uncovered …"
+and add "use sparingly"; escalating from full to full is a no-op except for the mandate; (3) this
+session's iter-53 faced the identical QA-over-BLOCKED shape and chose CONTINUE, and iter-51/52/53/54
+deliberately established `partial` as distinct from `failing`.
+**Cost recorded honestly, and it is not hypothetical:** iter-53 made this same call and iter-54 was
+then dispatched **lean against its own spec's `Depth: full`**, the audit never ran, and that round's
+real defect reached the evaluator unreported. The same could happen again — and this round it would
+be worse than last time, because J-05's golden is now guaranteed to FAIL next replay for a
+fixture reason, and a lean round with no audit could read that FAIL as a J-05 regression and halt
+the session. A reader who treats a QA-PASS-over-a-BLOCKED-lane as the same failure MODE C.4's
+fail-open clause exists to catch, or who counts five consecutive rounds of the class as
+"cross-cutting complexity", would return ESCALATE and mandate full depth. That reading is
+defensible and I would not argue it is wrong; it is one owner sentence away from being the rule.
+**Reversible:** yes

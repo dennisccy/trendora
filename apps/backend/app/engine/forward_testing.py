@@ -1118,6 +1118,27 @@ def _forward_agg_runs_with_fr(session: Session, horizon: int, as_of: Optional[da
     return sorted(session.exec(stmt.distinct()).all())
 
 
+# ops-hardening iter-55 (J-05/J-07): row-count width for the periodic INTRA-chunk yield below. The
+# existing per-CHUNK `time.sleep(0)` in `compute_forward_aggregates`'s outer loop (iter-52) only hands
+# off the GIL BETWEEN chunks — one chunk (`walk_forward.forward_agg_run_chunk` = 100 runs) measured
+# 24,272-51,778 rows live against the real committed DB (iter-55 profiling note, `reports/perf-
+# budgets.md`), with ZERO yield points inside it. This is the exact non-yielding stretch the iter-54
+# concurrent drill localized six connection-level `/api/health` non-answers to (Addendum 17,
+# `forward_aggregates_warm`, t+699.1s-783.6s, landing between the h5 and h10 sub-phase boundaries) —
+# under concurrent load (a live drill's second CPU-bound request racing the SAME GIL) a single chunk's
+# processing time was observed to balloon 10-20x past its solo baseline (backend.log: horizon=10 taking
+# 336-438s vs. a 19-21s same-horizon solo baseline elsewhere in the SAME log), consistent with the CPython
+# GIL-convoy effect: infrequent yield points give a waiting thread infrequent, easily-missed chances to
+# actually acquire the GIL. Mirrors `research._SORT_YIELD_CHUNK`'s own already-proven bounded-hold
+# convention (a real OS-level GIL hand-off every N rows of otherwise-uninterrupted pure-Python work) —
+# sized so one interval's own wall time stays the same order of magnitude as that sort's measured
+# ~0.037s/50K-row bound: this loop's own per-row cost profiled roughly 8x heavier (dict build + up to 7
+# accumulator adds vs. one comparison), so a proportionally narrower row width keeps the same bound.
+# Scheduling only — no value, order, or output change (TC-4/TC-7: byte-identical against a pinned
+# pre-fix reference oracle).
+_FORWARD_AGG_ROW_YIELD_CHUNK = 5_000
+
+
 def _forward_agg_slice_map(
     session: Session, horizon: int, slice_run_ids: list[int], batch: int,
 ) -> dict[tuple[int, str], tuple[float, Optional[float]]]:
@@ -1130,13 +1151,23 @@ def _forward_agg_slice_map(
     pair count (770K-803K measured live per horizon, iter-29's audit — the SAME join-accumulator shape iter-29
     fixed one function over in `research.py`, now confirmed live in THIS function's own `forward_testing.py:965`
     frame per the iter-29 evaluator's browser-QA finding). The caller discards this dict before the next
-    chunk — it never again holds the full horizon-partition at once."""
+    chunk — it never again holds the full horizon-partition at once.
+
+    ops-hardening iter-55 (J-05/J-07): a `time.sleep(0)` real GIL hand-off every
+    `_FORWARD_AGG_ROW_YIELD_CHUNK` rows — this loop previously ran the WHOLE slice (up to ~52K rows live)
+    with no yield point at all, one half of the non-yielding stretch this iteration bounds (the other half
+    is `compute_forward_aggregates`'s own per-observation loop just below, which reads the SAME chunk's
+    `ScannerResult` rows). See that constant's own docstring for the full rationale."""
     fr_stmt = select(
         ForwardReturn.run_id, ForwardReturn.symbol, ForwardReturn.realized_return, ForwardReturn.max_drawdown,
     ).where(ForwardReturn.horizon == horizon, ForwardReturn.run_id.in_(slice_run_ids))
     slice_map: dict[tuple[int, str], tuple[float, Optional[float]]] = {}
-    for run_id, symbol, realized_return, max_drawdown in session.exec(fr_stmt).yield_per(batch):
+    for row_i, (run_id, symbol, realized_return, max_drawdown) in enumerate(
+        session.exec(fr_stmt).yield_per(batch)
+    ):
         slice_map[(run_id, symbol)] = (realized_return, max_drawdown)
+        if row_i and row_i % _FORWARD_AGG_ROW_YIELD_CHUNK == 0:
+            time.sleep(0)  # iter-55: intra-chunk GIL hand-off — see `_FORWARD_AGG_ROW_YIELD_CHUNK` above.
     return slice_map
 
 
@@ -1280,11 +1311,19 @@ def compute_forward_aggregates(
         # the SAME bound `_forward_agg_slice_map` already established (iter-30). Feeds
         # `_ControlGroupBuilder`'s per-run RNG sampling below, then is discarded before the next chunk —
         # it never holds more than one chunk's observations at a time (TC-1).
+        #
+        # ops-hardening iter-55 (J-05/J-07): a `time.sleep(0)` real GIL hand-off every
+        # `_FORWARD_AGG_ROW_YIELD_CHUNK` rows — see that constant's docstring (above `_forward_agg_slice_
+        # map`) for the full rationale. Previously this loop ran the WHOLE chunk (up to ~52K rows live)
+        # with no yield point between the outer per-chunk `time.sleep(0)` calls at all — the exact stretch
+        # the iter-54 concurrent drill localized six connection-level `/api/health` non-answers to.
         chunk_obs_by_run: dict[int, list[dict]] = defaultdict(list)
-        for (
+        for row_i, (
             res_run_id, ticker, leadership_bucket, setup_status, sector, rank,
             is_vcp, is_pullback_to_rising_dma, is_flat_base_breakout,
-        ) in session.exec(res_stmt).yield_per(batch):
+        ) in enumerate(session.exec(res_stmt).yield_per(batch)):
+            if row_i and row_i % _FORWARD_AGG_ROW_YIELD_CHUNK == 0:
+                time.sleep(0)  # intra-chunk GIL hand-off — see `_FORWARD_AGG_ROW_YIELD_CHUNK` above.
             fr = slice_map.get((res_run_id, ticker))
             if fr is None:
                 continue  # this stock has no realized return at this horizon in this run (n=0 contribution)

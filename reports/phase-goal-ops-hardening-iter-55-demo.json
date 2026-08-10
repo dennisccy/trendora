@@ -1,0 +1,104 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-ops-hardening-iter-55",
+  "base_url": "http://localhost:3255",
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Open the Data Manager",
+      "narration": "This iteration targets the accuracy of the job-result summary and the health badge's stability during heavy compute. Let's start by navigating to the Data Manager page.",
+      "point_out": "The page loads without errors. The readiness pill in the top-right header shows the current backend state.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/data" },
+      "expect": { "text": "Start a fetch / backfill job" }
+    },
+    {
+      "n": 2,
+      "title": "Verify the readiness badge shows ready",
+      "narration": "Check the readiness pill in the header. It should indicate the backend is initialized and ready to accept jobs.",
+      "point_out": "The readiness badge in the top-right reads 'Ready' or has data-state='ready'. No errors or warnings are displayed.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "button", "name": "Start" } },
+      "expect": { "role": "heading", "name": "Job progress" }
+    },
+    {
+      "n": 3,
+      "title": "Start a backfill job with pre-filled dates",
+      "narration": "The form shows Start and End dates already filled from the first detected coverage gap. We'll start a backfill to verify the job outcome reporting works correctly.",
+      "point_out": "The Job progress card appears with a status badge showing the job is running.",
+      "journey": "J-01",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/data" },
+      "expect": { "text": "Job progress" }
+    },
+    {
+      "n": 4,
+      "title": "Wait for the job to complete and check the Refreshed line",
+      "narration": "Once the job reaches a terminal status (like 'ok'), the system reports which data categories were refreshed. This iteration ensures that 'forward aggregates' is only listed when all horizons completed successfully.",
+      "point_out": "The Refreshed line shows comma-separated categories including 'forward aggregates' if the job completed normally, or omits it if a horizon was interrupted.",
+      "journey": "J-01",
+      "new": false,
+      "verified": true,
+      "section": "full_tour",
+      "action": { "type": "goto", "url": "/backtest" },
+      "expect": { "text": "Market Regime" }
+    },
+    {
+      "n": 5,
+      "title": "Navigate to the Backtest page",
+      "narration": "The Backtest page uses the same forward-aggregate computation that this iteration hardened. The scorecard and evidence should render with real numeric rows, proving the scheduling fix did not break the output.",
+      "point_out": "The forward-test scorecard shows real numeric rows (e.g., 'Market Regime — Risk-on 66.07/100') and the evidence section lists real snapshot and return numbers.",
+      "journey": "J-08",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "link", "name": "Dashboard" } },
+      "expect": { "heading": "Dashboard" }
+    },
+    {
+      "n": 6,
+      "title": "Return to the Dashboard",
+      "narration": "The readiness badge appears consistently across all pages. It should show the same state as it did on the Data Manager and Backtest pages.",
+      "point_out": "The readiness badge renders in the top-right header with the same data-state value across all three pages, confirming consistent rendering.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "click", "target": { "role": "link", "name": "Data Manager" } },
+      "expect": { "text": "Start a fetch / backfill job" }
+    },
+    {
+      "n": 7,
+      "title": "Verify the background compute panel",
+      "narration": "The background-compute panel on the Data Manager displays in-flight and recent compute activity. It should render with real entries and the expected footer text about process-lifetime history.",
+      "point_out": "The background-compute panel shows in-flight entries and footer text confirming this history is process-lifetime only, not persisted.",
+      "journey": "J-09",
+      "new": false,
+      "verified": true,
+      "section": "full_tour",
+      "action": { "type": "fill", "target": { "testid": "job-end-date" }, "text": "" },
+      "expect": { "testid": "job-end-date" }
+    },
+    {
+      "n": 8,
+      "title": "Verify form validation blocks incomplete submissions",
+      "narration": "With an empty End date field, the Start button should be disabled. This validation was not changed by this iteration and must continue to work correctly.",
+      "point_out": "The Start button is visibly disabled (greyed out, not clickable) when the date pair is incomplete.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": { "type": "goto", "url": "/data" },
+      "expect": { "text": "Start a fetch / backfill job" }
+    }
+  ]
+}
