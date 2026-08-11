@@ -3839,10 +3839,22 @@ function regimeCellAt<T extends RegimeLabHorizonCell>(byHorizon: T[], h: number)
 }
 
 /** Whether a cell renders NA for a metric — the SAME `low_sample || n===0 || value===null` rule the cell
- *  uses, so the sort NA-set == the visual NA-set (NA-last in both directions, J-82 predicate). */
+ *  uses (a degraded `status === "unavailable"` cell also has n===0, so it is NA under this same rule; the
+ *  cell components below give it a DISTINCT tooltip), so the sort NA-set == the visual NA-set (NA-last in
+ *  both directions, J-82 predicate). */
 function regimeCellIsNa(cell: RegimeLabHorizonCell | undefined, metric: "fwd" | "mdd"): boolean {
-  if (!cell || cell.low_sample || cell.n === 0) return true;
+  if (!cell || cell.status === "unavailable" || cell.low_sample || cell.n === 0) return true;
   return metric === "fwd" ? cell.mean_return === null : cell.mean_max_drawdown === null;
+}
+
+/** ops-hardening iter-59 (J-07/AG-8, TC-11): the honest NA tooltip for a Regime-Lab cell, distinguishing a
+ *  horizon that DEGRADED under memory pressure (`status === "unavailable"`) from a genuinely low-sample or
+ *  empty cohort — never the same wording, never reassurance language (AG's "never hype" rule), never a
+ *  fabricated number either way. */
+function regimeNaTitle(cell: RegimeLabHorizonCell, min: number, emptyLabel: string): string {
+  if (cell.status === "unavailable") return "Temporarily unavailable — degraded under memory pressure";
+  if (cell.low_sample) return `Low sample — n below the ${min} minimum`;
+  return emptyLabel;
 }
 
 /** The numeric sort value for a metric (NA rows are pushed last by the comparator regardless of sign). */
@@ -3921,13 +3933,13 @@ function RegimeReturnCell({
   chipLabel: string;
   rangeTitle?: string;
 }) {
-  const na = cell.low_sample || cell.n === 0 || cell.mean_return === null;
+  const na = cell.status === "unavailable" || cell.low_sample || cell.n === 0 || cell.mean_return === null;
   return (
     <span className="inline-flex items-center justify-end gap-2">
       {na ? (
         <span
           className="num font-semibold text-text-muted"
-          title={cell.low_sample ? `Low sample — n below the ${min} minimum` : "No observations"}
+          title={regimeNaTitle(cell, min, "No observations")}
         >
           NA
         </span>
@@ -3944,12 +3956,12 @@ function RegimeReturnCell({
 /** A Regime-Lab paired max-drawdown cell at one horizon: mdd-color-graded value (a deeper drawdown reads
  *  more severe), or explicit NA when low-sample / empty / null — never a fabricated 0. */
 function RegimeMddCell({ cell, min }: { cell: RegimeLabHorizonCell; min: number }) {
-  const na = cell.low_sample || cell.n === 0 || cell.mean_max_drawdown === null;
+  const na = cell.status === "unavailable" || cell.low_sample || cell.n === 0 || cell.mean_max_drawdown === null;
   if (na) {
     return (
       <span
         className="num font-semibold text-text-muted"
-        title={cell.low_sample ? `Low sample — n below the ${min} minimum` : "No stored drawdown — NA"}
+        title={regimeNaTitle(cell, min, "No stored drawdown — NA")}
       >
         NA
       </span>

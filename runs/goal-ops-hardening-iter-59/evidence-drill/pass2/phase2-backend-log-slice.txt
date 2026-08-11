@@ -1,0 +1,12 @@
+
+=== start-backend.sh: launching at 2026-08-11T04:35:40Z ===
+    port=8255 memory_cap_mb=8192 malloc_arena_max=2
+    host-guard: cpu_list=0-15 blas_threads=8
+INFO:     Started server process [968767]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8255 (Press CTRL+C to quit)
+INFO:     127.0.0.1:50382 - "GET /api/health HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50384 - "GET /api/data HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50398 - "GET /api/runs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50412 - "GET /api/market-phase HTTP/1.1" 200 OK

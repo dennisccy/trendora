@@ -4358,6 +4358,30 @@ def _regime_lab_observation_set(
     return _collapse_to_episodes(members, run_position)  # first-trigger episode collapse (J-63)
 
 
+def _degrade_regime_lab_horizon(
+    h: int, labels: list[str], deciles: int,
+    by_horizon_per_label: dict[str, list[dict]], by_horizon_per_decile: dict[int, list[dict]],
+    rank_ic_by_horizon: list[dict],
+) -> None:
+    """Append an honest `status: "unavailable"` entry for horizon `h` to every by-label / by-decile /
+    rank-IC accumulator — the SAME schema a completed horizon's entry carries (`n`/`low_sample`/
+    `mean_return`/`mean_max_drawdown`[/`score_min`/`score_max`]), so no consumer needs a second shape to
+    handle (mirrors `compute_factor_lab_all`'s degraded-entry convention, research.py:1474). `n=0` and
+    `low_sample=True` are honestly true (zero usable observations this call), never fabricated; `status`
+    is the signal a consumer checks to tell this apart from a genuinely sparse-but-computed horizon."""
+    for label in labels:
+        by_horizon_per_label[label].append({
+            "horizon": h, "n": 0, "low_sample": True, "mean_return": None, "mean_max_drawdown": None,
+            "status": "unavailable",
+        })
+    for d in range(1, deciles + 1):
+        by_horizon_per_decile[d].append({
+            "horizon": h, "n": 0, "low_sample": True, "mean_return": None, "mean_max_drawdown": None,
+            "score_min": None, "score_max": None, "status": "unavailable",
+        })
+    rank_ic_by_horizon.append({"horizon": h, "rank_ic": {"value": None, "n": 0}, "status": "unavailable"})
+
+
 def compute_regime_lab(
     session: Session, config: Optional[Config] = None, *,
     view: str = VIEW_EPISODES, as_of: Optional[date_cls] = None,
@@ -4377,12 +4401,32 @@ def compute_regime_lab(
       - `rank_ic_by_horizon` — the Spearman rank-IC of the regime score vs the realized forward return, per
         horizon (the decile table's header figure; `{value, n}`, NA when n < 2 or zero rank variance).
 
-    Every figure is byte-identical to the reference aggregation over `_regime_lab_observation_set(horizon,
-    view)` (the SAME builders the samples drill-down reads — one computation path, no number recomputed). The
-    view shows ALL horizons at once (paired columns), so it takes NO `horizon` argument. `as_of` (J-32) scopes
-    the observation set to snapshots dated <= D (a pure FILTER — recomputes nothing); `as_of=None` is the
-    all-history aggregate. The payload echoes the resolved cutoff as `asof_date` (ISO) when scoped, else
-    `null`. Raises `ValueError` for an unknown view (the API pre-validates -> 422)."""
+    Every figure that completes is byte-identical to the reference aggregation over
+    `_regime_lab_observation_set(horizon, view)` (the SAME builders the samples drill-down reads — one
+    computation path, no number recomputed). The view shows ALL horizons at once (paired columns), so it
+    takes NO `horizon` argument. `as_of` (J-32) scopes the observation set to snapshots dated <= D (a pure
+    FILTER — recomputes nothing); `as_of=None` is the all-history aggregate. The payload echoes the resolved
+    cutoff as `asof_date` (ISO) when scoped, else `null`. Raises `ValueError` for an unknown view (the API
+    pre-validates -> 422).
+
+    ops-hardening iter-59 (J-07, AG-8) — bounded, isolate-and-continue per horizon: the pre-iter-59 shape
+    called `_regime_lab_members_by_horizon` ONCE for every configured horizon and retained EVERY horizon's
+    observation pool (then every horizon's post-episode-collapse set) simultaneously for the whole by-label
+    + by-decile aggregation — the same all-at-once-retention shape iter-46/49/50/51 already bounded for the
+    Factor Lab's `_all_factor_observations_by_horizon` / `compute_factor_lab_all` (the confirmed iter-58
+    crash frame: a concurrent forward-aggregate warm plus this all-horizons retention landed VmPeak exactly
+    on the declared 8192 MB ceiling with a live `MemoryError` traceback naming this function). Each horizon
+    is now built via the SAME `_regime_lab_members_by_horizon` builder called with a SINGLE-element
+    `horizons` list — its own documented byte-identity keystone guarantees that call is byte-identical to
+    that horizon's slice of the old all-horizons call — aggregated into that horizon's by-label / by-decile
+    / rank-IC rows, then released before the next horizon starts. A horizon whose build or aggregation step
+    raises under memory pressure (or any other failure) degrades ONLY that horizon to an honest
+    `status: "unavailable"` entry (mirrors `compute_factor_lab_all`'s per-(factor,horizon) isolate-and-
+    continue, including its `except Exception` pairing per the iter-50 audit B4 lesson: one entry's OTHER
+    failure must not 500 the whole response either) and the loop continues — never an uncaught exception
+    reaching `GET /api/research/regime-lab` as a 500. The whole-response `regime_lab_status: "unavailable"`
+    flag is present ONLY when at least one horizon degraded (mirrors the Factor Lab's `factors_status`
+    sibling field, research.py ~4092) — absent, never a fabricated "ok", on a clean compute."""
     cfg = config or get_config()
     wf = cfg.walk_forward
     fl = cfg.research.factor_lab
@@ -4393,65 +4437,114 @@ def compute_regime_lab(
 
     labels = list(cfg.regime.labels)
 
-    # ONE heavy read builds the per-observation pools for ALL horizons (the bounded, byte-identity-preserving
-    # keystone); the episode collapse (when the view is episodes) is a pure in-memory grouping of those SAME
-    # stored rows, computed ONCE per horizon and shared by both the by-label and by-decile groupings.
-    pools = _regime_lab_members_by_horizon(session, horizons, as_of, cfg=cfg)
+    # lazy import — app.engine.data_manager imports FROM this module, so a module-level import back would
+    # be circular (mirrors compute_factor_lab_all's own lazy import). Used only for the test-only
+    # `_fault_inject_memory_error` hook below (a no-op in production).
+    from app.engine import data_manager
+
+    # the run-ordinal index is bounded by TOTAL RUN COUNT (a lightweight two-column read over every stored
+    # `scanner_runs` row, never the heavy FR/ScannerResult tables) — shared across horizons, built once.
     run_position = _run_position_index(session, as_of) if view == VIEW_EPISODES else None
-    members_by_h: dict[int, list[dict]] = {}
-    for h in horizons:
-        members = pools[h]
-        members_by_h[h] = members if view == VIEW_POOLED else _collapse_to_episodes(members, run_position)
 
-    # (a) by-label: every configured regime label emits a row even at n=0 (honest empty row — never omitted,
-    # never fabricated). The paired mean max-drawdown uses the SAME NA convention as the Factor Lab / forward
-    # scorecard (mean over only the members with a stored drawdown; None when none).
-    by_label: list[dict] = []
-    for label in labels:
-        by_horizon: list[dict] = []
-        for h in horizons:
-            label_members = [m for m in members_by_h[h] if m["regime_label"] == label]
-            returns = [m["return"] for m in label_members]
-            mdds = [m["max_drawdown"] for m in label_members if m["max_drawdown"] is not None]
-            n = len(label_members)
-            by_horizon.append({
-                "horizon": h,
-                "n": n,
-                "low_sample": n < wf.min_sample,
-                "mean_return": mean(returns) if returns else None,
-                "mean_max_drawdown": _mean_or_none(mdds),
-            })
-        by_label.append({"regime": label, "by_horizon": by_horizon})
-
-    # (b) by-decile of the 0–100 regime score (the generic `_deciles` machinery) + the per-horizon rank-IC of
-    # the regime score vs the realized forward return.
-    decile_rows_by_h: dict[int, list[dict]] = {}
+    by_horizon_per_label: dict[str, list[dict]] = {label: [] for label in labels}
+    by_horizon_per_decile: dict[int, list[dict]] = {d: [] for d in range(1, fl.deciles + 1)}
     rank_ic_by_horizon: list[dict] = []
-    for h in horizons:
-        ordered = _regime_score_ordered(members_by_h[h])
-        decile_rows_by_h[h] = _deciles(ordered, fl.deciles, wf.min_sample)
-        rank_ic_by_horizon.append({
-            "horizon": h,
-            "rank_ic": _rank_ic([(o["factor"], o["return"]) for o in ordered]),
-        })
-    by_decile: list[dict] = []
-    for d in range(1, fl.deciles + 1):
-        by_horizon = []
-        for h in horizons:
-            drow = decile_rows_by_h[h][d - 1]
-            by_horizon.append({
-                "horizon": h,
-                "n": drow["n"],
-                "low_sample": drow["low_sample"],
-                "mean_return": drow["mean_return"],
-                "mean_max_drawdown": drow["mean_max_drawdown"],
-                # the decile's regime-score range (the `_deciles` factor bounds, re-labelled to "score").
-                "score_min": drow["factor_min"],
-                "score_max": drow["factor_max"],
-            })
-        by_decile.append({"decile": d, "by_horizon": by_horizon})
+    any_degraded = False
 
-    return {
+    for h in horizons:
+        # a real scheduling yield once per horizon, mirrors compute_factor_lab_all's own iter-52 per-entry
+        # yield (forces an OS-level GIL hand-off so a concurrent request gets a fair chance to be scheduled).
+        time.sleep(0)
+        try:
+            data_manager._fault_inject_memory_error("regime_lab")  # test-only; no-op in production
+            pool = _regime_lab_members_by_horizon(session, [h], as_of, cfg=cfg)[h]
+            members = pool if view == VIEW_POOLED else _collapse_to_episodes(pool, run_position)
+
+            # (a) by-label: every configured regime label emits a row even at n=0 (honest empty row — never
+            # omitted, never fabricated). The paired mean max-drawdown uses the SAME NA convention as the
+            # Factor Lab / forward scorecard (mean over only members with a stored drawdown; None when none).
+            #
+            # iter-59 REVIEW FIX (CRITICAL): this horizon's rows are built into LOCAL buffers and committed
+            # to the shared accumulators in exactly ONE place, only after the try/except succeeds (the same
+            # "compute into locals, append once" discipline `compute_factor_lab_all` follows,
+            # research.py:1409-1491). Appending straight into the shared accumulators here meant a failure
+            # raised AFTER the by-label loop but BEFORE the by-decile/rank-IC work finished (e.g. a real
+            # MemoryError inside `_deciles`/`_regime_score_ordered`) left this horizon's REAL by-label
+            # entries in place and then `_degrade_regime_lab_horizon` appended a SECOND, degraded entry for
+            # the SAME horizon — a by_horizon list with a duplicated horizon and mismatched lengths across
+            # by-label vs by-decile rows.
+            label_entries: dict[str, dict] = {}
+            for label in labels:
+                label_members = [m for m in members if m["regime_label"] == label]
+                returns = [m["return"] for m in label_members]
+                mdds = [m["max_drawdown"] for m in label_members if m["max_drawdown"] is not None]
+                n = len(label_members)
+                label_entries[label] = {
+                    "horizon": h,
+                    "n": n,
+                    "low_sample": n < wf.min_sample,
+                    "mean_return": mean(returns) if returns else None,
+                    "mean_max_drawdown": _mean_or_none(mdds),
+                }
+
+            # (b) by-decile of the 0–100 regime score (the generic `_deciles` machinery) + this horizon's
+            # rank-IC of the regime score vs the realized forward return.
+            ordered = _regime_score_ordered(members)
+            decile_rows = _deciles(ordered, fl.deciles, wf.min_sample)
+            decile_entries: dict[int, dict] = {}
+            for d in range(1, fl.deciles + 1):
+                drow = decile_rows[d - 1]
+                decile_entries[d] = {
+                    "horizon": h,
+                    "n": drow["n"],
+                    "low_sample": drow["low_sample"],
+                    "mean_return": drow["mean_return"],
+                    "mean_max_drawdown": drow["mean_max_drawdown"],
+                    # the decile's regime-score range (the `_deciles` factor bounds, re-labelled to "score").
+                    "score_min": drow["factor_min"],
+                    "score_max": drow["factor_max"],
+                }
+            rank_ic_entry = {
+                "horizon": h,
+                "rank_ic": _rank_ic([(o["factor"], o["return"]) for o in ordered]),
+            }
+        except MemoryError as exc:
+            logger.exception(
+                "compute_regime_lab: horizon=%s aborted under memory pressure -- isolate-and-continue "
+                "(AG-8), degrading THIS horizon honestly rather than the whole all-horizons response: %s",
+                h, exc,
+            )
+            any_degraded = True
+            _degrade_regime_lab_horizon(
+                h, labels, fl.deciles, by_horizon_per_label, by_horizon_per_decile, rank_ic_by_horizon,
+            )
+            continue
+        except Exception as exc:  # noqa: BLE001 — mirrors compute_factor_lab_all's broader catch (AG-8,
+            # iter-50 audit B4 lesson: the MemoryError-only catch left any OTHER exception from one entry
+            # free to 500 the whole response; pairing it with this broader catch closes that gap here too).
+            logger.exception(
+                "compute_regime_lab: horizon=%s failed (non-fatal) -- isolate-and-continue (AG-8), "
+                "degrading THIS horizon honestly rather than the whole all-horizons response: %s", h, exc,
+            )
+            any_degraded = True
+            _degrade_regime_lab_horizon(
+                h, labels, fl.deciles, by_horizon_per_label, by_horizon_per_decile, rank_ic_by_horizon,
+            )
+            continue
+
+        # COMMIT POINT — reached only on a fully successful horizon, so every accumulator gains EXACTLY one
+        # entry per horizon (either these real rows or, on the degrade paths above, the honest `unavailable`
+        # ones — never both).
+        for label in labels:
+            by_horizon_per_label[label].append(label_entries[label])
+        for d in range(1, fl.deciles + 1):
+            by_horizon_per_decile[d].append(decile_entries[d])
+        rank_ic_by_horizon.append(rank_ic_entry)
+
+    by_label = [{"regime": label, "by_horizon": by_horizon_per_label[label]} for label in labels]
+    by_decile = [{"decile": d, "by_horizon": by_horizon_per_decile[d]} for d in range(1, fl.deciles + 1)]
+
+    payload = {
         "view": view,  # J-63: the resolved overlap-honesty view (episodes default | pooled)
         # the resolved as-of scoping cutoff echoed (J-32) — ISO date when scoped, null in all-history mode.
         "asof_date": as_of.isoformat() if as_of is not None else None,
@@ -4466,6 +4559,9 @@ def compute_regime_lab(
         "by_decile": by_decile,
         "rank_ic_by_horizon": rank_ic_by_horizon,
     }
+    if any_degraded:
+        payload["regime_lab_status"] = "unavailable"
+    return payload
 
 
 # The all-horizons Regime-Lab view is served through the SHARED `EventStudyCache` under a fixed sentinel
@@ -4492,7 +4588,17 @@ def regime_lab_cached(
     the stored payload (NO recompute); on a MISS, compute it ONCE via `compute_regime_lab` (which validates
     the view, raising before any write), persist under the current stamp, prune any stale rows for this
     identity, and return it. BYTE-IDENTICAL to a fresh compute; the cache REFRESHES after any dataset change
-    via the dataset-version key. `as_of` is folded into the `asof_key` slot (a pure observation-set FILTER)."""
+    via the dataset-version key. `as_of` is folded into the `asof_key` slot (a pure observation-set FILTER).
+
+    ops-hardening iter-59 (J-07, AG-8): a payload where at least one horizon degraded under memory pressure
+    (`compute_regime_lab`'s own per-horizon isolate-and-continue bound) is honest partial data for THIS
+    caller, but must NEVER be persisted as if it were the canonical cached value — a later request under the
+    SAME dataset-version stamp (e.g. once the concurrent warm that caused the pressure has finished) would
+    otherwise be served this stale degraded payload until the NEXT dataset change, instead of getting a
+    fresh attempt. Mirrors `factor_lab_all_cached`'s own never-cache-degraded guard (iter-50 audit B4) —
+    deliberately WITHOUT its single-flight/cooldown apparatus (no live reproduction here has shown the same
+    repeated-doomed-compute amplification risk; `compute_regime_lab` never raises past this guard, so a
+    simple skip-the-write is the smaller, sufficient fix)."""
     cfg = config or get_config()
     version = f"{_dataset_version(session)}-{_REGIME_LAB_SCHEMA_TOKEN}"
     asof_key = _cache_asof_key(as_of)
@@ -4512,6 +4618,13 @@ def regime_lab_cached(
 
     # MISS — compute once (this also validates the view, raising before any write) and persist.
     payload = compute_regime_lab(session, cfg, view=view, as_of=as_of)
+
+    if payload.get("regime_lab_status") == "unavailable":
+        logger.warning(
+            "regime_lab_cached: at least one horizon degraded under memory pressure for "
+            "(view=%s, asof_key=%s) -- serving this response but NOT caching it", view, asof_key,
+        )
+        return payload
 
     stale = session.exec(
         select(EventStudyCache).where(

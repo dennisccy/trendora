@@ -1485,13 +1485,20 @@ export async function fetchFactorLabAll(
 // --- research / Regime Lab (iter-53, J-110) ------------------------------------------------
 /** One regime-LABEL or regime-score-DECILE bucket's paired figures at ONE horizon: the mean realized
  *  forward return + paired mean max-drawdown + sample size `n`. `low_sample` (n < min_sample) flags the
- *  cell the UI renders as NA + n. Re-formatted only — the page recomputes no return/drawdown. */
+ *  cell the UI renders as NA + n. Re-formatted only — the page recomputes no return/drawdown.
+ *
+ *  `status` (ops-hardening iter-59, J-07/AG-8) is ADDITIVE and OPTIONAL: `"unavailable"` means THIS
+ *  horizon's aggregation degraded under memory pressure (`compute_regime_lab`'s per-horizon isolate-and-
+ *  continue bound) — `n`/`mean_return`/`mean_max_drawdown` are honest zero/NA placeholders, not a
+ *  genuinely empty cohort. Absent on a clean compute — mirrors the Factor Lab's own `by_horizon[].status`
+ *  sibling field (never fabricated). */
 export interface RegimeLabHorizonCell {
   horizon: number; // the forward window (trading days)
   n: number;
   low_sample: boolean; // n < min_sample — render NA + n, never a fabricated number
   mean_return: number | null; // raw mean forward return (fraction); null when n === 0
   mean_max_drawdown: number | null; // paired mean max-drawdown (fraction, <= 0); null = NA (none stored)
+  status?: "unavailable"; // this horizon degraded under memory pressure — DISTINCT from a genuine NA
 }
 
 /** A regime-score DECILE bucket's per-horizon cell additionally carries the decile's regime-score range. */
@@ -1537,6 +1544,10 @@ export interface RegimeLabResponse {
   by_decile: RegimeLabDecileRow[]; // D1..D`deciles` of the regime score
   rank_ic_by_horizon: RegimeLabRankIcRow[]; // regime score vs forward return, per horizon
   asof_date?: string | null; // J-32: the resolved point-in-time cutoff (ISO) when scoped; null = all-history
+  // ops-hardening iter-59 (J-07/AG-8): present ONLY when at least one horizon degraded under memory
+  // pressure — mirrors the Factor Lab's own (currently unconsumed) `factors_status` sibling field. Absent
+  // on a clean compute, never a fabricated "ok".
+  regime_lab_status?: "unavailable";
 }
 
 /** Canonical Regime-Lab source: GET /api/research/regime-lab. Throws on non-200 so the page renders an

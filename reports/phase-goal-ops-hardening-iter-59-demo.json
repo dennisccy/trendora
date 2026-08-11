@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-ops-hardening-iter-59",
+  "base_url": "http://localhost:3255",
+  "not_yet": true,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Iteration 59 — incomplete verification",
+      "narration": "This iteration's target journeys (J-05 and J-07) require backend restart and heavy-compute scenarios that the browser-QA agent cannot perform. Verification is blocked; the demo walkthrough will be recorded once both target journeys pass.",
+      "point_out": "QA verdict: BLOCKED (missing target journeys)",
+      "journey": "",
+      "new": false,
+      "verified": false,
+      "section": "full_tour",
+      "action": {
+        "type": "goto",
+        "url": "/research"
+      }
+    }
+  ]
+}

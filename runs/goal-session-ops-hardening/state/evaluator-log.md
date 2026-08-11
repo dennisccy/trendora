@@ -5842,3 +5842,164 @@ process, and (b) does the twenty-minute finishing budget apply while the app is 
 facts to know: the app survived its memory limit this time with nothing broken and no restart; last round's
 wrong health record is now corrected in writing in three places; and this round ran shallow against a plan
 that asked for deep, for the third time in four rounds.
+
+## Iteration 59 — goal-ops-hardening-iter-59
+
+**Date:** 2026-08-11T07:05:00Z
+**Verdict:** CONTINUE
+**Depth dispatched:** full (`iter-59/depth-dispatched` = `full`, matching the spec's own `**Depth:** full` /
+`Full trigger: 3` — the depth mismatch of rounds 55/56/58 did NOT recur, and iter-58/e is closed). Every
+full-depth lane ran: review, QA, audit, browser QA, deterministic replay, coherence, closure, demo. Only
+ux-regression was shed (SPEED-15 wall-clock trim). `runs/goal-ops-hardening-iter-59/status.json` reads
+`blocked` / `closure_failed`, attempt 3, fix mode, `product_code_changed_this_pass: false`.
+
+**Journey deltas:**
+- **Newly passing: none. Newly failing: none. Regressed: none.** Shape unchanged: **6 passing / 2 partial /
+  0 failing**. Third round in four with no scoreboard movement — and the first in which the reason is
+  entirely bookkeeping rather than product behaviour.
+- **J-05 and J-07 stay `partial`.** Both had acceptance steps executed LIVE for the first time in the whole
+  session, and both passed those steps (details in reasoning 2 and 3).
+- No `browser-infra.json`; no `journeys-changed.md`; no `DEFERRED-BUDGET` row. All 8 `spec_hash`es match
+  `goal_gate.py hash-journeys`, run by me. `pending_infra` cleared everywhere. `evidence_makeup` set on
+  J-04/J-05/J-06/J-07 (the demo lane produced zero frames).
+- Anti-goal violations: **TWO CLOSED, both verified by me** — iter-58/f (the memory-ceiling exhaustion: its
+  named mechanism is bounded and this round's 1,575-sample series peaks at 71.26% of cap instead of exactly
+  on it) and iter-58/e (the depth mismatch). Half of iter-57/e closed too (its Regime Lab event; the wedge
+  event is a different path and stays open). **ELEVEN NEW OPEN, all minor:** the degraded `n=0` display; the
+  prologue still outside the try; four false QA statements; a blank frame cited as evidence; a golden claimed
+  rewritten and not; TC-5's 12 slow polls; the target-journey lane gap; the missing walkthrough; the
+  unmeasured pre/post pair; the closure gate's false positive; the vanished prior audit report. Ledger now:
+  **161 total, 78 unresolved, 0 unresolved critical.** scan-report **CLEAN**; coherence **COHERENCE-PASS**
+  (0 blocking, 1 advisory); review **PASS_WITH_NOTES**; audit **PASS_WITH_GAPS**; QA **PASS** / **UI-PASS**;
+  merged browser QA **BLOCKED** (9/12, 3 skipped, 2 target-missing); replay 5/6 (J-01 overturned); demo
+  **NOT_YET**; ux-regression **SKIPPED**; closure **CLOSURE-FAIL**.
+
+**Reasoning:** I re-derived every load-bearing number myself instead of reading it off a report.
+(1) **I re-computed all three drill files from the raw CSVs and they match the published figures exactly.**
+`evidence-drill/pass2/tc5-health-poll.csv`: 1,520 data rows, **1,520/1,520 HTTP 200**, zero non-answers,
+slowest answered **4.068 s at 04:14:19.944Z**, **12** over 2.0 s, 119 over 1.0 s. `tc4-vmpeak.csv`: 1,575
+samples, max **5,977,564 kB = 5837.46 MB = 71.26%** of the declared 8192 MB cap. `tc3-regime-lab-poll.csv`:
+472 responses, all 200, `regime_lab_status` absent on all 472, min 0.006 / median 0.098 / max 340.127 s.
+Zero discrepancies with the developer's or the auditor's numbers — the first round in this session where a
+drill write-up survived my own recount unamended, and `reconcile_drill.py` (which derives every figure
+mechanically and exits non-zero if the segments do not reconcile) is why.
+(2) **J-05's one never-executed step ran, and I read its raw artifact rather than its summary.**
+`phase2-restart.json`: `pid_alive_after_sigkill: false` after a real `kill -9` of pid 918146; relaunch via
+`scripts/start-backend.sh`; **boot-to-first-health-200 = 1.712 s**; cold `GET /api/data` **0.243 s** with
+`universe_count 539` / `coverage_status "current"`; `/api/runs` 0.522 s over 2,953 runs; `scanner_results`
+and `forward_returns` watermarks **identical before and after** (1,285,511 / 6,557,445 — I re-queried both
+in sqlite and they match); and the boot's own **12-line** log slice holds zero prefill / `daily_prices` /
+`bar_cache` lines against a table I counted at **3,306,390** rows. That is TC-1 and TC-2 met outright.
+(3) **J-07's step 3 passes for the first time ever, and step 4 ran live for the first time ever.** Step 3
+asks VmPeak to stay UNDER `memory_cap_mb`: 71.26% of cap, a 28.7% margin, against iter-58's landing exactly
+ON the cap. Step 4's fault drill (`fault-drill.json`): armed request → HTTP 200 with
+`regime_lab_status: "unavailable"`, 80 degraded cells, zero fabricated values; **same pid 969388 before and
+after**; `/api/data`, `/api/runs`, `/api/market-phase`, `/api/backtest` all **byte-identical** to the
+pre-fault baseline; and a disarmed re-check returned a clean payload with 0 degraded cells, so the
+never-cache-a-degraded-payload guard holds over HTTP. Step 1: 472 concurrent lab responses, all 200.
+(4) **The round's strongest fact is one no lane reported, and I got it from the app's own log.**
+`logs/backend.log`'s last **non-injected** MemoryError is at line **251,244** and its last **HTTP 500** is at
+line **249,034** — inside iterations 58 and 57 respectively. This iteration's work begins at line **253,297**
+(the 2026-08-10T21:26:30Z launch, matching `data_provider_runs` id=383 at 21:27:16). So across ~7.5 hours
+covering a 25-minute backfill, a full-horizon warm, 472 concurrent lab requests, 1,520 health polls and more
+than a dozen restarts, this iteration served **zero 500s** and raised **zero real memory errors**. The count
+moved 8,131 → 8,171, and **all 40 new lines are the deliberate `injected at fault-injection site 'regime_lab'`
+test hook**. Counting MemoryErrors without separating injected from real would have read as a regression.
+(5) **Step 2 is the one J-07 clause that still fails, and only on its latency half.** Availability is met
+OUTRIGHT — 1,520/1,520 answered, zero non-answers, a real improvement on Addendum 25's five. Twelve answers
+(0.79%) exceeded the owner's relaxed ≤2 s ceiling. Stated plainly because it decides the journey: the owner's
+amendment relaxes that ceiling for a window "of order ~30 s"; this window was **23 minutes** (OPEN 04:10:13.187Z
+→ CLOSED 04:33:17.991Z, the job's own markers).
+(6) **I opened seven frames rather than hashing them, and two of them changed my reading.**
+`J-05-verify.png` renders "Immutable snapshot — as of 2010-11-15 · Scanned 2026-08-11 04:10:12 · provider
+seed", regime 74.65 with a full component breakdown; sqlite confirms exactly 1 `scanner_runs` row for that
+date. `J-07-verify.png` renders 2953 / 591 / 5391, equal to my own sqlite counts. Spot-checks `J-06-verify.png`
+(real figures, no degrade markers, +0.35% n=282050 matching the LLM lane's raw-API read byte-for-byte) and
+`J-08-verify.png` (honest "No elapsed forward window for this date yet") contradict nothing. The two that
+changed my reading: `UT-J-01-fullrange-result.png` is a **completely blank** 2,061-byte frame cited for
+UT-J-01's PASS (iter-59/d — iter-58's lesson recurring one lane over, because "open it, don't hash it" was
+encoded as TC-10 for the DEMO lane only); and the TC-11 pair, where the degraded table shows **`n=0`** for
+cohorts the control frame on the same page at the same as-of proves hold **17,440** observations.
+(7) **Anti-goals checked at the row and the command level, not by citation.** AG-9: every run this iteration
+(ids 383–390) is `provider='seed'` in sqlite; the only non-seed row since 2026-08-10 is id=369, iteration 57's
+ledgered event. AG-10: `git diff --stat` AND `git status --porcelain` over all five frozen paths are BOTH
+empty; `config.yaml:1363-1364` still reads 8192 / 2; this round's boot slice reads
+`memory_cap_mb=8192 malloc_arena_max=2 / host-guard: cpu_list=0-15 blas_threads=8`. AG-3 on the normal path
+verified twice (above). AG-7: scan CLEAN over a 6-file diff with no manifest, lockfile or LICENSE.
+(8) **I verified the two claims most likely to be wrong, and one of them was.** `git diff --stat HEAD` over
+`journey-scripts/J-01.json` is **empty** and `git log -1` returns **db742cdc (iter-47)** — the merged results'
+claim that the golden was "rewritten (16 steps)" is false, so iteration 60's replay lane will fail J-01
+identically (iter-59/e). By contrast `J-05.json` genuinely WAS rotated (192 insertions) and I confirmed in
+sqlite that its new reserved date **2010-11-16 holds 0 `scanner_runs` rows**, while 2010-11-05 and 2010-11-15
+now hold 1 each — the precondition really does hold for the next round.
+(9) **I traced the closure gate's second blocker to its source and it is a false alarm.**
+`closure_gate.py:465-471` fires on a keyword match; the only match in the user-visible-changes file is line
+71's "has no user-visible surface of its own", which describes the internal loop change, not the page. The
+document itself documents the user-visible change fully. Blocker 1 (the BLOCKED headline) is genuine.
+Rejected **REGRESSION (C.1)**: no journey moved `passing`/`already_passing` → `failing`. J-01's replay FAIL
+is overturned in the authoritative merged file with a reconciliation footer, and I corroborated the
+overturning narrative in the database myself. Nothing meets the critical list: scan CLEAN, a 6-file diff with
+no manifest/lockfile/LICENSE, both AG-10 checks empty, every ingest row `seed`, and no served value wrong on
+any normal path. The one candidate I weighed seriously — the degraded `n=0` over a 17,440-row cohort — I
+scored **minor** and logged in `assumptions.md`: the payload itself is honest (`status: "unavailable"`,
+`low_sample: true`, `mean_return: null`), the state occurs only under memory pressure (absent on all 472 live
+responses), and the pre-fix behaviour for the identical condition was an uncaught 500.
+Rejected **STALLED (C.2)**: C.2 needs EVERY unblock path to be human-owned and almost none is — the lane-
+coverage fix is a framework edit; the demo lane needs a re-run, not a decision; the `n=0` marker and the
+prologue `try` are small code changes; the J-01 golden is a script repair. One front is genuinely the owner's
+(the 2-second promise over a 23-minute window) and one owner item among many agent items is not a stall.
+Rejected **GOAL_ACHIEVED (C.3)**: J-05 and J-07 are `partial`.
+Rejected **ESCALATE (C.4)**: none of its three clauses fires literally — no journey has status `failing`
+(the `partial` distinction is this session's own deliberate convention since iter-51); the review lane did NOT
+fail open (PASS_WITH_NOTES, `definition_of_done: complete`); and **this was not a lean iteration**
+(`depth-dispatched` = `full`), which is the clause iter-58 fired on. ESCALATE from full to full buys only the
+mandate, and this round shows the mandate already worked. I record the risk I am accepting in
+`assumptions.md`: three of the last five rounds ran lean against a full spec, and a lean round cannot record
+the walkthrough both open journeys require.
+**Chose CONTINUE (C.5):** limb 2 — no journey newly passing, but every remaining gap is tractable and named,
+and coherence is PASS, so no consolidation pass is mandated. I recommend **full** depth on the merits and
+state the structural reason in the recommendation.
+**FIVE THINGS I STATE PLAINLY RATHER THAN ROUND AWAY:** (i) **the product work this round is the best of the
+session and I verified all of it** — a genuinely independent pinned oracle, a fault-injection test with a
+control arm so a disabled injector cannot pass as green, a bound that moved peak memory from exactly-on-cap
+to 71%, and ~7.5 hours of heavy work with zero errors served. (ii) **And the round is recorded as blocked,
+because both journeys it existed to prove fell through a gap between two test lanes that each assumed the
+other covered them** — both had valid goldens that passed on the first try, and neither was replayed. That is
+a framework defect costing this session whole rounds, and it is now the top item. (iii) **The measurement
+discipline this session has been demanding for six rounds finally arrived**: every figure is now derived
+mechanically by a script that refuses to publish unreconciled counts, and it survived my recount exactly —
+while the QA report one layer above it still wrote "Blockers: None" over a status file that lists one. The
+instruments are fixed; the summaries are still where truth is lost. (iv) **The honesty layer stops at the
+last inch**: the backend went to the trouble of emitting an explicit "unavailable" discriminator, and the
+page consumes it only into a mouse-hover tooltip, showing `n=0` for a group of 17,440 records. (v) **J-07 is
+now one owner sentence from closing** — every step passes except twelve slow health answers out of 1,520,
+against a 2-second promise written for a 30-second window that was applied to a 23-minute one.
+
+**Next-step recommendation:** FULL depth (recommended on the merits; a shallow round structurally cannot
+close either open journey, because both require a recorded walkthrough and the recorder runs only at full
+depth). Give the next round this order. (1) **Fix the hole that swallowed this round's work** — the two most
+important checks were run, passed, and then reported as "not tested" because one lane covers only the
+always-check list and the other lane's plan had no case for them. Nobody owns the journeys a round is
+actually about. (2) **Record the walkthrough** for J-05 "Aggregates are precomputed at ingest" and J-07
+"Heavy aggregates never take the service down"; both ask for one in writing and neither can be marked done
+without it, and the reason it produced nothing is gone. It rides along with the real work and is never a
+round's own goal. (3) **Make the unavailable cells look unavailable** — stop writing a sample count of zero
+for a group holding 17,440 records, and stop offering its drill-down link. (4) **Wrap the opening section of
+the Regime Lab calculation** so the one remaining unprotected database read cannot return a server error.
+(5) **Repair or retire the J-01 check script** — the report says it was rewritten, git says it was not, and it
+will fail again on a journey that genuinely works. (6) **Measure the new memory limit against the old one on
+a quiet machine**; one cold Regime Lab page took 340 seconds under load and the saving has no before-figure.
+(7) SMALL AND ALREADY WRITTEN DOWN: a blank picture cited as evidence again, in a different lane; a QA summary
+saying "no blockers" over a file listing one; the closure check's false alarm about user-visible changes; last
+round's audit report vanishing from disk entirely. (8) CARRIED, untouched: iter-29/b + the badge wording after
+a permanently failed warm-up (32nd round unmade); iter-31/e; iter-32/f; iter-35/k; iter-36/n; iter-37/o;
+iter-37/q; iter-39/u; iter-46/az; iter-46/ba; iter-47/bd; iter-47/bf; iter-47/bi; iter-48/bj; iter-57/f;
+iter-57/l. Deferred a TWENTY-FIFTH time: iter-33/g, the Regime Lab. (9) **OWNER — one decision now decides
+J-07.** Of the two questions asked for ten rounds, the first has lost most of its urgency: moving heavy
+calculation into its own process is no longer needed, because this round's fix brought peak memory to 71% of
+the limit and the app ran all night with zero errors. The second is now decisive: **the app must answer its
+health check within 2 seconds while a background job runs, and that promise was written for a job of about 30
+seconds; this round's job lasted 23 minutes.** Twelve answers of 1,520 took longer than 2 seconds, the slowest
+4.1 seconds, and not one failed. Please say which you want — keep the 2-second promise for long jobs (J-07
+stays open until the app is faster), or apply it to short jobs only (J-07's last gap closes next round). One
+sentence is enough.

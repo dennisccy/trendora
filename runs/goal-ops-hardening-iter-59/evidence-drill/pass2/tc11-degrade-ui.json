@@ -1,0 +1,83 @@
+{
+ "asof_requested": "2010-11-15",
+ "boot_armed_seconds": 1.61,
+ "ready_wait_armed": [
+  46.5,
+  "ready"
+ ],
+ "candidate_probe": [
+  {
+   "as_of": "2010-11-15",
+   "regime_lab_status": "ABSENT",
+   "degraded_cells": 0,
+   "by_label_rows": 6
+  },
+  {
+   "as_of": "2010-11-05",
+   "regime_lab_status": "unavailable",
+   "degraded_cells": 80,
+   "by_label_rows": 6
+  }
+ ],
+ "asof_used": "2010-11-05",
+ "api_armed": {
+  "regime_lab_status": "unavailable",
+  "degraded_cells": 80,
+  "by_label_rows": 6
+ },
+ "ui_armed": {
+  "ready_wait_before_shot": [
+   0.0,
+   "ready"
+  ],
+  "page_url": "http://localhost:3255/research/regime-lab?asof=2010-11-05",
+  "heading": "Research \u2014 Regime Lab",
+  "cells_with_unavailable_tooltip": 160,
+  "sample_degraded_cells": [
+   {
+    "text": "NA",
+    "title": "Temporarily unavailable \u2014 degraded under memory pressure"
+   },
+   {
+    "text": "NA",
+    "title": "Temporarily unavailable \u2014 degraded under memory pressure"
+   },
+   {
+    "text": "NA",
+    "title": "Temporarily unavailable \u2014 degraded under memory pressure"
+   }
+  ],
+  "error_boundary_text_present": false,
+  "warming_up_banner_present": false,
+  "by_label_table_present": true,
+  "by_decile_table_present": true,
+  "screenshot": "runs/goal-ops-hardening-iter-59/evidence-drill/pass2/TC-11-degrade-rendered.png",
+  "screenshot_table": "runs/goal-ops-hardening-iter-59/evidence-drill/pass2/TC-11-degrade-rendered-by-label-table.png"
+ },
+ "boot_control_seconds": 1.808,
+ "ready_wait_control": [
+  46.6,
+  "ready"
+ ],
+ "api_control": {
+  "regime_lab_status": "ABSENT",
+  "degraded_cells": 0,
+  "by_label_rows": 6
+ },
+ "ui_control": {
+  "ready_wait_before_shot": [
+   0.0,
+   "ready"
+  ],
+  "page_url": "http://localhost:3255/research/regime-lab?asof=2010-11-05",
+  "heading": "Research \u2014 Regime Lab",
+  "cells_with_unavailable_tooltip": 0,
+  "sample_degraded_cells": [],
+  "error_boundary_text_present": false,
+  "warming_up_banner_present": false,
+  "by_label_table_present": true,
+  "by_decile_table_present": true,
+  "screenshot": "runs/goal-ops-hardening-iter-59/evidence-drill/pass2/TC-11-control-clean.png",
+  "screenshot_table": "runs/goal-ops-hardening-iter-59/evidence-drill/pass2/TC-11-control-clean-by-label-table.png"
+ }
+}

@@ -3442,9 +3442,13 @@ _FAULT_INJECT_MEMORY_ERROR_ENV = "TRENDORA_FAULT_INJECT_MEMORY_ERROR"
 # see `resolve_with_reasons`'s own comment for the full finding). It now fires from directly inside THIS
 # module's `_refresh_ingest_aggregates`, at the top of that phase's own block — no lazy import needed
 # (same module).
+# ops-hardening iter-59: "regime_lab" added — `research.compute_regime_lab`'s per-horizon build-process-
+# release isolate-and-continue site (J-07; the confirmed iter-58 crash frame,
+# `_regime_lab_members_by_horizon` retaining every horizon's pool at once). Reaches this hook via the SAME
+# lazy `from app.engine import data_manager` import `compute_factor_lab_all` already uses.
 _FAULT_INJECT_SITES = frozenset({
     "forward_aggregates", "drawdown_expectations", "backfill_worker", "factor_lab_all",
-    "coverage_membership_timeline", "market_phase",
+    "coverage_membership_timeline", "market_phase", "regime_lab",
 })
 
 

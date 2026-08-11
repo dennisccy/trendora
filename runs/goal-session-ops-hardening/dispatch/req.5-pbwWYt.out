@@ -1,9 +1,0 @@
-Audited iteration 58 against the blueprint's Data Contract and Information Architecture; verdict written to runs/goal-session-ops-hardening/iter-58/coherence.md.
-
-**Verdict: COHERENCE-PASS**
-
-- Data Contract: the stale/served_dataset_version computation stays inside the already-registered canonical module (app.engine.data_manager.availability_from_storage) and endpoint (GET /api/data/availability) — no second producer. The new helper _ingest_job_in_flight (data_manager.py:1744-1758) reads DataProviderRun.status == "running"; independently verified this is the identical signal sweep_orphaned_runs uses at data_manager.py:5296. The new frontend file lib/availability-empty-state.ts derives purely from the already-fetched canonical payload (no new fetch, no client recomputation), following the existing lib/background-compute-panel-branch.ts extraction precedent.
-- Information Architecture: no nav/sidebar/router file touched; no new page or route; the heatmap stays on its existing /data home.
-- Verified via git status / git diff --stat that the bounded diff file list was complete and that unrelated working-tree modifications pre-date this iteration's snapshot.
-
-No FAIL- or WARN-worthy issues; the banner copy change resolves the iter-57 coherence advisory.

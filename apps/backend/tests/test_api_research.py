@@ -352,6 +352,61 @@ def test_regime_lab_invalid_view_422(loaded_engine):
         assert client.get("/api/research/regime-lab", params={"view": "nope"}).status_code == 422
 
 
+def test_regime_lab_never_500s_under_injected_memory_pressure(loaded_engine, monkeypatch):
+    """Error case (ops-hardening iter-59, J-07/AG-8): an uncaught `MemoryError` inside `compute_regime_lab`
+    must never reach FastAPI as a raw 500. This is the HTTP-layer complement to `test_regime_lab.py`'s
+    compute-level isolate-and-continue tests — it proves the FULL stack (endpoint -> `regime_lab_cached` ->
+    `compute_regime_lab`) never lets the fault escape as a 500, using the SAME test-only
+    `_fault_inject_memory_error("regime_lab")` hook `compute_factor_lab_all` already uses (data_manager.py),
+    forced to fire on EVERY horizon. The live response still answers 200 with an honest
+    `regime_lab_status: "unavailable"` and a per-horizon `status: "unavailable"` marker on every
+    `by_label`/`by_decile`/`rank_ic_by_horizon` entry — never a 500, never a dropped connection, never a
+    fabricated number.
+
+    The request deliberately uses a cache key NO other test in this module writes (`view=pooled` scoped to
+    the oldest run date — the other pooled test is all-history, the other as-of test uses the default
+    episodes view), so `regime_lab_cached` is guaranteed to MISS and actually ENTER `compute_regime_lab`
+    where the fault fires. Without that, the earlier `?view=pooled` test's clean cached row answers this
+    request as a HIT, the injected fault never fires, and the request returns 200 for the wrong reason —
+    proving nothing about the fault path. The `regime_lab_status` assertion below is itself the guard
+    against that: a HIT serves a clean payload with no such key, so a future key collision fails loudly
+    here rather than passing silently. The final assertion additionally proves the never-cache-degraded
+    guard end-to-end over HTTP: a degraded response adds NO cache row."""
+    from sqlmodel import select
+
+    from app.engine import data_manager
+    from app.engine.research import _REGIME_LAB_SUBJECT
+    from app.models import EventStudyCache
+
+    def _cache_keys():
+        """The Regime-Lab cache rows' identity keys — compared before/after to prove nothing was written."""
+        with Session(loaded_engine) as session:
+            return sorted(
+                (r.view, r.asof_key, r.dataset_version, r.horizon)
+                for r in session.exec(
+                    select(EventStudyCache).where(EventStudyCache.subject == _REGIME_LAB_SUBJECT)
+                ).all()
+            )
+
+    before = _cache_keys()
+    monkeypatch.setenv(data_manager._FAULT_INJECT_MEMORY_ERROR_ENV, "regime_lab")
+    with TestClient(main.app) as client:
+        oldest = _oldest_research_date(client)
+        resp = client.get("/api/research/regime-lab", params={"view": "pooled", "as_of": oldest})
+    assert resp.status_code == 200, f"must degrade honestly, never 500: got {resp.status_code}"
+    data = resp.json()
+    assert data["asof_date"] == oldest, "fixture sanity: the scoped (guaranteed-MISS) key was served"
+    assert data["regime_lab_status"] == "unavailable"
+    for row in data["by_label"] + data["by_decile"]:
+        for b in row["by_horizon"]:
+            assert b["status"] == "unavailable"
+    for r in data["rank_ic_by_horizon"]:
+        assert r["status"] == "unavailable"
+    assert _cache_keys() == before, (
+        "the degraded payload must never be persisted to the cache (never-cache-degraded guard, over HTTP)"
+    )
+
+
 def test_regime_lab_samples_count_coherent_over_http(loaded_engine):
     """J-51/J-65 over HTTP: a Regime-Lab `N=` chip's samples drill-down `total` equals the published bucket n
     for both a regime LABEL and a regime-score DECILE, in the SAME view — and every displayable bucket

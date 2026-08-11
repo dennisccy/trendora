@@ -1,0 +1,113 @@
+{
+ "steps": [
+  {
+   "step": "key",
+   "miss_key": "/api/research/regime-lab?view=pooled&as_of=1996-02-01",
+   "oldest_asof": "1996-02-01",
+   "at": "2026-08-11T04:35:54Z"
+  },
+  {
+   "step": "boot_armed",
+   "boot_seconds": 1.56,
+   "pid": 969388,
+   "env": "TRENDORA_FAULT_INJECT_MEMORY_ERROR=regime_lab",
+   "launcher": "scripts/start-backend.sh",
+   "at": "2026-08-11T04:35:56Z"
+  },
+  {
+   "step": "baseline",
+   "reads": {
+    "/api/health": {
+     "status": 200,
+     "bytes": 927,
+     "seconds": 0.009
+    },
+    "/api/data": {
+     "status": 200,
+     "bytes": 592837,
+     "seconds": 0.221
+    },
+    "/api/runs": {
+     "status": 200,
+     "bytes": 788757,
+     "seconds": 0.534
+    },
+    "/api/market-phase": {
+     "status": 200,
+     "bytes": 14908,
+     "seconds": 0.137
+    },
+    "/api/backtest": {
+     "status": 200,
+     "bytes": 277202,
+     "seconds": 0.054
+    }
+   },
+   "at": "2026-08-11T04:35:57Z"
+  },
+  {
+   "step": "fault_fired",
+   "request": "/api/research/regime-lab?view=pooled&as_of=1996-02-01",
+   "http_status": 200,
+   "seconds": 0.013,
+   "bytes": 12045,
+   "json_parse_error": null,
+   "regime_lab_status": "unavailable",
+   "degraded_by_horizon_cells": 80,
+   "fabricated_values_in_degraded_cells": [],
+   "never_500": true,
+   "body_non_empty": true,
+   "at": "2026-08-11T04:35:57Z"
+  },
+  {
+   "step": "survival",
+   "pid_before": 969388,
+   "pid_after": 969388,
+   "same_process": true,
+   "reads": {
+    "/api/health": {
+     "status": 200,
+     "bytes": 927,
+     "seconds": 0.045
+    },
+    "/api/data": {
+     "status": 200,
+     "bytes": 592837,
+     "seconds": 0.154,
+     "byte_identical_to_baseline": true
+    },
+    "/api/runs": {
+     "status": 200,
+     "bytes": 788757,
+     "seconds": 0.452,
+     "byte_identical_to_baseline": true
+    },
+    "/api/market-phase": {
+     "status": 200,
+     "bytes": 14908,
+     "seconds": 0.011,
+     "byte_identical_to_baseline": true
+    },
+    "/api/backtest": {
+     "status": 200,
+     "bytes": 277202,
+     "seconds": 0.038,
+     "byte_identical_to_baseline": true
+    }
+   },
+   "at": "2026-08-11T04:35:57Z"
+  },
+  {
+   "step": "no_poison_recheck",
+   "boot_seconds": 1.812,
+   "pid": 969535,
+   "http_status": 200,
+   "seconds": 2.902,
+   "bytes": 10056,
+   "regime_lab_status_after_disarm": "ABSENT",
+   "degraded_cells_after_disarm": 0,
+   "degraded_payload_was_not_served_from_cache": true,
+   "at": "2026-08-11T04:36:03Z"
+  }
+ ]
+}

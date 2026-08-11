@@ -1,0 +1,8 @@
+{
+ "job_id": "a7f346f719104b569d296780e85910af",
+ "dpr_id": 390,
+ "status": "ok",
+ "started_at": "2026-08-11 04:08:04.395444",
+ "finished_at": "2026-08-11 04:33:18.057668",
+ "message": "{\"kind\": \"backfill\", \"start\": \"2010-11-15\", \"end\": \"2010-11-15\", \"snapshots_created\": 1, \"dates_done\": 1, \"dates_total\": 1, \"forward_returns_inserted\": 1365, \"bars_fetched\": 0, \"calendar_days\": 1, \"non_trading_days\": 0, \"already_snapshotted\": 0, \"error_other\": 0, \"aggregates_refreshed\": [\"latest_snapshot\", \"coverage\", \"membership_timeline\", \"market_phase\", \"forward_aggregates\", \"research_hot_keys\", \"availability_heatmap\", \"factor_lab_all\", \"drawdown_expectations\"], \"passers\": null, \"omitted_total\": null, \"stages\": {\"backfill\": {\"elapsed_seconds\": 128.7872, \"items_processed\": 1, \"concurrency\": 1, \"per_date_seconds_sum\": 2.3169, \"speedup_factor\": 0.018}}, \"date_failures\": [], \"completed_stages\": [\"backfill\"], \"summary\": \"backfill: 1 snapshots over 1 dates, 1365 forward returns\"}"
+}

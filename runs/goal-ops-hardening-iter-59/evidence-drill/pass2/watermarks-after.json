@@ -1,0 +1,33 @@
+{
+ "scanner_results_max_id": 1285511,
+ "forward_returns_max_id": 6557445,
+ "data_provider_runs_max_id": 390,
+ "scanner_runs_rows_for_target": 1,
+ "new_provider_runs": [
+  [
+   390,
+   "seed",
+   "ok"
+  ],
+  [
+   389,
+   "seed",
+   "ok"
+  ],
+  [
+   388,
+   "seed",
+   "ok"
+  ],
+  [
+   387,
+   "seed",
+   "ok"
+  ],
+  [
+   386,
+   "seed",
+   "ok"
+  ]
+ ]
+}

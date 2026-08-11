@@ -1,0 +1,91 @@
+{
+  "phase": "goal-ops-hardening-iter-59",
+  "status": "blocked",
+  "current_step": "closure_failed",
+  "attempt": 3,
+  "mode": "fix_mode",
+  "fix_mode_input": "docs/handoffs/goal-ops-hardening-iter-59-audit.md (verdict FAIL)",
+  "review_report": "reports/reviews/goal-ops-hardening-iter-59-review.md",
+  "audit_report": "docs/handoffs/goal-ops-hardening-iter-59-audit.md",
+  "qa_report": "reports/qa/goal-ops-hardening-iter-59-qa.md",
+  "updated_at": "2026-08-11T05:28:07.529667Z",
+  "started_at": "2026-08-10T21:06:31.446738Z",
+  "cli": "claude",
+  "product_code_changed_this_pass": false,
+  "product_code_change_rationale": "The audit's FAIL is about verification completeness and evidence honesty, not broken code ('the product-code work of this iteration is genuinely good'); its section 6 opens with 'Do not re-open product code this round', and DoD item 7 / TC-7 forbid any code change after the 8-journey browser/replay lane has already run. `git diff --stat` over apps/ is byte-for-byte what attempt 2 left. Everything this pass produced is live verification and evidence.",
+  "audit_findings_addressed": [
+    "DoD 1 (J-05 had no journey row from any lane) -- CLOSED as far as a developer can: J-05.json replayed end to end with demo_runner.py --mode verify (the regression lane's own deterministic runner) against live services. UT-J-05 PASS, all 15 steps, on a real 25m13.7s in-app backfill of 2010-11-15 (data_provider_runs.id=390). Evidence frame J-05-verify.png OPENED and read (TC-10), showing the run-detail page for the ingested date. Scoping stated in the handoff: this is NOT the browser-qa-agent, which a developer cannot dispatch and which the audit-hardening loop does not re-run.",
+    "DoD 2 (J-07 had no journey row; TC-5 failed; step 4 never live) -- CLOSED to the same standard: UT-J-07 PASS (5 steps), plus live evidence for all four acceptance steps. Step 4's induced-pressure abort was run LIVE for the first time.",
+    "DoD 6 / finding B1 (false slowest-poll cell, 3x-understated breach count, hand-drawn windows) -- CLOSED and MECHANISED: reconcile_drill.py derives every published figure from the raw artifacts, bounds the window with the job's own OPEN/CLOSED markers, converts log stamps BST->UTC via zoneinfo, reports the slowest ANSWERED poll separately from non-answers, and exits non-zero if the segmented counts fail to reconcile against wc -l. Validated by re-deriving Addendum 25's log and reproducing the auditor's independent figures exactly (449 lines, 5 non-answers, 3.399s @ 23:44:23.610Z, 10 over 2s, 15 breaches, same 3/4/8 phase split).",
+    "Finding F1 (the degrade rendering had never been seen rendered) -- CLOSED: capture_degrade_ui.py pre-arms a fault-injected backend through scripts/start-backend.sh (which the browser lane structurally cannot do), drives a real browser, and captures the degrade WITH a disarmed control arm on the same page and same as-of. 160 cells rendering 'NA' + tooltip 'Temporarily unavailable - degraded under memory pressure'; control shows real figures. All four frames opened.",
+    "TC-12 -- the reserved golden date was consumed TWICE this pass, both by real J-05 replays (2010-11-05 / scanner_runs.id=2952 / data_provider_runs.id=389, whose runner was reaped mid-wait so it produced no verdict; and 2010-11-15 / scanner_runs.id=2953 / data_provider_runs.id=390, the run the PASS rests on). J-05.json was therefore rotated twice, ending at 2010-11-16, live-verified at 0 scanner_runs rows with a real SPY bar (466 bars) immediately before the final edit. The first rotation note written this pass was stale within the hour -- caught only by re-querying the DB at the end rather than trusting freshly written prose, which is the golden's own standing lesson. The step-7 wait was also raised 1,200,000 -> 2,400,000 ms: measured durations are now 11m16s/18m18s/18m13s/17m04s/25m14s, and the 25m14s run cleared the 25-minute wait by about two seconds."
+  ],
+  "evidence_produced": {
+    "reports/perf-budgets.md": "Addendum 26 -- the whole TC-1..TC-5 drill re-run to completion with the reporting discipline mechanised, plus the first live TC-3 outcome-(b) observation and the TC-11 visual evidence. Addendum 25 left standing verbatim (append-only).",
+    "reports/phase-goal-ops-hardening-iter-59-dev-journey-replay.md": "demo_runner.py's own output: UT-J-05 PASS, UT-J-07 PASS (2/2, 0 failed). Written by the tool, not by hand.",
+    "reports/qa/goal-ops-hardening-iter-59-dev-evidence/": "J-05-verify.png, J-07-verify.png, TC-11-degrade-rendered{,-by-label-table}.png, TC-11-control-clean{,-by-label-table}.png -- all opened and read, not hashed (TC-10)",
+    "runs/goal-ops-hardening-iter-59/evidence-drill/pass2/": "raw artifacts: tc5-health-poll.csv (1521 lines), tc4-vmpeak.csv (1575 samples), tc3-regime-lab-poll.csv (472 responses), reconciliation.md, phase2-restart.json, phase2-backend-log-slice.txt, fault-drill.json, tc11-degrade-ui.json, lane.log"
+  },
+  "measurements_this_pass": {
+    "TC-5 health poll": "wc -l 1521 (1520 data rows); 1520/1520 HTTP 200; 0 non-answers; 0 non-200; slowest ANSWERED 4.068s at 2026-08-11T04:14:19.944Z inside forward_aggregates_warm; 12 answers over the relaxed 2s ceiling (0.79%); 119 over 1.0s; window bounded by the job's own OPEN 04:10:13.187Z / CLOSED 04:33:17.991Z markers",
+    "TC-3 concurrent regime-lab": "472 responses, ALL HTTP 200, zero 5xx, zero non-answers, regime_lab_status absent on every one; min 0.006s / median 0.098s / max 340.127s",
+    "TC-4 VmPeak": "5,977,564 kB = 5837.46 MB = 71.3% of the declared 8192 MB cap (28.7% margin), as the max of a 1575-sample 1 Hz series, not a single read",
+    "TC-1/TC-2 restart": "kill -9 confirmed; boot-to-first-200 1.712s; cold GET /api/data 0.243s (universe_count 539, coverage_status current); /api/runs 0.522s (2953 runs); /api/market-phase 0.754s; scanner_results/forward_returns watermarks identical before and after the page loads; this boot's own 12-line backend.log slice has zero prefill/daily_prices/bar_cache lines against a 3,306,390-row table",
+    "J-07 step 4 fault drill": "armed request -> HTTP 200, regime_lab_status 'unavailable', 80 degraded by_horizon cells, 0 fabricated values; SAME pid 969388 before and after; /api/data, /api/runs, /api/market-phase, /api/backtest all byte-identical to the pre-fault baseline; disarmed re-check of the same key returns clean with 0 degraded cells (never-cache-degraded holds over HTTP)",
+    "TC-11 degrade UI": "armed: 160 cells rendering 'NA' with title 'Temporarily unavailable - degraded under memory pressure', both tables present, no error-boundary text; control (disarmed, same as-of): 0 such cells, real figures (Risk-on FWD 20D +0.91%, n=17440)"
+  },
+  "blockers": [
+    "DoD item 8 (a [NEW]-flagged walkthrough via `demo.sh ops-hardening --session-live`) is STILL NOT MET and was not worked around. Three checked facts: (a) the demo lane emitted `not_yet: true` with zero steps because the demo-narrator was handed a BLOCKED QA state -- that root cause is now fixed, since J-05 and J-07 have real verdicts; (b) the audit-hardening loop runs dev -> review -> qa only (run-phase.sh:1105-1140), so nothing in this dispatch re-invokes the demo lane; (c) `demo.sh <sid> --session-live` drives a visible Chrome window advanced by Enter keypresses, which a headless dispatch cannot execute. Hand-authoring a demo script and recording it myself was deliberately rejected as self-verification. Iteration 60 needs a demo-lane re-run.",
+    "TC-5's relaxed <=2s ceiling is still not clean: 12 of 1520 answered polls exceeded it, worst 4.068s, during forward_aggregates_warm. The 'zero unresponsive/frozen windows' half IS met outright this pass (0 non-answers, 0 non-200) -- a real improvement on Addendum 25's five non-answers -- but the latency half is not, in 0.79% of polls. This supersedes the attempt-2 blocker text, whose figures AND whose 'not attributable to this iteration's diff' attribution were both corrected by the auditor.",
+    "Whether the per-horizon bound made the Regime Lab's cold-compute latency worse (audit B4) remains UNKNOWN: the two cold computes measured here (340.127s, 232.762s) were both under concurrent load and there is no isolated pre/post pair. Likewise the memory reduction itself is unmeasured (audit B3) -- 5837.46 MB is a real peak but has no pre-fix counterpart. Both carried to iteration 60, per the audit's own filing."
+  ],
+  "findings_filed_for_iter_60_not_fixed": [
+    "F2 CONFIRMED empirically by the captured frame: a degraded cell is visually identical to an empty cohort (same muted NA, and the n=0 drill-down chip is still offered for a cohort that was never computed); only the title tooltip separates them, so keyboard, touch and screenshot review cannot.",
+    "`?asof=<date>` in the page URL does not scope the Regime Lab on its own -- ANALYSIS MODE still defaults to 'All history', so the request goes to the all-history cache key. A verification trap, not a defect; it cost this pass one wasted capture run.",
+    "For ~45s after every restart, GET /api/health reports readiness 'initializing' with warmup {done: 89, total: 89, status: 'running'} -- a completed count under a still-running status. The research pages correctly render the WarmingState card for that window, but the pairing is confusing and it caused this pass's first degrade capture to photograph that card instead of the degrade.",
+    "LANE-COVERAGE ROOT CAUSE (framework scope, filed not touched): valid J-05.json and J-07.json goldens already existed and passed on the first attempt this pass. They were never replayed because the replay lane replays REQUIRED_JOURNEYS only (scripts/automation/lib/replay-lane.sh) while TARGET journeys are expected to get rows from the LLM browser lane, whose test plan (UT-01..UT-06) contained no J-05 or J-07 case. Both target journeys fell between two lanes that each assumed the other had them.",
+    "B2 (no explicit per-horizon release), B4 (stale `_regime_lab_members_by_horizon` docstring; unmeasured cold-latency cost), B5 (second request recomputes cold) -- carried from the audit, untouched, per TC-7."
+  ],
+  "changed_files_this_pass": [
+    "reports/perf-budgets.md",
+    "reports/phase-goal-ops-hardening-iter-59-implementation-summary.md",
+    "reports/phase-goal-ops-hardening-iter-59-dev-journey-replay.md",
+    "reports/qa/goal-ops-hardening-iter-59-dev-evidence/",
+    "docs/handoffs/goal-ops-hardening-iter-59-dev.md",
+    "docs/handoffs/goal-ops-hardening-iter-59-frontend.md",
+    "runs/goal-session-ops-hardening/journey-scripts/J-05.json",
+    "runs/goal-ops-hardening-iter-59/evidence-drill/reconcile_drill.py",
+    "runs/goal-ops-hardening-iter-59/evidence-drill/sample_mem.py",
+    "runs/goal-ops-hardening-iter-59/evidence-drill/fault_drill.py",
+    "runs/goal-ops-hardening-iter-59/evidence-drill/phase2_restart.py",
+    "runs/goal-ops-hardening-iter-59/evidence-drill/capture_degrade_ui.py",
+    "runs/goal-ops-hardening-iter-59/evidence-drill/j05_lane_drill.sh",
+    "runs/goal-ops-hardening-iter-59/status.json"
+  ],
+  "changed_files": [
+    "apps/backend/app/engine/research.py",
+    "apps/backend/app/engine/data_manager.py",
+    "apps/backend/tests/test_regime_lab.py",
+    "apps/backend/tests/test_api_research.py",
+    "apps/frontend/lib/api.ts",
+    "apps/frontend/app/research/_labs.tsx",
+    "reports/perf-budgets.md",
+    "docs/handoffs/goal-ops-hardening-iter-59-dev.md",
+    "docs/handoffs/goal-ops-hardening-iter-59-frontend.md",
+    "reports/phase-goal-ops-hardening-iter-59-implementation-summary.md",
+    "runs/goal-session-ops-hardening/journey-scripts/J-05.json",
+    "runs/goal-ops-hardening-iter-59/evidence-drill/"
+  ],
+  "tests_run": true,
+  "tests_this_pass": {
+    "tests/test_regime_lab.py": "36 passed in 9.39s -- CONFIRMED (no-regression check; no product or test code changed this pass)",
+    "tests/test_api_research.py -k regime_lab": "NOT re-run -- 65+ minutes on this host (measured twice in attempt 2) and nothing it covers changed. Attempt 2's result stands: 8 passed, 84 deselected in 3905.95s."
+  },
+  "browser_checks_run": true,
+  "journey_replay_this_pass": "UT-J-05 PASS, UT-J-07 PASS (2/2 journeys, 0 failed) -- reports/phase-goal-ops-hardening-iter-59-dev-journey-replay.md",
+  "tc8_ag9_provider_seed_only": true,
+  "tc9_host_guard_caps_untouched": true,
+  "ag7_scan_clean": true,
+  "qa_verdict": "PASS_WITH_NOTES",
+  "next_action": "reviewer: confirm no product-code change slipped in and that the new evidence artifacts match their raw logs; then auditor re-check against the DoD, noting that DoD item 8 is openly unmet and that the browser-qa/demo lanes do not re-run in the audit-hardening loop."
+}

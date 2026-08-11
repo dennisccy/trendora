@@ -1235,3 +1235,69 @@ direct tension; when both are in force, findings-only is the correct resolution 
 as the expectation, not left to the auditor's judgement each round.
 **Applies to:** any full-depth iter whose spec carries the TC-8 lane-last sequencing rule.
 
+
+<!-- condense.sh 2026-08-10T23:08:54Z: moved 4 entries (keep-iters=5) -->
+
+## iter-52 — 2026-08-08T04:34:46Z
+
+**Verdict:** ESCALATE
+**Lesson:** A failed ASGI request leaves **no uvicorn access-log line at all** — grepping
+`logs/backend.log` for `500` after line 205000 returns **zero hits** while three genuine
+`MemoryError` tracebacks sit in that same range (`compute_regime_lab` ->
+`_regime_lab_members_by_horizon`, lines 212191/212240/212296). The only way to find a page whose
+data call died is to grep for the *exception frame*, never for a status code. Compounding it:
+`J-06.json`'s step 11 asserts `expect.text = "Research — Regime Lab"` — the page HEADING — so the
+golden scored PASS on the very load where that page returned no data; `J-06-verify.png` shows the
+shell with an empty body.
+**Applies to:** any iteration scoring a journey off a golden `expect.text` assertion, and any
+log-based availability claim about `apps/backend/` (`ui-test-results.md` rows, `perf-budgets.md`
+drill addenda). Assert a value the endpoint must have produced, not a heading the shell renders.
+
+## iter-52 — 2026-08-08T04:34:46Z (second entry)
+
+**Verdict:** ESCALATE
+**Lesson:** TC-9 ("the 8-journey lane runs LAST, no product-code change afterward") has now broken
+in **six of seven rounds**, and it is an ORDERING property of the pipeline, not a discipline
+failure: the lane is dispatched BEFORE audit and audit-fix, so *any* audit finding that needs a
+code change breaks the rule automatically. This round it broke maximally — the lane ran 01:41:48
+and the iteration's entire deliverable (`research.py` `_cooperative_sorted`/`_cyclic_gc_paused`)
+landed at 02:39:48, so the only independent evidence measured a superseded tree and returned FAIL
+on both target journeys. Five rounds of restating the rule in the spec have not fixed it; moving
+the lane's dispatch to after the audit-fix step would fix it once. Corroborating tell, cheap to
+re-derive: the lane's job appears in `perf-budgets.md` as a "**pre-fix** job run" in the
+developer's own words.
+**Applies to:** every full-depth iteration in this session; any spec author restating TC-8/TC-9;
+anyone diagnosing why a round ends `blocked` at `audit_qa_failed` with `browser_checks_run: false`.
+
+## iter-53 — 2026-08-08T09:55:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** A pipeline ordering property was fixed by writing it into the iteration spec's own
+Definition of Done as a binding rule ("if the audit finds a defect needing a code change, it is filed
+as a note for iter-54 rather than applied as a code-changing audit-fix"), not by asking agents to be
+more careful. TC-9 had broken 6 of the previous 7 rounds under exhortation; the round it became a DoD
+checkbox, it held cleanly — newest `apps/backend/**` mtime 07:05:37 vs earliest lane artifact 08:32:26,
+and the auditor deliberately shipped five findings with zero fixes applied. Exhortation does not fix an
+ordering property; a machine-checkable spec line does.
+**Applies to:** any iteration whose spec depends on stage ordering (browser/replay lane vs audit-fix vs
+review), and any recurring process failure that has survived two or more "try harder" rounds — encode it
+as a DoD/TC item instead of a reminder.
+
+## iter-53 — 2026-08-08T09:55:00Z (second entry)
+
+**Verdict:** CONTINUE
+**Lesson:** Replacing an unbounded fetch with a bounded one is an off-by-one trap whenever the bound
+and the consumer speak different units. `market_phase.py:217`/`:554` fetch `lookback_days` bars **by
+count** and then filter `bar.date >= d - timedelta(days=lookback_days)` — a **calendar** range that is
+`lookback_days + 1` days inclusive — so the oldest qualifying bar can be silently dropped, and the code
+comment's "byte-identical" proof is false as stated. The sibling change in `universe_resolver.py` is
+correct precisely because it is a count bound feeding a count consumer (`_adv_dollar`'s
+`bars[-adv_window_days:]`). The test shape matters just as much: all three new market-phase tests
+compare **treated vs treated** (a bare fixture against the same fixture padded with older bars), which
+can only prove the window is not too *wide*; nothing can detect "too narrow" except a **treated vs
+untreated** comparison, which is what TC-3 actually asked for and what the resolver half did.
+**Applies to:** any iteration bounding a fetch/scan/window (`bars_asof` -> `bars_asof_window`,
+chunking, `LIMIT` pushdown) — check the bound's unit against the consumer's unit, and require the
+byte-identity test to compare against the ORIGINAL implementation, never against another instance of
+the new one.
+

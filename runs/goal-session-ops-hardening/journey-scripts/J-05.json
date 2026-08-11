@@ -1,24 +1,197 @@
 {
   "schema_version": 1,
   "journey": "J-05",
-  "name": "Aggregates are precomputed at ingest, never on the fly — a live in-app backfill of ONE unsnapshotted historical trading day (2010-11-05 must have 0 snapshot rows before this runs; re-verify and rotate if a prior lane consumed it), waited out for its real duration, then proven from the run's OWN persisted record and its OWN /scanner-runs row",
+  "name": "Aggregates are precomputed at ingest, never on the fly — a live in-app backfill of ONE unsnapshotted historical trading day (2010-11-16 must have 0 snapshot rows before this runs; re-verify and rotate if a prior lane consumed it), waited out for its real duration, then proven from the run's OWN persisted record and its OWN /scanner-runs row",
   "default_timeout_ms": 20000,
   "steps": [
-    {"n": 1, "journey": "J-05", "title": "Open the Data Manager", "action": {"type": "goto", "url": "/data"}, "expect": {"text": "Data Manager"}},
-    {"n": 2, "journey": "J-05", "title": "Target one unsnapshotted historical trading day", "action": {"type": "fill", "target": {"testid": "job-start-date"}, "text": "2010-11-05"}},
-    {"n": 3, "journey": "J-05", "action": {"type": "fill", "target": {"testid": "job-end-date"}, "text": "2010-11-05"}},
-    {"n": 4, "journey": "J-05", "title": "Start the backfill", "action": {"type": "click", "target": {"role": "button", "name": "Start"}}},
-    {"n": 5, "journey": "J-05", "title": "The job actually STARTED (not accepted-then-never-run)", "action": {"type": "wait_for", "ms": 15000}},
-    {"n": 6, "journey": "J-05", "action": {"type": "expect", "target": {"testid": "job-status"}}, "expect": {"target": {"testid": "job-status"}}},
-    {"n": 7, "journey": "J-05", "title": "Wait out the REAL in-app backfill (see the sizing note in this file's trailing _notes)", "action": {"type": "wait_for", "ms": 1200000}},
-    {"n": 8, "journey": "J-05", "title": "Every requested date processed", "action": {"type": "expect", "text": "1/1 dates"}, "expect": {"text": "1/1 dates"}},
-    {"n": 9, "journey": "J-05", "title": "Per-stage timings for THIS job", "action": {"type": "expect", "target": {"testid": "stage-timings"}}, "expect": {"target": {"testid": "stage-timings"}}},
-    {"n": 10, "journey": "J-05", "title": "THIS run's own breakdown — a re-run over an already-snapshotted day would read '1 already snapshotted' and fail here", "action": {"type": "expect", "target": {"testid": "backfill-breakdown"}}, "expect": {"text": "1 calendar day · 0 already snapshotted · 0 non-trading"}},
-    {"n": 11, "journey": "J-05", "title": "A snapshot was actually created", "action": {"type": "expect", "text": "1 snapshots"}, "expect": {"text": "1 snapshots"}},
-    {"n": 12, "journey": "J-05", "title": "TC-10 — the persisted run record lists which finalize-hook aggregates it actually refreshed", "action": {"type": "expect", "target": {"testid": "aggregates-refreshed"}}, "expect": {"target": {"testid": "aggregates-refreshed"}}},
-    {"n": 13, "journey": "J-05", "title": "The new as-of is listed on Scanner Runs", "action": {"type": "goto", "url": "/scanner-runs"}, "expect": {"text": "2010-11-05"}},
-    {"n": 14, "journey": "J-05", "title": "Follow THIS run's own row through to its stored snapshot", "action": {"type": "click", "target": {"text": "2010-11-05"}}, "expect": {"text": "Immutable snapshot — as of 2010-11-05"}},
-    {"n": 15, "journey": "J-05", "title": "The stored leaderboard renders from storage (never the 'No stored stock rows' empty state)", "action": {"type": "expect", "text": "ENTRY QUALITY"}, "expect": {"text": "ENTRY QUALITY"}}
+    {
+      "n": 1,
+      "journey": "J-05",
+      "title": "Open the Data Manager",
+      "action": {
+        "type": "goto",
+        "url": "/data"
+      },
+      "expect": {
+        "text": "Data Manager"
+      }
+    },
+    {
+      "n": 2,
+      "journey": "J-05",
+      "title": "Target one unsnapshotted historical trading day",
+      "action": {
+        "type": "fill",
+        "target": {
+          "testid": "job-start-date"
+        },
+        "text": "2010-11-16"
+      }
+    },
+    {
+      "n": 3,
+      "journey": "J-05",
+      "action": {
+        "type": "fill",
+        "target": {
+          "testid": "job-end-date"
+        },
+        "text": "2010-11-16"
+      }
+    },
+    {
+      "n": 4,
+      "journey": "J-05",
+      "title": "Start the backfill",
+      "action": {
+        "type": "click",
+        "target": {
+          "role": "button",
+          "name": "Start"
+        }
+      }
+    },
+    {
+      "n": 5,
+      "journey": "J-05",
+      "title": "The job actually STARTED (not accepted-then-never-run)",
+      "action": {
+        "type": "wait_for",
+        "ms": 15000
+      }
+    },
+    {
+      "n": 6,
+      "journey": "J-05",
+      "action": {
+        "type": "expect",
+        "target": {
+          "testid": "job-status"
+        }
+      },
+      "expect": {
+        "target": {
+          "testid": "job-status"
+        }
+      }
+    },
+    {
+      "n": 7,
+      "journey": "J-05",
+      "title": "Wait out the REAL in-app backfill (see the sizing note in this file's trailing _notes)",
+      "action": {
+        "type": "wait_for",
+        "ms": 2400000
+      }
+    },
+    {
+      "n": 8,
+      "journey": "J-05",
+      "title": "Every requested date processed",
+      "action": {
+        "type": "expect",
+        "text": "1/1 dates"
+      },
+      "expect": {
+        "text": "1/1 dates"
+      }
+    },
+    {
+      "n": 9,
+      "journey": "J-05",
+      "title": "Per-stage timings for THIS job",
+      "action": {
+        "type": "expect",
+        "target": {
+          "testid": "stage-timings"
+        }
+      },
+      "expect": {
+        "target": {
+          "testid": "stage-timings"
+        }
+      }
+    },
+    {
+      "n": 10,
+      "journey": "J-05",
+      "title": "THIS run's own breakdown — a re-run over an already-snapshotted day would read '1 already snapshotted' and fail here",
+      "action": {
+        "type": "expect",
+        "target": {
+          "testid": "backfill-breakdown"
+        }
+      },
+      "expect": {
+        "text": "1 calendar day · 0 already snapshotted · 0 non-trading"
+      }
+    },
+    {
+      "n": 11,
+      "journey": "J-05",
+      "title": "A snapshot was actually created",
+      "action": {
+        "type": "expect",
+        "text": "1 snapshots"
+      },
+      "expect": {
+        "text": "1 snapshots"
+      }
+    },
+    {
+      "n": 12,
+      "journey": "J-05",
+      "title": "TC-10 — the persisted run record lists which finalize-hook aggregates it actually refreshed",
+      "action": {
+        "type": "expect",
+        "target": {
+          "testid": "aggregates-refreshed"
+        }
+      },
+      "expect": {
+        "target": {
+          "testid": "aggregates-refreshed"
+        }
+      }
+    },
+    {
+      "n": 13,
+      "journey": "J-05",
+      "title": "The new as-of is listed on Scanner Runs",
+      "action": {
+        "type": "goto",
+        "url": "/scanner-runs"
+      },
+      "expect": {
+        "text": "2010-11-16"
+      }
+    },
+    {
+      "n": 14,
+      "journey": "J-05",
+      "title": "Follow THIS run's own row through to its stored snapshot",
+      "action": {
+        "type": "click",
+        "target": {
+          "text": "2010-11-16"
+        }
+      },
+      "expect": {
+        "text": "Immutable snapshot — as of 2010-11-16"
+      }
+    },
+    {
+      "n": 15,
+      "journey": "J-05",
+      "title": "The stored leaderboard renders from storage (never the 'No stored stock rows' empty state)",
+      "action": {
+        "type": "expect",
+        "text": "ENTRY QUALITY"
+      },
+      "expect": {
+        "text": "ENTRY QUALITY"
+      }
+    }
   ],
   "_notes": [
     "ops-hardening iter-50 audit-fix pass 2, finding T3. The previous golden was STRUCTURALLY INCAPABLE of passing: step 5 waited 15,000 ms for a job the lane itself measured at 11m16s, so steps 6-8 asserted against a still-running job every time. Two things were confirmed before this rewrite rather than assumed:",
@@ -27,6 +200,8 @@
     "Golden discipline (iter-47/48 lessons): steps 10/12/14/15 no longer rest on page-wide text a persisted history panel could satisfy regardless of outcome. Step 10 asserts THIS run's own breakdown counts (a re-run over an already-snapshotted day renders '1 already snapshotted' and FAILS here — the assertion has teeth); step 12 asserts TC-10's `aggregates_refreshed` list, never asserted before; step 14 CLICKS the date's own link through to /scanner-runs/<run_id> and asserts that run detail's own header; step 15 asserts the stored leaderboard table actually rendered (the real column header, 'ENTRY QUALITY' — confirmed uppercase in the live-rendered DOM this pass, corrected from the earlier lower-case 'Entry Quality' text which does not appear verbatim on this page) rather than the 'No stored stock rows' empty state.",
     "Single-use by construction: the target date must have 0 snapshot rows when this runs (J-05's own defining case is an UNSNAPSHOTTED day). Rotation history: 2010-11-08 (iter-50) -> 2010-11-09 (iter-50's own TC-1 drill) -> 2010-11-10 (iter-55, consumed by iter-57's LLM lane, scanner_runs.id=2946) -> 2010-11-11 (iter-58 dev TC-8 pass 1, then consumed by the SAME dispatch's own first TC-7 drill attempt, scanner_runs.id=2947) -> 2010-11-02 (iter-58 dev TC-8 pass 2, then consumed by the SAME dispatch's second/reported TC-7 drill, scanner_runs.id=2948, data_provider_runs.id=378) -> 2010-11-04 (iter-58 browser-qa-agent's own live J-05 verification this pass, consumed: scanner_runs.id=2949, data_provider_runs.id=382, run detail at /scanner-runs/2949).",
     "ops-hardening iter-58 rotation (browser-qa-agent pass, after the dev's own TC-8 rotation was itself consumed by the dev's own TC-7 drill before browser-qa-agent could use it — see the standing note below): rotated to 2010-11-05, live-verified 0 scanner_runs rows AND a real SPY bar present (genuine trading day, not a gap) via direct read-only sqlite query against apps/backend/data/trendora.db on 2026-08-10 immediately before this rotation. NOT itself run this pass (2010-11-04 was used instead, as a distinct reserve date, specifically so this golden's own target stays fresh for the NEXT replay/dispatch rather than being consumed by the same pass that rotates it) — re-verify live before running regardless, per this file's own standing practice.",
-    "Standing lesson (iter-58): a checked-in rotation target can be consumed between the moment it's set and the moment it's used, by ANY live drill against the same DB (a dev's TC-7 measurement, another agent's manual verification, a concurrent goal-mode dispatch) — this happened twice in direct succession this iteration. Always re-verify live (0 scanner_runs rows for the target date) immediately before clicking Start, never trust the file's own prose alone."
+    "Standing lesson (iter-58): a checked-in rotation target can be consumed between the moment it's set and the moment it's used, by ANY live drill against the same DB (a dev's TC-7 measurement, another agent's manual verification, a concurrent goal-mode dispatch) — this happened twice in direct succession this iteration. Always re-verify live (0 scanner_runs rows for the target date) immediately before clicking Start, never trust the file's own prose alone.",
+    "ops-hardening iter-59 AUDIT-FIX pass rotation (2026-08-11) — TWO reserved dates were consumed in this single pass, both by real J-05 replays, so the file was rotated twice: (1) 2010-11-05, consumed by a replay whose backfill completed (scanner_runs.id=2952, data_provider_runs.id=389) but whose runner process was reaped by the environment during the 20-minute wait, so it produced no verdict; rotated to 2010-11-15. (2) 2010-11-15, consumed by the replay this golden's recorded PASS actually rests on (scanner_runs.id=2953, data_provider_runs.id=390, job a7f346f719104b569d296780e85910af, 2026-08-11T04:08:04.395Z -> 04:33:18.058Z, all 9 aggregate categories refreshed). Rotated to 2010-11-16, live-verified by direct read-only sqlite query immediately before this edit: 0 scanner_runs rows, a real SPY bar present, 466 bars that date (a genuine trading day, not a gap). The first rotation note in this pass was itself stale within the hour — which is the standing lesson below, demonstrated twice in one dispatch: re-verify live before clicking Start; this file's prose is not evidence.",
+    "Wait sizing, FOURTH and FIFTH measurements (ops-hardening iter-59 audit-fix pass, both on this same host, same day): 17m04.5s (03:48:33.994Z -> 04:05:38.502Z, date 2010-11-05, data_provider_runs.id=389) and 25m13.7s (04:08:04.395Z -> 04:33:18.058Z, date 2010-11-15, data_provider_runs.id=390, the run this golden's own PASS rests on). The five measured durations are now 11m16s / 18m18s / 18m13s / 17m04s / 25m14s. The 25m14s run finished with roughly TWO SECONDS to spare against the 1,500,000 ms (25 min) wait this pass had just raised it to — a pass that close is luck, not margin, and the trend across the five is upward because each new snapshot date invalidates the dataset version and forces the whole finalize tail (factor_lab_all_warm alone took 607s in the measured run) to re-warm. Raised to 2,400,000 ms (40 min). The wait is a FLOOR on the replay's wall time, not a timeout: too large costs only lane minutes when the job finishes early, too small silently asserts against a still-running job and reports a FAIL that is really a fixture defect — the exact iter-50 T3 failure this golden was rewritten to remove."
   ]
 }

@@ -1,0 +1,2 @@
+epoch_ms,endpoint,http_code,total_s,bytes,regime_lab_status
+1786405086885,/api/research/regime-lab?view=pooled,200,380.150,13299,absent
