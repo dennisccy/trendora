@@ -17,7 +17,8 @@ needs no changes.
 Self-test (no browser, no network):
   python3 demo_runner.py self-test
 
-Exit codes: 0 ok/soft-skip · 2 bad args/JSON · 3 playwright missing · 4 no DISPLAY (live)
+Exit codes: 0 ok/soft-skip · 2 bad args/JSON, or (record/live) the `{{AUTO_UNSNAPSHOTTED_DATE}}`
+sentinel could not be resolved (see `resolve_sentinel_date`) · 3 playwright missing · 4 no DISPLAY (live)
 · 5 verify found ≥1 FAIL · 6 browser infrastructure failure (launch/crash — verify only;
 callers route replay journeys back to the LLM lane so nothing is silently unverified)
 · 7 verify: backend unreachable BEFORE any journey ran — every journey is written BLOCKED
@@ -32,6 +33,7 @@ from __future__ import annotations
 import datetime
 import json
 import os
+import sqlite3
 import struct
 import sys
 import urllib.error
@@ -198,6 +200,133 @@ def probe_backend_health(url: str, timeout: float = 5.0) -> bool:
             return resp.status == 200
     except (urllib.error.URLError, OSError, ValueError):
         return False
+
+
+
+# ── sentinel-date resolver (ops-hardening iter-64) ────────────────────────────
+#
+# WHY: four consecutive rounds (iter-58, iter-59 x2, iter-62/63, iter-63-audit) hand-rotated
+# J-05's golden onto a date that the SAME round's own replay lane then consumed, arming a
+# guaranteed false FAIL on a currently-passing journey next round. The durable fix is a
+# run-time self-selecting mechanism, not another hand rotation (J-05.json's own `_notes`
+# call for this verbatim). A golden carrying the token below has that date resolved fresh,
+# every replay, against whatever the DB's `scanner_runs` table looks like AT THAT MOMENT —
+# so a date consumed by any run (this iteration's own drill, a prior replay, a manual
+# verification) is automatically excluded, with no file edit required.
+
+SENTINEL_TOKEN = "{{AUTO_UNSNAPSHOTTED_DATE}}"
+
+# The benchmark symbol every `scanner_runs` row is computed against (its own `benchmark`
+# column — confirmed live, 2026-08-11: every existing row reads "SPY", never anything else).
+# A resolved date is useless for a real backfill unless a SPY bar exists for it, so the query
+# below requires one explicitly.
+_SENTINEL_BENCHMARK_SYMBOL = "SPY"
+
+# A bounded historical window, not the full 1996-2026 basis. Deliberately starts AFTER SPY's
+# own earliest row in this seed (measured 2026-08-11: SPY's first daily_prices bar is
+# 2005-02-25 — a real, if unusual, property of this committed seed, not a gap: 1996-2004 has
+# OTHER symbols' bars but no SPY at all, which would silently break a resolved date's backfill
+# were it not excluded by the `_SENTINEL_BENCHMARK_SYMBOL` join below). 2005-03-01..2016-12-31
+# carries 2,195 SPY trading days with zero `scanner_runs` rows as of this iteration (measured
+# the same day) — a bounded slice of the committed seed, never a whole-table scan, with years
+# of headroom at the historical ~1 consumed date/iteration rate before it would need widening.
+_SENTINEL_WINDOW_START = "2005-03-01"
+_SENTINEL_WINDOW_END = "2016-12-31"
+
+
+def resolve_sentinel_date(db_path: "str | os.PathLike",
+                          window_start: str = _SENTINEL_WINDOW_START,
+                          window_end: str = _SENTINEL_WINDOW_END,
+                          benchmark_symbol: str = _SENTINEL_BENCHMARK_SYMBOL) -> str:
+    """Read-only resolution of `SENTINEL_TOKEN`: the earliest trading day inside
+    `[window_start, window_end]` that BOTH carries a `daily_prices` bar for
+    `benchmark_symbol` (the symbol every `scanner_runs` row is computed against — a date
+    without one cannot produce a real backfill row) AND carries ZERO `scanner_runs` rows for
+    that date, i.e. is eligible for a single-date J-05 backfill.
+
+    Opened `mode=ro` — this never mutates the database. Fails EXPLICITLY (raises
+    RuntimeError naming the reason) when the db file is missing or the window is exhausted
+    (every eligible day in it already snapshotted) — the caller must never fall back to
+    guessing or silently reusing a consumed date; per this iteration's spec, that failure is
+    the whole point of the resolver over another hand-picked date."""
+    path = Path(db_path)
+    if not path.exists():
+        raise RuntimeError(f"sentinel resolution failed: database not found at {path}")
+    uri = f"file:{path.resolve()}?mode=ro"
+    try:
+        conn = sqlite3.connect(uri, uri=True)
+    except sqlite3.OperationalError as exc:
+        raise RuntimeError(f"sentinel resolution failed: could not open {path} read-only: {exc}") from exc
+    try:
+        row = conn.execute(
+            "SELECT date FROM daily_prices WHERE symbol = ? AND date >= ? AND date <= ? "
+            "AND date NOT IN (SELECT asof_date FROM scanner_runs) "
+            "ORDER BY date ASC LIMIT 1",
+            (benchmark_symbol, window_start, window_end),
+        ).fetchone()
+    finally:
+        conn.close()
+    if row is None:
+        raise RuntimeError(
+            "sentinel resolution failed: no eligible unsnapshotted trading day (with a "
+            f"{benchmark_symbol} bar) in [{window_start}, {window_end}] — every eligible day "
+            "in the window already has a scanner_runs row; widen the window rather than "
+            "reusing a consumed date")
+    return row[0]
+
+
+def script_needs_sentinel(script: object, token: str = SENTINEL_TOKEN) -> bool:
+    """True iff `token` appears anywhere in the script's JSON (any step's fill text, expect
+    text, click-target text, or the script's own `name`) — checked structurally so no field
+    is missed, never by assuming which fields might carry it."""
+    return token in json.dumps(script)
+
+
+def substitute_sentinel_in_script(script: dict, resolved_date: str,
+                                  token: str = SENTINEL_TOKEN) -> dict:
+    """Return a NEW script with every occurrence of `token` in every string value replaced by
+    `resolved_date` — recursively, so fill targets, expect text, click-target text, and the
+    script's own `name` field all receive the SAME resolved date, however deeply nested.
+    `script` itself is left untouched."""
+    def _walk(node):
+        if isinstance(node, str):
+            return node.replace(token, resolved_date) if token in node else node
+        if isinstance(node, dict):
+            return {k: _walk(v) for k, v in node.items()}
+        if isinstance(node, list):
+            return [_walk(v) for v in node]
+        return node
+    return _walk(script)
+
+
+def resolve_and_substitute_sentinel(script: dict, db_path: "str | os.PathLike",
+                                    token: str = SENTINEL_TOKEN) -> "tuple[dict, str | None]":
+    """If `token` appears anywhere in `script`, resolve it ONCE against `db_path` and
+    substitute the SAME resolved date everywhere it appears. Returns `(script, None)`
+    unchanged when the token is absent (the common case — most goldens carry no sentinel).
+    Propagates `resolve_sentinel_date`'s RuntimeError when the token IS present but
+    resolution fails — callers must treat that as a real failure, never a silent SKIP."""
+    if not script_needs_sentinel(script, token):
+        return script, None
+    resolved = resolve_sentinel_date(db_path)
+    return substitute_sentinel_in_script(script, resolved, token), resolved
+
+
+def default_sentinel_db_path(repo_root: "str | None") -> Path:
+    """The committed dev DB the sentinel resolver reads. `repo_root` is the SAME value every
+    caller already passes as `--repo-root` (demo-phase.sh, replay-lane.sh); fall back to a
+    path derived from this file's own location so an unaugmented CLI call (e.g. a developer
+    running the self-test or a manual `--mode verify`) still resolves correctly.
+
+    Deliberately `Path(__file__).absolute()`, NOT `.resolve()`: `scripts/` is a git-tracked
+    symlink to `incredible_auto_dev/scripts/` (same physical file, two paths), and `.resolve()`
+    follows it — which would climb out through the framework subtree's OWN root
+    (`incredible_auto_dev/`, which has no `apps/`) instead of this project's repo root. Every
+    real caller invokes this file through the unresolved `scripts/...` path (bash's `pwd`
+    stays logical by default), so `__file__` already carries the right ancestry without
+    resolving it."""
+    root = Path(repo_root) if repo_root else Path(__file__).absolute().parents[3]
+    return root / "apps" / "backend" / "data" / "trendora.db"
 
 
 def _today() -> str:
@@ -616,6 +745,139 @@ def _t_probe_backend_health() -> None:
         thread.join(timeout=2.0)
 
 
+def _make_sentinel_fixture(tmp_dir: str, dates_with_bars: list, snapshotted_dates: tuple = (),
+                           non_benchmark_dates: tuple = ()) -> str:
+    """A throwaway sqlite fixture with the same two tables/columns the real committed DB
+    carries (`daily_prices.date`/`.symbol`, `scanner_runs.asof_date`) — enough for
+    `resolve_sentinel_date` to run its real query against, without touching
+    `apps/backend/data/trendora.db`. `dates_with_bars` get a SPY row (the default benchmark);
+    `non_benchmark_dates` get a bar for a DIFFERENT symbol only — reproducing the real
+    committed seed's own shape (1996-2004 has other symbols' bars but no SPY at all)."""
+    db_path = os.path.join(tmp_dir, "sentinel-fixture.db")
+    conn = sqlite3.connect(db_path)
+    conn.execute("CREATE TABLE daily_prices (id INTEGER PRIMARY KEY, symbol TEXT, date TEXT)")
+    conn.execute("CREATE TABLE scanner_runs (id INTEGER PRIMARY KEY, asof_date TEXT)")
+    for d in dates_with_bars:
+        conn.execute("INSERT INTO daily_prices (symbol, date) VALUES (?, ?)", ("SPY", d))
+    for d in non_benchmark_dates:
+        conn.execute("INSERT INTO daily_prices (symbol, date) VALUES (?, ?)", ("AAPL", d))
+    for d in snapshotted_dates:
+        conn.execute("INSERT INTO scanner_runs (asof_date) VALUES (?)", (d,))
+    conn.commit()
+    conn.close()
+    return db_path
+
+
+def _t_resolve_sentinel_date_requires_benchmark_bar() -> None:
+    # Real bug this test locks in (found live against apps/backend/data/trendora.db,
+    # 2026-08-11): a date can have SOME symbol's bar without carrying a SPY bar (this
+    # committed seed's own 1996-2004 span is exactly that shape) -- a resolver that only
+    # checked "any daily_prices row" would hand back a date the real backfill/scanner_runs
+    # computation cannot use (every scanner_runs row is computed against `benchmark`="SPY").
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        db = _make_sentinel_fixture(
+            tmp, dates_with_bars=["2005-01-05"], non_benchmark_dates=["2005-01-03", "2005-01-04"])
+        got = resolve_sentinel_date(db, "2005-01-01", "2005-01-31")
+        assert got == "2005-01-05", got  # the two non-SPY dates must be skipped, not returned
+
+
+def _t_resolve_sentinel_date_picks_earliest_eligible() -> None:
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        db = _make_sentinel_fixture(
+            tmp, ["2000-01-05", "2000-01-04", "2000-01-06"], snapshotted_dates=["2000-01-04"])
+        got = resolve_sentinel_date(db, "2000-01-01", "2000-01-31")
+        assert got == "2000-01-05", got  # earliest date that is NOT already snapshotted
+
+
+def _t_resolve_sentinel_date_fails_when_window_exhausted() -> None:
+    # Error case (Testing Requirements): zero eligible dates in the window must fail
+    # explicitly, never silently reuse an already-snapshotted date.
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        db = _make_sentinel_fixture(tmp, ["2000-01-05"], snapshotted_dates=["2000-01-05"])
+        try:
+            resolve_sentinel_date(db, "2000-01-01", "2000-01-31")
+            raise AssertionError("expected RuntimeError: window exhausted")
+        except RuntimeError as exc:
+            assert "no eligible" in str(exc), exc
+
+
+def _t_resolve_sentinel_date_missing_db() -> None:
+    try:
+        resolve_sentinel_date("/nonexistent/path/does-not-exist-demo-runner-fixture.db")
+        raise AssertionError("expected RuntimeError: db not found")
+    except RuntimeError as exc:
+        assert "not found" in str(exc), exc
+
+
+def _t_resolve_sentinel_date_self_renews_after_consumption() -> None:
+    # TC-3: given a throwaway sqlite fixture seeded with a scanner_runs row for the date the
+    # resolver most recently returned, when the resolver is invoked again against that same
+    # fixture, then it returns a DIFFERENT date (not the just-consumed one) with 0
+    # scanner_runs rows for it -- proven at the unit level, not a second live 20-minute
+    # browser replay (this iteration's own OUT OF SCOPE note).
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        db = _make_sentinel_fixture(tmp, ["2000-01-05", "2000-01-06", "2000-01-07"])
+        first = resolve_sentinel_date(db, "2000-01-01", "2000-01-31")
+        assert first == "2000-01-05", first
+        conn = sqlite3.connect(db)
+        conn.execute("INSERT INTO scanner_runs (asof_date) VALUES (?)", (first,))
+        conn.commit()
+        conn.close()
+        second = resolve_sentinel_date(db, "2000-01-01", "2000-01-31")
+        assert second != first, (first, second)
+        assert second == "2000-01-06", second
+
+
+def _t_script_needs_sentinel_detects_token() -> None:
+    assert script_needs_sentinel(
+        {"steps": [{"action": {"type": "fill", "text": SENTINEL_TOKEN}}]}) is True
+    assert script_needs_sentinel(
+        {"steps": [{"action": {"type": "fill", "text": "2010-01-01"}}]}) is False
+
+
+def _t_substitute_sentinel_in_script() -> None:
+    script = {
+        "name": f"... target date {SENTINEL_TOKEN} must have 0 snapshot rows ...",
+        "steps": [
+            {"n": 1, "action": {"type": "fill", "target": {"testid": "x"}, "text": SENTINEL_TOKEN}},
+            {"n": 2, "action": {"type": "click", "target": {"text": SENTINEL_TOKEN}},
+             "expect": {"text": f"Immutable snapshot — as of {SENTINEL_TOKEN}"}},
+        ],
+    }
+    out = substitute_sentinel_in_script(script, "2000-01-05")
+    assert SENTINEL_TOKEN not in json.dumps(out)
+    assert out["steps"][0]["action"]["text"] == "2000-01-05"
+    assert out["steps"][1]["action"]["target"]["text"] == "2000-01-05"
+    assert out["steps"][1]["expect"]["text"] == "Immutable snapshot — as of 2000-01-05"
+    assert "2000-01-05" in out["name"], out["name"]
+    # the SAME resolved date landed everywhere the token appeared.
+    assert SENTINEL_TOKEN in script["name"], "original script must be left untouched"
+
+
+def _t_resolve_and_substitute_sentinel_noop_without_token() -> None:
+    script = {"name": "plain", "steps": [{"n": 1, "action": {"type": "goto", "url": "/"}}]}
+    out, resolved = resolve_and_substitute_sentinel(script, "/nonexistent/does-not-matter.db")
+    assert out is script, "unchanged script object when the token is absent (no DB touched)"
+    assert resolved is None
+
+
+def _t_resolve_and_substitute_sentinel_propagates_failure() -> None:
+    script = {"name": SENTINEL_TOKEN, "steps": [{"n": 1, "action": {"type": "goto", "url": "/"}}]}
+    try:
+        resolve_and_substitute_sentinel(script, "/nonexistent/does-not-matter.db")
+        raise AssertionError("expected RuntimeError to propagate when the token IS present")
+    except RuntimeError:
+        pass
+
+
+def _t_default_sentinel_db_path_repo_root() -> None:
+    assert default_sentinel_db_path("/x/y") == Path("/x/y/apps/backend/data/trendora.db")
+
+
 def _t_run_verify_blocked_when_backend_unreachable() -> None:
     # TC-5 end-to-end (no real browser launch reached — the probe short-circuits BEFORE
     # Playwright ever opens a page): backend unreachable -> rc 7, every journey BLOCKED, never
@@ -673,6 +935,114 @@ def _t_launch_chromium_retries() -> None:
     except RuntimeError as exc:
         assert "boom" in str(exc)
     assert _DeadChromium.calls == 2
+
+
+class _FakeLocator:
+    """Duck-typed Playwright Locator, just enough surface for `_do_action`/`_find` to work
+    against it: `.first`, `.wait_for(...)` (raises TimeoutError when `fail=True`, else
+    no-ops), `.click(...)` / `.fill(...)` (spy-recorded)."""
+
+    def __init__(self, spy: dict, name: str, fail: bool = False):
+        self._spy = spy
+        self._name = name
+        self._fail = fail
+
+    @property
+    def first(self):
+        return self
+
+    def wait_for(self, state: str = "visible", timeout: float = 0):
+        if self._fail:
+            raise TimeoutError(f"fake: {self._name} did not become visible")
+
+    def click(self, timeout: float = 0):
+        self._spy["click_calls"] = self._spy.get("click_calls", 0) + 1
+        self._spy.setdefault("clicked", []).append(self._name)
+
+    def fill(self, text: str, timeout: float = 0):
+        if self._fail:
+            raise TimeoutError(f"fake: cannot fill {self._name}")
+        self._spy.setdefault("filled", []).append((self._name, text))
+
+
+class _FakePage:
+    """Duck-typed Playwright Page — only the methods `_do_action`/`_settle_for_capture`
+    actually call. Every method NOT defined here (e.g. `.locator()`, `.evaluate()`,
+    `.wait_for_load_state()`) is absent on purpose: every real call site wraps those in a
+    bare `except Exception: pass`, so a missing attribute is silently swallowed exactly like
+    a real best-effort miss — no need to fake the whole Playwright surface."""
+
+    def __init__(self, spy: dict, fail_target: "tuple | None" = None):
+        self._spy = spy
+        self._fail_target = fail_target
+
+    def _loc(self, kind: str, value) -> _FakeLocator:
+        return _FakeLocator(self._spy, f"{kind}:{value}", fail=(kind, value) == self._fail_target)
+
+    def get_by_role(self, role: str, name: str = ""):
+        return self._loc("role", (role, name))
+
+    def get_by_text(self, text: str):
+        return self._loc("text", text)
+
+    def get_by_label(self, label: str):
+        return self._loc("label", label)
+
+    def get_by_placeholder(self, placeholder: str):
+        return self._loc("placeholder", placeholder)
+
+    def get_by_test_id(self, testid: str):
+        return self._loc("testid", testid)
+
+    def goto(self, url: str, wait_until: "str | None" = None, timeout: float = 0):
+        self._spy.setdefault("goto", []).append(url)
+
+    def wait_for_timeout(self, ms: int):
+        pass
+
+    def screenshot(self, path: "str | None" = None):
+        self._spy.setdefault("screenshots", []).append(path)
+
+
+def _t_run_record_never_clicks_after_failed_precondition() -> None:
+    # TC-4: given a fake page/script fixture where step N's `fill` raises and step N+1 is a
+    # `click` on `role: button`, when the record loop executes that script, then step N+1's
+    # click is NEVER invoked (asserted via a call-count spy), a screenshot is still captured
+    # for step N+1, and the results write-up carries a soft note naming the skip.
+    import tempfile
+    spy: dict = {}
+    steps = [
+        {"n": 1, "title": "Target one unsnapshotted historical trading day", "journey": "J-05",
+         "action": {"type": "fill", "target": {"testid": "job-start-date"}, "text": "2010-11-22"}},
+        {"n": 2, "title": "Start the backfill", "journey": "J-05",
+         "action": {"type": "click", "target": {"role": "button", "name": "Start"}}},
+    ]
+    page = _FakePage(spy, fail_target=("testid", "job-start-date"))
+    with tempfile.TemporaryDirectory() as tmp:
+        captured, soft_notes, script_steps = _record_steps(
+            page, steps, "http://localhost:3000", 4000, Path(tmp), None)
+    assert spy.get("click_calls", 0) == 0, "the mutating click must never be invoked"
+    assert len(captured) == 2, captured  # a screenshot is still captured for BOTH steps
+    assert len(spy.get("screenshots", [])) == 2, spy
+    assert any("step 02" in note.lower() and "skipped" in note.lower() for note in soft_notes), soft_notes
+    assert len(script_steps) == 2
+
+
+def _t_run_record_click_still_fires_without_a_prior_failure() -> None:
+    # Control case: no preceding failure -> the mutating click IS performed normally.
+    spy: dict = {}
+    steps = [
+        {"n": 1, "title": "Open the Data Manager", "action": {"type": "goto", "url": "/data"}},
+        {"n": 2, "title": "Start the backfill", "action": {
+            "type": "click", "target": {"role": "button", "name": "Start"}}},
+    ]
+    page = _FakePage(spy)
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        captured, soft_notes, _script_steps = _record_steps(
+            page, steps, "http://localhost:3000", 4000, Path(tmp), None)
+    assert spy.get("click_calls", 0) == 1, "a click with no preceding failure must still fire"
+    assert not any("skipped" in note.lower() for note in soft_notes), soft_notes
 
 
 def _derive_demo_fixture() -> dict:
@@ -823,8 +1193,20 @@ _SELF_TEST_CHECKS = [
     _t_blocked_results_md,
     _t_resolve_backend_health_url,
     _t_probe_backend_health,
+    _t_resolve_sentinel_date_picks_earliest_eligible,
+    _t_resolve_sentinel_date_requires_benchmark_bar,
+    _t_resolve_sentinel_date_fails_when_window_exhausted,
+    _t_resolve_sentinel_date_missing_db,
+    _t_resolve_sentinel_date_self_renews_after_consumption,
+    _t_script_needs_sentinel_detects_token,
+    _t_substitute_sentinel_in_script,
+    _t_resolve_and_substitute_sentinel_noop_without_token,
+    _t_resolve_and_substitute_sentinel_propagates_failure,
+    _t_default_sentinel_db_path_repo_root,
     _t_run_verify_blocked_when_backend_unreachable,
     _t_launch_chromium_retries,
+    _t_run_record_never_clicks_after_failed_precondition,
+    _t_run_record_click_still_fires_without_a_prior_failure,
     _t_derive_happy,
     _t_derive_rejects_untagged_journey,
     _t_derive_rejects_no_expect,
@@ -1231,6 +1613,82 @@ def _launch_chromium(pw, headless: bool, attempts: int = 2, timeout_ms: int = 45
     raise last_exc
 
 
+def _record_steps(page, steps: list[dict], base_url: str, default_tmo: int,
+                  out_dir: Path, repo_root: "str | None") -> "tuple[list[dict], list[str], list[dict]]":
+    """Execute `steps` against an already-open `page`, one `_do_action` call per step,
+    capturing a screenshot + soft note per the showcase's fail-open contract (never raises).
+
+    Extracted out of `run_record` so the mutation guard below can be self-tested against a
+    fake `page` without a real browser (the self-test harness promises "no browser, no
+    network" — the real `run_record` still opens a real Playwright page and hands it here).
+
+    Mutation guard (ops-hardening iter-63 lesson): once ANY step's `_do_action` raises, no
+    LATER step in this same script whose action is a `click` on a `role: button` target is
+    PERFORMED — the demo/showcase lane is not read-only, and a failed precondition step (e.g.
+    a date field that couldn't be filled) must never be followed by a mutating click (e.g.
+    "Start", which would launch a real, un-narrated backfill). The skipped step still gets its
+    screenshot and a distinct soft note naming the skip reason — only the click itself is
+    withheld."""
+    captured: list[dict] = []
+    soft_notes: list[str] = []
+    script_steps: list[dict] = []
+    precondition_failed = False
+    for step in steps:
+        n = int(step.get("n", 0))
+        section = step.get("section", "highlights")
+        tmo = max(1000, min(int(step.get("timeout_ms", default_tmo)), 20000))
+        action = step["action"]
+        is_mutating_click = (action.get("type") == "click"
+                             and (action.get("target") or {}).get("role") == "button")
+        if precondition_failed and is_mutating_click:
+            acted = False
+            soft_notes.append(
+                f"Step {n:02d} — skipped {_action_phrase(action)}: a preceding step's "
+                "precondition already failed in this script, so this mutating control was "
+                "never invoked; captured the page anyway.")
+        else:
+            try:
+                _do_action(page, action, base_url, tmo)
+                acted = True
+            except Exception as exc:  # noqa: BLE001 — showcase never raises out
+                acted = False
+                precondition_failed = True
+                soft_notes.append(
+                    f"Step {n:02d} — couldn't perform "
+                    f"{action.get('type')} ({str(exc).splitlines()[0][:120]}); "
+                    "captured the page anyway.")
+        exp = step.get("expect")
+        # The expect is the strongest "content has loaded" signal — wait for it
+        # with the FULL step budget (not a 3s cap) so a slow-but-real render is not
+        # captured mid-skeleton. Still only a soft note if it never appears.
+        if acted and exp and not _check_expect(page, exp, tmo):
+            soft_notes.append(
+                f"Step {n:02d} — expected {_expect_desc(exp)} did not appear; recorded anyway.")
+        shot_rel = ""
+        if section != "full_tour":
+            # Settle (network idle + loading indicators gone + paint) so the
+            # gallery never captures a spinner / empty skeleton.
+            _settle_for_capture(page, tmo)
+            shot_abs = out_dir / f"step-{n:02d}.png"
+            try:
+                page.screenshot(path=str(shot_abs))
+            except Exception:
+                pass
+            shot_rel = _rel(str(shot_abs), repo_root)
+            captured.append({
+                "n": n, "title": step.get("title", ""),
+                "journey": step.get("journey", ""), "new": step.get("new", False),
+                "screenshot": shot_rel,
+            })
+        script_steps.append({
+            "n": n, "title": step.get("title", ""), "new": step.get("new", False),
+            "narration": step.get("narration", ""), "point_out": step.get("point_out", ""),
+            "action": _action_phrase(action), "section": section,
+            "screenshot": shot_rel,
+        })
+    return captured, soft_notes, script_steps
+
+
 def run_record(script: dict, opts, base_url: str) -> int:
     phase_id = opts.phase_id or script.get("phase_id") or "?"
     iteration = opts.iteration if opts.iteration is not None else script.get("iteration")
@@ -1249,9 +1707,6 @@ def run_record(script: dict, opts, base_url: str) -> int:
     steps = script["steps"]
     default_tmo = _default_timeout(script, opts)
     out_dir.mkdir(parents=True, exist_ok=True)
-    captured: list[dict] = []
-    soft_notes: list[str] = []
-    script_steps: list[dict] = []
 
     with sync_playwright() as pw:
         browser = _launch_chromium(pw, headless=True)
@@ -1261,48 +1716,8 @@ def run_record(script: dict, opts, base_url: str) -> int:
             ctx_kwargs["record_video_size"] = {"width": 1280, "height": 720}
         context = browser.new_context(**ctx_kwargs)
         page = context.new_page()
-        for step in steps:
-            n = int(step.get("n", 0))
-            section = step.get("section", "highlights")
-            tmo = max(1000, min(int(step.get("timeout_ms", default_tmo)), 20000))
-            try:
-                _do_action(page, step["action"], base_url, tmo)
-                acted = True
-            except Exception as exc:  # noqa: BLE001 — showcase never raises out
-                acted = False
-                soft_notes.append(
-                    f"Step {n:02d} — couldn't perform "
-                    f"{step['action'].get('type')} ({str(exc).splitlines()[0][:120]}); "
-                    "captured the page anyway.")
-            exp = step.get("expect")
-            # The expect is the strongest "content has loaded" signal — wait for it
-            # with the FULL step budget (not a 3s cap) so a slow-but-real render is not
-            # captured mid-skeleton. Still only a soft note if it never appears.
-            if acted and exp and not _check_expect(page, exp, tmo):
-                soft_notes.append(
-                    f"Step {n:02d} — expected {_expect_desc(exp)} did not appear; recorded anyway.")
-            shot_rel = ""
-            if section != "full_tour":
-                # Settle (network idle + loading indicators gone + paint) so the
-                # gallery never captures a spinner / empty skeleton.
-                _settle_for_capture(page, tmo)
-                shot_abs = out_dir / f"step-{n:02d}.png"
-                try:
-                    page.screenshot(path=str(shot_abs))
-                except Exception:
-                    pass
-                shot_rel = _rel(str(shot_abs), opts.repo_root)
-                captured.append({
-                    "n": n, "title": step.get("title", ""),
-                    "journey": step.get("journey", ""), "new": step.get("new", False),
-                    "screenshot": shot_rel,
-                })
-            script_steps.append({
-                "n": n, "title": step.get("title", ""), "new": step.get("new", False),
-                "narration": step.get("narration", ""), "point_out": step.get("point_out", ""),
-                "action": _action_phrase(step["action"]), "section": section,
-                "screenshot": shot_rel,
-            })
+        captured, soft_notes, script_steps = _record_steps(
+            page, steps, base_url, default_tmo, out_dir, opts.repo_root)
         context.close()
         browser.close()
 
@@ -1466,6 +1881,16 @@ def run_verify(opts, base_url: str) -> int:
                                     "actual": "invalid golden script: " + "; ".join(errs) if errs
                                     else "golden script marked not_yet", "evidence": "none"})
                     continue
+                if script_needs_sentinel(data):
+                    try:
+                        data, _resolved = resolve_and_substitute_sentinel(
+                            data, default_sentinel_db_path(opts.repo_root))
+                    except RuntimeError as exc:
+                        results.append({"journey": jid, "name": jid, "verdict": "FAIL",
+                                        "expected": "sentinel token resolves to a single "
+                                                     "eligible unsnapshotted trading day",
+                                        "actual": str(exc), "evidence": "none"})
+                        continue
                 name = data.get("name") or data.get("title") or jid
                 steps = data.get("steps") or []
                 default_tmo = _default_timeout(data, opts)
@@ -1622,6 +2047,16 @@ def main(argv: list[str]) -> int:
         if not live:
             _write_skipped_results(opts, "invalid demo script: " + "; ".join(errors))
         return 2
+
+    if script_needs_sentinel(script):
+        try:
+            script, _resolved = resolve_and_substitute_sentinel(
+                script, default_sentinel_db_path(opts.repo_root))
+        except RuntimeError as exc:
+            sys.stderr.write(f"[demo_runner] {exc}\n")
+            if not live:
+                _write_skipped_results(opts, str(exc))
+            return 2
 
     base_url = opts.base_url or script.get("base_url") or "http://localhost:3000"
     if opts.phase_id is None:

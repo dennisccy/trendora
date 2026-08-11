@@ -338,7 +338,7 @@ replay_lane_partition_and_verify() {
     # yet (J-01 step 09 / J-04 step 02, iter-62). Best-effort only — a timeout logs a warning and this
     # still proceeds (never a new hang/hard-fail mode for a project or backend state where `readiness`
     # never reaches "ready").
-    _wait_for_backend_readiness "${QA_BACKEND_HEALTH_URL:-}" "${CHAIN_BACKEND_READY_WAIT_S:-60}" "replay-lane" || true
+    _wait_for_backend_readiness "${QA_BACKEND_HEALTH_URL:-}" "${CHAIN_BACKEND_READY_WAIT_S:-90}" "replay-lane" || true
     _replay_lane_log "Regression (deterministic replay): $R_REPLAY"
     local _replay_csv _replay_rc=0
     _replay_csv="$(echo "$R_REPLAY" | tr ' ' ',' | sed 's/^,*//;s/,*$//')"

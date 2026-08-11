@@ -1431,7 +1431,7 @@ _wait_for_frontend_ready() {
 # Returns 0 once the payload's `readiness` field == "ready", 1 on timeout or an empty/unset url (a no-op
 # in that case — nothing to gate on).
 _wait_for_backend_readiness() {
-  local url="$1" max_wait="${2:-${CHAIN_BACKEND_READY_WAIT_S:-60}}" tag="${3:-wait}"
+  local url="$1" max_wait="${2:-${CHAIN_BACKEND_READY_WAIT_S:-90}}" tag="${3:-wait}"
   [[ -n "$url" ]] || return 0
   local waited=0 state=""
   echo "[$tag] Waiting for backend readiness (the 'readiness' field of $url) to reach 'ready' (max ${max_wait}s)..."

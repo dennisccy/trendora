@@ -831,3 +831,45 @@ level (a throwaway-fixture test) instead of a second live 20-minute browser repl
 **Reversible:** yes — a later evaluator or iteration can add a genuinely separate control drill, or a
 second live self-renewal replay, if the piggybacked/unit-level evidence turns out to be insufficient;
 nothing here is destructive or hard to redo.
+
+## iter-64 — goal-evaluator (1 of 2): the `/scanner-runs` render error scored minor, not an AG-8 critical breach
+
+**Ambiguity:** AG-8 *(critical)* requires that a widened data basis "never crash an existing page" while
+also prescribing the honest failure mode — "contained error boundary, honest '—'/NA placeholder, never a
+blank application-error page". This round's `J-05-verify.png` shows `/scanner-runs` doing BOTH at once:
+the page did not render (something crashed inside it) and what the user saw was exactly the contained,
+honest boundary AG-8 asks for. The anti-goal does not say which half governs.
+**We chose:** minor ledger entry (iter-64/a), J-05 held `passing`, no critical call, verdict CONTINUE.
+Grounds: (1) the user-visible outcome is the prescribed one — nav intact, honest wording, a Try again
+button, no blank error page and no wrong number; (2) it did not reproduce — the LLM lane loaded the same
+page ~35 minutes later, `logs/backend.log` records `GET /api/runs/2962` answering 200 and zero 5xx and
+zero exceptions after the last restart, and the row is in sqlite; (3) the widened-basis clause of AG-8 is
+about data shape, and 2005-06-27 sits well inside the existing range (`scanner_runs` spans 1996-02-01 →
+2026-08-03), so no new data shape was introduced.
+**Cost recorded honestly:** a reader who holds that "never crash an existing page" is the operative half
+would score this critical and halt for the owner. If it recurs — especially on a second J-05 replay — that
+reading becomes the right one, and I have written the next-step item to produce a root cause either way.
+**Reversible:** yes — a later evaluator can re-score iter-64/a on the next occurrence.
+
+## iter-64 — goal-evaluator (2 of 2): J-07 held `partial` after the session's first unanswered health poll
+
+**Ambiguity:** J-07 step 2 reads "poll `GET /api/health` once per second; assert every poll answers HTTP
+200 within its existing budget — no frozen or unresponsive window." This round one poll of 930 got NO
+answer within the client's 5.0 s ceiling (`reconciliation.md`, 2026-08-11T18:56:29.145Z). Every earlier
+drill in this session answered 100 % (1,078/1,078, then 983/983). So the literal "every poll answers"
+clause — the availability half that has always been met outright — was breached for the first time, on a
+journey whose OTHER half (the ≤2 s ceiling) is the subject of an undecided owner question.
+**We chose:** keep `partial`, log it as iter-64/b, and put the fact in the first paragraph of the owner
+section rather than converting it into a halt. Grounds: (1) the tree's REGRESSION limb needs
+`passing`/`already_passing` → `failing`, and J-07 has been `partial` since iter-51; (2) a single
+client-side 5.0 s timeout is not evidence the server stopped answering — zero non-200s were served, zero
+5xx and zero MemoryErrors were logged, and the process kept serving before and after; (3) the journey's
+named promise, "heavy aggregates never take the service down", was not falsified by one slow answer;
+(4) J-07's step 4 acceptance moved the other way this round — the memory-pressure drill finally ran and
+passed.
+**Cost recorded honestly:** a reader who treats "every poll answers HTTP 200" as a bright line would score
+J-07 `failing` this round; because its last recorded pass is iter-34, that would still not fire
+REGRESSION, but it would change the digest the owner reads. I chose the status that keeps the distinction
+visible (partial + a named ledger entry) over the one that flattens it.
+**Reversible:** yes — one more drill decides it; if a second non-answer appears, `failing` is the honest
+status.

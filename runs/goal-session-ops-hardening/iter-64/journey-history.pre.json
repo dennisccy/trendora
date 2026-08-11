@@ -4,90 +4,90 @@
       "id": "J-01",
       "name": "Backfill honors the requested range and explains zero-work",
       "status": "passing",
-      "last_verified_iter": "goal-ops-hardening-iter-64",
-      "last_passing_iter": "goal-ops-hardening-iter-64",
+      "last_verified_iter": "goal-ops-hardening-iter-63",
+      "last_passing_iter": "goal-ops-hardening-iter-63",
       "first_seen_iter": "goal-ops-hardening-iter-0",
-      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-64-evidence/J-01-verify.png",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-63-evidence/J-01-verify.png",
       "spec_hash": "06b26eaaf82dcdb532465e5c287f1177681a6c8697e4f96cfadddb4fc60b29ad",
-      "note": "iter-64: PASSING, deterministic replay PASS with its own fresh, byte-distinct frame (md5 29bfc77a...). The replay's own two live zero-work backfills are in the DB and reconcile exactly: data_provider_runs id=422 (2026-05-02..2026-05-29 -> 19/19 dates, 28 calendar days, 9 non-trading, 19 already snapshotted) and id=423 (2026-05-02..2026-05-03 -> 0/0, 2 calendar, 2 non-trading). Row-level check by the evaluator against sqlite."
+      "note": "iter-63: PASSING, re-verified this iteration by the deterministic replay lane with a FRESH frame of its own (raw reports/phase-goal-ops-hardening-iter-63-regression-replay-results.md 7/7 PASS, merged ui-test-results 8/8, zero overturned rows and no reconciliation footer needed -- unlike iter-62). The lane's new readiness gate fired live before the first step (engine.log:10692-10693, 'backend readiness == ready (0s)'), so iter-62's restart race did not recur. I checked the frames myself rather than trusting the rows: all 11 evidence PNGs are byte-DISTINCT this round (md5 run by me), so iter-62/a (one photograph cited for two journeys) did not recur. Two spot-checks opened: J-09-verify.png renders /data with the 'Ready' badge and provider seed, J-05-verify.png renders the scanner-results table of the snapshot the replay itself created. I also confirmed the replays did REAL work from sqlite, not page-title matches: data_provider_runs id=416 (2026-05-02->2026-05-29, 19 trading of 28 calendar days), id=417 (0 of 2, both non-trading), id=418 (283 dates over a >370-day span, accepted and completed), id=419 (2010-11-18, snapshots_created=1, an 18m13s real backfill). AG-3 cross-check on the numbers that ARE displayed: UT-J-07-result.png renders SNAPSHOT DATES 2960 and sqlite's count(distinct asof_date) in scanner_runs = 2960; coverage_snapshot dataset_version r2960-... Rendered = persisted = live table."
     },
     "J-03": {
       "id": "J-03",
       "name": "No per-run range cap",
       "status": "passing",
-      "last_verified_iter": "goal-ops-hardening-iter-64",
-      "last_passing_iter": "goal-ops-hardening-iter-64",
+      "last_verified_iter": "goal-ops-hardening-iter-63",
+      "last_passing_iter": "goal-ops-hardening-iter-63",
       "first_seen_iter": "goal-ops-hardening-iter-0",
-      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-64-evidence/J-03-verify.png",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-63-evidence/J-03-verify.png",
       "spec_hash": "5457740bbb0cea982e9b1241f19ca50836ff584bbb960a5a088f7168d820c271",
-      "note": "iter-64: PASSING, deterministic replay PASS with its own fresh frame (md5 3a245b2e...). Its >370-day span ran live: data_provider_runs id=424, 2025-06-01..2026-07-17, 283/283 dates over 412 calendar days, 129 non-trading, 283 already snapshotted, status ok -- no per-run cap rejection."
+      "note": "iter-63: PASSING, re-verified this iteration by the deterministic replay lane with a FRESH frame of its own (raw reports/phase-goal-ops-hardening-iter-63-regression-replay-results.md 7/7 PASS, merged ui-test-results 8/8, zero overturned rows and no reconciliation footer needed -- unlike iter-62). The lane's new readiness gate fired live before the first step (engine.log:10692-10693, 'backend readiness == ready (0s)'), so iter-62's restart race did not recur. I checked the frames myself rather than trusting the rows: all 11 evidence PNGs are byte-DISTINCT this round (md5 run by me), so iter-62/a (one photograph cited for two journeys) did not recur. Two spot-checks opened: J-09-verify.png renders /data with the 'Ready' badge and provider seed, J-05-verify.png renders the scanner-results table of the snapshot the replay itself created. I also confirmed the replays did REAL work from sqlite, not page-title matches: data_provider_runs id=416 (2026-05-02->2026-05-29, 19 trading of 28 calendar days), id=417 (0 of 2, both non-trading), id=418 (283 dates over a >370-day span, accepted and completed), id=419 (2010-11-18, snapshots_created=1, an 18m13s real backfill). AG-3 cross-check on the numbers that ARE displayed: UT-J-07-result.png renders SNAPSHOT DATES 2960 and sqlite's count(distinct asof_date) in scanner_runs = 2960; coverage_snapshot dataset_version r2960-... Rendered = persisted = live table."
     },
     "J-04": {
       "id": "J-04",
       "name": "Non-blocking boot with visible status",
       "status": "passing",
-      "last_verified_iter": "goal-ops-hardening-iter-64",
-      "last_passing_iter": "goal-ops-hardening-iter-64",
+      "last_verified_iter": "goal-ops-hardening-iter-63",
+      "last_passing_iter": "goal-ops-hardening-iter-63",
       "first_seen_iter": "goal-ops-hardening-iter-0",
-      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-64-evidence/J-04-verify.png",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-63-evidence/J-04-verify.png",
       "spec_hash": "4074a9c952a9a143dc543efef3c8d3e0a1e33a848ab250ec90c7c2f568dbcff8",
-      "note": "iter-64: PASSING, deterministic replay PASS with its own fresh frame (md5 8fcd190f...). The lane's readiness gate fired live before the first step (engine.log:10829-10830, 'backend readiness == ready (24s)') under the OLD 60s budget; the 90s value lands next iteration."
+      "note": "iter-63: PASSING, re-verified this iteration by the deterministic replay lane with a FRESH frame of its own (raw reports/phase-goal-ops-hardening-iter-63-regression-replay-results.md 7/7 PASS, merged ui-test-results 8/8, zero overturned rows and no reconciliation footer needed -- unlike iter-62). The lane's new readiness gate fired live before the first step (engine.log:10692-10693, 'backend readiness == ready (0s)'), so iter-62's restart race did not recur. I checked the frames myself rather than trusting the rows: all 11 evidence PNGs are byte-DISTINCT this round (md5 run by me), so iter-62/a (one photograph cited for two journeys) did not recur. Two spot-checks opened: J-09-verify.png renders /data with the 'Ready' badge and provider seed, J-05-verify.png renders the scanner-results table of the snapshot the replay itself created. I also confirmed the replays did REAL work from sqlite, not page-title matches: data_provider_runs id=416 (2026-05-02->2026-05-29, 19 trading of 28 calendar days), id=417 (0 of 2, both non-trading), id=418 (283 dates over a >370-day span, accepted and completed), id=419 (2010-11-18, snapshots_created=1, an 18m13s real backfill). AG-3 cross-check on the numbers that ARE displayed: UT-J-07-result.png renders SNAPSHOT DATES 2960 and sqlite's count(distinct asof_date) in scanner_runs = 2960; coverage_snapshot dataset_version r2960-... Rendered = persisted = live table."
     },
     "J-05": {
       "id": "J-05",
       "name": "Aggregates are precomputed at ingest, never on the fly",
       "status": "passing",
-      "last_verified_iter": "goal-ops-hardening-iter-64",
-      "last_passing_iter": "goal-ops-hardening-iter-64",
+      "last_verified_iter": "goal-ops-hardening-iter-63",
+      "last_passing_iter": "goal-ops-hardening-iter-63",
       "first_seen_iter": "goal-ops-hardening-iter-0",
-      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-64-evidence/J-05-result.png",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-63-evidence/J-05-verify.png",
       "spec_hash": "63dd5bf0983454e48338557d0f2b1e5ce9726d7aa247c20174ac9323f637564b",
-      "note": "iter-64: PASSING (target journey). The run-time sentinel resolver replaced four rounds of hand-rotation: the replay resolved 2005-06-27 at run time (a day the dev pass had NOT consumed -- it used 2005-06-24) and ran a REAL live backfill, data_provider_runs job f937988d..., 805 forward returns, all 9 aggregates_refreshed, creating scanner_runs id=2962 at 2026-08-11 19:27:38. Golden steps 1-12 PASSED including step 10's '1 calendar day / 0 already snapshotted / 0 non-trading'. Step 13 FAILED: /scanner-runs rendered its contained error boundary ('Something went wrong on this page') in J-05-verify.png -- an unexplained, transient product-page error, NOT the 'golden-script false positive' the reconciliation footer calls it (ledger iter-64/a). The LLM lane re-checked live ~35 min later and PASSED all steps; the evaluator opened J-05-result.png and confirmed 'Immutable snapshot -- as of 2005-06-27 / Scanned 2026-08-11 19:27:38 / provider seed / benchmark SPY', Market Regime as of 2005-06-27 = 58.71 'Narrow leadership' == sqlite scanner_runs id=2962 (regime_score 58.71, regime_label 'Narrow leadership'), and a real ranked leaderboard. Self-renewal re-proven live by the evaluator: resolve_sentinel_date() now returns 2005-06-28 (0 scanner_runs rows, 1 SPY bar; 2,193 eligible days left in window 2005-03-01..2016-12-31). evidence_makeup KEPT: no showcase lane ran this round (no reports/demo/goal-ops-hardening-iter-64/ exists), so the [NEW] walkthrough clause is unsatisfied for a 6th round.",
+      "note": "iter-63: PASSING, re-verified this iteration by the deterministic replay lane with a FRESH frame of its own (raw reports/phase-goal-ops-hardening-iter-63-regression-replay-results.md 7/7 PASS, merged ui-test-results 8/8, zero overturned rows and no reconciliation footer needed -- unlike iter-62). The lane's new readiness gate fired live before the first step (engine.log:10692-10693, 'backend readiness == ready (0s)'), so iter-62's restart race did not recur. I checked the frames myself rather than trusting the rows: all 11 evidence PNGs are byte-DISTINCT this round (md5 run by me), so iter-62/a (one photograph cited for two journeys) did not recur. Two spot-checks opened: J-09-verify.png renders /data with the 'Ready' badge and provider seed, J-05-verify.png renders the scanner-results table of the snapshot the replay itself created. I also confirmed the replays did REAL work from sqlite, not page-title matches: data_provider_runs id=416 (2026-05-02->2026-05-29, 19 trading of 28 calendar days), id=417 (0 of 2, both non-trading), id=418 (283 dates over a >370-day span, accepted and completed), id=419 (2010-11-18, snapshots_created=1, an 18m13s real backfill). AG-3 cross-check on the numbers that ARE displayed: UT-J-07-result.png renders SNAPSHOT DATES 2960 and sqlite's count(distinct asof_date) in scanner_runs = 2960; coverage_snapshot dataset_version r2960-... Rendered = persisted = live table. J-05 SPECIFIC: its golden replayed for real again -- data_provider_runs id=419 backfilled 2010-11-18 (16:34:38Z->16:52:51Z, 18m13s, snapshots_created=1) and created scanner_runs id=2960 at 16:34:50Z, which I read directly from the DB. So the promotion made at iter-61 on durable evidence is now confirmed mechanically for a second consecutive round. TWO HONEST CAVEATS. (1) The captured frame is the final viewport, scrolled to the bottom of the results table, so the load-bearing 'Immutable snapshot -- as of 2010-11-18' header is not visible in the picture itself; the assertion is deterministic in the golden and the DB corroborates it, but the photograph alone does not show it. (2) The golden's date was consumed AGAIN by the very round that rotated it (dev rotated to 2010-11-18 at ~16:0xZ, the round's own replay ate it at 16:34:50Z); the iter-63 audit re-rotated to 2010-11-22, which I verified live myself (0 scanner_runs rows, 467 daily_prices bars, SPY close 92.7195). evidence_makeup KEPT: the demo lane ran this round (8 steps, RECORDED_WITH_NOTES) but produced NO J-05 step at all, so J-05's [NEW] walkthrough clause still has no capture.",
       "evidence_makeup": true
     },
     "J-06": {
       "id": "J-06",
       "name": "Pages load only what they need",
       "status": "passing",
-      "last_verified_iter": "goal-ops-hardening-iter-64",
-      "last_passing_iter": "goal-ops-hardening-iter-64",
+      "last_verified_iter": "goal-ops-hardening-iter-63",
+      "last_passing_iter": "goal-ops-hardening-iter-63",
       "first_seen_iter": "goal-ops-hardening-iter-0",
-      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-64-evidence/J-06-verify.png",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-63-evidence/J-06-verify.png",
       "spec_hash": "a9654dc139add9c161b5d7e59a431f78bd94fdf0f26b15c4fe2c83a1007db045",
-      "note": "iter-64: PASSING, deterministic replay PASS with its own fresh frame (md5 f7447b7a...)."
+      "note": "iter-63: PASSING, re-verified this iteration by the deterministic replay lane with a FRESH frame of its own (raw reports/phase-goal-ops-hardening-iter-63-regression-replay-results.md 7/7 PASS, merged ui-test-results 8/8, zero overturned rows and no reconciliation footer needed -- unlike iter-62). The lane's new readiness gate fired live before the first step (engine.log:10692-10693, 'backend readiness == ready (0s)'), so iter-62's restart race did not recur. I checked the frames myself rather than trusting the rows: all 11 evidence PNGs are byte-DISTINCT this round (md5 run by me), so iter-62/a (one photograph cited for two journeys) did not recur. Two spot-checks opened: J-09-verify.png renders /data with the 'Ready' badge and provider seed, J-05-verify.png renders the scanner-results table of the snapshot the replay itself created. I also confirmed the replays did REAL work from sqlite, not page-title matches: data_provider_runs id=416 (2026-05-02->2026-05-29, 19 trading of 28 calendar days), id=417 (0 of 2, both non-trading), id=418 (283 dates over a >370-day span, accepted and completed), id=419 (2010-11-18, snapshots_created=1, an 18m13s real backfill). AG-3 cross-check on the numbers that ARE displayed: UT-J-07-result.png renders SNAPSHOT DATES 2960 and sqlite's count(distinct asof_date) in scanner_runs = 2960; coverage_snapshot dataset_version r2960-... Rendered = persisted = live table."
     },
     "J-07": {
       "id": "J-07",
       "name": "Heavy aggregates never take the service down",
       "status": "partial",
-      "last_verified_iter": "goal-ops-hardening-iter-64",
+      "last_verified_iter": "goal-ops-hardening-iter-63",
       "last_passing_iter": "goal-ops-hardening-iter-34",
       "first_seen_iter": "goal-ops-hardening-iter-14",
-      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-64-evidence/J-07-result.png",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-63-evidence/UT-J-07-result.png",
       "spec_hash": "1c7c67c3d6cd933820eeac29de54a7442c33e19d3ede0e6353fc044b929bf991",
-      "note": "iter-64: PARTIAL, unchanged. Availability -- the clause the journey is named for -- holds: 929 of 930 health polls answered HTTP 200, 0 non-200 answers, 0 HTTP 5xx and 0 MemoryErrors added to logs/backend.log all iteration. Step 4 (memory-pressure abort) EXECUTED AND PASSED for the first time in 4 rounds: TRENDORA_RUN_HEAVY_INGEST_TEST=1 pytest ...::test_factor_lab_all_survives_repeated_memory_pressure_live -> 1 passed in 764.23s on its own spawned backend, shared-log MemoryError count 7,127 before and after. Step 2 still fails its owner-amended <=2.0s relaxed ceiling and got worse at the tail: 59 of 930 polls breached (58 answered >2.0s, ALL inside factor_lab_all_warm) plus the session's FIRST unanswered poll (5.0s client ceiling); p99 3.091s, slowest answered 4.445s (perf-budgets Addendum 30, reconciled by the evaluator against runs/goal-ops-hardening-iter-64/evidence-drill/reconciliation.md: 883 in-window + 47 post-window = 930 = wc -l 931 - 1). Attribution question ANSWERED: the elevated count reproduces (53/983 then, 59/930 now, within 11%), so it is a real condition, not host noise -- root cause still unknown (ledger iter-64/b). LLM lane re-verified the golden's 5 assertions live (J-07-result.png: readiness badge ready, background-compute panel, last-run-status ok, 9 aggregates refreshed); the replay's step-2 FAIL frame (J-07-verify.png) shows an unstyled, still-loading /data page ('Checking backend...'), i.e. a lane timing artifact."
+      "note": "iter-63: STILL PARTIAL, and this round its own acceptance metric measured MATERIALLY WORSE, which I re-derived from the raw CSV rather than any write-up. runs/goal-ops-hardening-iter-63/evidence-drill/tc5-health-poll.csv: 983 data rows (wc -l 984), 983/983 HTTP 200, ZERO non-answers, median 0.080s, p90 1.475s, p99 3.002s, max 4.181s, 160 answers over 1.0s and FIFTY-THREE over the owner's relaxed 2.0s ceiling -- against iter-61's 1 of 1078 (p99 1.259s, max 2.849s). My segment counts reconcile against the job's own OPEN/CLOSED markers exactly: 33 pre + 931 during + 19 post = 983. STEP BY STEP: step 1 (full-horizon warm with /api/backtest served throughout, one long-lived process) MET -- run 415's finalize tail ran to completion, and I counted ZERO HTTP 500s and ZERO MemoryErrors in the drill's own dev.log and in logs/backend.log for the whole iteration (whole-file totals still 129 / 8,211, i.e. this round added none). Step 2 AVAILABILITY MET OUTRIGHT (983/983 answered 200, zero non-answers), LATENCY NOT MET and now missed 53 times, one of them (2.420s at 15:55:48.120Z) inside coverage_membership_timeline_refresh -- the phase this iteration bounded, down from 2.849s -- and 52 inside factor_lab_all_warm, a phase that recorded ZERO breaches in the method-identical iter-61 drill 7.5 hours earlier. THE 1 -> 53 CHANGE IS UNATTRIBUTED: the audit (B2) re-derived both distributions and showed the idle pre-job baselines are equivalent (0.011s vs 0.013s medians), so 'the host was busier' is not evidenced either; this iteration's 3-line scheduling diff is an implausible cause (that phase closed ~10 minutes before the first factor_lab breach and zero research.py lines were touched), but nobody has explained it. Step 3 (VmPeak under memory_cap_mb) durable from iter-59 -- the warm seam is code-unchanged. Step 4 (memory-pressure abort never wedges the process) NOT re-run for the fourth consecutive round (audit B4; the spec named TRENDORA_FAULT_INJECT_MEMORY_ERROR=coverage_membership_timeline and it was never executed, and there is no unit case for that site). The LLM lane's UT-J-07 row IS real and I corroborated its central claim from the DB: it reported an in-flight warm for as-of 2026-07-31 at dataset r2960-f6568295, and forward_aggregate_cache rows 826/827 carry exactly that asof_key and dataset_version. J-07's golden was NOT replayed on the full path -- the browser-qa-phase.sh TARGET_JOURNEYS ordering bug is still live and owner-gated (no 'Target journey ... routed' line exists for this round). evidence_makeup CLEARED: the demo lane produced a J-07-tagged step this round (reports/demo/goal-ops-hardening-iter-63/step-08.png, /data with the live background-compute chip) -- thin against the clause's 'crash-free warm + healthy /api/health sequence' wording, but a fresh capture landed, which is what the flag tracks."
     },
     "J-08": {
       "id": "J-08",
       "name": "Backtest evidence serves from storage only \u2014 never a cold recompute on request",
       "status": "passing",
-      "last_verified_iter": "goal-ops-hardening-iter-64",
-      "last_passing_iter": "goal-ops-hardening-iter-64",
+      "last_verified_iter": "goal-ops-hardening-iter-63",
+      "last_passing_iter": "goal-ops-hardening-iter-63",
       "first_seen_iter": "goal-ops-hardening-iter-16",
-      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-64-evidence/J-08-verify.png",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-63-evidence/J-08-verify.png",
       "spec_hash": "8a159d44a2eaf98e595f4e358a9db965b3e9e9d46ec8189768802bee577add21",
-      "note": "iter-64: PASSING, deterministic replay PASS with its own fresh frame (md5 86227611...). Evaluator spot-check: the frame renders Market Regime 66.07 'Risk-on' for as-of 2026-08-03, byte-equal to sqlite scanner_runs id=2870 (regime_score 66.07, regime_label 'Risk-on') -- displayed == persisted (AG-3)."
+      "note": "iter-63: PASSING, re-verified this iteration by the deterministic replay lane with a FRESH frame of its own (raw reports/phase-goal-ops-hardening-iter-63-regression-replay-results.md 7/7 PASS, merged ui-test-results 8/8, zero overturned rows and no reconciliation footer needed -- unlike iter-62). The lane's new readiness gate fired live before the first step (engine.log:10692-10693, 'backend readiness == ready (0s)'), so iter-62's restart race did not recur. I checked the frames myself rather than trusting the rows: all 11 evidence PNGs are byte-DISTINCT this round (md5 run by me), so iter-62/a (one photograph cited for two journeys) did not recur. Two spot-checks opened: J-09-verify.png renders /data with the 'Ready' badge and provider seed, J-05-verify.png renders the scanner-results table of the snapshot the replay itself created. I also confirmed the replays did REAL work from sqlite, not page-title matches: data_provider_runs id=416 (2026-05-02->2026-05-29, 19 trading of 28 calendar days), id=417 (0 of 2, both non-trading), id=418 (283 dates over a >370-day span, accepted and completed), id=419 (2010-11-18, snapshots_created=1, an 18m13s real backfill). AG-3 cross-check on the numbers that ARE displayed: UT-J-07-result.png renders SNAPSHOT DATES 2960 and sqlite's count(distinct asof_date) in scanner_runs = 2960; coverage_snapshot dataset_version r2960-... Rendered = persisted = live table."
     },
     "J-09": {
       "id": "J-09",
       "name": "The backend discloses its own background-compute activity",
       "status": "passing",
-      "last_verified_iter": "goal-ops-hardening-iter-64",
-      "last_passing_iter": "goal-ops-hardening-iter-64",
+      "last_verified_iter": "goal-ops-hardening-iter-63",
+      "last_passing_iter": "goal-ops-hardening-iter-63",
       "first_seen_iter": "goal-ops-hardening-iter-24",
-      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-64-evidence/J-09-verify.png",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-63-evidence/J-09-verify.png",
       "spec_hash": "40d29150860c17a467851359d82af4524204a0cc874c7c3eb568255977363a61",
-      "note": "iter-64: PASSING, deterministic replay PASS with its own fresh frame (md5 10536731...). Evaluator spot-check: the frame renders SNAPSHOT DATES 2961 / BACKFILL GAPS 2435 at capture time (20:23 BST = 19:23 UTC), consistent with the DB state before scanner_runs id=2962 was created at 19:27:38 UTC; the frame's own 'Gap range: 2005-06-27 -> 2019-02-06' is the same earliest gap the sentinel resolver independently picked."
+      "note": "iter-63: PASSING, re-verified this iteration by the deterministic replay lane with a FRESH frame of its own (raw reports/phase-goal-ops-hardening-iter-63-regression-replay-results.md 7/7 PASS, merged ui-test-results 8/8, zero overturned rows and no reconciliation footer needed -- unlike iter-62). The lane's new readiness gate fired live before the first step (engine.log:10692-10693, 'backend readiness == ready (0s)'), so iter-62's restart race did not recur. I checked the frames myself rather than trusting the rows: all 11 evidence PNGs are byte-DISTINCT this round (md5 run by me), so iter-62/a (one photograph cited for two journeys) did not recur. Two spot-checks opened: J-09-verify.png renders /data with the 'Ready' badge and provider seed, J-05-verify.png renders the scanner-results table of the snapshot the replay itself created. I also confirmed the replays did REAL work from sqlite, not page-title matches: data_provider_runs id=416 (2026-05-02->2026-05-29, 19 trading of 28 calendar days), id=417 (0 of 2, both non-trading), id=418 (283 dates over a >370-day span, accepted and completed), id=419 (2010-11-18, snapshots_created=1, an 18m13s real backfill). AG-3 cross-check on the numbers that ARE displayed: UT-J-07-result.png renders SNAPSHOT DATES 2960 and sqlite's count(distinct asof_date) in scanner_runs = 2960; coverage_snapshot dataset_version r2960-... Rendered = persisted = live table."
     }
   },
   "anti_goal_violations": [
@@ -1420,8 +1420,7 @@
       "anti_goal": "AG-3 golden-integrity corollary: an assertion pinned to a date the same round consumes is a false failure waiting to fire",
       "severity": "minor",
       "evidence": "iter-63/c -- FOURTH consecutive round in which the golden's rotation target was eaten by the round that set it: the dev pass rotated J-05.json onto 2010-11-18, and this round's own replay lane created scanner_runs id=2960 for 2010-11-18 at 16:34:50Z. The audit re-rotated to 2010-11-22 (I verified live: 0 scanner_runs rows, 467 bars, SPY 92.7195), so next round is safe, but the mechanism is unchanged -- hand-rotation cannot hold while the same golden is replayed every round.",
-      "resolved": true,
-      "resolution": "RESOLVED iter-64: the hand-rotation was replaced by a run-time resolver (resolve_sentinel_date, demo_runner.py:237-275). This round's replay picked 2005-06-27 by itself; the evaluator re-ran the resolver afterwards and got 2005-06-28 (0 scanner_runs rows, SPY bar present, 2,193 eligible days remaining)."
+      "resolved": false
     },
     {
       "iter": "goal-ops-hardening-iter-63",
@@ -1435,8 +1434,7 @@
       "anti_goal": "Test honesty: a test's docstring must describe what the test asserts",
       "severity": "minor",
       "evidence": "iter-63/e -- apps/backend/tests/test_data_manager.py:6056 claims a 'PINNED pre-fix reference oracle'; what it actually asserts is post-fix-with-yield vs post-fix-without-yield, and the reference_dates grouping it builds is only used for a row-count assertion, never compared (audit TQ1). The differential is still real and useful; the description over-claims.",
-      "resolved": true,
-      "resolution": "RESOLVED iter-64: docstring corrected (apps/backend/tests/test_data_manager.py:6057-6070, docstring-only diff read by the evaluator; the 3 assertions are byte-unchanged)."
+      "resolved": false
     },
     {
       "iter": "goal-ops-hardening-iter-63",
@@ -1450,51 +1448,8 @@
       "anti_goal": "Spec compliance: a named error case must actually be executed",
       "severity": "minor",
       "evidence": "iter-63/g -- the spec's TESTING REQUIREMENTS named TRENDORA_FAULT_INJECT_MEMORY_ERROR=coverage_membership_timeline as a regression re-check; it was not run, and test_ingest_finalize_fault_injection.py has no case for that site (audit B4). J-07 step 4 has now gone un-exercised for four consecutive rounds.",
-      "resolved": true,
-      "resolution": "RESOLVED iter-64: the named fault-injection case was executed -- 1 passed in 764.23s, on its own spawned backend; shared logs/backend.log MemoryError count 7,127 before and after."
-    },
-    {
-      "iter": "goal-ops-hardening-iter-64",
-      "anti_goal": "AG-8: the UI degrades gracefully and honestly (never an unexplained page-level render error)",
-      "severity": "minor",
-      "evidence": "iter-64/a -- reports/qa/goal-ops-hardening-iter-64-evidence/J-05-verify.png shows /scanner-runs rendering the contained error boundary 'Something went wrong on this page -- An unexpected error stopped this page from rendering' during J-05's golden step 13, with the top bar reading Ready. The boundary itself is AG-8-conformant (nav intact, honest message, Try again), so this is scored MINOR, not critical -- but the cause is unknown and unreproduced (the LLM lane loaded the same page fine ~35 min later, backend log shows zero 5xx and zero errors after the last restart). Both the reconciliation footer in reports/phase-goal-ops-hardening-iter-64-regression-replay-results.md ('golden-script false positive') and the merged file's own note ('navigation outrunning a final commit') mis-describe the frame -- nobody opened it.",
-      "resolved": false
-    },
-    {
-      "iter": "goal-ops-hardening-iter-64",
-      "anti_goal": "AG-3 / J-07 acceptance: the promise the journey measures got worse again, and for the first time a health check went unanswered",
-      "severity": "minor",
-      "evidence": "iter-64/b -- reports/perf-budgets.md Addendum 30 + runs/goal-ops-hardening-iter-64/evidence-drill/reconciliation.md: 59 of 930 polls breached the owner-amended <=2.0s ceiling (58 answered >2.0s, all inside factor_lab_all_warm) and ONE poll got no answer within the 5.0s client ceiling -- the first non-answer in this session's drills (iter-61: 0 of 1,078; iter-63: 0 of 983). The elevated breach count REPRODUCES (53/983 -> 59/930, within 11%), so iter-63/a is confirmed real rather than host noise; the root cause inside factor_lab_all_warm remains unattributed.",
-      "resolved": false
-    },
-    {
-      "iter": "goal-ops-hardening-iter-64",
-      "anti_goal": "Framework honesty: a note must describe the code it documents",
-      "severity": "minor",
-      "evidence": "iter-64/c -- runs/goal-session-ops-hardening/journey-scripts/J-05.json:210's new closing _notes entry states the sentinel window is 1996-01-01..2004-12-31; the shipped constants are 2005-03-01..2016-12-31 (demo_runner.py _SENTINEL_WINDOW_START/_END, read by the evaluator). Caught by the reviewer as its single MINOR issue and left unfixed this round.",
-      "resolved": false
-    },
-    {
-      "iter": "goal-ops-hardening-iter-64",
-      "anti_goal": "AG-3 job-history integrity corollary: one job must produce one persisted run record",
-      "severity": "minor",
-      "evidence": "iter-64/d -- data_provider_runs rows id=425 (status 'interrupted') and id=426 (status 'ok') share job_id f937988d1a6f47a99fa2f89ffc5cc0c5 and started_at 2026-08-11 19:23:45.942747, so /data's persisted job history can show the same job twice with contradictory outcomes. Pre-existing pattern, not new this round (5 duplicated job_ids all-time: 229/230, 269/275, 270/273, 271/274, 425/426), and this one is explained by the mid-job backend restarts at 19:29:25-19:30:30Z.",
-      "resolved": false
-    },
-    {
-      "iter": "goal-ops-hardening-iter-64",
-      "anti_goal": "Framework honesty: a lane verdict must not claim work that no lane ran",
-      "severity": "minor",
-      "evidence": "iter-64/e -- reports/reviews/goal-ops-hardening-iter-64-review.md reports 'definition_of_done: complete', but TC-5 and TC-9 are showcase-lane checks and NO showcase lane ran this iteration (no reports/demo/goal-ops-hardening-iter-64/ directory exists), and TC-2's own deterministic replay reported FAIL on step 13. The dev handoff itself states both deferrals plainly under Known Issues -- the review summarised over them.",
-      "resolved": false
-    },
-    {
-      "iter": "goal-ops-hardening-iter-64",
-      "anti_goal": "Loop economy: an iteration must fit its own wall-clock budget",
-      "severity": "minor",
-      "evidence": "iter-64/f -- engine.log:10833 '[iter-budget] This iteration has run 5950s -- over the 3600s budget (checked at: browser-qa; mode: trim)'. Fourth consecutive over-budget round, and the first at LEAN depth; the deterministic replay lane's own real 17-minute ingest (data_provider_runs id=425/426, 19:23:45 -> 19:53:53Z) is the dominant term and its cost sanction is still an open owner question.",
       "resolved": false
     }
   ],
-  "updated_at": "2026-08-11T21:20:00Z"
+  "updated_at": "2026-08-11T17:48:22Z"
 }

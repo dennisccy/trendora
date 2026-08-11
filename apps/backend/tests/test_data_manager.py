@@ -6057,19 +6057,27 @@ def test_missing_data_diagnostic_cooperative_yield_byte_identical(diagnostic_eng
     """TC-2/TC-5 (ops-hardening iter-63, J-07 GIL-hold bound) -- the `time.sleep(0)` cooperative yield
     added at each `_diag_batch` chunk boundary of the own-dates scan (data_manager.py, just above the
     `for symbol, d in session.exec(...)` loop) is a SCHEDULING-ONLY change: it must never change which
-    rows are read, how they group, or the served diagnostic payload. Proven against a PINNED pre-fix
-    reference oracle -- the SAME query consumed with NO cooperative yield, replicated here exactly as it
-    ran before this iteration (mirrors test_universe_resolver.py's iter-53 reference-oracle pattern, and
-    this same file's own `test_diagnostic_own_dates_streamed_fetch_byte_identical_to_whole_result`, which
-    proved the streaming-vs-materialize choice was invisible; this test proves the ADDED yield point is
+    rows are read, how they group, or the served diagnostic payload.
+
+    Corrected (ops-hardening iter-64, TC-8): only the ROW-COUNT SANITY CHECK below (item 1 -- the
+    fixture's own-dates shape, 11 rows) is pre-fix-equivalent -- it reproduces the plain `session.exec`
+    grouping with no yield involved at all, so it would group identically whether or not the fix exists.
+    The BYTE-IDENTICAL assertion itself (item 2) is NOT compared against any pre-fix oracle: both sides
+    are POST-fix calls to the real `_missing_data_diagnostic` (which always yields, unconditionally --
+    there is no pre-fix code path left to call), one with `read_batch_size` forced to 2 and one with the
+    default (much larger) batch size, so the comparison instead proves the batch width -- and therefore
+    how many times the yield fires -- never leaks into the served payload (mirrors this same file's own
+    `test_diagnostic_own_dates_streamed_fetch_byte_identical_to_whole_result`, which proved the
+    streaming-vs-materialize choice was invisible the same way; this test proves the ADDED yield point is
     invisible too):
 
-      1. the reference oracle's `own_dates_by_symbol` grouping (no yield) is reproduced by the fixture's
-         known shape (AAA 6 + BBB 2 + CCC 3 + DDD 0 = 11 rows);
+      1. the fixture's own-dates grouping (a plain, yield-free `session.exec`) is exactly its known shape
+         (AAA 6 + BBB 2 + CCC 3 + DDD 0 = 11 rows) -- a sanity check on the fixture, not a comparison
+         target for item 2;
       2. the real (post-fix) `_missing_data_diagnostic`, run with `read_batch_size` forced to 2 -- so the
          11-row result genuinely crosses MULTIPLE `yield_per` chunks, not one -- serves the BYTE-IDENTICAL
-         payload the default (much larger) batch size serves, proving the batch width (and therefore how
-         many times the yield fires) never leaks into the output;
+         payload the default (much larger) batch size's own (also post-fix) call serves, proving the batch
+         width (and therefore how many times the yield fires) never leaks into the output;
       3. `time.sleep(0)` is actually invoked the expected number of times (5 -- floor(11/2), rows 2/4/6/
          8/10 hit the modulo boundary; row 11 does not reach a 6th multiple of 2) and ALWAYS with argument
          0 (never a real pause) -- proving the cooperative-yield code path is genuinely exercised by this

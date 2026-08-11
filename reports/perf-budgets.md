@@ -10349,3 +10349,85 @@ poll to 53, and the cause is **unattributed** (candidates neither ruled in nor o
 concurrent-load profile during the drill). Stated as unknown, per this file's own "read plainly"
 convention — the next iteration that touches J-07 should treat this as an open measurement question, not
 as a carried gap already understood.
+
+## Addendum 30 (2026-08-11, ops-hardening iter-64 developer pass) — TC-1 attribution: the 1→53 jump
+**REPRODUCES**, does not revert toward iter-61's near-zero baseline
+
+Per this iteration's spec, this is ATTRIBUTION ONLY — no code change to `factor_lab_all_warm` /
+`data_manager.py` / `research.py` was attempted. The drill piggybacks on this iteration's own required
+live ingest (a single-date backfill exercising the same J-05 ingest path the sentinel mechanism targets,
+`2005-06-24` — live-verified via direct read-only sqlite query immediately before dispatch: 0
+`scanner_runs` rows, a real SPY bar present (close 91.7987), so no separate/duplicate heavy job was added
+this round), launched only via `scripts/dev.sh` on the isolated offset ports 8255/3255 (AG-10 caps
+confirmed live on the spawned worker: `Max address space = 8589934592` bytes = 8192 MB, `taskset`
+affinity `0-15`, `MALLOC_ARENA_MAX=2`, `OMP_NUM_THREADS=8` — matching the committed `config.yaml`/
+`host-guard.env` values unchanged by this iteration). `GET /api/health` was polled at 1 Hz for the job's
+full wall time (`runs/goal-ops-hardening-iter-64/evidence-drill/poll_health.py`, byte-identical in shape
+to iter-53/54/57/58/59/61/63's own poller), reconciled against the job's own OPEN/CLOSED phase markers and
+`wc -l` via `runs/goal-ops-hardening-iter-59/evidence-drill/reconcile_drill.py` (reused verbatim, per the
+iter-57 lesson — no hand-drawn window boundary) — full output at
+`runs/goal-ops-hardening-iter-64/evidence-drill/reconciliation_stdout.txt`.
+
+### Result
+
+| Figure | Addendum 28 (iter-61, pre-fix baseline) | Addendum 29 (iter-63, post-fix) | **Addendum 30 (iter-64, this pass)** |
+|---|---|---|---|
+| Total polls | 1,078 | 983 | **930** |
+| Non-answers (5.0s client ceiling) | 0 | 0 | **1** |
+| Polls > 1.0s | 66 | 160 | **158** |
+| **Polls breaching the ≤2.0s relaxed ceiling** | **1 of 1,078** | **53 of 983** | **59 of 930** |
+| median (p50) | 0.101s | 0.080s | **0.085s** |
+| p90 | 0.911s | 1.475s | **1.508s** |
+| p99 | 1.259s | 3.002s | **3.091s** |
+| max | 2.849s | 4.181s | **5.006s (the one non-answer; slowest ANSWERED poll: 4.445s)** |
+| Breaches inside `factor_lab_all_warm` | 0 | 52 of 53 | **58 of 59** |
+| `factor_lab_all_warm` phase duration (job's own markers) | 561.68s | not separately re-quoted this addendum | **568.81s** (18:51:55.034Z → 19:01:23.844Z) |
+| Job total wall time | — | — | **1,032.56s** (18:49:56.571Z OPEN → 19:07:09.128Z CLOSED) |
+
+p50/p90/p99/max computed directly from `tc5-health-poll.csv`'s 930 data rows (`sorted()` + nearest-rank),
+independent of `reconcile_drill.py`'s own summary — both agree: 59 total breaches (58 answered >2.0s + 1
+non-answer), reconciled sum 930 == data rows 930 == `wc -l` 931 − 1 (segmented: 0 pre-window, 883 during
+the OPEN..CLOSED window with 1 non-answer + 58 answered breaches, 47 post-window with 0 breaches).
+
+### Conclusion — REPRODUCES, not host noise
+
+**59 of 930 breaching polls this pass, 58 of them inside `factor_lab_all_warm`, is squarely in the same
+elevated range as Addendum 29's 53 of 983 (52 inside the same phase) — not a reversion toward Addendum
+28's 1-of-1,078 near-zero baseline.** Three independent, method-identical measurements now exist on this
+same host with the same 1 Hz poller and the same ≤2.0s relaxed ceiling:
+
+- iter-61 (Addendum 28): 1 breach, 0 inside `factor_lab_all_warm`, phase duration 561.68s.
+- iter-63 (Addendum 29, its own audit correction): 53 breaches, 52 inside `factor_lab_all_warm`, phase
+  duration not separately re-quoted in that addendum's own text.
+- **iter-64 (this pass): 59 breaches, 58 inside `factor_lab_all_warm`, phase duration 568.81s.**
+
+The two most recent measurements (iter-63, iter-64) land within 11% of each other on both the total
+breach count (53 vs 59) and the `factor_lab_all_warm`-attributed count (52 vs 58), across two DIFFERENT
+snapshot dates (`2010-11-19` then, `2005-06-24` now) and two DIFFERENT dispatches on two DIFFERENT days —
+while both sit roughly 50-60x above iter-61's single-digit baseline. A single anomalous measurement could
+plausibly be host noise; two independent measurements clustering tightly together, both far from the
+baseline, is the signature of a real, reproducible condition, not noise. This drill does not itself
+identify WHAT changed between iter-61 and iter-63 (that root cause remains exactly as unattributed as
+Addendum 29's own correction left it) — it answers the narrower question this iteration's spec asked:
+does the elevated count hold up under a second, independent measurement, or was it a one-off. **It holds
+up.**
+
+### AG-9 / AG-10 for this pass
+
+AG-9: the single `data_provider_runs` row this pass created (`id=421`, `job_id=0e8260b202b54b4192faf54f05de2390`)
+shows `provider='seed'` — offline committed seed only, confirmed by direct sqlite query; no live network
+call. AG-10: `git status --porcelain -- config.yaml project-extensions/` is empty — `config.yaml`'s
+`memory_cap_mb`/`malloc_arena_max` and `host-guard.env`'s `HOST_GUARD_MEMORY_HIGH`/`BLAS_THREADS` are
+unchanged from their currently-committed values; the spawned backend's own live process limits (quoted
+above) confirm the caps were actually applied, not merely declared.
+
+### Honest next-step note
+
+No code fix was attempted this round, per the spec's own scope boundary — a future iteration that DOES
+want to close this gap now has three independent data points (not one) to profile against, and should
+profile `factor_lab_all_warm` (specifically what changed between iter-61 and iter-63 in the data basis or
+code path — three additional `scanner_runs` dates had landed by Addendum 29's own count, and this pass
+adds a fourth) rather than `coverage_membership_timeline_refresh` (Addendum 29's own target, already
+reduced and separately tracked). The owner's outstanding ≤2s-ceiling policy question remains open and
+orthogonal to this attribution — it decides whether ANY residual breach is acceptable at all, not whether
+this specific breach count is real.

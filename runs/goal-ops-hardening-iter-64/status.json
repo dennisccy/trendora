@@ -1,0 +1,21 @@
+{
+  "phase": "goal-ops-hardening-iter-64",
+  "status": "in_progress",
+  "current_step": "dev_complete",
+  "updated_at": "2026-08-11T19:18:00Z",
+  "cli": "claude",
+  "blockers": [],
+  "changed_files": [
+    "incredible_auto_dev/scripts/automation/lib/demo_runner.py",
+    "incredible_auto_dev/scripts/automation/lib/common.sh",
+    "incredible_auto_dev/scripts/automation/lib/replay-lane.sh",
+    "runs/goal-session-ops-hardening/journey-scripts/J-05.json",
+    "apps/backend/tests/test_data_manager.py",
+    "reports/perf-budgets.md",
+    "docs/handoffs/goal-ops-hardening-iter-64-dev.md",
+    "runs/goal-ops-hardening-iter-64/evidence-drill/"
+  ],
+  "tests_run": true,
+  "browser_checks_run": false,
+  "next_action": "review"
+}

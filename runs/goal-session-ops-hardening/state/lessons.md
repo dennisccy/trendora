@@ -700,3 +700,28 @@ seconds" and which was left `running` with no live process when services were to
 own precondition failed must not proceed to a submit action.
 **Applies to:** any iteration touching the demo/walkthrough recorder, `demo.sh`, or
 `reports/phase-*-demo-*.md` — and any evaluator reading `/data` job rows after a demo pass.
+
+## iter-64 — 2026-08-11T21:20:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** When the deterministic replay lane FAILs a step and the LLM lane overturns it, the overturn's
+stated REASON can be wrong even when its verdict is right — open the failing frame. This round both
+write-ups called J-05's step-13 failure a "golden-script false positive" / "navigation outrunning a final
+commit"; `reports/qa/goal-ops-hardening-iter-64-evidence/J-05-verify.png` actually shows `/scanner-runs`
+rendering the app's contained error boundary ("Something went wrong on this page") with the top bar
+reading `Ready`. The golden was right to fail; a product page had errored. J-07's overturn in the same
+run WAS a lane artifact (its frame shows an unstyled, still-loading page) — so the two must be judged
+frame by frame, never as one class.
+**Applies to:** any iteration where `regression-replay-results.md` carries a reconciliation footer; any
+evaluator or QA agent tempted to accept "transient/false positive" without opening the PNG.
+
+## iter-64 (2 of 2) — 2026-08-11T21:20:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** A state-mutating golden is only fixed when it selects its own input at run time AND the
+selection is re-checked after the round consumes it. `resolve_sentinel_date()` (demo_runner.py:237-275)
+ended five rounds of hand-rotating J-05's date, but the proof that mattered was cheap and post-hoc:
+calling the resolver again once the round had used 2005-06-27 and confirming it returned 2005-06-28 with
+2,193 eligible days left. Do that one call rather than reading the unit test.
+**Applies to:** any golden/fixture that writes to the shared DB (journey-scripts/J-01, J-03, J-05), and
+any future "self-renewing" mechanism claim.
