@@ -30,6 +30,7 @@ import { Select } from "@/components/ui/select";
 import { TermInfo } from "@/components/ui/term-info";
 import { SampleLink } from "@/components/sample-link";
 import { formatElapsedSeconds, resolveLabLoadPanel } from "@/lib/lab-load-panel";
+import { isRegimeCellUnavailable } from "@/lib/regime-cell-status";
 import { groupedHorizonColumns, horizonColumnKey } from "@/lib/research-lab-columns";
 import { type CohortParams, type SampleScope } from "@/lib/samples-link";
 import { cn } from "@/lib/utils";
@@ -3948,7 +3949,14 @@ function RegimeReturnCell({
           {fmtPct(cell.mean_return)}
         </span>
       )}
-      <SampleLink n={cell.n} min={min} scope={scope} cohort={cohort} label={chipLabel} />
+      <SampleLink
+        n={cell.n}
+        min={min}
+        scope={scope}
+        cohort={cohort}
+        label={chipLabel}
+        unavailable={isRegimeCellUnavailable(cell)}
+      />
     </span>
   );
 }

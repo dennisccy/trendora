@@ -10023,3 +10023,106 @@ after the browser/replay lane has run. Filed for iteration 60.
    WarmingState card for that window. Honest behavior, but the 89/89-while-initializing pair is
    confusing, and the first attempt at this capture silently photographed that card instead of the
    degrade. Filed for iteration 60.
+
+## Addendum 27 (2026-08-11, ops-hardening iter-60 browser-qa-agent pass) — J-05/J-07 live re-verification
+(unchanged code path this iteration) + TC-9's first "quiet machine" Regime-Lab timing
+
+iter-60 changed `compute_regime_lab`'s prologue error-handling, the Regime-Lab degraded-cell frontend
+rendering, and `replay-lane.sh`'s target-journey partition loop — none of the backfill/ingest-finalize or
+forward-aggregate-warm code paths J-05/J-07 exercise. Per this pass's dispatch, J-05/J-07 were re-verified
+LIVE via the browser (Chrome MCP), against the running dev instance (backend pid 1307792, port 8255;
+frontend port 3255) — no restart performed by this pass (browser-qa-agent's standing hard rule).
+
+### J-05 steps 1/2/4 — a real, single-use, in-app UI backfill of one unsnapshotted historical trading day
+
+Target date `2010-11-16` (rotated from `journey-scripts/J-05.json`'s own reserve; live-reconfirmed via
+read-only `sqlite3` immediately before clicking Start: 0 `scanner_runs` rows, 466 real `daily_prices` rows
+including a genuine SPY bar — a real trading day, not a gap). Driven through the real `/data` form
+(`job-start-date`/`job-end-date` = `2010-11-16`, kind defaulted to `backfill`, "Start" clicked), not a
+direct API call.
+
+| Measured | Value |
+|---|---|
+| Job wall time (`data_provider_runs.id=404`, `started_at`→`finished_at`) | **06:58:36.399 → 07:16:56.677 UTC = 18m20.3s** |
+| Outcome | `status: "ok"`, `snapshots_created: 1`, `dates_total: 1`, `forward_returns_inserted: 1355` |
+| `aggregates_refreshed` (this run's own persisted list) | all 9: `latest_snapshot, coverage, membership_timeline, market_phase, forward_aggregates, research_hot_keys, availability_heatmap, factor_lab_all, drawdown_expectations` |
+| `GET /api/health` polled at ~1 Hz for the FULL job window (background `curl` loop, independent of the browser) | **741/741 = 100 % HTTP 200**, zero non-200, zero gaps |
+| `GET /api/backtest` polled every ~10th health tick throughout the same window | **75/75 HTTP 200** |
+| Peak backend VmPeak during the job | **4,038,024 kB** (3944 MB) — cap `server.memory_cap_mb=8192` MB, margin **4248 MB (52 %)** |
+
+Storage-not-recompute proof for market phase (J-05 acceptance clause (a)): `market_phase_cache` row for
+`asof_key='2010-11-16'` has `created_at = 2026-08-11 06:58:58.89` — inside the job's own finalize tail,
+~22 s after the job started and long before this QA pass's own `GET /api/market-phase?as_of=2010-11-16`
+request (0.171 s response, made ~20 min later) — the read served the row the finalize hook had already
+written, not a fresh compute.
+
+Browser confirmation (step 2, both live in-tab and via a fresh navigation): `/data`'s job card showed
+`1/1 dates`, `1 snapshots · 1355 forward returns inserted`, `1 calendar day · 0 already snapshotted · 0
+non-trading`, the `stage-timings` panel, and the full 9-item `aggregates-refreshed` line, all matching the
+persisted record exactly. `/scanner-runs` listed `2010-11-16` at the top of the list; its detail page
+(`/scanner-runs/2954`) rendered `Immutable snapshot — as of 2010-11-16` with a populated leaderboard
+(`ENTRY QUALITY` column present) — never the `No stored stock rows` empty state. Screenshot:
+`reports/qa/goal-ops-hardening-iter-60-evidence/UT-J-05-result.png`.
+
+**J-05 step 3 (restart the backend, visit `/data` cold) was NOT independently re-executed this pass** —
+browser-qa-agent's hard rule forbids restarting the app under test. This iteration made no change to any
+boot/coverage/warmup code path (`git diff --stat` against this session's HEAD: only `research.py`,
+`test_regime_lab.py`, `_labs.tsx`, `sample-link.tsx`, `replay-lane.sh`, `test-replay-lane.sh` touched), so
+Addendum 25/26's same-session, same-code, same-day (2026-08-11) restart evidence stands unchanged and is
+cited rather than re-measured: relaunch → first `/api/health` 200 in 1.712 s (J-04 budget ≤5 s), cold
+`GET /api/data` 0.243 s (budget ≤3000 ms), TC-1 no-prefill check clean (0 of 12 boot-slice log lines
+matched `prefill`/`daily_prices`/`bar_cache`/`whole-table`). This iteration's own dev pass separately
+restarted `scripts/dev.sh` twice during pre-handoff verification (both healthy in ~1 s) — consistent,
+non-stale corroboration.
+
+### J-07 steps 1/3 — the SAME live job as the ingest-finalize forward-aggregate warm; step 4 cited, not re-run
+
+The J-05 backfill above IS "the ingest finalize path" J-07 step 1 names: `forward_aggregates` is in its
+own `aggregates_refreshed` list (1355 rows inserted across all 5 configured horizons `[1,5,10,20,60]`,
+`config.yaml:777`), and `GET /api/backtest` — which returns every configured horizon in one payload
+(`evidence_by_horizon`, confirmed by direct read of `apps/backend/app/api/backtest.py:143-181`) — was
+served 75/75 HTTP 200 throughout the same window, in the SAME long-lived process (pid 1307792 unchanged
+start to finish). A post-job direct call: `GET /api/backtest` → HTTP 200 in **0.031 s** (served from
+storage, per J-08). Step 3's VmPeak (4,038,024 kB, 52 % margin under the 8192 MB cap) is the table above.
+
+**J-07 step 4 (induce memory pressure, assert the SAME process keeps serving) was NOT re-run this pass** —
+it requires arming the `TRENDORA_FAULT_INJECT_MEMORY_ERROR` test hook via a backend restart, forbidden by
+the same hard rule. This iteration did not touch `compute_forward_aggregates`, the warm seam, or the fault
+hook, so Addendum 26's live, same-session (2026-08-11) capture stands as current evidence: fault armed,
+`GET /api/research/regime-lab?view=pooled&as_of=1996-02-01` returned HTTP 200 with `regime_lab_status:
+"unavailable"` and 80 honestly-degraded `by_horizon` cells (0 fabricated values), the SAME process (pid
+969388) kept serving `/api/health`/`/api/data`/`/api/market-phase`/`/api/backtest` byte-identically
+throughout, and disarming + re-requesting the same key returned a clean (non-degraded) payload — no wedge,
+no restart required. J-07 step 2 (the health-latency ceiling under a bounded background-compute window) is
+explicitly out of scope this iteration per an outstanding, ten-round-unanswered owner decision — restated,
+not re-scored: the 741/741-poll, 100 %-200 result above is this pass's own honest number for that clause,
+consistent with every prior addendum.
+
+### TC-9 — first "quiet machine" Regime-Lab cold-load timing (opportunistic, idle backend, no code change)
+
+Immediately after the J-05/J-07 live window closed, with `GET /api/health`'s `background_compute.active`
+empty (genuinely idle, no concurrent heavy job) and `readiness: "ready"`:
+
+| Request | Result |
+|---|---|
+| `GET /api/research/regime-lab` (default view) | HTTP 200 in **53.425 s** — first hit under the NEW dataset version this pass's own backfill just created, so this is a genuine cold compute, not a warm cache read |
+| `GET /api/research/regime-lab?view=pooled` (the EXACT query the frontend issues — `REGIME_LAB_VIEW="pooled"`, iter-59 finding) | HTTP 200 in **96.873 s** — a distinct cache key from the default view, also a genuine cold compute |
+| `GET /api/health` immediately after both | HTTP 200 in 0.022 s, `readiness: "ready"` — unaffected |
+| Backend VmPeak after both computes | 4,982,584 kB (4867 MB) — still 40 % under the 8192 MB cap |
+
+First comparison point against iter-58's 340 s **under concurrent load** figure: this pass's **96.9 s**,
+idle/quiet-machine, for the identical `view=pooled` query the product actually serves — roughly 3.5×
+faster with no concurrent compute contending for the same process. This is one opportunistic sample, not
+an isolated A/B (the two runs differ in dataset_version from the under-load measurement, per Addendum 26's
+own "no pre-fix comparison exists" caveat) — recorded honestly as a first data point, not a proof of the
+concurrency-cost hypothesis.
+
+### AG-9 / AG-10 for this pass
+
+The single `data_provider_runs` row created (`id=404`) is `provider='seed'`, offline committed seed only —
+no live fetch, no live-provider button touched (AG-9 clean). No launch script, `config.yaml`, or
+`host-guard.env` was touched by this QA pass (read-only browser + `curl`/`sqlite3` verification only); the
+running backend's own environment was independently confirmed still enforcing the declared caps:
+`/proc/1307792/limits` "Max address space" = 8589934592 bytes = exactly 8192 MiB, `MALLOC_ARENA_MAX=2` in
+the process environment, `logs/backend.log`'s own boot banner reads `memory_cap_mb=8192
+malloc_arena_max=2` (AG-10 clean, values match the owner's 2026-07-31 raised envelope).

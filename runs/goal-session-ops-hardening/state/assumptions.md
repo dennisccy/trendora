@@ -563,3 +563,56 @@ statements — and the session loses a round, at round 60. A reader who weighs t
 wrong. I have put the structural reason in the first line of the recommendation instead.
 **Reversible:** yes — the engine or the owner can run the next round at any depth; this only sets the
 default and records why.
+
+## iter-60 — goal-evaluator (1 of 2): the stale `/data` coverage counts scored minor, not a critical AG-3 breach
+
+**Ambiguity:** AG-3 is labelled *(critical)* and reads "A journey passes ONLY if the **displayed numbers
+are correct** — they match the engine's computation for the same as-of date". I found, by comparing the
+evidence frames to sqlite, that `coverage_snapshot` id=1 (asof_key `2026-08-03`, computed 06:58:55.993572
+— inside run 404's finalize tail, 7 s after `scanner_runs.id=2954` was created) holds `snapshot_count=2954`
+and `gap_count=2442`, and `select count(distinct asof_date) from scanner_runs` = 2954; while
+`J-04-verify.png` and `J-09-verify.png`, captured at 07:47 in the same never-restarted process, both
+display SNAPSHOT DATES **2953** and BACKFILL GAPS **2443**. The tree says an unresolved critical violation
+is a REGRESSION halt. Nothing says whether a stale-by-one descriptive count, on a pre-existing serving
+path this iteration never touched, is a breach of "displayed numbers are correct".
+**We chose:** severity `minor`, no halt — and, separately, J-05 held at `partial` because of it. Grounds
+stated rather than assumed: (1) nothing is fabricated — 2953/2443 is a real, previously-correct pair that
+went stale, not an invented value, and the severity rubric's critical bar is "fabricated data presented as
+real"; (2) the surface is descriptive dataset metadata ("Trading days with a stored immutable scanner
+snapshot"), not a score, ranking, or edge, so AG-1/AG-2/AG-4's decision-quality concerns are untouched;
+(3) the serving path (`data_manager.compute_coverage` and its 8-key in-process result cache) is
+pre-existing code that this 8-file diff does not touch at all; (4) the same round's ingested-as-of
+aggregates — the ones J-05 step 2 actually names — ARE correct and I verified them (`scanner_runs.id=2954`
+regime 61.06 matches the screenshot; `market_phase_cache` for 2010-11-16 written in the finalize tail).
+**Cost recorded honestly:** the methodology says to fail closed when unsure, and I was not fully certain.
+A reader who holds that a *(critical)*-labelled anti-goal is breached whenever a wrong number reaches a
+screen — and 2953 for a 2954-row database is a wrong number on a screen — would return REGRESSION and halt
+for the owner. That reading is defensible and I would not argue it is wrong. Either way it is my
+recommendation item 2 and the concrete blocker on J-05.
+**Reversible:** yes — the owner or a later evaluator can re-score `iter-60/a` to critical and halt.
+
+## iter-60 — goal-evaluator (2 of 2): J-05 held `partial` on a product defect, NOT on the missing walkthrough
+
+**Ambiguity:** J-05's Acceptance carries a `[NEW]`-flagged "Walkthrough … viewable via `demo.sh
+ops-hardening --session-live`" clause, and no walkthrough has ever been recorded (the demo lane runs only
+at full depth; `reports/demo/goal-ops-hardening-iter-59/` is empty and its results file reads `NOT_YET`).
+Iterations 58 and 59 both counted that clause among J-05's reasons for staying `partial`. But my own
+methodology (A.7) names "the walkthrough recording is missing" as a CAPTURE DEFECT to be scored
+`evidence_makeup`, and my standing rules forbid scoring an evidence-capture gap as blocking. The two
+readings conflict, and this round J-05's product steps were all satisfied (1/2/4 live and re-derived by me
+from sqlite; 3 durable under A.6 with the boot path untouched and this round's own boot slice holding zero
+prefill lines).
+**We chose:** treat the missing walkthrough as NON-blocking (`evidence_makeup: true`, a passenger task for
+the next full round) and hold J-05 `partial` on a different, independently evidenced ground: the stale
+`/data` coverage counts (iter-60/a), which contradict J-05's own acceptance sentence "storage is
+re-served, never re-derived". Grounds: (1) the framework's rule against blocking on capture is explicit
+and A.7 names this exact case; (2) had I found no product defect, this reading would have promoted J-05 to
+`passing` this round — so the distinction is load-bearing, not decorative; (3) scoring the walkthrough as
+blocking would have recommended a round whose only content is a recording, which my instructions forbid.
+**Cost recorded honestly:** a reader who holds that a journey's written Acceptance text outranks the
+framework's capture-defect rule would keep the walkthrough among J-05's blockers, and would have held J-05
+`partial` this round for that reason too — same status, different justification. If a future round fixes
+the stale-count bug while the walkthrough still does not exist, that reader and I would disagree about
+whether J-05 closes, and the disagreement should be settled then, in the open.
+**Reversible:** yes — the flag and the ledger entry both survive; a later evaluator can restore the
+walkthrough to blocking status.

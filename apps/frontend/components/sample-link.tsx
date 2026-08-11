@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { AlertTriangle } from "lucide-react";
 
 import { useAsOfHref } from "@/components/asof-provider";
 import { SampleSize } from "@/components/forward-return";
@@ -25,6 +26,13 @@ import { cn } from "@/lib/utils";
  * now: stocks-leaderboard tickers (J-54), samples-row tickers (J-52), theme/sector member tickers
  * (J-57/J-58), and these `N=` chips (J-65); every OTHER in-app link (incl. the samples page's own "Back to
  * Research") stays same-window. Hover/focus underline the chip.
+ *
+ * `unavailable` (ops-hardening iter-60, J-05/J-07 closeout) is ADDITIVE and OPTIONAL, defaulting to
+ * `false` — every existing call site that never passes it renders byte-unchanged. When `true` (a
+ * `by_horizon` cell whose payload reports `status: "unavailable"` — a DEGRADED horizon, not a genuinely
+ * empty cohort), the chip is a plain, non-tooltip-only "Unavailable" indicator, never the `n=0` link: the
+ * cohort the link would drill into does not honestly exist for this response, so no `data-testid=
+ * "sample-link"` element is rendered at all.
  */
 export function SampleLink({
   n,
@@ -32,6 +40,7 @@ export function SampleLink({
   cohort,
   scope,
   label,
+  unavailable = false,
 }: {
   n: number;
   min: number;
@@ -40,8 +49,24 @@ export function SampleLink({
   scope: SampleScope;
   /** Accessible label describing which cohort this chip drills into. */
   label: string;
+  /** True for a degraded horizon (`status === "unavailable"`) — renders a non-link indicator instead. */
+  unavailable?: boolean;
 }) {
   const asofHref = useAsOfHref();
+
+  if (unavailable) {
+    return (
+      <span
+        className="inline-flex items-center gap-1 text-xs text-text-faint"
+        data-testid="sample-link-unavailable"
+        title="Temporarily unavailable — degraded under memory pressure"
+      >
+        <AlertTriangle className="h-3 w-3" aria-hidden />
+        Unavailable
+      </span>
+    );
+  }
+
   const href = asofHref(buildSamplesHref(cohort, scope));
   return (
     <Link

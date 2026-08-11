@@ -771,6 +771,60 @@ def test_compute_regime_lab_one_horizon_non_memory_failure_degrades_only_that_ho
     )
 
 
+def test_compute_regime_lab_prologue_failure_degrades_honestly(lab_engine, monkeypatch, caplog):
+    """iter-60 (J-05/J-07 closeout, TC-4): a DB-read failure in the pre-loop PROLOGUE — resolving
+    `horizons`, `labels`, or the run-ordinal index via `_run_position_index` (a real `scanner_runs` read,
+    BEFORE the per-horizon loop even starts) — used to propagate straight out of `compute_regime_lab` as an
+    unhandled exception (a live `GET /api/research/regime-lab` 500). It must now share the SAME
+    isolate-and-continue discipline the per-horizon loop body already has: the WHOLE response degrades
+    honestly (every configured horizon gets an `unavailable` entry) instead of raising.
+
+    Teeth: `_run_position_index` is monkeypatched to raise unconditionally, so the VIEW_EPISODES default
+    (the only view that calls it) cannot reach the loop without the fix. A control run (VIEW_POOLED, which
+    never calls `_run_position_index`) proves the same monkeypatch is inert for the path that never reaches
+    the faulted call, so a broken patch cannot be mistaken for the fix working."""
+    import app.engine.research as research
+
+    cfg = load_config()
+    horizons = list(cfg.walk_forward.horizons)
+    labels = list(cfg.regime.labels)
+
+    def _boom(*args, **kwargs):
+        raise RuntimeError("simulated DB-read failure resolving the run-ordinal index")
+
+    monkeypatch.setattr(research, "_run_position_index", _boom)
+
+    # control arm: VIEW_POOLED never calls `_run_position_index`, so the monkeypatch must be inert here —
+    # proves the assertions below are exercising the faulted path, not a globally-broken function.
+    with Session(lab_engine) as session:
+        control = compute_regime_lab(session, cfg, view=VIEW_POOLED)
+    assert "regime_lab_status" not in control, "control run (pooled view) must be unaffected by the fault"
+
+    with caplog.at_level("ERROR", logger="trendora.research"):
+        with Session(lab_engine) as session:
+            payload = compute_regime_lab(session, cfg, view=VIEW_EPISODES)  # must not raise
+
+    assert payload["regime_lab_status"] == "unavailable"
+    assert payload["horizons"] == horizons, "the full configured horizon list is still echoed, even degraded"
+    assert payload["regime_labels"] == labels, "the full configured label vocabulary is still echoed"
+    assert payload["by_label"], "the label vocabulary must still be listed even on a prologue failure"
+    assert payload["by_decile"], "the decile vocabulary must still be listed even on a prologue failure"
+    for row in payload["by_label"] + payload["by_decile"]:
+        assert [bh["horizon"] for bh in row["by_horizon"]] == horizons, (
+            "every configured horizon must carry exactly one degraded entry, in config order"
+        )
+        for bh in row["by_horizon"]:
+            assert bh["status"] == "unavailable"
+            assert bh["n"] == 0
+            assert bh["mean_return"] is None and bh["mean_max_drawdown"] is None
+    for r in payload["rank_ic_by_horizon"]:
+        assert r["status"] == "unavailable"
+        assert r["rank_ic"] == {"value": None, "n": 0}
+    assert "isolate-and-continue" in caplog.text, (
+        "the prologue failure must be logged, never swallowed silently"
+    )
+
+
 def test_regime_lab_cached_never_persists_a_degraded_payload(lab_engine, monkeypatch):
     """A payload where at least one horizon degraded under memory pressure (the isolate-and-continue bound
     inside `compute_regime_lab`, which returns NORMALLY rather than raising) must NEVER be persisted to the

@@ -4430,28 +4430,61 @@ def compute_regime_lab(
     cfg = config or get_config()
     wf = cfg.walk_forward
     fl = cfg.research.factor_lab
-    horizons = list(wf.horizons)
 
     if view not in ALL_VIEWS:
         raise ValueError(f"unknown view {view!r}; valid views are {list(ALL_VIEWS)}")
-
-    labels = list(cfg.regime.labels)
 
     # lazy import — app.engine.data_manager imports FROM this module, so a module-level import back would
     # be circular (mirrors compute_factor_lab_all's own lazy import). Used only for the test-only
     # `_fault_inject_memory_error` hook below (a no-op in production).
     from app.engine import data_manager
 
-    # the run-ordinal index is bounded by TOTAL RUN COUNT (a lightweight two-column read over every stored
-    # `scanner_runs` row, never the heavy FR/ScannerResult tables) — shared across horizons, built once.
-    run_position = _run_position_index(session, as_of) if view == VIEW_EPISODES else None
-
-    by_horizon_per_label: dict[str, list[dict]] = {label: [] for label in labels}
-    by_horizon_per_decile: dict[int, list[dict]] = {d: [] for d in range(1, fl.deciles + 1)}
+    by_horizon_per_label: dict[str, list[dict]] = {}
+    by_horizon_per_decile: dict[int, list[dict]] = {}
     rank_ic_by_horizon: list[dict] = []
     any_degraded = False
 
-    for h in horizons:
+    # ops-hardening iter-60 (J-05/J-07 closeout, the iter-59 evaluator's named small defect): this
+    # prologue — the horizon list, the configured label vocabulary, and (for the episodes view) the
+    # run-ordinal index (`_run_position_index`, a real `scanner_runs` DB read) — used to sit OUTSIDE any
+    # try/except, so a DB-read failure here propagated as an unhandled exception straight to
+    # `GET /api/research/regime-lab`, a 500. It now shares the SAME isolate-and-continue discipline the
+    # per-horizon loop body below already uses: on ANY prologue failure, every configured horizon degrades
+    # honestly (via `_degrade_regime_lab_horizon`, the SAME degraded-entry shape the loop body's own catch
+    # produces) and the per-horizon loop body is skipped entirely (there is nothing trustworthy left to
+    # iterate with) — never a raw exception reaching the endpoint.
+    try:
+        horizons = list(wf.horizons)
+        labels = list(cfg.regime.labels)
+        # the run-ordinal index is bounded by TOTAL RUN COUNT (a lightweight two-column read over every
+        # stored `scanner_runs` row, never the heavy FR/ScannerResult tables) — shared across horizons,
+        # built once.
+        run_position = _run_position_index(session, as_of) if view == VIEW_EPISODES else None
+    except Exception as exc:  # noqa: BLE001 — mirrors the per-horizon loop's broad catch (AG-8): any
+        # prologue failure (not just MemoryError) must degrade honestly, never 500 the endpoint.
+        logger.exception(
+            "compute_regime_lab: prologue (labels/horizons/run-position) failed -- isolate-and-continue "
+            "(AG-8), degrading the WHOLE response honestly rather than propagating an unhandled exception "
+            "to GET /api/research/regime-lab as a 500: %s", exc,
+        )
+        # re-derive from config directly (never from the possibly-unset try-block locals above) — these
+        # are the same two pure, in-memory config reads, so degrading here does not risk a second failure.
+        horizons = list(cfg.walk_forward.horizons)
+        labels = list(cfg.regime.labels)
+        any_degraded = True
+        by_horizon_per_label.update({label: [] for label in labels})
+        by_horizon_per_decile.update({d: [] for d in range(1, fl.deciles + 1)})
+        for h in horizons:
+            _degrade_regime_lab_horizon(
+                h, labels, fl.deciles, by_horizon_per_label, by_horizon_per_decile, rank_ic_by_horizon,
+            )
+        horizons_to_process: list[int] = []  # already degraded every configured horizon above
+    else:
+        by_horizon_per_label.update({label: [] for label in labels})
+        by_horizon_per_decile.update({d: [] for d in range(1, fl.deciles + 1)})
+        horizons_to_process = horizons
+
+    for h in horizons_to_process:
         # a real scheduling yield once per horizon, mirrors compute_factor_lab_all's own iter-52 per-entry
         # yield (forces an OS-level GIL hand-off so a concurrent request gets a fair chance to be scheduled).
         time.sleep(0)

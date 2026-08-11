@@ -589,3 +589,30 @@ the `start-backend.sh: launching at` markers to date it — that is what proved 
 500s and raised zero real MemoryErrors across ~7.5 hours.
 **Applies to:** any iteration that reads `logs/backend.log` counts as evidence, and any future
 fault-injection site added to `_FAULT_INJECT_SITES`.
+
+## iter-60 — 2026-08-11T08:40:00Z
+
+**Verdict:** ESCALATE
+**Lesson:** A shell library edited by the developer cannot take effect in the same run that edits it —
+`goal-iter-lean.sh:45` sources `lib/replay-lane.sh` when the executor starts, so the round's own
+top-priority fix (routing `TARGET_JOURNEYS` goldens into the deterministic replay set) was still the old
+function body when the lane ran three minutes after the edit. The engine's own log proves it (07:46:43
+"Regression (deterministic replay): J-01 J-03 J-04 J-06 J-08 J-09", and the new fix's log line appears
+nowhere), yet the review recorded `definition_of_done: complete`. Any iteration whose deliverable is a
+change to `scripts/automation/lib/*.sh` must state up front that its own run cannot verify it, and the
+NEXT round must confirm it from the live lane log before the item is closed.
+**Applies to:** any iteration whose scope includes `scripts/automation/lib/*.sh`, `goal-iter-lean.sh`, or
+any other shell library the running executor sources at startup.
+
+## iter-60 (second) — 2026-08-11T08:40:00Z
+
+**Verdict:** ESCALATE
+**Lesson:** Comparing a screenshot's numbers against the database found a defect that five lanes and two
+"PASS" verdicts missed: `coverage_snapshot` (written inside the ingest finalize tail at 06:58:55) held
+`snapshot_count=2954` / `gap_count=2442`, while `/data` frames captured 48 minutes later in the same
+never-restarted process displayed 2953 / 2443. Golden replays assert selectors, not values, so a stale
+served aggregate passes every deterministic check. Whenever an iteration runs a real ingest, read the
+resulting persisted aggregate out of sqlite and compare it to whatever number the page shows in the
+evidence frame.
+**Applies to:** any iteration that runs a live backfill/fetch/rebuild, or that touches
+`data_manager.compute_coverage` / `coverage_snapshot` / any ingest-maintained aggregate.

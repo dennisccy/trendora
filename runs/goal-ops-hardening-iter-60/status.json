@@ -1,0 +1,31 @@
+{
+  "phase": "goal-ops-hardening-iter-60",
+  "status": "in_progress",
+  "current_step": "dev_complete",
+  "mode": "initial_build",
+  "updated_at": "2026-08-11T07:45:00.000000Z",
+  "started_at": "2026-08-11T07:05:00.000000Z",
+  "cli": "claude",
+  "changed_files": [
+    "apps/backend/app/engine/research.py",
+    "apps/backend/tests/test_regime_lab.py",
+    "apps/frontend/components/sample-link.tsx",
+    "apps/frontend/app/research/_labs.tsx",
+    "apps/frontend/lib/regime-cell-status.ts",
+    "apps/frontend/lib/regime-cell-status.test.ts",
+    "scripts/automation/lib/replay-lane.sh",
+    "tests/automation/test-replay-lane.sh",
+    "docs/handoffs/goal-ops-hardening-iter-60-dev.md",
+    "docs/handoffs/goal-ops-hardening-iter-60-frontend.md"
+  ],
+  "unchanged_but_investigated": [
+    "runs/goal-session-ops-hardening/journey-scripts/J-01.json -- diagnosed, verified genuinely passing 4x via live deterministic replay against the current committed working DB; no defect found; left byte-unchanged rather than force an unneeded edit. See dev handoff 'What Was Built' for the full account."
+  ],
+  "tests_run": true,
+  "tests_summary": "apps/backend: test_regime_lab.py 37 passed (incl. new TC-4 prologue-failure test), test_samples.py 18 passed. test_api_research.py -k regime_lab NOT re-run to completion (65+ min cost, documented in iter-59 dev handoff; prologue change is additive-only on the success path, verified instead by live curl of GET /api/research/regime-lab). apps/frontend: npx tsc --noEmit clean; npx tsx lib/regime-cell-status.test.ts 3 passed; all 11 other pre-existing lib/*.test.ts files re-run individually, all pass. Automation: tests/automation/test-replay-lane.sh 75 passed (68 pre-existing + 7 new TARGET_JOURNEYS scenarios), test-replay-lane-full.sh 24 passed, test-goal-parallel-bqa.sh 102 passed/1 failed (pre-existing, unrelated -- confirmed via git stash against the untouched baseline).",
+  "browser_checks_run": false,
+  "browser_checks_skipped_reason": "developer stage -- browser/golden-replay lane runs later per the lane-ordering rule. This dispatch instead ran the real deterministic replay runner (demo_runner.py --mode verify, via the actual production replay_lane_partition_and_verify path, not a stub) against J-01 four separate times across this dispatch (including once immediately after a full scripts/dev.sh restart) to diagnose the IN-SCOPE J-01.json item -- all four PASS, 16/16 steps, evidence screenshots opened and confirmed non-blank. See dev handoff 'Live verification'.",
+  "qa_complete": false,
+  "pre_handoff_service_restart_verified": true,
+  "next_action": "reviewer"
+}

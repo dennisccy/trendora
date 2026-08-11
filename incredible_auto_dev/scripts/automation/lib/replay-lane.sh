@@ -251,10 +251,23 @@ replay_lane_partition_and_verify() {
   # a replay SKIP that nothing re-confirmed (silently unverified journey). A
   # lint crash (no output) conservatively keeps the old file-exists behavior:
   # the verify runner re-validates at replay time anyway.
+  #
+  # ops-hardening iter-60 (J-05/J-07 closeout, TOP-PRIORITY lane-coverage gap): the lint pass now covers
+  # TARGET_JOURNEYS too (union with REQUIRED_JOURNEYS, deduped) — a target journey's on-file golden must
+  # be validated the SAME way a required journey's is before the partition loop below can trust it.
   local _lint_out=""
-  if [[ -n "${REQUIRED_JOURNEYS// /}" ]]; then
+  local _rl_lint_set
+  # ${TARGET_JOURNEYS:-} — NOT a bare reference: some callers (e.g. plain phase mode, and this file's own
+  # test sandbox for pre-iter-60 scenarios) never assign TARGET_JOURNEYS at all, and every caller here runs
+  # under `set -u` (nounset) per the header contract, so a bare reference would abort the whole lane. The
+  # trailing `|| true` is load-bearing too, mirroring replay_lane_spec_journeys's own guard (see its
+  # comment above): both journey sets empty is a legitimate parse result (e.g. an iteration-0 baseline with
+  # no Required-still-passing AND no Target journeys) — `grep` then matches nothing and exits 1, which
+  # under this whole file's `set -e`+pipefail discipline would otherwise silently kill the caller.
+  _rl_lint_set="$(printf '%s %s\n' "$REQUIRED_JOURNEYS" "${TARGET_JOURNEYS:-}" | tr ' ' '\n' | grep -E '^J-[0-9]+$' | sort -u | tr '\n' ' ' || true)"
+  if [[ -n "${_rl_lint_set// /}" ]]; then
     _lint_out="$(python3 "$DEMO_RUNNER" --mode lint --scripts-dir "$JOURNEY_SCRIPTS_DIR" \
-      --journeys "$(echo "$REQUIRED_JOURNEYS" | tr ' ' ',' | sed 's/^,*//;s/,*$//')" 2>/dev/null || true)"
+      --journeys "$(echo "$_rl_lint_set" | tr ' ' ',' | sed 's/^,*//;s/,*$//')" 2>/dev/null || true)"
   fi
   R_REPLAY=""; R_LLM=""
   local _j
@@ -269,6 +282,37 @@ replay_lane_partition_and_verify() {
       fi
     else
       R_LLM+="$_j "
+    fi
+  done
+
+  # ops-hardening iter-60 (J-05/J-07 closeout, TOP-PRIORITY lane-coverage gap, iter-59 lesson entry 1):
+  # this loop previously scanned ONLY REQUIRED_JOURNEYS — a TARGET_JOURNEYS entry's already-on-file
+  # golden sat unexecuted every run, so `merge_results.py --target` could only ever FLAG the journey as
+  # having zero rows (BLOCKED), never actually close the gap by replaying it. A target journey with a
+  # valid golden now joins R_REPLAY too (skipping one already placed above by the required-journeys loop,
+  # so a journey listed as BOTH required and target is never double-entered) and is ACTUALLY REPLAYED by
+  # demo_runner.py below. A missing or lint-invalid target golden is deliberately left OFF R_LLM here —
+  # that set feeds `replay_lane_llm_regression_set`'s "required-still-passing regression re-check"
+  # dispatch, a different semantic from "this iteration's own Target journey", which the iteration's
+  # primary browser-QA dispatch already covers independent of this lane (the "existing fallback path"
+  # TC's error case relies on); an invalid golden is still quarantined for hygiene, same as a required
+  # journey's.
+  local _rl_target_only
+  # `|| true`: TARGET_JOURNEYS is legitimately empty on most iterations (this journey set is often
+  # empty even when REQUIRED_JOURNEYS is not) — same silent-death pipefail gotcha as above.
+  _rl_target_only="$(echo "${TARGET_JOURNEYS:-}" | tr ' ' '\n' | grep -E '^J-[0-9]+$' | sort -u || true)"
+  for _j in $_rl_target_only; do
+    if [[ " $R_REPLAY " == *" $_j "* || " $R_LLM " == *" $_j "* ]]; then
+      continue  # already routed by the required-journeys loop above (required AND target)
+    fi
+    if [[ -f "$JOURNEY_SCRIPTS_DIR/$_j.json" ]]; then
+      if printf '%s\n' "$_lint_out" | grep -q "^$_j invalid"; then
+        _replay_lane_log "Golden for target journey $_j failed lint — quarantining ($_j.json.invalid); the iteration's own target-journey QA dispatch still covers it: $(printf '%s\n' "$_lint_out" | grep -m1 "^$_j invalid" | cut -d' ' -f2-)"
+        mv -f "$JOURNEY_SCRIPTS_DIR/$_j.json" "$JOURNEY_SCRIPTS_DIR/$_j.json.invalid" 2>/dev/null || true
+      else
+        _replay_lane_log "Target journey $_j has an on-file, lint-valid golden — routed into the deterministic replay set (closes the iter-59 lane-coverage gap)."
+        R_REPLAY+="$_j "
+      fi
     fi
   done
 

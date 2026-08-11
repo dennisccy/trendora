@@ -1,6 +1,6 @@
 # Iteration State — ops-hardening
 
-**After iteration:** 59 · **Date:** 2026-08-11 · **Verdict:** CONTINUE
+**After iteration:** 60 · **Date:** 2026-08-11 · **Verdict:** ESCALATE
 
 ## Journeys
 
@@ -8,33 +8,33 @@
 
 ## Active blockers
 
-- **LANE COVERAGE (dev/framework, TOP PRIORITY).** Target journeys get NO lane row: `replay-lane.sh` replays
-  `REQUIRED_JOURNEYS` only, the LLM plan had no J-05/J-07 case. Both goldens PASSED when run by hand. Result:
-  `phase-goal-ops-hardening-iter-59-ui-test-results.md` = BLOCKED, 2 target-missing → CLOSURE-FAIL.
-- **WALKTHROUGH (dev).** `demo-results.md` = NOT_YET, zero steps. J-05 and J-07 each carry a `[NEW]`
-  walkthrough acceptance clause — neither closes without it. Full depth only; rides along, never the goal.
-- **J-07 step 2 latency (OWNER decision).** 12 of 1,520 health polls > the relaxed 2 s ceiling (worst
-  4.068 s); zero non-answers, zero non-200. That 2 s promise was written for a ~30 s window; this was 23 min.
-- **Degrade rendering + prologue (dev).** `_labs.tsx:3843/3849` shows `n=0` for 17,440-record cohorts, only a
-  tooltip differs (iter-59/a); `research.py:4438-4441` prologue is outside the per-horizon `try` (iter-59/b).
-- **J-01 golden (dev).** `journey-scripts/J-01.json` claimed rewritten; git says untouched since iter-47
-  (db742cdc). Step 09 will fail replay again (iter-59/e).
+- **J-05 stale served counts (dev, TOP).** `/data` showed 2953 snapshot dates / 2443 gaps at 07:47 while
+  `coverage_snapshot` id=1 and sqlite both hold 2954 / 2442 — `data_manager.py:1057` `compute_coverage`.
+- **Lane fix unproven (dev).** `replay-lane.sh`'s TARGET_JOURNEYS routing never ran — `goal-iter-lean.sh:45`
+  sources it at executor start, pre-edit. Next run's log must list J-05/J-07 in the replay set.
+- **Unseen UI (dev).** The new Regime-Lab "Unavailable" indicator (`components/sample-link.tsx:218-229`)
+  has never been photographed; needs an armed-fault capture (dev arms, browser lane shoots).
+- **J-07 owner decision, 11 rounds unanswered.** Does the relaxed ≤2 s `/api/health` ceiling apply to an
+  18–23 minute job, or only the ~30 s window it was written for? `docs/goal.md`, 2026-07-31 amendment.
+- **Measurement discipline (dev).** Addendum 27 gave a success count with no timings and no raw file;
+  reuse iteration 59's `reconcile_drill.py` pattern.
 
 ## Last 2 verdicts
 
-- iter 59: CONTINUE — full depth, all lanes ran; J-05 step 3 and J-07 steps 3/4 executed live and PASSED for
-  the first time (boot 1.712 s; VmPeak 71.26% of cap; zero 500s) — no lane row + no walkthrough keeps both.
-- iter 58: ESCALATE — lean round against a full spec; lane write-ups contradicted their own raw logs.
+- iter 60: ESCALATE — lean run against a `Depth: full` spec surfaced three unreported defects (inert lane
+  fix, unseen UI change, stale served counts); no journey moved.
+- iter 59: CONTINUE — J-05/J-07 executed live and passed, but neither got a lane row; full depth worked.
 
 ## Do not redo
 
-- **J-05 steps 1-4 all EXECUTED and PASS** (run id=390, 2010-11-15, seed; `phase2-restart.json`: kill -9,
-  boot 1.712 s, cold `/api/data` 0.243 s, watermarks identical, zero prefill). Only lane row + walkthrough
-  owed — do not re-run the restart drill as a goal.
-- **J-07 steps 1, 3, 4 PASS** (`tc4-vmpeak.csv` 5837.46 MB = 71.26% of 8192; `fault-drill.json` same pid,
-  byte-identical reads; 472/472 concurrent 200s). Only step 2's latency half is open.
-- **`compute_regime_lab`'s per-horizon bound is DONE, byte-identity PROVEN** vs an independent pinned oracle
-  (36/36 re-run by reviewer AND auditor). Do not re-open it.
-- **Drill reporting is MECHANISED** (`evidence-drill/reconcile_drill.py`); figures survived my own recount
-  exactly — reuse it. **TC-12 golden rotated + live-verified** (`J-05.json` → 2010-11-16, 0 `scanner_runs`).
-  **AG-9/AG-10 re-verified** (runs 383-390 all `provider='seed'`; frozen-path git checks empty; 8192 / 2).
+- **Regime-Lab prologue error handling is DONE** — `research.py:4455-4479` (closes iter-59/b).
+- **Degraded-cell frontend fix is DONE in code** — `lib/regime-cell-status.ts`, `sample-link.tsx`,
+  `_labs.tsx:3958`; only its photograph is owed (closes iter-59/a).
+- **`journey-scripts/J-01.json` needs NO repair** — replayed PASS 4× by dev and again by the lane this
+  round; leave byte-unchanged (closes iter-59/e).
+- **J-05 steps 1/2/4 and J-07 steps 1/3 verified** — run 404 (2010-11-16, seed, ok, 18m20s, all 9
+  aggregates), `scanner_runs.id=2954`, 932 health 200s / 0 5xx / 0 MemoryErrors in the process window.
+- **J-05 step 3 and J-07 step 4 stand on iteration 59's live evidence** (Addenda 25/26) — boot, coverage,
+  warm-seam and fault-hook code unchanged since; do not re-run to "refresh" them.
+- **Do NOT plan a round whose only content is evidence capture** — the J-05/J-07 walkthrough and the
+  "Unavailable" photograph ride along with real work at full depth.

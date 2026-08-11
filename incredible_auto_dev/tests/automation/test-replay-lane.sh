@@ -17,6 +17,15 @@
 #   2. replay_lane_paths: SID derivation + all lane path globals + mkdir.
 #   3. Partition: golden on file → R_REPLAY; missing → R_LLM; lint-invalid →
 #      quarantined (*.json.invalid) + R_LLM.
+#      3b (ops-hardening iter-60): TARGET_JOURNEYS entries join the SAME partition —
+#      an on-file golden joins R_REPLAY and is ACTUALLY REPLAYED (the iter-59
+#      lane-coverage gap: a target journey's golden used to sit unexecuted every
+#      run); a lint-invalid one is quarantined but NOT routed to R_LLM (a
+#      different semantic set — the iteration's own target-journey QA dispatch
+#      already covers it); a missing one is left untouched (same fallback); a
+#      journey in BOTH sets is never double-entered; TARGET_JOURNEYS being
+#      entirely unset (the common case, and every pre-iter-60 scenario below)
+#      must not crash the lane under set -u.
 #   4. Verify rc=0 → _use_replay=yes, REPLAY_FAILED empty, results file has the
 #      UT-J row.
 #   5. Verify rc=5 (journey FAIL) → REPLAY_FAILED extracted for LLM re-confirm.
@@ -166,13 +175,19 @@ PYEOF
 
 # Run a lane scenario in a fresh production-discipline subshell. Env knobs are
 # passed via the caller's environment. Prints the outcome globals on one line.
-run_partition() {  # $1 = REQUIRED_JOURNEYS value
+# $1 = REQUIRED_JOURNEYS value, $2 = optional TARGET_JOURNEYS value (ops-hardening
+# iter-60 — defaults to unset, exactly like every pre-iter-60 scenario below, so
+# the lib must survive TARGET_JOURNEYS never being assigned at all under set -u).
+run_partition() {  # $1 = REQUIRED_JOURNEYS value, $2 = optional TARGET_JOURNEYS value
   (
     set -euo pipefail
     # shellcheck source=/dev/null
     source "$LIB"
     REPO_ROOT="$SBX"
     REQUIRED_JOURNEYS="$1"
+    if [[ -n "${2:-}" ]]; then
+      TARGET_JOURNEYS="$2"
+    fi
     FRONTEND_AVAILABLE="${FRONTEND_AVAILABLE_OVERRIDE:-yes}"
     FRONTEND_URL="http://localhost:9"
     # REL-5: the retry path re-checks services when the function exists (in
@@ -267,6 +282,50 @@ out="$(STUB_LINT_INVALID="J-03" STUB_VERIFY_STAMP="$WORK/stamp3" run_partition "
 [[ -f "$SBX/runs/goal-session-rltest/journey-scripts/J-03.json.invalid" && ! -f "$SBX/runs/goal-session-rltest/journey-scripts/J-03.json" ]] \
   && assert "partition: invalid golden quarantined (.json.invalid)" pass \
   || assert "partition: invalid golden quarantined (.json.invalid)" fail
+
+# ── 3b. Partition: TARGET_JOURNEYS with an on-file golden joins R_REPLAY too (ops-hardening
+#       iter-60, TC-1 — the lane-coverage gap: J-05/J-07 passed LIVE but never got replayed because
+#       this loop previously scanned ONLY REQUIRED_JOURNEYS). J-01 is BOTH required and target (must
+#       not double-enter); J-05 is target-only with a valid golden (must join R_REPLAY and be
+#       ACTUALLY REPLAYED); J-07 is target-only with a lint-invalid golden (quarantined, not R_LLM —
+#       a different set with a different semantic, see the fix's own comment); J-09 is target-only
+#       with NO golden at all (must stay untouched — the "existing fallback path" the error-case
+#       test below relies on, not this lane's R_LLM). ─────────────────────────────────────────────
+reset_goldens
+golden "J-01"
+golden "J-05"
+golden "J-07"
+out="$(STUB_LINT_INVALID="J-07" STUB_VERIFY_STAMP="$WORK/stamp3b" run_partition "J-01 " "J-01 J-05 J-07 J-09")"
+[[ "$out" == "R_REPLAY=<J-01 J-05 >|R_LLM=<>|use=<yes>|failed=<>" ]] \
+  && assert "partition: TARGET-only journey with an on-file golden joins R_REPLAY (TC-1)" pass \
+  || { assert "partition: TARGET-only journey with an on-file golden joins R_REPLAY (TC-1)" fail; echo "    got: $out"; }
+[[ -f "$SBX/runs/goal-session-rltest/journey-scripts/J-07.json.invalid" && ! -f "$SBX/runs/goal-session-rltest/journey-scripts/J-07.json" ]] \
+  && assert "partition: lint-invalid TARGET-only golden is still quarantined" pass \
+  || assert "partition: lint-invalid TARGET-only golden is still quarantined" fail
+[[ ! -f "$SBX/runs/goal-session-rltest/journey-scripts/J-09.json" && ! -f "$SBX/runs/goal-session-rltest/journey-scripts/J-09.json.invalid" ]] \
+  && assert "partition: TARGET-only journey with no golden is left untouched (existing fallback path, not R_LLM)" pass \
+  || assert "partition: TARGET-only journey with no golden is left untouched" fail
+[[ "$(cat "$WORK/stamp3b" 2>/dev/null)" == "J-01 J-05" ]] \
+  && assert "partition: demo_runner actually invoked WITH the target journey (ACTUALLY REPLAYED, TC-1)" pass \
+  || assert "partition: demo_runner actually invoked WITH the target journey (got '$(cat "$WORK/stamp3b" 2>/dev/null)')" fail
+grep -q '^| UT-J-05 ' "$SBX/reports/phase-$ITER-regression-replay-results.md" \
+  && assert "partition: J-05 produced a REAL row in the raw replay results file (TC-1)" pass \
+  || assert "partition: J-05 produced a REAL row in the raw replay results file (TC-1)" fail
+
+# ── 3c. Partition: TARGET_JOURNEYS never assigned at all does not crash the lane (set -u safety —
+#       most callers/scenarios, including every one above, never set it). ──────────────────────────
+out="$(STUB_VERIFY_STAMP="$WORK/stamp3c" run_partition "J-01 ")"
+[[ "$out" == "R_REPLAY=<J-01 >|R_LLM=<>|use=<yes>|failed=<>" ]] \
+  && assert "partition: TARGET_JOURNEYS unset entirely does not crash the lane (set -u safety)" pass \
+  || { assert "partition: TARGET_JOURNEYS unset entirely does not crash the lane (set -u safety)" fail; echo "    got: $out"; }
+
+# ── 3d. Partition: a journey listed as BOTH required and target is never double-entered ─────────
+reset_goldens
+golden "J-01"
+out="$(STUB_VERIFY_STAMP="$WORK/stamp3d" run_partition "J-01 " "J-01 ")"
+[[ "$out" == "R_REPLAY=<J-01 >|R_LLM=<>|use=<yes>|failed=<>" ]] \
+  && assert "partition: a journey in BOTH required and target sets is not double-entered" pass \
+  || { assert "partition: a journey in BOTH required and target sets is not double-entered" fail; echo "    got: $out"; }
 
 # ── 4. Verify rc=0 (all pass) ────────────────────────────────────────────────
 [[ -f "$SBX/reports/phase-$ITER-regression-replay-results.md" ]] \
