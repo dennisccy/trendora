@@ -68,6 +68,7 @@ from app.engine.evidence import LEDGER_PATH_ENV
 from app.engine.forward_testing import compute_forward_aggregates
 from app.engine.ledger import append_entry
 from app.engine.scoring import score_stocks
+from app.api.data import data_overview
 from app.models import (
     AvailabilityCache,
     CoverageSnapshot,
@@ -4186,6 +4187,98 @@ def test_coverage_from_storage_serves_stale_prior_snapshot_when_default_view_sta
     # the REAL prior figures -- never the all-zero sentinel for a database that plainly has coverage on file
     assert served["symbol_count"] == 1 and served["universe_asof"] == d_latest.isoformat()
     assert _strip_coverage_status(served) == real_payload
+
+
+def test_data_overview_serves_freshest_ingested_coverage_after_unrelated_dataset_version_bump(tmp_path):
+    """goal-ops-hardening iter-61 (J-05 TC-1/TC-2) — the exact evaluator-reported scenario: a REAL ingest
+    finalize hook (`_refresh_ingest_aggregates`, not a hand-called shortcut) persists a fresh
+    `coverage_snapshot` row for the newly-created latest date; an UNRELATED request-path event (a
+    historical `/backtest` create-once view — `scanner.resolve_run`, the real code path, not a raw
+    `session.add(ScannerRun(...))`) then creates a new `ScannerRun` for an EARLIER date, bumping
+    `_membership_dataset_version` (the iter-27 stale-row fallback's trigger condition). The API-layer
+    function `app.api.data.data_overview` (not just `coverage_from_storage` in isolation) must still
+    serve the JUST-INGESTED date's exact `snapshot_count`/`gap_count`/`snapshot_dates` — the freshest
+    persisted row for that `asof_key` — never a value from BEFORE the ingest."""
+    engine = make_engine(f"sqlite:///{tmp_path / 'coverage_freshness.db'}")
+    create_db_and_tables(engine)
+    d_pre = date(2024, 1, 2)  # already-snapshotted BEFORE the ingest under test (the pre-ingest total)
+    d_new = date(2024, 3, 4)  # the ingest's own newly-created latest date
+    d_unrelated = date(2023, 6, 1)  # the unrelated request-path event's target -- earlier than BOTH above
+    with Session(engine) as session:
+        for d in (d_pre, d_new, d_unrelated):
+            session.add(DailyPrice(symbol="SPY", date=d, open=1.0, high=1.0, low=1.0, close=1.0, volume=1.0))
+        session.commit()
+        run = ScannerRun(
+            asof_date=d_pre, created_at=datetime(2024, 1, 2), provider="seed", benchmark="SPY",
+            regime_score=50.0, regime_label="Choppy", regime_components_json="[]",
+            new_high_low_json="{}", candidate_counts_json="{}",
+        )
+        session.add(run)
+        session.commit()
+        session.refresh(run)
+        session.add(ScannerResult(
+            run_id=run.id, ticker="AAA", name="AAA Corp", leadership_score=1.0, leadership_bucket="Leader",
+            entry_quality_score=1.0, entry_quality_bucket="Good", risk_score=1.0, risk_bucket="Low",
+            setup_status="Actionable", rank=1, record_json="{}",
+        ))
+        session.commit()
+
+    cfg = load_config()
+    # (1) the REAL ingest: `d_new`'s own ScannerRun/ScannerResult are created first (mirroring `_do_backfill`'s
+    # own date-loop, which persists the snapshot BEFORE the finalize hook runs -- `prog.new_snapshot_dates`
+    # documents exactly that "already committed" precondition), THEN the finalize hook persists coverage.
+    with Session(engine) as session:
+        run_new = ScannerRun(
+            asof_date=d_new, created_at=datetime(2024, 3, 4), provider="seed", benchmark="SPY",
+            regime_score=55.0, regime_label="Choppy", regime_components_json="[]",
+            new_high_low_json="{}", candidate_counts_json="{}",
+        )
+        session.add(run_new)
+        session.commit()
+        session.refresh(run_new)
+        session.add(ScannerResult(
+            run_id=run_new.id, ticker="AAA", name="AAA Corp", leadership_score=1.0, leadership_bucket="Leader",
+            entry_quality_score=1.0, entry_quality_bucket="Good", risk_score=1.0, risk_bucket="Low",
+            setup_status="Actionable", rank=1, record_json="{}",
+        ))
+        session.commit()
+        prog = JobProgress(job_id="freshness-probe", kind="backfill", start=d_new, end=d_new)
+        prog.new_snapshot_dates = [d_new]
+        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)
+    assert "coverage" in refreshed
+
+    with Session(engine) as session:
+        fresh_row = session.exec(
+            select(CoverageSnapshot).where(CoverageSnapshot.asof_key == d_new.isoformat())
+        ).one()
+        v_ingest = fresh_row.dataset_version
+        assert fresh_row.payload_json  # sanity: a real payload was persisted
+    ingest_snapshot_count = json.loads(fresh_row.payload_json)["snapshot_count"]
+    ingest_gap_count = json.loads(fresh_row.payload_json)["gap_count"]
+    assert ingest_snapshot_count == 2  # d_pre + d_new -- the CORRECT post-ingest total
+
+    # (2) the unrelated request-path event: a historical /backtest create-once view for `d_unrelated`,
+    # through the REAL `scanner.resolve_run` path (never touches CoverageSnapshot) -- bumps
+    # `_membership_dataset_version` while leaving "latest" (`d_new`) and the fresh row's OWN payload
+    # completely untouched.
+    with Session(engine) as session:
+        scanner.resolve_run(session, d_unrelated.isoformat(), cfg)
+    with Session(engine) as session:
+        v_after = data_manager._membership_dataset_version(session, cfg)
+        assert v_after != v_ingest  # the stamp genuinely advanced from the unrelated event alone
+        resolved = data_manager._resolve_coverage_asof(session, None, cfg)
+        assert resolved == d_new  # "latest" is unaffected -- the unrelated run is for an EARLIER date
+
+        # (3) the actual API-layer function -- not just coverage_from_storage in isolation -- must still
+        # serve the freshest ingested row's exact counts, never the pre-ingest pair.
+        payload = data_overview(session=session)
+    cov = payload["coverage"]
+    assert cov["snapshot_count"] == ingest_snapshot_count == 2  # never the pre-ingest 1
+    assert cov["gap_count"] == ingest_gap_count
+    assert d_new.isoformat() in cov["snapshot_dates"]
+    assert cov["coverage_status"] in ("current", "stale")  # either is honest; the VALUES must be fresh
+    if cov["coverage_status"] == "stale":
+        assert cov["stale_dataset_version"] == v_ingest
 
 
 # ==================================================================================================

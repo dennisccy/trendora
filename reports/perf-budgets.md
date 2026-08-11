@@ -10126,3 +10126,69 @@ running backend's own environment was independently confirmed still enforcing th
 `/proc/1307792/limits` "Max address space" = 8589934592 bytes = exactly 8192 MiB, `MALLOC_ARENA_MAX=2` in
 the process environment, `logs/backend.log`'s own boot banner reads `memory_cap_mb=8192
 malloc_arena_max=2` (AG-10 clean, values match the owner's 2026-07-31 raised envelope).
+
+## Addendum 28 (2026-08-11, ops-hardening iter-61 developer pass) — J-07 step 2, reconciled from a raw
+poll log against the job's own OPEN/CLOSED markers (the DoD-binding write-up discipline, TC-5)
+
+Prior addenda's J-07 step-2 write-ups (25-27) either fell back to a stale citation or reported a bare
+poll count with no raw file. This pass re-measured it fresh against a REAL heavy backfill, launched only
+through `scripts/dev.sh` (AG-10 caps intact), and reconciled the result with
+`runs/goal-ops-hardening-iter-59/evidence-drill/reconcile_drill.py` (reused verbatim, per this iteration's
+spec — not rewritten), which derives every figure from the raw artifacts and fails loudly on any row-count
+mismatch. Raw artifacts: `runs/goal-ops-hardening-iter-61/evidence-drill/tc5-health-poll.csv` (the
+per-second `GET /api/health` poll, one dedicated process, 5.0 s client timeout distinguishing a slow
+SERVER from a starved client) and `.../dev.log` (this pass's own `scripts/dev.sh` stdout/stderr redirect —
+`logs/backend.log` is written only by `scripts/start-backend.sh`'s shell redirect, not by `dev.sh`, so the
+reconciler's `backend_log` argument was pointed at `dev.log` for this run; both carry the SAME Python
+logger lines).
+
+Job: a real single-date `backfill` for `2005-06-23` (a genuinely gap trading day — confirmed via
+`daily_prices`/`scanner_runs` before dispatch, real SPY bar present, 0 prior snapshot), dispatched via
+`POST /api/data/jobs` — no `source` override needed (a pure backfill reads only already-fetched bars, no
+live provider call, AG-9 clean). Outcome: `status: "ok"`, `snapshots_created: 1`,
+`forward_returns_inserted: 815`, `aggregates_refreshed` all 9 categories.
+
+### TC-5 — reconciled result (full `reconciliation.md` at `runs/goal-ops-hardening-iter-61/evidence-drill/reconciliation.md`)
+
+| Figure | Value |
+|---|---|
+| `wc -l tc5-health-poll.csv` | **1079** (1078 data rows + 1 header) |
+| Heavy-warm window OPEN → CLOSED (job's own markers) | 2026-08-11T08:23:09.534Z → 2026-08-11T08:40:04.903Z = **1015.37 s (16 m 55 s)** |
+| Total polls during the window | 1005 (1078 total across the whole poll span, incl. 38 pre-window + 35 post-window) |
+| HTTP 200 | **1078 of 1078 (100 %)** — zero answered non-200, **zero non-answers** (no `000` client-timeout row anywhere in the log) |
+| Slowest ANSWERED poll | **2.849 s at 2026-08-11T08:23:13.091Z** (phase, per the job's own markers: `coverage_membership_timeline_refresh`, the very start of the finalize tail) |
+| Polls breaching the owner-amended ≤2 s bounded-background-compute-window ceiling | **1 of 1078** (the single poll above; every other poll — including all of `forward_aggregates_warm` (104.15 s), `factor_lab_all_warm` (561.68 s, the dominant phase), and `drawdown_expectations_warm` (337.54 s) — answered inside 2 s) |
+
+Segmented by the job's own OPEN/CLOSED markers (row counts reconciled to equal `wc -l` − 1, per the
+reconciler's own fail-loud assertion): pre-window 38 polls (0 breaches), during-window 1005 polls (1
+breach), post-window 35 polls (0 breaches) — sum 1078, verified equal to the data-row count.
+
+**Reading against the owner's 2026-07-31 rescoping** ("during a bounded background-compute window... every
+poll answers HTTP 200 under a relaxed ≤2 s ceiling; a frozen or unresponsive window, any non-200, or an
+untruthful readiness value remains a failure"): this run's own window (1015 s = ~17 min) is longer than the
+"~30 s" scope the owner's rescoping names, and closer to (slightly under) the "18-23 minute" range the
+outstanding owner question describes — a real job of this shape here measured 16 m 55 s, not 18-23 min
+exactly; reported as measured, not padded to fit the range. Every poll answered (zero non-answers, zero
+non-200); exactly one poll (0.849 s over the 2 s line) breached the RELAXED ceiling, at the very first
+second of the heavy tail. Whether that single breach — or the window's length itself relative to "~30 s" —
+constitutes a pass is the SAME unresolved owner call restated in this file's dev handoff; this addendum
+reports the honest number, it does not adjudicate the question.
+
+### AG-9 / AG-10 for this pass
+
+The single `data_provider_runs` row created this pass is `provider='seed'`-equivalent (no `source`
+supplied, offline committed seed only) — no live fetch, no live-provider call (AG-9 clean). The backend
+was launched only via `scripts/dev.sh` (never a bare `uvicorn` invocation), whose backend subshell reads
+`memory_cap_mb`/`malloc_arena_max` from `app.config.get_config()` and applies `ulimit -v` +
+`export MALLOC_ARENA_MAX` before starting the server (`scripts/dev.sh:45-57`, the HOST-GUARD block) —
+AG-10 clean, same declared 8192 MB / arena-2 envelope as every prior addendum, untouched by this pass.
+
+**Correction (iter-61 audit, 2026-08-11 — the claim above as first written was not backed by its own cited
+artifact):** this paragraph originally read "`dev.log`'s own boot banner confirms the config-derived
+`ulimit -v`/`MALLOC_ARENA_MAX` enforcement ran before the server started". There is no such banner:
+`grep -nE 'memory_cap_mb|malloc_arena_max|MALLOC_ARENA_MAX|ulimit'
+runs/goal-ops-hardening-iter-61/evidence-drill/dev.log` returns ZERO hits — only
+`scripts/start-backend.sh:73` prints a boot banner, and this pass used `dev.sh`. The enforcement itself is
+real and is evidenced by the launch script's own unconditional code path cited above; unlike Addendum 27,
+this pass captured no `/proc/<pid>/limits` read of the live backend, so the AG-10 evidence here is
+launch-script-level, not process-level. Stated as re-derived, not as originally claimed.

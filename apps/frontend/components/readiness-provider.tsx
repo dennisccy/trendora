@@ -41,6 +41,12 @@ export interface ReadinessContextValue {
   backgroundCompute: BackgroundComputeStatus | null;
   /** True until the first poll has resolved (so callers can show a neutral "checking" state). */
   loading: boolean;
+  /** goal-ops-hardening iter-61 (J-05) — the config-derived idle cadence (seconds) this SAME poll backs
+   *  off to once `ready` (`GET /api/health`'s `poll_idle_interval_seconds`), exposed so a page can run its
+   *  OWN ambient/ idle-cadence refresh (e.g. `/data`'s coverage reload) without a second poll literal or a
+   *  second fetch. Null before the first poll resolves / on a failed poll (mirrors every sibling field's
+   *  honesty convention) — callers must gate their own interval on a non-null value. */
+  pollIdleIntervalSeconds: number | null;
 }
 
 const ReadinessContext = createContext<ReadinessContextValue | null>(null);
@@ -56,6 +62,7 @@ export function ReadinessProvider({ children }: { children: React.ReactNode }) {
   const [preflight, setPreflight] = useState<PreflightStatus | null>(null);
   const [backgroundCompute, setBackgroundCompute] = useState<BackgroundComputeStatus | null>(null);
   const [loading, setLoading] = useState(true);
+  const [pollIdleIntervalSeconds, setPollIdleIntervalSeconds] = useState<number | null>(null);
   // the config-derived cadences (seconds) from the latest payload; refs so the polling loop reads the
   // freshest value without re-subscribing.
   const activeMs = useRef(BOOTSTRAP_ACTIVE_MS);
@@ -74,6 +81,7 @@ export function ReadinessProvider({ children }: { children: React.ReactNode }) {
         setWarmup(data.warmup);
         setPreflight(data.preflight);
         setBackgroundCompute(data.background_compute);
+        setPollIdleIntervalSeconds(data.poll_idle_interval_seconds);
         // adopt the config-derived poll cadences (seconds → ms); never a client-side literal.
         activeMs.current = Math.max(250, Math.round(data.poll_interval_seconds * 1000));
         idleMs.current = Math.max(activeMs.current, Math.round(data.poll_idle_interval_seconds * 1000));
@@ -85,6 +93,7 @@ export function ReadinessProvider({ children }: { children: React.ReactNode }) {
         setWarmup(null);
         setPreflight(null); // honest — the banner renders its own NO-GO for a null preflight, never blank
         setBackgroundCompute(null); // honest — readers render their own empty/idle state, never fabricated
+        setPollIdleIntervalSeconds(null); // honest — a caller's own idle-refresh loop must not schedule on this
         nextDelay = activeMs.current; // keep retrying at the active cadence until the backend answers
       } finally {
         if (active) {
@@ -102,8 +111,8 @@ export function ReadinessProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const value = useMemo<ReadinessContextValue>(
-    () => ({ state, warmup, preflight, backgroundCompute, loading }),
-    [state, warmup, preflight, backgroundCompute, loading],
+    () => ({ state, warmup, preflight, backgroundCompute, loading, pollIdleIntervalSeconds }),
+    [state, warmup, preflight, backgroundCompute, loading, pollIdleIntervalSeconds],
   );
 
   return <ReadinessContext.Provider value={value}>{children}</ReadinessContext.Provider>;

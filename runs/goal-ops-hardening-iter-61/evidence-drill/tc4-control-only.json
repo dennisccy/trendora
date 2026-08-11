@@ -1,0 +1,10 @@
+{
+ "page_url": "http://localhost:3255/research/regime-lab?asof=2010-11-05",
+ "heading": "Research \u2014 Regime Lab",
+ "unavailable_indicator_count": 0,
+ "active_sample_link_count": 80,
+ "error_boundary_text_present": false,
+ "warming_up_banner_present": false,
+ "screenshot": "runs/goal-ops-hardening-iter-61/evidence-drill/TC-4-control-clean.png",
+ "screenshot_table": "runs/goal-ops-hardening-iter-61/evidence-drill/TC-4-control-clean-by-label-table.png"
+}

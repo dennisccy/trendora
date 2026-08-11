@@ -1,0 +1,22 @@
+{
+  "phase": "goal-ops-hardening-iter-61",
+  "status": "blocked",
+  "current_step": "closure_failed",
+  "updated_at": "2026-08-11T10:26:31.951106Z",
+  "started_at": "2026-08-11T07:56:50.755306Z",
+  "cli": "claude",
+  "blockers": [],
+  "changed_files": [
+    "apps/backend/tests/test_data_manager.py",
+    "apps/frontend/components/readiness-provider.tsx",
+    "apps/frontend/app/data/page.tsx",
+    "reports/perf-budgets.md",
+    "docs/handoffs/goal-ops-hardening-iter-61-dev.md",
+    "docs/handoffs/goal-ops-hardening-iter-61-frontend.md",
+    "reports/phase-goal-ops-hardening-iter-61-implementation-summary.md",
+    "runs/goal-ops-hardening-iter-61/evidence-drill/"
+  ],
+  "tests_run": true,
+  "browser_checks_run": true,
+  "next_action": "review"
+}

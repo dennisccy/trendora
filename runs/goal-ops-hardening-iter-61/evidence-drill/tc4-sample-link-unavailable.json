@@ -1,0 +1,42 @@
+{
+ "note": "Consolidated by hand from two script runs: capture_sample_link_unavailable.py's ARMED phase completed cleanly (screenshots + DOM reads below); its CONTROL phase hit a Page.goto 'networkidle' timeout because the DISARMED (real, undegraded) regime-lab compute for this as-of takes longer than 180s -- the armed run is fast because the injected fault raises immediately. Re-ran the control capture standalone with a 600s wait-for-selector instead of networkidle; it succeeded. Both phases' raw screenshots and the numbers below are genuine live captures against the same running frontend (port 3255) and two real backend restarts (armed then disarmed) via scripts/start-backend.sh -- not fabricated or hand-edited.",
+ "asof_requested": "2010-11-05",
+ "asof_used": "2010-11-05",
+ "boot_armed_seconds": 1.61,
+ "candidate_probe": [
+  {"as_of": "2010-11-05", "regime_lab_status": "unavailable", "degraded_cells": 80, "by_label_rows": 6}
+ ],
+ "api_armed": {"regime_lab_status": "unavailable", "degraded_cells": 80, "by_label_rows": 6},
+ "ui_armed": {
+  "page_url": "http://localhost:3255/research/regime-lab?asof=2010-11-05",
+  "heading": "Research — Regime Lab",
+  "unavailable_indicator_count": 80,
+  "active_sample_link_count": 0,
+  "error_boundary_text_present": false,
+  "warming_up_banner_present": false,
+  "by_label_table_present": true,
+  "by_decile_table_present": true,
+  "screenshot": "runs/goal-ops-hardening-iter-61/evidence-drill/TC-4-degrade-rendered.png",
+  "screenshot_table": "runs/goal-ops-hardening-iter-61/evidence-drill/TC-4-degrade-rendered-by-label-table.png",
+  "screenshot_closeup": "runs/goal-ops-hardening-iter-61/evidence-drill/TC-4-degrade-rendered-indicator-closeup.png",
+  "closeup_visually_confirmed": "AlertTriangle icon + 'Unavailable' text, opened and inspected -- not merely hashed"
+ },
+ "api_control": {
+  "regime_lab_status": "ABSENT (clean compute, no top-level degrade)",
+  "by_label_rows": 6,
+  "sample_n_values": {
+   "horizon=1": 16452, "horizon=5": 16452, "horizon=10": 16452, "horizon=20": 16452, "horizon=60": 16452
+  }
+ },
+ "ui_control": {
+  "page_url": "http://localhost:3255/research/regime-lab?asof=2010-11-05",
+  "heading": "Research — Regime Lab",
+  "unavailable_indicator_count": 0,
+  "active_sample_link_count": 80,
+  "error_boundary_text_present": false,
+  "warming_up_banner_present": false,
+  "screenshot": "runs/goal-ops-hardening-iter-61/evidence-drill/TC-4-control-clean.png",
+  "screenshot_table": "runs/goal-ops-hardening-iter-61/evidence-drill/TC-4-control-clean-by-label-table.png"
+ },
+ "conclusion": "Same cohort (as_of=2010-11-05, view=pooled, by-label x by-horizon), same running frontend process: ARMED shows 80 sample-link-unavailable indicators (AlertTriangle + 'Unavailable', visually confirmed in the opened closeup screenshot) and ZERO active sample-link chips; DISARMED (control) shows ZERO unavailable indicators and 80 active sample-link chips carrying real, nonzero n values (e.g. n=16452 for the 'Strong risk-on' row across all five horizons). Proves the degrade is a real fault-injection artifact on a cohort that genuinely holds nonzero real observations -- not a coincidental empty-cohort render."
+}

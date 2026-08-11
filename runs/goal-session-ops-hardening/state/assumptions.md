@@ -616,3 +616,54 @@ the stale-count bug while the walkthrough still does not exist, that reader and 
 whether J-05 closes, and the disagreement should be settled then, in the open.
 **Reversible:** yes — the flag and the ledger entry both survive; a later evaluator can restore the
 walkthrough to blocking status.
+
+## iter-61 — goal-evaluator (1 of 2): J-05 promoted to `passing` on durable evidence, with no journey row this round
+
+**Ambiguity:** methodology A.3 requires a status CHANGE to carry a results row plus a screenshot for
+THIS iteration, and no lane produced a `UT-J-05` row at all — the merged
+`ui-test-results.md` reads BLOCKED for exactly that reason, and the auditor writes "this iteration
+must not be read as closing J-05 or J-07". But A.6 (evidence durability) says prior evidence stays
+valid while the product code is unchanged, and A.7 plus my standing rules forbid holding a journey on
+a capture or lane gap. The missing row here is a *lane* failure (`browser-qa-phase.sh` assigns
+`TARGET_JOURNEYS` after it calls the partition function), not a product failure.
+**We chose:** promote J-05 `partial` → `passing`. Grounds: (1) the ONLY concrete blocker on record
+(iter-60/a) is void — I proved it was a UTC-vs-local misreading, on two independent jobs; (2) iteration
+60's own evaluator wrote, in `assumptions.md` (2 of 2), that absent that defect "this reading would have
+promoted J-05 to passing this round"; (3) the product diff since snapshot `b250924e` is three files —
+one backend TEST file and two frontend files — so not one line of ingest, finalize, coverage or serving
+code changed, and iter-60's `UT-J-05` PASS row + screenshot (which I re-opened: "Immutable snapshot — as
+of 2010-11-16 … Scanned 2026-08-11 06:58:48", regime 61.06 = `scanner_runs.id=2954`) is durable under
+A.6; (4) the one surface that DID change (`/data`) carries fresh evidence I opened and cross-checked
+against sqlite (2956/2440 rendered = persisted = served); (5) step 4 was freshly measured and recounted
+by me this round (1078/1078 HTTP 200).
+**Cost recorded honestly:** a reader who holds that a journey-level row is required in the iteration
+that promotes it — the auditor's explicit position — would keep J-05 `partial` and lose nothing but a
+round. The practical difference is small and self-correcting: J-05 cannot support GOAL_ACHIEVED alone
+(J-07 is still `partial`), and my recommendation's item 2 asks the next round to replay J-05's own
+golden live, which will confirm or refute this promotion mechanically. If that replay fails, this entry
+is where the disagreement should be settled.
+**Reversible:** yes — a later evaluator can restore `partial` on the next round's replay result.
+
+## iter-61 — goal-evaluator (2 of 2): CONTINUE chosen over ESCALATE again, accepting the depth-demotion risk
+
+**Ambiguity:** ESCALATE's practical effect in this session is to BIND the next round's depth, and the
+structural facts still favour full depth: J-05 and J-07 both carry a `[NEW]` walkthrough clause and the
+recorder runs only at full depth; the audit lane found the round's decisive framework defect two rounds
+running. But none of C.4's three clauses fires literally — no journey has status `failing`, the review
+lane did not fail open, and this iteration ran at FULL depth (`depth-dispatched` = `full`), so the
+"lean iteration surfaced complexity" clause cannot apply.
+**We chose:** CONTINUE with a `full` recommendation. Grounds: (1) the methodology binds me to the tree
+over my overall impression, and manufacturing a clause match to obtain a side effect is precisely what it
+forbids (same call as iter-59, made deliberately); (2) the mandate has just been shown to work — iter-60's
+ESCALATE produced this full round, which produced the reconciled drill, the TC-4 capture with a control
+arm, and the audit that root-caused the lane defect; (3) a full-to-full ESCALATE buys only the mandate.
+**Cost recorded honestly:** this iteration again exceeded its wall-clock budget (SPEED-15 rung 3b shed the
+ux-regression lane), and the depth arbiter demoted iter-60 from full to lean on exactly that ground —
+"budget-breach" is in the engine log verbatim. So a lean iteration 62 is a live possibility, and a lean
+round cannot record the walkthrough. One nuance that softens it, and that I state rather than hide: the
+target-journey replay routing is LIVE on the lean path and dead on the full path, so a lean iteration 62
+would actually replay J-05's and J-07's goldens deterministically — the opposite of the usual trade-off.
+A reader who weighs the empirical override rate above the tree's wording would return ESCALATE, and I
+would not argue that is wrong.
+**Reversible:** yes — the engine or the owner can run the next round at any depth; this only sets the
+default and records why.

@@ -291,6 +291,11 @@ export default function DataManagerPage() {
   // date state). `asOf` (null ⇒ latest) is threaded to GET /api/data so stepping the global switcher
   // slides the resolved-universe figures. The job-form date inputs remain job PARAMETERS (unrelated).
   const { refresh, asOf } = useAsOf();
+  // goal-ops-hardening iter-61 (J-05 fix): the SAME shared readiness poll (useReadiness()) that already
+  // drives the top-bar badge -- no second fetch, no client-side literal. Its idle cadence (the calm
+  // steady-state interval the badge itself backs off to once ready) is reused below to give this page an
+  // AMBIENT coverage refresh, independent of this tab's own job-tracking state.
+  const { pollIdleIntervalSeconds } = useReadiness();
   const [state, setState] = useState<State>({ kind: "loading" });
   const [availability, setAvailability] = useState<AvailabilityState>({ kind: "loading" });
   const [start, setStart] = useState("");
@@ -366,6 +371,24 @@ export default function DataManagerPage() {
       controller.abort();
     };
   }, [loadOverview, loadAvailability]);
+
+  // goal-ops-hardening iter-61 (J-05 fix): coverage/availability previously refreshed ONLY on mount and
+  // when THIS tab's own tracked job (`jobId`/`jobStatus` below) left "running" -- so a backfill started
+  // elsewhere (another tab, a script, a teammate) left an already-open `/data` tab showing the pre-ingest
+  // counts indefinitely (the evaluator-reported staleness: correct values sat in `coverage_snapshot`
+  // while this page kept rendering what it fetched before the ingest). This ambient reload, on the SAME
+  // idle cadence the readiness badge already backs off to (no new config, no client-side literal), closes
+  // that gap to at most one idle interval regardless of who/what triggered the ingest -- the SAME reload
+  // path (coverage + availability + the as-of run list) the job-completion branch below already uses.
+  useEffect(() => {
+    if (!pollIdleIntervalSeconds) return;
+    const timer = window.setInterval(() => {
+      loadOverview();
+      loadAvailability();
+      refresh();
+    }, Math.max(pollIdleIntervalSeconds, 1) * 1000);
+    return () => window.clearInterval(timer);
+  }, [pollIdleIntervalSeconds, loadOverview, loadAvailability, refresh]);
 
   // J-61: clicking a heatmap day (start == end) or shift-click range prefills the JOB FORM's Start/End —
   // these are JOB PARAMETERS, never the global as-of control (no setAsOf call here). Marking the range as

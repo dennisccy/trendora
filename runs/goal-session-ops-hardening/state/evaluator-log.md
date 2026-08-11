@@ -6166,3 +6166,158 @@ to 23 minutes. Last round 12 of 1,520 answers took longer than 2 seconds and non
 long jobs (J-07 stays open until the app is faster), or apply it to short jobs only (J-07's last gap
 closes). Two facts worth knowing: the app ran all day with zero errors of any kind, and this round again
 ran shallow against a plan that asked for deep, the fourth time in six rounds.
+
+## Iteration 61 — goal-ops-hardening-iter-61
+
+**Date:** 2026-08-11T11:40:00Z
+**Verdict:** CONTINUE
+**Depth dispatched:** full (`iter-61/depth-dispatched` = `full`, matching the spec's `**Depth:** full` /
+`Full trigger: 3` — iter-58's and iter-60's ESCALATEs both bound their successors correctly, and the
+depth mismatch of rounds 55/56/58/60 did NOT recur). Every lane ran except ux-regression, which the
+SPEED-15 rung-3b wall-clock trim shed.
+
+**Journey deltas:**
+- **Newly passing: J-05 "Aggregates are precomputed at ingest, never on the fly."** Newly failing: none.
+  Regressed: none. Shape moves **6 passing / 2 partial → 7 passing / 1 partial**, the first scoreboard
+  movement in five rounds — and it comes from WITHDRAWING my own previous round's blocker, not from new
+  product work.
+- **J-07 stays `partial` on one half of one clause**, and that half is now measured properly.
+- No `browser-infra.json`; no `journeys-changed.md`; no `DEFERRED-BUDGET` row. All 8 `spec_hash`es match
+  `goal_gate.py hash-journeys`, run by me. `pending_infra` clear everywhere. `evidence_makeup` KEPT on
+  J-05/J-07 (the `[NEW]` walkthrough clause has still never been satisfied) and cleared on the six stable
+  journeys (fresh frames this round, no walkthrough clause in their text).
+- Anti-goal violations: **ONE WITHDRAWN** (iter-60/a — see reasoning 1), **ONE RAISED AND CLOSED IN-ROUND**
+  (iter-61/f, the false AG-10 verification claim: reviewer caught it, auditor fixed it), **SEVEN NEW OPEN,
+  all minor** (iter-61/a the dead target-routing on the full path; /b the round built on a non-existent
+  defect; /c the fourth consecutive false "no blockers" headline; /d the walkthrough again absent; /e one
+  frame cited as three; /g `last_run_date` hardcoded null; /h the new refresh has no automated test).
+  Ledger now: **176 total, 88 unresolved, 0 unresolved critical.** scan-report **CLEAN**; coherence
+  **COHERENCE-PASS** (0 blocking, 0 advisory); review **PASS_WITH_NOTES**; audit **PASS_WITH_GAPS**;
+  QA **PASS** / **UI-PASS**; merged browser QA **BLOCKED** (13/14, 1 skipped, 2 target-missing);
+  deterministic replay **PASS 6/6**; demo **NOT_YET**; ux-regression **SKIPPED**; closure **CLOSURE-FAIL**.
+
+**Reasoning:** I re-derived every load-bearing fact myself, and the largest one reverses my own prior round.
+(1) **THE DEFECT THIS ROUND WAS BUILT TO FIX DOES NOT EXIST, AND I PROVED IT FROM TWO INDEPENDENT JOBS.**
+`data_provider_runs.started_at` and `coverage_snapshot.computed_at` are stored as **naive UTC**; the
+backend's own structured log lines and every file mtime are **local BST (UTC+1)**. Proof on two separate
+jobs, not one: run 404's DB `started_at` **06:58:36** against its own marker `ingest heavy-warm window OPEN`
+at **07:58:49** local (`logs/backend.log:259897`), and run 409's DB **09:40:39** against its marker at
+**10:40:41** (`backend.log:263548`). Apply that hour to iteration 60: run 404 actually ran
+**07:58:49 → 08:16:56 LOCAL** and wrote coverage 2954/2442 at **07:58:55 local**, while iter-60's
+`J-04-verify.png` / `J-09-verify.png` carry mtimes **07:47:23 / 07:47:43 local** — **eleven minutes
+EARLIER**. The screens read 2953/2443 because 2953/2443 was the persisted truth at the moment they were
+taken. The engine log corroborates the ordering exactly (iter-60's replay 07:46:43, `demo_runner verify`
+finished 07:47:43; the backfill began during the later LLM lane). Iteration 60 compared a photograph to a
+database row written after it. iter-60/a is withdrawn by the evaluator who raised it.
+(2) **The developer reached the right conclusion by a different route, and the auditor and I both
+re-verified it.** No backend production line changed: `_upsert_coverage_snapshot` issues
+`DELETE FROM coverage_snapshot WHERE dataset_version != :current` on every write, so the table can never
+hold two stamps for one `asof_key`, and the iter-27 fallback's `ORDER BY computed_at DESC LIMIT 1` cannot
+return a superseded row. I read the live table: exactly **1** row (id=1, `asof_key=2026-08-03`,
+`dataset_version=r2956-…`, `snapshot_count=2956`, `gap_count=2440`). The shipped change is therefore a
+frontend one — `/data` previously refetched coverage only for a job THIS tab started, and now runs an
+ambient refresh on the readiness poll's own idle cadence. That is a genuine improvement (a job started
+anywhere is picked up within 30 s) even though the bug that motivated it was a misreading.
+(3) **I opened UT-04's frame and matched it to the database myself.** `UT-04-result.png` renders
+**SNAPSHOT DATES 2956 / BACKFILL GAPS 2440**; sqlite's `coverage_snapshot` id=1 payload holds
+`snapshot_count=2956` / `gap_count=2440`. Rendered = persisted = served. `UT-02-result.png` additionally
+shows the honest **"Coverage as of a prior scan (version r2956-…) — refreshes on the next data job"**
+banner, which appeared after a request-path `ScannerRun` (2019-01-24, created 11:03:55 local) made the
+persisted payload one date behind the live table (2,957 distinct as-of dates vs 2,956 in the payload).
+That is the compute-at-ingest contract working AND disclosing itself — not an AG-3 breach.
+(4) **J-07's drill survived my own recount exactly, which is the second time this session that has
+happened.** From the raw CSV, not the write-up: `tc5-health-poll.csv` has **1078** data rows (`wc -l`
+1079), **1078/1078 HTTP 200**, **zero** non-answers, **66** answers over 1.0 s, and **exactly one** over
+the owner's relaxed 2.0 s ceiling — **2.849 s at 2026-08-11T08:23:13.091Z**, which the job's own phase
+markers place inside `coverage_membership_timeline_refresh`. My segment counts against the job's own
+OPEN/CLOSED markers reconcile: **38 + 1005 + 35 = 1078**. Every figure matches `reconciliation.md` and the
+auditor's independent recount. Availability is met OUTRIGHT; the latency half fails by one poll in 1,078
+(0.09 %, against iter-59's 12 in 1,520 = 0.79 %).
+(5) **The app's own log gives the round's best fact, and again no lane reported it.** `logs/backend.log`:
+**ZERO HTTP 500s** this iteration (129 in total, the last at line **249,034**, inside iteration 57) and
+**ZERO real MemoryErrors** — the count moved 8,171 → 8,211 and **all 40 new lines are the deliberate
+`injected at fault-injection site 'regime_lab'` test hook** (20 raises + 20 tracebacks; the last real one
+is line **251,244**, inside iteration 58). `dev.log` for the whole developer pass, including the
+17-minute backfill: **0** 500s, **0** MemoryErrors. Counting MemoryErrors without separating injected from
+real would have read as a regression.
+(6) **The round's own top-priority verification failed again, in the mirror image of last round.**
+Iteration 60's fix routes a target journey's golden into the deterministic replay set — and it is **live on
+the LEAN path and dead on the FULL path**. `browser-qa-phase.sh:272` calls
+`replay_lane_partition_and_verify`; `TARGET_JOURNEYS` is not assigned until `:286`, so iter-60's loop
+(`lib/replay-lane.sh:300-317`) reads an empty `${TARGET_JOURNEYS:-}` and iterates over nothing.
+`goal-iter-lean.sh` assigns it at `:204`, before its call. Evidence: this iteration's only replay line is
+`engine.log:10484` — `J-01 J-03 J-04 J-06 J-08 J-09` — and `grep "Target journey" engine.log` returns
+**zero** hits across the entire session, so that branch has never executed once. Both goldens are on file
+and substantial (J-05.json 14,326 bytes; J-07.json 9,249 bytes). The auditor found the identical lines
+independently (T1).
+(7) **I opened frames instead of hashing them, and one hash mattered anyway.** Two stable spot-checks:
+`J-01-verify.png` renders the 2026-05-29 immutable snapshot at **75.20 / Risk-on / 68.85 % / 59.02 %**
+(the figures I matched to `scanner_runs.id=748` last round), and `J-09-verify.png` renders `/data` with the
+live **"background compute running (1)"** badge and **2955 / 2441** — which equals the persisted payload as
+it stood at 10:13 local. Neither contradicts its status. I also confirmed the replays executed REAL work,
+from the database: `data_provider_runs` id=406 (19 trading of 28 calendar days, all already snapshotted),
+id=407 (0 of 2, both non-trading) and id=408 (283 dates over a >370-day span) — J-01's and J-03's goldens
+are not page-title matches. The hash that mattered: `UT-02/UT-03/UT-08-result.png` are **byte-identical**
+(md5 `c4f8110e…`) while the table cites three distinct paths (iter-61/e — fairly, they do share one 93 s
+observation window). TC-4's `TC-4-degrade-rendered-indicator-closeup.png` is only 1,172 bytes but is NOT a
+blank frame — I opened it and it shows a legible warning triangle and the word "Unavailable"; its control
+arm (`tc4-sample-link-unavailable.json`: armed 80 unavailable / 0 active, control 0 unavailable / 80 active
+at n=16452) means a disabled injector could not have passed as green.
+(8) **Anti-goals checked at the row and command level.** AG-9: all **25** ingest rows dated today are
+`provider='seed'`; the only non-seed rows since 2026-08-01 are id=297 and id=369, both pre-existing.
+AG-10: `git diff --stat` AND `git status --porcelain` over `config.yaml`, `scripts/` and
+`project-extensions/` are BOTH empty; `config.yaml:1363-1364` still reads 8192 / 2; the boot banner reads
+`memory_cap_mb=8192 malloc_arena_max=2` / `host-guard: cpu_list=0-15 blas_threads=8`. AG-7: scan CLEAN
+over a 3-file diff (one test file, two frontend files) with no manifest, lockfile or LICENSE.
+Rejected **REGRESSION (C.1)**: no journey moved `passing`/`already_passing` → `failing`; the deterministic
+lane returned 6/6; nothing meets the critical list. The one entry that had been the closest AG-3 candidate
+in this session (iter-60/a) is not merely minor — it is void.
+Rejected **STALLED (C.2)**: C.2 needs EVERY unblock path to be human-owned. The J-07 ceiling question is
+genuinely the owner's, and the `browser-qa-phase.sh` hoist needs owner sanction (build-system file). But
+replaying J-05's golden, recording the walkthrough, teaching the summary lanes to re-read their own
+artifacts, and making the one slow phase yield are all ordinary agent work.
+Rejected **GOAL_ACHIEVED (C.3)**: J-07 is `partial`, and `coherence.md` being PASS does not change that.
+Rejected **ESCALATE (C.4)**: none of its three clauses fires literally — no journey has status `failing`
+(the `partial` distinction is this session's own convention since iter-51); the review lane did NOT fail
+open (PASS_WITH_NOTES); and **this was not a lean iteration** (`depth-dispatched` = `full`). Manufacturing
+a clause match to buy a side effect is what the methodology forbids. I record the accepted risk in
+`assumptions.md`: this round again blew its wall-clock budget (rung-3b shed ux-regression), and the depth
+arbiter demoted the last full-requested round to lean on exactly that ground.
+**Chose CONTINUE (C.5):** limb 1 — one journey newly passing, coherence PASS, so no consolidation pass is
+mandated.
+**FIVE THINGS I STATE PLAINLY RATHER THAN ROUND AWAY:** (i) **an entire round was spent fixing a defect
+that was never there**, and the mistake was mine, made last round, by comparing a UTC database row to a
+local-time screenshot; the honest thing is to name it in the first line rather than let it stand.
+(ii) **The round was still worth having**: the ambient `/data` refresh is a real improvement, J-07 step 2
+is now backed by a raw log that reconciles under an independent recount, and the "Unavailable" indicator
+finally has a photograph with a control arm. (iii) **J-05 has been held open for at least two rounds on
+grounds that did not survive scrutiny** — the missing walkthrough (ruled a capture task at iter-60) and
+then a clock error — while its own product steps were all evidenced; it moves to passing today.
+(iv) **The verification machinery has now hidden this session's own work twice in a row from the same fix**,
+live on one path and dead on the other, and nobody would know without grepping the engine log by hand.
+(v) **The instruments are excellent and the summaries are still where truth is lost**: a drill that
+reconciles to the row, an auditor who root-caused a shell ordering bug — sitting under a QA report that
+says "Blockers: None" over a file that says BLOCKED, for the fourth round running.
+
+**Next-step recommendation:** FULL depth. Give the next round this order. (1) **Fix the one line of
+plumbing that keeps hiding this session's own results** — the test robot is told which journeys a round is
+about only after it has decided what to test (`scripts/automation/browser-qa-phase.sh`, line 286 needed at
+line 272). It has now swallowed two rounds. It needs the owner's go-ahead (build-system file), and a
+decision about cost: J-05's check script waits 40 minutes and consumes a reserved date per run.
+(2) **Run J-05's own check script for real** against the spare unused date, so the journey has a fresh
+machine-made pass rather than one carried over. (3) **Ask the owner the J-07 question a twelfth time and
+treat it as the only thing left** — nothing further can be measured. (4) **Record the walkthrough** for
+J-05 and J-07; it rides along and is never a round's own goal. (5) **Teach the summary lanes to re-read the
+file they summarise** — fourth consecutive round. (6) SMALL AND WRITTEN DOWN: one picture cited as three
+(iter-61/e); the health check advertises a "last run date" that is always empty (iter-61/g); the new
+refresh has no test protecting it (iter-61/h). (7) CARRIED, untouched: iter-29/b + the badge wording after
+a permanently failed warm-up (34th round unmade); iter-31/e; iter-32/f; iter-35/k; iter-36/n; iter-37/o;
+iter-37/q; iter-39/u; iter-46/az; iter-46/ba; iter-47/bd; iter-47/bf; iter-47/bi; iter-48/bj; iter-57/f;
+iter-57/l; iter-59/g; iter-59/h; iter-59/k. Deferred a TWENTY-SEVENTH time: iter-33/g, the Regime Lab.
+(8) **OWNER — one sentence now closes the last journey.** The app must answer its health check within 2
+seconds while a background job runs; that promise was written for a job of about 30 seconds and this
+round's job lasted 16 minutes 55 seconds. Of 1,078 checks every one answered, and exactly one took longer
+than 2 seconds (2.849 s, in the job's first few seconds). Please say which you want — keep the 2-second
+promise for long jobs (J-07 stays open until the app is faster), or apply it to short jobs only (J-07's
+last gap closes). Two facts worth knowing: the app served zero errors of any kind all day, and last
+round's reported defect turned out to be a clock-reading mistake, not a fault in the product.

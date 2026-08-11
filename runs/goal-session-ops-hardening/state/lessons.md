@@ -616,3 +616,30 @@ resulting persisted aggregate out of sqlite and compare it to whatever number th
 evidence frame.
 **Applies to:** any iteration that runs a live backfill/fetch/rebuild, or that touches
 `data_manager.compute_coverage` / `coverage_snapshot` / any ingest-maintained aggregate.
+
+## iter-61 — 2026-08-11T11:40:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** This repo stores naive **UTC** in sqlite (`data_provider_runs.started_at`,
+`coverage_snapshot.computed_at`) while the backend's structured log lines and all file mtimes are
+**local BST (UTC+1)** — so comparing a screenshot's mtime to a DB row's timestamp is off by an hour
+in the direction that manufactures "staleness". That is exactly what happened at iter-60: its
+`J-04`/`J-09` frames (mtime 07:47 local) were read as 48 minutes *after* a coverage write that
+actually landed at 07:58:55 local, and a whole iteration (61) was commissioned to fix a defect that
+never existed. Always pin the offset first against a job's own log marker (DB `started_at` 09:40:39
+vs `backend.log` "heavy-warm window OPEN" 10:40:41) before calling a displayed number stale.
+**Applies to:** any evaluation/audit that compares a UI screenshot or file mtime to a database
+timestamp; anything reading `data_provider_runs`, `scanner_runs.created_at`, `coverage_snapshot`.
+
+## iter-61 (2 of 2) — 2026-08-11T11:40:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** A shell-library fix can be correct, merged, and still dead on half its callers: iter-60's
+target-journey replay routing (`lib/replay-lane.sh:300-317`) works on the lean path because
+`goal-iter-lean.sh:204` assigns `TARGET_JOURNEYS` before calling the partition function, and is inert
+on the full path because `browser-qa-phase.sh:272` calls it 14 lines *before* `:286` assigns the same
+variable. Verify a lane fix on **every** caller (`grep -n "replay_lane_partition_and_verify" scripts/`),
+and confirm from the engine log's own line — its distinctive "Target journey … routed" message has never
+appeared once in this session.
+**Applies to:** any change to `scripts/automation/lib/*.sh` consumed by both `goal-iter-lean.sh` and
+`browser-qa-phase.sh`; any DoD item phrased as "the engine log lists X".
