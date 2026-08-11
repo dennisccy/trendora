@@ -811,3 +811,23 @@ blocking; and the distinction stays visible in the record either way.
 keep the flag on J-07, and would carry a J-07 walkthrough request into the next round. The practical
 difference is one passenger task.
 **Reversible:** yes — a later evaluator can restore the flag.
+
+## iter-64 — goal-decomposer
+
+**Ambiguity:** iter-63's next-step recommendation asked for two things that each, taken literally,
+imply their own real ingest job this round: (1) "re-run the same drill on unchanged code" (a fresh
+heavy-warm health-poll drill) to attribute the 1→53 latency-breach jump, and (2) prove the new J-05
+golden mechanism is "self-renewing" (the durable fix the session has wanted since iter-62). A literal
+reading runs a SEPARATE ~15-20 min control drill AND a second ~20 min live J-05 replay in the same
+lean round, on top of the one live ingest a lean iteration already carries by default (J-05's own
+replay) — while the owner's cost-sanction question on the replay lane's real ingest is still open and
+unanswered for multiple rounds.
+**We chose:** (a) piggyback the attribution drill on J-05's own mandatory live backfill rather than
+running a second heavy job — the health-poll measurement covers the SAME finalize-tail heavy-warm
+window either way, and no product code (`data_manager.py`/`research.py`) changes this iteration, so
+"unchanged code" still holds; (b) prove the sentinel resolver's self-renewal property at the unit
+level (a throwaway-fixture test) instead of a second live 20-minute browser replay in this same round
+— the live proof rides on iteration 65's own natural J-05 replay instead.
+**Reversible:** yes — a later evaluator or iteration can add a genuinely separate control drill, or a
+second live self-renewal replay, if the piggybacked/unit-level evidence turns out to be insufficient;
+nothing here is destructive or hard to redo.
