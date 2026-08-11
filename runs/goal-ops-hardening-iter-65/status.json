@@ -1,0 +1,16 @@
+{
+  "phase": "goal-ops-hardening-iter-65",
+  "status": "in_progress",
+  "current_step": "dev_complete",
+  "updated_at": "2026-08-11T21:48:00Z",
+  "cli": "claude",
+  "blockers": [],
+  "changed_files": [
+    "reports/perf-budgets.md",
+    "docs/handoffs/goal-ops-hardening-iter-65-dev.md",
+    "runs/goal-ops-hardening-iter-65/evidence-drill/"
+  ],
+  "tests_run": true,
+  "browser_checks_run": false,
+  "next_action": "review"
+}

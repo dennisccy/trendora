@@ -1,0 +1,4505 @@
+{
+  "summary": {
+    "total_elapsed_s": 567.83,
+    "worker_result": {
+      "elapsed_s": 566.09,
+      "sum_n_total": 70201933,
+      "n_factors": 11
+    },
+    "health_polls_total": 561,
+    "health_polls_breach_gt_2s": 0,
+    "health_polls_error": 0,
+    "worst_health_elapsed_s": 1.272,
+    "breaches_by_worker_innermost_app_frame": []
+  },
+  "health_polls": [
+    {
+      "poll_id": 1,
+      "t": 78577.071,
+      "elapsed_s": 0.199,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 2,
+      "t": 78578.071,
+      "elapsed_s": 0.005,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 3,
+      "t": 78579.077,
+      "elapsed_s": 0.097,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 4,
+      "t": 78580.082,
+      "elapsed_s": 0.169,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 5,
+      "t": 78581.087,
+      "elapsed_s": 0.115,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 6,
+      "t": 78582.087,
+      "elapsed_s": 0.006,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 7,
+      "t": 78583.092,
+      "elapsed_s": 0.144,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 8,
+      "t": 78584.098,
+      "elapsed_s": 0.119,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 9,
+      "t": 78585.103,
+      "elapsed_s": 0.051,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 10,
+      "t": 78586.103,
+      "elapsed_s": 0.005,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 11,
+      "t": 78587.108,
+      "elapsed_s": 0.244,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 12,
+      "t": 78588.108,
+      "elapsed_s": 0.006,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 13,
+      "t": 78589.114,
+      "elapsed_s": 0.063,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 14,
+      "t": 78590.119,
+      "elapsed_s": 0.021,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 15,
+      "t": 78591.124,
+      "elapsed_s": 0.257,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 16,
+      "t": 78592.129,
+      "elapsed_s": 0.214,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 17,
+      "t": 78593.134,
+      "elapsed_s": 0.116,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 18,
+      "t": 78594.14,
+      "elapsed_s": 0.07,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 19,
+      "t": 78595.145,
+      "elapsed_s": 0.021,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 20,
+      "t": 78596.159,
+      "elapsed_s": 0.014,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 21,
+      "t": 78597.165,
+      "elapsed_s": 0.008,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 22,
+      "t": 78598.17,
+      "elapsed_s": 0.263,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 23,
+      "t": 78599.175,
+      "elapsed_s": 0.203,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 24,
+      "t": 78600.18,
+      "elapsed_s": 0.138,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 25,
+      "t": 78601.185,
+      "elapsed_s": 0.05,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 26,
+      "t": 78602.186,
+      "elapsed_s": 0.006,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 27,
+      "t": 78603.191,
+      "elapsed_s": 0.259,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 28,
+      "t": 78604.192,
+      "elapsed_s": 0.005,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 29,
+      "t": 78605.197,
+      "elapsed_s": 0.078,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 30,
+      "t": 78606.221,
+      "elapsed_s": 0.296,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 31,
+      "t": 78607.226,
+      "elapsed_s": 0.201,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 32,
+      "t": 78608.231,
+      "elapsed_s": 0.098,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 33,
+      "t": 78609.237,
+      "elapsed_s": 0.138,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 34,
+      "t": 78610.242,
+      "elapsed_s": 0.089,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 35,
+      "t": 78611.247,
+      "elapsed_s": 0.018,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 36,
+      "t": 78612.252,
+      "elapsed_s": 0.258,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 37,
+      "t": 78613.258,
+      "elapsed_s": 0.194,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 38,
+      "t": 78614.263,
+      "elapsed_s": 0.139,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 39,
+      "t": 78615.268,
+      "elapsed_s": 0.053,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 40,
+      "t": 78616.268,
+      "elapsed_s": 0.006,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 41,
+      "t": 78617.286,
+      "elapsed_s": 0.016,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 42,
+      "t": 78618.291,
+      "elapsed_s": 0.112,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 43,
+      "t": 78619.297,
+      "elapsed_s": 0.081,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 44,
+      "t": 78620.302,
+      "elapsed_s": 0.039,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 45,
+      "t": 78621.307,
+      "elapsed_s": 0.29,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 46,
+      "t": 78622.312,
+      "elapsed_s": 0.197,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 47,
+      "t": 78623.317,
+      "elapsed_s": 0.167,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 48,
+      "t": 78624.323,
+      "elapsed_s": 0.137,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 49,
+      "t": 78625.328,
+      "elapsed_s": 0.078,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 50,
+      "t": 78626.329,
+      "elapsed_s": 0.009,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 51,
+      "t": 78627.335,
+      "elapsed_s": 0.09,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 52,
+      "t": 78628.34,
+      "elapsed_s": 0.065,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 53,
+      "t": 78629.37,
+      "elapsed_s": 0.297,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 54,
+      "t": 78630.376,
+      "elapsed_s": 0.234,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 55,
+      "t": 78631.381,
+      "elapsed_s": 0.261,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 56,
+      "t": 78632.386,
+      "elapsed_s": 0.251,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 57,
+      "t": 78633.391,
+      "elapsed_s": 0.198,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 58,
+      "t": 78634.396,
+      "elapsed_s": 0.18,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 59,
+      "t": 78635.405,
+      "elapsed_s": 0.014,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 60,
+      "t": 78636.41,
+      "elapsed_s": 0.009,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 61,
+      "t": 78637.416,
+      "elapsed_s": 0.247,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 62,
+      "t": 78638.421,
+      "elapsed_s": 0.161,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 63,
+      "t": 78639.426,
+      "elapsed_s": 0.102,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 64,
+      "t": 78640.431,
+      "elapsed_s": 0.041,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 65,
+      "t": 78641.437,
+      "elapsed_s": 0.273,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 66,
+      "t": 78642.442,
+      "elapsed_s": 0.259,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 67,
+      "t": 78643.447,
+      "elapsed_s": 0.173,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 68,
+      "t": 78644.452,
+      "elapsed_s": 0.12,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 69,
+      "t": 78645.457,
+      "elapsed_s": 0.027,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 70,
+      "t": 78646.463,
+      "elapsed_s": 0.264,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 71,
+      "t": 78647.468,
+      "elapsed_s": 0.195,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 72,
+      "t": 78648.473,
+      "elapsed_s": 0.129,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 73,
+      "t": 78649.478,
+      "elapsed_s": 0.033,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 74,
+      "t": 78650.479,
+      "elapsed_s": 0.005,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 75,
+      "t": 78651.484,
+      "elapsed_s": 0.247,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 76,
+      "t": 78652.49,
+      "elapsed_s": 0.295,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 77,
+      "t": 78653.513,
+      "elapsed_s": 0.301,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 78,
+      "t": 78654.519,
+      "elapsed_s": 0.244,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 79,
+      "t": 78655.524,
+      "elapsed_s": 0.219,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 80,
+      "t": 78656.529,
+      "elapsed_s": 0.178,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 81,
+      "t": 78657.534,
+      "elapsed_s": 0.091,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 82,
+      "t": 78658.539,
+      "elapsed_s": 0.202,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 83,
+      "t": 78659.545,
+      "elapsed_s": 0.097,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 84,
+      "t": 78660.55,
+      "elapsed_s": 0.04,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 85,
+      "t": 78661.555,
+      "elapsed_s": 0.278,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 86,
+      "t": 78662.56,
+      "elapsed_s": 0.202,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 87,
+      "t": 78663.566,
+      "elapsed_s": 0.17,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 88,
+      "t": 78664.571,
+      "elapsed_s": 0.134,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 89,
+      "t": 78665.592,
+      "elapsed_s": 0.011,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 90,
+      "t": 78666.592,
+      "elapsed_s": 0.006,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 91,
+      "t": 78667.597,
+      "elapsed_s": 0.269,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 92,
+      "t": 78668.602,
+      "elapsed_s": 0.175,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 93,
+      "t": 78669.608,
+      "elapsed_s": 0.145,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 94,
+      "t": 78670.613,
+      "elapsed_s": 0.105,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 95,
+      "t": 78671.618,
+      "elapsed_s": 0.018,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 96,
+      "t": 78672.623,
+      "elapsed_s": 0.201,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 97,
+      "t": 78673.629,
+      "elapsed_s": 0.101,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 98,
+      "t": 78674.634,
+      "elapsed_s": 0.034,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 99,
+      "t": 78675.639,
+      "elapsed_s": 0.285,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 100,
+      "t": 78676.644,
+      "elapsed_s": 0.2,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 101,
+      "t": 78677.664,
+      "elapsed_s": 0.007,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 102,
+      "t": 78678.669,
+      "elapsed_s": 0.051,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 103,
+      "t": 78679.674,
+      "elapsed_s": 0.254,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 104,
+      "t": 78680.679,
+      "elapsed_s": 0.194,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 105,
+      "t": 78681.685,
+      "elapsed_s": 0.147,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 106,
+      "t": 78682.69,
+      "elapsed_s": 0.062,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 107,
+      "t": 78683.69,
+      "elapsed_s": 0.007,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 108,
+      "t": 78684.695,
+      "elapsed_s": 0.142,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 109,
+      "t": 78685.701,
+      "elapsed_s": 0.104,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 110,
+      "t": 78686.706,
+      "elapsed_s": 0.006,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 111,
+      "t": 78687.711,
+      "elapsed_s": 0.259,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 112,
+      "t": 78688.716,
+      "elapsed_s": 0.21,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 113,
+      "t": 78689.721,
+      "elapsed_s": 0.125,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 114,
+      "t": 78690.727,
+      "elapsed_s": 0.065,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 115,
+      "t": 78691.727,
+      "elapsed_s": 0.011,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 116,
+      "t": 78692.732,
+      "elapsed_s": 0.015,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 117,
+      "t": 78693.737,
+      "elapsed_s": 0.279,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 118,
+      "t": 78694.742,
+      "elapsed_s": 0.232,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 119,
+      "t": 78695.747,
+      "elapsed_s": 0.18,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 120,
+      "t": 78696.752,
+      "elapsed_s": 0.094,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 121,
+      "t": 78697.758,
+      "elapsed_s": 0.059,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 122,
+      "t": 78698.763,
+      "elapsed_s": 0.023,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 123,
+      "t": 78699.791,
+      "elapsed_s": 0.01,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 124,
+      "t": 78700.796,
+      "elapsed_s": 0.006,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 125,
+      "t": 78701.801,
+      "elapsed_s": 0.281,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 126,
+      "t": 78702.806,
+      "elapsed_s": 0.189,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 127,
+      "t": 78703.811,
+      "elapsed_s": 0.122,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 128,
+      "t": 78704.817,
+      "elapsed_s": 0.079,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 129,
+      "t": 78705.817,
+      "elapsed_s": 0.007,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 130,
+      "t": 78706.822,
+      "elapsed_s": 0.26,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 131,
+      "t": 78707.823,
+      "elapsed_s": 0.051,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 132,
+      "t": 78708.827,
+      "elapsed_s": 0.006,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 133,
+      "t": 78709.832,
+      "elapsed_s": 0.201,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 134,
+      "t": 78710.837,
+      "elapsed_s": 0.151,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 135,
+      "t": 78711.842,
+      "elapsed_s": 0.113,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 136,
+      "t": 78712.847,
+      "elapsed_s": 0.068,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 137,
+      "t": 78713.853,
+      "elapsed_s": 0.116,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 138,
+      "t": 78714.883,
+      "elapsed_s": 0.007,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 139,
+      "t": 78715.888,
+      "elapsed_s": 0.303,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 140,
+      "t": 78716.893,
+      "elapsed_s": 0.254,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 141,
+      "t": 78717.899,
+      "elapsed_s": 0.159,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 142,
+      "t": 78718.904,
+      "elapsed_s": 0.116,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 143,
+      "t": 78719.909,
+      "elapsed_s": 0.063,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 144,
+      "t": 78720.909,
+      "elapsed_s": 0.007,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 145,
+      "t": 78721.914,
+      "elapsed_s": 0.145,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 146,
+      "t": 78722.919,
+      "elapsed_s": 0.058,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 147,
+      "t": 78723.925,
+      "elapsed_s": 0.01,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 148,
+      "t": 78724.93,
+      "elapsed_s": 0.256,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 149,
+      "t": 78725.935,
+      "elapsed_s": 0.211,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 150,
+      "t": 78726.94,
+      "elapsed_s": 0.12,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 151,
+      "t": 78727.945,
+      "elapsed_s": 0.082,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 152,
+      "t": 78728.951,
+      "elapsed_s": 0.035,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 153,
+      "t": 78729.953,
+      "elapsed_s": 0.056,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 154,
+      "t": 78731.018,
+      "elapsed_s": 0.299,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 155,
+      "t": 78732.023,
+      "elapsed_s": 0.21,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 156,
+      "t": 78733.028,
+      "elapsed_s": 0.16,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 157,
+      "t": 78734.033,
+      "elapsed_s": 0.091,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 158,
+      "t": 78735.038,
+      "elapsed_s": 0.12,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 159,
+      "t": 78736.044,
+      "elapsed_s": 0.12,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 160,
+      "t": 78737.049,
+      "elapsed_s": 0.046,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 161,
+      "t": 78738.05,
+      "elapsed_s": 0.007,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 162,
+      "t": 78739.055,
+      "elapsed_s": 0.082,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 163,
+      "t": 78740.055,
+      "elapsed_s": 0.006,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 164,
+      "t": 78741.061,
+      "elapsed_s": 0.245,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 165,
+      "t": 78742.066,
+      "elapsed_s": 0.226,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 166,
+      "t": 78743.071,
+      "elapsed_s": 0.157,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 167,
+      "t": 78744.076,
+      "elapsed_s": 0.133,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 168,
+      "t": 78745.082,
+      "elapsed_s": 0.122,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 169,
+      "t": 78746.087,
+      "elapsed_s": 0.099,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 170,
+      "t": 78747.087,
+      "elapsed_s": 0.007,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 171,
+      "t": 78748.087,
+      "elapsed_s": 0.006,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 172,
+      "t": 78749.092,
+      "elapsed_s": 0.211,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 173,
+      "t": 78750.097,
+      "elapsed_s": 0.156,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 174,
+      "t": 78751.103,
+      "elapsed_s": 0.093,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 175,
+      "t": 78752.108,
+      "elapsed_s": 0.046,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 176,
+      "t": 78753.113,
+      "elapsed_s": 0.038,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 177,
+      "t": 78754.114,
+      "elapsed_s": 0.007,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 178,
+      "t": 78755.119,
+      "elapsed_s": 0.251,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 179,
+      "t": 78756.17,
+      "elapsed_s": 0.016,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 180,
+      "t": 78757.175,
+      "elapsed_s": 0.01,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 181,
+      "t": 78758.181,
+      "elapsed_s": 0.216,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 182,
+      "t": 78759.186,
+      "elapsed_s": 0.277,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 183,
+      "t": 78760.191,
+      "elapsed_s": 0.291,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 184,
+      "t": 78761.196,
+      "elapsed_s": 0.225,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 185,
+      "t": 78762.201,
+      "elapsed_s": 0.169,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 186,
+      "t": 78763.207,
+      "elapsed_s": 0.111,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 187,
+      "t": 78764.212,
+      "elapsed_s": 0.027,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 188,
+      "t": 78765.265,
+      "elapsed_s": 0.031,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 189,
+      "t": 78766.27,
+      "elapsed_s": 0.148,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 190,
+      "t": 78767.275,
+      "elapsed_s": 0.12,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 191,
+      "t": 78768.28,
+      "elapsed_s": 0.131,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 192,
+      "t": 78769.285,
+      "elapsed_s": 0.131,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 193,
+      "t": 78770.29,
+      "elapsed_s": 0.106,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 194,
+      "t": 78771.296,
+      "elapsed_s": 0.074,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 195,
+      "t": 78772.301,
+      "elapsed_s": 0.288,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 196,
+      "t": 78773.306,
+      "elapsed_s": 0.223,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 197,
+      "t": 78774.306,
+      "elapsed_s": 0.007,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 198,
+      "t": 78775.311,
+      "elapsed_s": 0.162,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 199,
+      "t": 78776.317,
+      "elapsed_s": 0.117,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 200,
+      "t": 78777.322,
+      "elapsed_s": 0.045,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 201,
+      "t": 78778.322,
+      "elapsed_s": 0.005,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 202,
+      "t": 78779.327,
+      "elapsed_s": 0.287,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 203,
+      "t": 78780.332,
+      "elapsed_s": 0.286,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 204,
+      "t": 78781.338,
+      "elapsed_s": 0.267,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 205,
+      "t": 78782.343,
+      "elapsed_s": 0.279,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 206,
+      "t": 78783.344,
+      "elapsed_s": 0.006,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 207,
+      "t": 78784.349,
+      "elapsed_s": 0.098,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 208,
+      "t": 78785.354,
+      "elapsed_s": 0.078,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 209,
+      "t": 78786.359,
+      "elapsed_s": 0.063,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 210,
+      "t": 78787.364,
+      "elapsed_s": 0.022,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 211,
+      "t": 78788.369,
+      "elapsed_s": 0.26,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 212,
+      "t": 78789.375,
+      "elapsed_s": 0.176,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 213,
+      "t": 78790.38,
+      "elapsed_s": 0.139,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 214,
+      "t": 78791.385,
+      "elapsed_s": 0.09,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 215,
+      "t": 78792.39,
+      "elapsed_s": 0.005,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 216,
+      "t": 78793.39,
+      "elapsed_s": 0.358,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 217,
+      "t": 78794.395,
+      "elapsed_s": 0.28,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 218,
+      "t": 78795.401,
+      "elapsed_s": 0.241,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 219,
+      "t": 78796.406,
+      "elapsed_s": 0.185,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 220,
+      "t": 78797.411,
+      "elapsed_s": 0.097,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 221,
+      "t": 78798.416,
+      "elapsed_s": 0.081,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 222,
+      "t": 78799.421,
+      "elapsed_s": 0.123,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 223,
+      "t": 78800.427,
+      "elapsed_s": 0.204,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 224,
+      "t": 78801.432,
+      "elapsed_s": 0.126,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 225,
+      "t": 78802.437,
+      "elapsed_s": 0.078,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 226,
+      "t": 78803.446,
+      "elapsed_s": 0.156,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 227,
+      "t": 78804.451,
+      "elapsed_s": 0.414,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 228,
+      "t": 78805.457,
+      "elapsed_s": 0.865,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 229,
+      "t": 78806.462,
+      "elapsed_s": 0.881,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 230,
+      "t": 78807.468,
+      "elapsed_s": 0.425,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 231,
+      "t": 78808.483,
+      "elapsed_s": 0.339,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 232,
+      "t": 78809.489,
+      "elapsed_s": 1.066,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 233,
+      "t": 78810.554,
+      "elapsed_s": 0.761,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 234,
+      "t": 78811.559,
+      "elapsed_s": 0.584,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 235,
+      "t": 78812.565,
+      "elapsed_s": 0.66,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 236,
+      "t": 78813.59,
+      "elapsed_s": 0.888,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 237,
+      "t": 78814.595,
+      "elapsed_s": 1.055,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 238,
+      "t": 78815.65,
+      "elapsed_s": 0.868,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 239,
+      "t": 78816.656,
+      "elapsed_s": 0.81,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 240,
+      "t": 78817.664,
+      "elapsed_s": 0.138,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 241,
+      "t": 78818.671,
+      "elapsed_s": 0.303,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 242,
+      "t": 78819.676,
+      "elapsed_s": 1.213,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 243,
+      "t": 78820.89,
+      "elapsed_s": 1.15,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 244,
+      "t": 78822.04,
+      "elapsed_s": 0.504,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 245,
+      "t": 78823.045,
+      "elapsed_s": 0.742,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 246,
+      "t": 78824.05,
+      "elapsed_s": 0.899,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 247,
+      "t": 78825.056,
+      "elapsed_s": 0.848,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 248,
+      "t": 78826.061,
+      "elapsed_s": 0.721,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 249,
+      "t": 78827.066,
+      "elapsed_s": 0.567,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 250,
+      "t": 78828.071,
+      "elapsed_s": 0.94,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 251,
+      "t": 78829.076,
+      "elapsed_s": 1.114,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 252,
+      "t": 78830.191,
+      "elapsed_s": 0.6,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 253,
+      "t": 78831.196,
+      "elapsed_s": 0.303,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 254,
+      "t": 78832.201,
+      "elapsed_s": 0.442,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 255,
+      "t": 78833.206,
+      "elapsed_s": 0.711,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 256,
+      "t": 78834.211,
+      "elapsed_s": 0.749,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 257,
+      "t": 78835.217,
+      "elapsed_s": 0.663,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 258,
+      "t": 78836.222,
+      "elapsed_s": 0.427,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 259,
+      "t": 78837.227,
+      "elapsed_s": 0.53,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 260,
+      "t": 78838.232,
+      "elapsed_s": 0.753,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 261,
+      "t": 78839.237,
+      "elapsed_s": 0.951,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 262,
+      "t": 78840.243,
+      "elapsed_s": 0.855,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 263,
+      "t": 78841.248,
+      "elapsed_s": 0.696,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 264,
+      "t": 78842.258,
+      "elapsed_s": 0.849,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 265,
+      "t": 78843.263,
+      "elapsed_s": 0.392,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 266,
+      "t": 78844.269,
+      "elapsed_s": 0.464,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 267,
+      "t": 78845.274,
+      "elapsed_s": 0.825,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 268,
+      "t": 78846.279,
+      "elapsed_s": 0.736,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 269,
+      "t": 78847.284,
+      "elapsed_s": 0.072,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 270,
+      "t": 78848.29,
+      "elapsed_s": 0.254,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 271,
+      "t": 78849.295,
+      "elapsed_s": 0.747,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 272,
+      "t": 78850.3,
+      "elapsed_s": 0.892,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 273,
+      "t": 78851.306,
+      "elapsed_s": 1.24,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 274,
+      "t": 78852.545,
+      "elapsed_s": 0.409,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 275,
+      "t": 78853.551,
+      "elapsed_s": 0.47,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 276,
+      "t": 78854.556,
+      "elapsed_s": 0.219,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 277,
+      "t": 78855.561,
+      "elapsed_s": 0.394,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 278,
+      "t": 78856.566,
+      "elapsed_s": 0.974,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 279,
+      "t": 78857.571,
+      "elapsed_s": 0.137,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 280,
+      "t": 78858.577,
+      "elapsed_s": 0.533,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 281,
+      "t": 78859.582,
+      "elapsed_s": 1.194,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 282,
+      "t": 78860.776,
+      "elapsed_s": 0.818,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 283,
+      "t": 78861.781,
+      "elapsed_s": 0.906,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 284,
+      "t": 78862.786,
+      "elapsed_s": 0.252,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 285,
+      "t": 78863.791,
+      "elapsed_s": 0.496,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 286,
+      "t": 78864.796,
+      "elapsed_s": 0.629,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 287,
+      "t": 78865.802,
+      "elapsed_s": 0.8,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 288,
+      "t": 78866.807,
+      "elapsed_s": 0.769,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 289,
+      "t": 78867.812,
+      "elapsed_s": 0.102,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 290,
+      "t": 78868.817,
+      "elapsed_s": 0.686,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 291,
+      "t": 78869.824,
+      "elapsed_s": 0.566,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 292,
+      "t": 78870.829,
+      "elapsed_s": 1.232,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 293,
+      "t": 78872.061,
+      "elapsed_s": 0.98,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 294,
+      "t": 78873.066,
+      "elapsed_s": 0.927,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 295,
+      "t": 78874.071,
+      "elapsed_s": 0.39,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 296,
+      "t": 78875.079,
+      "elapsed_s": 0.426,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 297,
+      "t": 78876.084,
+      "elapsed_s": 0.867,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 298,
+      "t": 78877.089,
+      "elapsed_s": 0.927,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 299,
+      "t": 78878.094,
+      "elapsed_s": 0.843,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 300,
+      "t": 78879.099,
+      "elapsed_s": 0.36,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 301,
+      "t": 78880.105,
+      "elapsed_s": 0.177,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 302,
+      "t": 78881.11,
+      "elapsed_s": 0.666,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 303,
+      "t": 78882.115,
+      "elapsed_s": 0.549,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 304,
+      "t": 78883.12,
+      "elapsed_s": 0.75,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 305,
+      "t": 78884.125,
+      "elapsed_s": 0.764,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 306,
+      "t": 78885.126,
+      "elapsed_s": 0.239,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 307,
+      "t": 78886.131,
+      "elapsed_s": 0.973,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 308,
+      "t": 78887.143,
+      "elapsed_s": 0.278,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 309,
+      "t": 78888.148,
+      "elapsed_s": 1.057,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 310,
+      "t": 78889.205,
+      "elapsed_s": 0.954,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 311,
+      "t": 78890.207,
+      "elapsed_s": 0.997,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 312,
+      "t": 78891.232,
+      "elapsed_s": 0.462,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 313,
+      "t": 78892.238,
+      "elapsed_s": 0.8,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 314,
+      "t": 78893.243,
+      "elapsed_s": 0.853,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 315,
+      "t": 78894.248,
+      "elapsed_s": 0.784,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 316,
+      "t": 78895.253,
+      "elapsed_s": 0.186,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 317,
+      "t": 78896.258,
+      "elapsed_s": 0.275,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 318,
+      "t": 78897.263,
+      "elapsed_s": 0.879,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 319,
+      "t": 78898.269,
+      "elapsed_s": 0.808,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 320,
+      "t": 78899.274,
+      "elapsed_s": 0.946,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 321,
+      "t": 78900.279,
+      "elapsed_s": 0.62,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 322,
+      "t": 78901.282,
+      "elapsed_s": 0.785,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 323,
+      "t": 78902.295,
+      "elapsed_s": 0.555,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 324,
+      "t": 78903.301,
+      "elapsed_s": 0.763,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 325,
+      "t": 78904.306,
+      "elapsed_s": 1.007,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 326,
+      "t": 78905.313,
+      "elapsed_s": 1.002,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 327,
+      "t": 78906.315,
+      "elapsed_s": 0.348,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 328,
+      "t": 78907.32,
+      "elapsed_s": 0.563,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 329,
+      "t": 78908.332,
+      "elapsed_s": 0.502,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 330,
+      "t": 78909.337,
+      "elapsed_s": 1.189,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 331,
+      "t": 78910.527,
+      "elapsed_s": 1.034,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 332,
+      "t": 78911.561,
+      "elapsed_s": 0.762,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 333,
+      "t": 78912.577,
+      "elapsed_s": 0.891,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 334,
+      "t": 78913.582,
+      "elapsed_s": 0.483,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 335,
+      "t": 78914.587,
+      "elapsed_s": 0.851,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 336,
+      "t": 78915.592,
+      "elapsed_s": 0.969,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 337,
+      "t": 78916.597,
+      "elapsed_s": 0.675,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 338,
+      "t": 78917.602,
+      "elapsed_s": 0.417,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 339,
+      "t": 78918.607,
+      "elapsed_s": 0.95,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 340,
+      "t": 78919.651,
+      "elapsed_s": 0.271,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 341,
+      "t": 78920.656,
+      "elapsed_s": 1.021,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 342,
+      "t": 78921.677,
+      "elapsed_s": 1.012,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 343,
+      "t": 78922.688,
+      "elapsed_s": 0.18,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 344,
+      "t": 78923.694,
+      "elapsed_s": 0.335,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 345,
+      "t": 78924.699,
+      "elapsed_s": 0.774,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 346,
+      "t": 78925.704,
+      "elapsed_s": 0.885,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 347,
+      "t": 78926.709,
+      "elapsed_s": 0.728,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 348,
+      "t": 78927.714,
+      "elapsed_s": 0.326,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 349,
+      "t": 78928.719,
+      "elapsed_s": 0.73,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 350,
+      "t": 78929.749,
+      "elapsed_s": 0.453,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 351,
+      "t": 78930.754,
+      "elapsed_s": 0.617,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 352,
+      "t": 78931.759,
+      "elapsed_s": 0.92,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 353,
+      "t": 78932.764,
+      "elapsed_s": 0.87,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 354,
+      "t": 78933.765,
+      "elapsed_s": 0.392,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 355,
+      "t": 78934.772,
+      "elapsed_s": 0.224,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 356,
+      "t": 78935.777,
+      "elapsed_s": 0.537,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 357,
+      "t": 78936.782,
+      "elapsed_s": 0.856,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 358,
+      "t": 78937.787,
+      "elapsed_s": 0.889,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 359,
+      "t": 78938.793,
+      "elapsed_s": 0.325,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 360,
+      "t": 78939.798,
+      "elapsed_s": 0.452,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 361,
+      "t": 78940.803,
+      "elapsed_s": 0.941,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 362,
+      "t": 78941.808,
+      "elapsed_s": 0.761,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 363,
+      "t": 78942.813,
+      "elapsed_s": 0.95,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 364,
+      "t": 78943.819,
+      "elapsed_s": 0.768,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 365,
+      "t": 78944.819,
+      "elapsed_s": 0.945,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 366,
+      "t": 78945.836,
+      "elapsed_s": 0.799,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 367,
+      "t": 78946.842,
+      "elapsed_s": 0.995,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 368,
+      "t": 78947.847,
+      "elapsed_s": 0.903,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 369,
+      "t": 78948.852,
+      "elapsed_s": 0.955,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 370,
+      "t": 78949.858,
+      "elapsed_s": 0.779,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 371,
+      "t": 78950.863,
+      "elapsed_s": 0.811,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 372,
+      "t": 78951.866,
+      "elapsed_s": 0.187,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 373,
+      "t": 78952.872,
+      "elapsed_s": 0.946,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 374,
+      "t": 78953.877,
+      "elapsed_s": 0.726,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 375,
+      "t": 78954.888,
+      "elapsed_s": 0.666,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 376,
+      "t": 78955.894,
+      "elapsed_s": 0.384,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 377,
+      "t": 78956.899,
+      "elapsed_s": 0.905,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 378,
+      "t": 78957.904,
+      "elapsed_s": 0.72,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 379,
+      "t": 78958.909,
+      "elapsed_s": 0.846,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 380,
+      "t": 78959.915,
+      "elapsed_s": 0.228,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 381,
+      "t": 78960.92,
+      "elapsed_s": 0.435,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 382,
+      "t": 78961.925,
+      "elapsed_s": 0.92,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 383,
+      "t": 78962.93,
+      "elapsed_s": 0.796,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 384,
+      "t": 78963.935,
+      "elapsed_s": 0.498,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 385,
+      "t": 78964.94,
+      "elapsed_s": 0.328,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 386,
+      "t": 78965.946,
+      "elapsed_s": 0.425,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 387,
+      "t": 78966.951,
+      "elapsed_s": 0.659,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 388,
+      "t": 78967.956,
+      "elapsed_s": 0.493,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 389,
+      "t": 78968.961,
+      "elapsed_s": 1.144,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 390,
+      "t": 78970.106,
+      "elapsed_s": 0.29,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 391,
+      "t": 78971.111,
+      "elapsed_s": 0.393,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 392,
+      "t": 78972.116,
+      "elapsed_s": 0.771,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 393,
+      "t": 78973.121,
+      "elapsed_s": 0.588,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 394,
+      "t": 78974.126,
+      "elapsed_s": 0.982,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 395,
+      "t": 78975.131,
+      "elapsed_s": 0.438,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 396,
+      "t": 78976.137,
+      "elapsed_s": 0.475,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 397,
+      "t": 78977.142,
+      "elapsed_s": 0.914,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 398,
+      "t": 78978.147,
+      "elapsed_s": 0.817,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 399,
+      "t": 78979.152,
+      "elapsed_s": 0.632,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 400,
+      "t": 78980.158,
+      "elapsed_s": 0.596,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 401,
+      "t": 78981.163,
+      "elapsed_s": 0.712,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 402,
+      "t": 78982.168,
+      "elapsed_s": 0.298,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 403,
+      "t": 78983.173,
+      "elapsed_s": 0.892,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 404,
+      "t": 78984.194,
+      "elapsed_s": 0.595,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 405,
+      "t": 78985.199,
+      "elapsed_s": 0.356,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 406,
+      "t": 78986.204,
+      "elapsed_s": 0.46,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 407,
+      "t": 78987.21,
+      "elapsed_s": 0.791,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 408,
+      "t": 78988.215,
+      "elapsed_s": 0.848,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 409,
+      "t": 78989.22,
+      "elapsed_s": 1.272,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 410,
+      "t": 78990.492,
+      "elapsed_s": 0.341,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 411,
+      "t": 78991.509,
+      "elapsed_s": 0.248,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 412,
+      "t": 78992.514,
+      "elapsed_s": 1.044,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 413,
+      "t": 78993.558,
+      "elapsed_s": 0.927,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 414,
+      "t": 78994.563,
+      "elapsed_s": 0.68,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 415,
+      "t": 78995.568,
+      "elapsed_s": 0.369,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 416,
+      "t": 78996.574,
+      "elapsed_s": 0.324,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 417,
+      "t": 78997.579,
+      "elapsed_s": 0.918,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 418,
+      "t": 78998.584,
+      "elapsed_s": 0.667,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 419,
+      "t": 78999.589,
+      "elapsed_s": 0.822,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 420,
+      "t": 79000.594,
+      "elapsed_s": 0.286,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 421,
+      "t": 79001.6,
+      "elapsed_s": 0.437,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 422,
+      "t": 79002.605,
+      "elapsed_s": 0.945,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 423,
+      "t": 79003.61,
+      "elapsed_s": 0.984,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 424,
+      "t": 79004.615,
+      "elapsed_s": 0.78,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 425,
+      "t": 79005.62,
+      "elapsed_s": 0.404,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 426,
+      "t": 79006.625,
+      "elapsed_s": 0.448,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 427,
+      "t": 79007.631,
+      "elapsed_s": 0.818,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 428,
+      "t": 79008.636,
+      "elapsed_s": 0.993,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 429,
+      "t": 79009.641,
+      "elapsed_s": 0.795,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 430,
+      "t": 79010.646,
+      "elapsed_s": 0.8,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 431,
+      "t": 79011.648,
+      "elapsed_s": 1.003,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 432,
+      "t": 79012.651,
+      "elapsed_s": 0.598,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 433,
+      "t": 79013.656,
+      "elapsed_s": 0.752,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 434,
+      "t": 79014.661,
+      "elapsed_s": 0.016,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 435,
+      "t": 79015.666,
+      "elapsed_s": 0.487,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 436,
+      "t": 79016.672,
+      "elapsed_s": 0.61,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 437,
+      "t": 79017.677,
+      "elapsed_s": 0.94,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 438,
+      "t": 79018.682,
+      "elapsed_s": 0.683,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 439,
+      "t": 79019.687,
+      "elapsed_s": 0.927,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 440,
+      "t": 79020.692,
+      "elapsed_s": 0.563,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 441,
+      "t": 79021.698,
+      "elapsed_s": 0.573,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 442,
+      "t": 79022.7,
+      "elapsed_s": 0.53,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 443,
+      "t": 79023.705,
+      "elapsed_s": 0.852,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 444,
+      "t": 79024.711,
+      "elapsed_s": 0.807,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 445,
+      "t": 79025.716,
+      "elapsed_s": 0.712,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 446,
+      "t": 79026.716,
+      "elapsed_s": 0.779,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 447,
+      "t": 79027.729,
+      "elapsed_s": 0.461,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 448,
+      "t": 79028.735,
+      "elapsed_s": 0.838,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 449,
+      "t": 79029.74,
+      "elapsed_s": 0.804,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 450,
+      "t": 79030.745,
+      "elapsed_s": 0.556,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 451,
+      "t": 79031.756,
+      "elapsed_s": 0.752,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 452,
+      "t": 79032.771,
+      "elapsed_s": 0.3,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 453,
+      "t": 79033.776,
+      "elapsed_s": 0.959,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 454,
+      "t": 79034.781,
+      "elapsed_s": 0.889,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 455,
+      "t": 79035.786,
+      "elapsed_s": 0.648,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 456,
+      "t": 79036.792,
+      "elapsed_s": 0.084,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 457,
+      "t": 79037.811,
+      "elapsed_s": 0.414,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 458,
+      "t": 79038.816,
+      "elapsed_s": 0.566,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 459,
+      "t": 79039.821,
+      "elapsed_s": 0.773,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 460,
+      "t": 79040.827,
+      "elapsed_s": 0.688,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 461,
+      "t": 79041.832,
+      "elapsed_s": 0.591,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 462,
+      "t": 79042.837,
+      "elapsed_s": 0.854,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 463,
+      "t": 79043.842,
+      "elapsed_s": 0.316,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 464,
+      "t": 79044.847,
+      "elapsed_s": 0.918,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 465,
+      "t": 79045.888,
+      "elapsed_s": 1.0,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 466,
+      "t": 79046.894,
+      "elapsed_s": 0.269,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 467,
+      "t": 79047.899,
+      "elapsed_s": 0.478,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 468,
+      "t": 79048.904,
+      "elapsed_s": 0.551,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 469,
+      "t": 79049.909,
+      "elapsed_s": 0.86,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 470,
+      "t": 79050.914,
+      "elapsed_s": 0.658,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 471,
+      "t": 79051.919,
+      "elapsed_s": 0.317,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 472,
+      "t": 79052.924,
+      "elapsed_s": 0.426,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 473,
+      "t": 79053.93,
+      "elapsed_s": 0.828,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 474,
+      "t": 79054.935,
+      "elapsed_s": 0.919,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 475,
+      "t": 79055.94,
+      "elapsed_s": 0.658,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 476,
+      "t": 79056.945,
+      "elapsed_s": 0.276,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 477,
+      "t": 79057.95,
+      "elapsed_s": 0.325,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 478,
+      "t": 79058.956,
+      "elapsed_s": 0.723,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 479,
+      "t": 79059.961,
+      "elapsed_s": 0.722,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 480,
+      "t": 79060.966,
+      "elapsed_s": 0.836,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 481,
+      "t": 79061.971,
+      "elapsed_s": 0.196,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 482,
+      "t": 79062.976,
+      "elapsed_s": 0.443,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 483,
+      "t": 79063.981,
+      "elapsed_s": 0.814,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 484,
+      "t": 79064.987,
+      "elapsed_s": 0.997,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 485,
+      "t": 79065.992,
+      "elapsed_s": 0.572,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 486,
+      "t": 79066.997,
+      "elapsed_s": 0.162,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 487,
+      "t": 79068.002,
+      "elapsed_s": 0.316,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 488,
+      "t": 79069.007,
+      "elapsed_s": 0.886,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 489,
+      "t": 79070.013,
+      "elapsed_s": 0.854,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 490,
+      "t": 79071.018,
+      "elapsed_s": 0.963,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 491,
+      "t": 79072.023,
+      "elapsed_s": 0.553,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 492,
+      "t": 79073.028,
+      "elapsed_s": 0.871,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 493,
+      "t": 79074.033,
+      "elapsed_s": 0.359,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 494,
+      "t": 79075.038,
+      "elapsed_s": 0.664,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 495,
+      "t": 79076.085,
+      "elapsed_s": 0.647,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 496,
+      "t": 79077.09,
+      "elapsed_s": 0.512,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 497,
+      "t": 79078.096,
+      "elapsed_s": 0.617,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 498,
+      "t": 79079.101,
+      "elapsed_s": 0.77,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 499,
+      "t": 79080.106,
+      "elapsed_s": 0.868,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 500,
+      "t": 79081.111,
+      "elapsed_s": 0.609,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 501,
+      "t": 79082.116,
+      "elapsed_s": 0.392,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 502,
+      "t": 79083.122,
+      "elapsed_s": 0.518,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 503,
+      "t": 79084.127,
+      "elapsed_s": 0.377,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 504,
+      "t": 79085.132,
+      "elapsed_s": 0.87,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 505,
+      "t": 79086.137,
+      "elapsed_s": 0.942,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 506,
+      "t": 79087.142,
+      "elapsed_s": 0.419,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 507,
+      "t": 79088.148,
+      "elapsed_s": 0.59,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 508,
+      "t": 79089.153,
+      "elapsed_s": 0.705,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 509,
+      "t": 79090.158,
+      "elapsed_s": 0.9,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 510,
+      "t": 79091.163,
+      "elapsed_s": 0.737,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 511,
+      "t": 79092.168,
+      "elapsed_s": 0.365,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 512,
+      "t": 79093.174,
+      "elapsed_s": 0.511,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 513,
+      "t": 79094.179,
+      "elapsed_s": 0.844,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 514,
+      "t": 79095.184,
+      "elapsed_s": 1.005,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 515,
+      "t": 79096.189,
+      "elapsed_s": 0.952,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 516,
+      "t": 79097.194,
+      "elapsed_s": 0.332,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 517,
+      "t": 79098.199,
+      "elapsed_s": 0.414,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 518,
+      "t": 79099.204,
+      "elapsed_s": 0.934,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 519,
+      "t": 79100.21,
+      "elapsed_s": 0.785,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 520,
+      "t": 79101.215,
+      "elapsed_s": 0.85,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 521,
+      "t": 79102.22,
+      "elapsed_s": 0.577,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 522,
+      "t": 79103.225,
+      "elapsed_s": 0.48,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 523,
+      "t": 79104.23,
+      "elapsed_s": 0.436,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 524,
+      "t": 79105.236,
+      "elapsed_s": 0.815,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 525,
+      "t": 79106.241,
+      "elapsed_s": 0.993,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 526,
+      "t": 79107.246,
+      "elapsed_s": 0.663,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 527,
+      "t": 79108.248,
+      "elapsed_s": 0.674,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 528,
+      "t": 79109.256,
+      "elapsed_s": 0.53,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 529,
+      "t": 79110.261,
+      "elapsed_s": 0.579,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 530,
+      "t": 79111.266,
+      "elapsed_s": 1.017,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 531,
+      "t": 79112.283,
+      "elapsed_s": 0.531,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 532,
+      "t": 79113.289,
+      "elapsed_s": 0.527,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 533,
+      "t": 79114.294,
+      "elapsed_s": 0.95,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 534,
+      "t": 79115.299,
+      "elapsed_s": 0.964,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 535,
+      "t": 79116.304,
+      "elapsed_s": 0.722,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 536,
+      "t": 79117.309,
+      "elapsed_s": 0.461,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 537,
+      "t": 79118.314,
+      "elapsed_s": 0.494,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 538,
+      "t": 79119.32,
+      "elapsed_s": 0.842,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 539,
+      "t": 79120.325,
+      "elapsed_s": 0.825,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 540,
+      "t": 79121.33,
+      "elapsed_s": 0.581,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 541,
+      "t": 79122.335,
+      "elapsed_s": 0.425,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 542,
+      "t": 79123.34,
+      "elapsed_s": 0.445,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 543,
+      "t": 79124.346,
+      "elapsed_s": 0.776,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 544,
+      "t": 79125.351,
+      "elapsed_s": 0.809,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 545,
+      "t": 79126.356,
+      "elapsed_s": 0.913,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 546,
+      "t": 79127.361,
+      "elapsed_s": 0.379,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 547,
+      "t": 79128.366,
+      "elapsed_s": 0.452,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 548,
+      "t": 79129.371,
+      "elapsed_s": 1.004,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 549,
+      "t": 79130.375,
+      "elapsed_s": 0.969,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 550,
+      "t": 79131.38,
+      "elapsed_s": 0.839,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 551,
+      "t": 79132.386,
+      "elapsed_s": 0.609,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 552,
+      "t": 79133.391,
+      "elapsed_s": 0.856,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 553,
+      "t": 79134.396,
+      "elapsed_s": 0.493,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 554,
+      "t": 79135.401,
+      "elapsed_s": 0.882,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 555,
+      "t": 79136.406,
+      "elapsed_s": 0.889,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 556,
+      "t": 79137.411,
+      "elapsed_s": 0.634,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 557,
+      "t": 79138.417,
+      "elapsed_s": 0.857,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 558,
+      "t": 79139.417,
+      "elapsed_s": 0.542,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 559,
+      "t": 79140.422,
+      "elapsed_s": 1.025,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 560,
+      "t": 79141.447,
+      "elapsed_s": 1.159,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 561,
+      "t": 79142.606,
+      "elapsed_s": 0.355,
+      "ok": true,
+      "err": null,
+      "breach": false
+    }
+  ]
+}

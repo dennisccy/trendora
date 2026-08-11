@@ -1,0 +1,21 @@
+{
+  "summary": {
+    "total_elapsed_s": 558.34,
+    "worker_result": {
+      "elapsed_s": 558.1,
+      "sum_n_total": 70201933,
+      "n_factors": 11,
+      "horizons": [
+        1,
+        5,
+        10,
+        20,
+        60
+      ]
+    },
+    "stall_count_gt_0.30s": 0,
+    "worst_stall_s": 0.0,
+    "stalls_by_innermost_app_frame": []
+  },
+  "stalls": []
+}

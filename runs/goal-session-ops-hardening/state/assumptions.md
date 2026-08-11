@@ -873,3 +873,43 @@ REGRESSION, but it would change the digest the owner reads. I chose the status t
 visible (partial + a named ledger entry) over the one that flattens it.
 **Reversible:** yes — one more drill decides it; if a second non-answer appears, `failing` is the honest
 status.
+
+## iter-65 — goal-evaluator (1 of 2): J-07 held `partial` although this round MET its own TC-1 acceptance bar
+
+**Ambiguity:** the iteration spec's TC-1 asks for "0 breaches attributable to `factor_lab_all_warm`" and
+this round delivered exactly that (1,057 polls, 1,057 HTTP 200, 0 unanswered, 1 breach at 2.370s located
+inside `coverage_membership_timeline_refresh`'s own 6.81s window, 0 inside `factor_lab_all_warm`). But
+J-07 step 2's own text is broader — "assert **every** poll answers HTTP 200 within its existing budget" —
+and one poll did not. The spec's NOTES explicitly delegate the call ("the evaluator, not this spec,
+decides whether J-07 moves off partial"), and the dev handoff repeats the delegation without arguing for
+either side.
+**We chose:** keep `partial`. Grounds: (1) step 2's literal wording is "every poll", and one of 1,057
+missed the owner-amended ≤2.0s ceiling; (2) the metric alternates on byte-identical code — iter-61 clean,
+iter-63 elevated, iter-64 elevated, iter-65 clean — so a single clean drill is not evidence the ceiling is
+reliably met; (3) the SAME round's browser-QA lane measured 8 of 240 polls over 2.0s (max 4.194s) with its
+own counter, so this round does not even speak with one voice; (4) the ≤2s ceiling's applicability to a
+17-minute job is the owner's still-unanswered question, and promoting the journey would quietly answer it
+in the relaxed direction on the agents' behalf.
+**Cost recorded honestly:** a reader who holds that TC-1 was the round's stated bar and it was met would
+score J-07 `passing` and hand the owner a finished goal; the honest counter is that the same reader must
+explain why the two previous rounds' 53 and 59 breaches, on the same code, do not also count. I put the
+clean number in the first line of the owner paragraph rather than relying on the status to carry it.
+**Reversible:** yes — one more drill (ideally with the unified counter and host-load recording recommended
+for the next round) decides it; the owner or a later evaluator can promote J-07 without any code change.
+
+## iter-65 — goal-evaluator (2 of 2): iter-64/a closed as "investigated, not reproduced" rather than left open
+
+**Ambiguity:** the ledger's `resolved` flag has no defined meaning for a finding that was investigated
+exactly as specified but whose cause could not be found. iter-64/a (a one-off contained error boundary on
+`/scanner-runs`) was assigned a root-cause task this round; the task ran (no backend traceback in either
+window, `GET /api/runs` re-checked HTTP 200 / 791,437 bytes / 0.31s, this round's own J-05 frame renders
+cleanly) and returned "no backend cause exists to name".
+**We chose:** mark it `resolved: true` with the residual unknown written into the evidence string,
+including the named next step if it recurs (frontend-side component-stack investigation). Grounds: the
+spec's own instruction was "a named cause, or 'attempted, did not recur, no traceback found' — never
+silence", and that instruction was satisfied; leaving it open would carry an item no future round has a
+defined action for, diluting the 102 genuinely-open entries.
+**Cost recorded honestly:** a reader who holds that only a fixed defect may be closed would keep it open
+indefinitely; if the boundary reappears, the honest move is a NEW entry citing this closure, not a claim
+that it was never investigated.
+**Reversible:** yes — any later evaluator can reopen it on the next occurrence.

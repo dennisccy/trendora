@@ -10431,3 +10431,140 @@ adds a fourth) rather than `coverage_membership_timeline_refresh` (Addendum 29's
 reduced and separately tracked). The owner's outstanding ≤2s-ceiling policy question remains open and
 orthogonal to this attribution — it decides whether ANY residual breach is acceptable at all, not whether
 this specific breach count is real.
+
+## Item Y — re-profiling `factor_lab_all_warm` for a third GIL/lock hold finds NONE, in four independent, escalating-fidelity tests; a fresh live drill lands with iter-61's near-zero baseline, not iter-63/64's elevated count (ops-hardening iter-65, 2026-08-11, developer pass, J-07)
+
+### Method
+
+iter-64's own next-step item 1 named this as "the only agent path left to close J-07": re-run iter-52's
+own interrupt-driven stall-profiling method (worker thread running the real compute against the real
+committed DB, a probe thread measuring GIL-acquisition stalls, the worker's stack captured the instant
+each stall resolves) and name+bound whatever it finds. Four tests were run this pass, each closer to the
+real production conditions than the last, all against the SAME committed DB (`apps/backend/data/
+trendora.db`, unchanged this iteration — `git status --porcelain` over `apps/backend/app/engine/
+research.py`, `data_manager.py`, `config.py` is EMPTY throughout):
+
+1. **Solo, in-process** (`runs/goal-ops-hardening-iter-65/evidence-drill/stall_profile.py`): `compute_
+   factor_lab_all(session, cfg, as_of=None)` in a worker thread, a probe thread sleeping 0.02s in a loop
+   and flagging any wake-up overrun > 0.30s (iter-52's own threshold), capturing the worker's stack via
+   `sys._current_frames()` the instant a stall resolves. **558.34s wall-clock, 70,201,933 observations
+   across 11 factors × 5 horizons (`sum_n_total`, within 1% of iter-52's own 69,608,603) — 0 stalls > 0.30s,
+   worst 0.0s.**
+2. **Concurrent with the REAL `/api/health` route** (`stall_profile_concurrent.py`): the same worker thread,
+   plus a second thread calling `app.api.health.health()` (the actual route function, not a
+   re-implementation) once per second on its own dedicated session, timing every call and sampling the
+   worker's stack on any call > 2.0s. **566.09s compute, 561 real health calls, 0 breaches > 2.0s, worst
+   1.272s.**
+3. **Through the REAL ASGI/uvicorn stack, over real HTTP** — `scripts/start-backend.sh` launched (AG-10
+   caps live), `GET /api/research/factor-lab?all=true&as_of=2021-03-15` fired (an `as_of` never cached
+   before this call, forcing a genuine `compute_factor_lab_all` MISS on a Starlette-threadpool-dispatched
+   thread — the exact code path `factor_lab_all_warm` calls, reachable without a full ingest job), while a
+   dedicated external process polled the real `/api/health` endpoint at 1 Hz
+   (`tc1-preflight-health-poll.csv`). **276.8s request (HTTP 200), 296 real HTTP polls, 0 breaches > 2.0s,
+   worst 1.449s.**
+4. **A real, full live ingest finalize tail** (this iteration's own required dev-pass drill, TC-1 below) —
+   `POST /api/data/jobs` (`kind=backfill`, `2005-06-28`, an unsnapshotted trading day with a real SPY bar,
+   live-verified before dispatch), the SAME `poll_health.py` 1 Hz poller iter-53/54/57/58/59/61/63/64 used,
+   reconciled against the job's own `logs/backend.log` phase-timing markers (millisecond timestamps, an
+   improvement over prior addenda's OPEN/CLOSED-marker-only reconciliation — this pass could attribute the
+   ONE breach found to its EXACT phase, not just "during the window").
+
+None of the first three found a single stall or breach attributable to `compute_factor_lab_all`'s own
+code, at any of three independent measurement techniques. Test 4 is the acceptance drill.
+
+### TC-1 result (test 4 — the live acceptance drill)
+
+Job `0b60c889a73c4f7ebaef7bd32567c4f8`, launched only via `scripts/start-backend.sh` (AG-10 caps
+unchanged — `git status --porcelain -- config.yaml project-extensions/` empty). Reached terminal status
+`ok`.
+
+| Figure | Addendum 28 (iter-61) | Addendum 29 (iter-63) | Addendum 30 (iter-64) | **Addendum 31 (iter-65, this pass)** |
+|---|---|---|---|---|
+| Total polls | 1,078 | 983 | 930 | **1,057** |
+| Non-answers (5.0s client ceiling) | 0 | 0 | 1 | **0** |
+| **Polls breaching the ≤2.0s relaxed ceiling** | **1 of 1,078** | **53 of 983** | **59 of 930** | **1 of 1,057** |
+| median (p50) | 0.101s | 0.080s | 0.085s | **0.116s** |
+| p90 | 0.911s | 1.475s | 1.508s | **0.900s** |
+| p99 | 1.259s | 3.002s | 3.091s | **1.220s** |
+| max | 2.849s | 4.181s | 5.006s | **2.370s** |
+| Breaches inside `factor_lab_all_warm` | 0 | 52 of 53 | 58 of 59 | **0 of 1** |
+| `factor_lab_all_warm` phase duration | 561.68s | not re-quoted | 568.81s | **569.03s** (21:21:55.403Z → 21:31:24.434Z) |
+| Job total wall time | — | — | 1,032.56s | **1,033.02s** (21:19:54.129Z OPEN → 21:37:07.145Z CLOSED) |
+
+The single breach (2.370s, at `2026-08-11T21:19:58.162Z`) falls **inside `coverage_membership_timeline_
+refresh`'s own 6.81s window** (21:19:54.129Z → 21:20:00.935Z per the job's own `logs/backend.log` phase
+line) — a different, much shorter, EARLY phase, unrelated to `factor_lab_all_warm` and outside this
+iteration's scope. `factor_lab_all_warm` itself ran for its full 569.03s with **zero** breaching polls
+inside it — the SAME clean result all four tests this pass produced.
+
+Raw evidence, re-checkable: `runs/goal-ops-hardening-iter-65/evidence-drill/{stall_profile.py,
+stall_profile.log, stall_profile_concurrent.py, stall_profile_concurrent.log,
+tc1-preflight-health-poll.csv, poll_health.py, tc1-health-poll.csv, tc1-job-create.json}`.
+
+### Conclusion — the count is INTERMITTENT, not a fixed, code-level hold; no fix was made
+
+Five independent live/controlled measurements now exist across three iterations, same host, same 1 Hz
+poller, same ≤2.0s ceiling, same code (research.py/data_manager.py byte-identical since iter-52's own fix
+landed — confirmed unchanged through iter-63/64/65):
+
+- iter-61 (Addendum 28): 1 of 1,078 breaches, 0 inside `factor_lab_all_warm`. **Clean.**
+- iter-63 (Addendum 29): 53 of 983 breaches, 52 inside `factor_lab_all_warm`. **Elevated.**
+- iter-64 (Addendum 30): 59 of 930 breaches, 58 inside `factor_lab_all_warm`. **Elevated.**
+- **iter-65 (this pass, Addendum 31): 1 of 1,057 breaches, 0 inside `factor_lab_all_warm`. Clean —
+  matches iter-61, not iter-63/64.**
+
+This iteration's spec asked to "find the specific still-uninterruptible call site" and bound it the same
+way the sort and the GC pause were bounded in iter-52. That method — capturing a worker's stack at the
+instant a real GIL/scheduling stall resolves — is exactly what found those two holders in iter-52, and it
+was re-applied here at THREE escalating levels of fidelity (raw threads, raw threads + the real route
+function, the real ASGI server over real HTTP) plus a full live ingest. **None of the four reproduced a
+stall or a breach inside `compute_factor_lab_all`'s own code.** A genuine uninterruptible C-level hold
+(like the pre-iter-52 `sorted()` or the gen-2 GC pause) reproduces DETERMINISTICALLY under controlled
+profiling against the same DB, regardless of what else is happening on the host — that is what iter-52's
+own profile demonstrated, and it is the opposite of what this pass found. Combined with iter-61's own
+earlier clean measurement, the elevated iter-63/iter-64 counts now look like an INTERMITTENT condition
+tied to something outside `factor_lab_all_warm`'s own call chain — most plausibly transient host/scheduling
+state at measurement time (this machine's own documented history of thermal/scheduling variance,
+`project-extensions/host-guard/host-guard.env`) — rather than a fourth uninterruptible call site waiting
+to be named.
+
+**No code change was made to `research.py` / `data_manager.py` this pass.** Per the spec's own instruction
+("whichever site the live profile actually names governs the fix, not this guess") and the project's
+honesty convention (report the measured numbers, never round toward "fixed" or fabricate a bound for a
+site that did not reproduce), this iteration's honest deliverable is the investigation above, not a
+speculative edit. If a future iteration wants to close the intermittency question with more confidence, the
+next test is not another solo profile (four of those variants now agree) but a paired same-day drill
+recording concurrent host load (via the existing hwmon sampler / `host-guard-registry.sh`) alongside the
+health-poll CSV, to test directly whether the elevated-count runs correlate with higher concurrent CPU
+load on the shared 16-core host rather than with anything in this code path.
+
+### TC-4 — `CHAIN_BACKEND_READY_WAIT_S` 90s: code confirmed, live firing not yet observable from this dispatch
+
+`grep -n "CHAIN_BACKEND_READY_WAIT_S:-" scripts/automation/lib/*.sh` confirms both sites still read `90`
+(`common.sh:1434`, `replay-lane.sh:341`, iter-64's own edit, unchanged this pass). The engine's own log
+(`runs/goal-session-ops-hardening/engine.log`) shows the LAST two live firings of `_wait_for_backend_
+readiness` both printing `(max 60s)`, at `17:33:58` and `20:22:03` — both are iter-63/64's OWN pipeline
+runs, predating iter-65's fresh shell invocation (`goal-iter-lean.sh` logged `Iteration: goal-ops-
+hardening-iter-65` at `21:38:11`, AFTER iter-64's own edit landed). Because `common.sh`/`replay-lane.sh`
+are `source`d once at that fresh shell's own startup (the iter-60 lesson this item exists to close), the
+NEXT `Waiting for backend readiness (max Xs)` line this SAME iteration's pipeline prints — during review/
+QA/replay-lane, downstream of this developer dispatch — will read the file's current `90` value. As of
+this dev pass no such line has yet appeared in `engine.log` (the pipeline is paused waiting on this
+dispatch) — **grounded but not yet directly observed live; the next pipeline stage should confirm and this
+item can then close.**
+
+### TC-5 — `/scanner-runs` root-cause: attempted, did not recur; no backend traceback found
+
+Inspected `logs/backend.log` around iter-64's own `J-05-verify.png` capture window (`21:04`-`21:09` local
+BST, immediately after that iteration's replay-lane backfill closed at `20:53:52` local): **zero ERROR/
+Exception/Traceback lines and zero non-200 access-log lines** in the entire window. Reproduction attempt
+made this round: `GET /api/runs` (the exact endpoint `/scanner-runs` reads, `apps/frontend/app/scanner-
+runs/page.tsx`'s `fetchRuns()`) called directly against this iteration's own freshly-backfilled live
+backend — **HTTP 200, 791,437 bytes, 0.31s, valid JSON, did not recur.** Given the backend served this
+same call cleanly both times (iter-64's own window and this iteration's fresh check) with no corresponding
+server-side exception either time, the iter-64 contained-error-boundary render is more likely a transient
+CLIENT-SIDE (React/frontend) condition than a backend fault — no backend traceback exists to name a cause
+from. Written into the ledger per the spec's own "either way" instruction: **reproduction attempted, did
+not recur, no traceback found; the backend's own responses were clean both times.** `apps/frontend/*` is
+unmodified this iteration (out of this pass's scope), so no frontend-side investigation was attempted
+beyond this API-level check.

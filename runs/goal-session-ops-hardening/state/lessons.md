@@ -725,3 +725,19 @@ calling the resolver again once the round had used 2005-06-27 and confirming it 
 2,193 eligible days left. Do that one call rather than reading the unit test.
 **Applies to:** any golden/fixture that writes to the shared DB (journey-scripts/J-01, J-03, J-05), and
 any future "self-renewing" mechanism claim.
+
+## iter-65 — 2026-08-12T00:15:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** A latency "regression" that reproduced twice (iters 63/64: 53 of 983 then 59 of 930 health
+polls over 2.0s, ~52-58 of them inside `factor_lab_all_warm`) did NOT reproduce at all under four
+escalating controlled profiles this round on byte-identical code — 0 stalls >0.30s solo, 0 breaches
+against the real route function, 0 through real ASGI/HTTP, and 1 of 1,057 in a full live ingest with none
+inside the phase. Worse, the same round's two measuring instruments disagreed by ~40x in rate (the dev's
+single-process `poll_health.py` 1/1,057 vs the browser-QA lane's subprocess-per-poll loop 8/240 on a shell
+reporting `nproc`=4). Prove the instrument and attribute each breach to an exact phase from the app's own
+millisecond `logs/backend.log` phase markers BEFORE chartering a code fix — this round's whole premise
+("a third GIL hold exists") came from a number nobody had yet pinned to a phase.
+**Applies to:** any iteration whose goal is derived from a latency/throughput measurement, and any J-07-class
+work in `apps/backend/app/engine/research.py` / `data_manager.py`; also any round planning to piggyback a
+drill on a lane that runs a browser at the same time.
