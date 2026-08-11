@@ -913,3 +913,48 @@ defined action for, diluting the 102 genuinely-open entries.
 indefinitely; if the boundary reappears, the honest move is a NEW entry citing this closure, not a claim
 that it was never investigated.
 **Reversible:** yes — any later evaluator can reopen it on the next occurrence.
+
+## iter-66 — goal-decomposer (1 of 2)
+
+**Ambiguity:** iter-65's next-step item (4) states flatly "stop one job writing two history rows
+(iter-64/d)" — phrased as a directive with a guaranteed outcome. But the underlying ledger entry
+(iter-64/d) describes the duplicate `data_provider_runs` rows as a **pre-existing pattern** (5
+occurrences all-time) "explained by the mid-job backend restarts," not a root-caused bug with a named
+fix. Taking the next-step wording literally as a mandate to ship a working fix this round risks a
+second risky product-code change (the resume/retry write path) alongside this iteration's primary
+GIL-bound work, violating priority rubric rule 5 ("never bundle two risky journeys").
+
+**We chose:** scope iter-64/d as investigate-and-fix-only-if-small (TC-7's two-branch acceptance: a
+verified single-row fix, OR a named cause with the fix explicitly deferred as non-trivial). Grounds:
+(1) rule 5 caps this iteration at one risky action, already spent on the `coverage_membership_timeline_
+refresh` bound; (2) the finding itself is not yet root-caused to a single call site — only "explained
+by restarts" — so committing to a guaranteed fix ahead of that investigation would risk exactly the
+premature-fix pattern iter-65's own lesson warns against ("prove ... before chartering a code fix");
+(3) mirrors iter-65's own disposition of the analogous `/scanner-runs` finding (investigate, disclose
+honestly, defer if not reproducible/fixable cheaply).
+
+**Reversible:** yes — if the resume/retry call site turns out to be a trivial one-line fix, the
+developer ships it within this same iteration's small-item budget; if not, it carries forward as a
+named, disclosed item exactly like iter-64/a was until closed.
+
+## iter-66 — goal-decomposer (2 of 2)
+
+**Ambiguity:** iter-65's next-step item (2), "use ONE counter everywhere," could mean either (a)
+canonicalize the measurement script itself so every lane invokes the same code, or (b) edit the
+browser-qa-agent's own framework instructions/prompt so its live, ad hoc bash/curl polling behavior
+changes — the latter is `.claude`/`agents/` framework-maintenance territory, not product scope, and
+this session's own iter-56 precedent explicitly declined to touch vendored pipeline/tooling code from
+a product iteration ("no developer agent operating on Trendora's product surfaces can address them").
+
+**We chose:** reading (a) — promote `poll_health.py` into one checked-in `scripts/qa/poll_health.py`
+and direct THIS iteration's own TESTING REQUIREMENTS (which the browser-qa-agent reads when executing
+the J-07 test case) to invoke it explicitly, rather than editing any `.claude/agents/` or `agents/`
+neutral-source file. Grounds: (1) the spec's own TESTING REQUIREMENTS section is a legitimate,
+in-scope lever over what the browser-qa-agent does for J-07 THIS round, without touching framework
+instruction files; (2) it directly closes the ~40x disagreement (1/1,057 vs 8/240) the finding names,
+since both lanes now share one script and one CSV schema; (3) it avoids a second risky action (rule 5)
+and avoids re-opening the framework-vs-product boundary iter-56 already drew.
+
+**Reversible:** yes — if the browser-qa-agent's own ad hoc behavior persists on a future round despite
+the spec's direction, a later iteration can escalate to an actual framework/agent-instruction change
+with the owner's awareness that it crosses into `.claude/`/`agents/` maintenance territory.
