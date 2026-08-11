@@ -302,10 +302,32 @@ def _missing_data_diagnostic(
     # (materialize-then-iterate vs. stream-in-batches) changes; the output is byte-identical (TC-1).
     own_dates_by_symbol: dict[str, set[date_cls]] = {}
     _diag_batch = cfg.research.read_batch_size
+    # ops-hardening iter-63 (J-07 GIL-hold bound, profiled — never assumed): a live stack-sampling GIL-
+    # stall profile of the real `coverage_membership_timeline_refresh` finalize-tail phase (mirroring
+    # iter-53's own methodology — a worker thread runs the real function against a throwaway DB copy while
+    # a probe thread samples for >50ms gaps and captures the worker's stack via `sys._current_frames()` —
+    # `reports/perf-budgets.md`'s iter-63 addendum) found the ONE reproducible GIL stall in this whole
+    # phase bottoming out HERE, not in `resolve_with_reasons` (already bounded at iter-53 — this run
+    # measured it and `_trading_days` at ZERO stalls, confirming no residual cost survives there) — inside
+    # SQLAlchemy's own per-batch row materialization (`fetchmany(yield_per) -> manyrows ->
+    # [make_row(row) for row in rows]`), one uninterrupted burst per `_diag_batch`-sized chunk of this
+    # query's ~3.1M-row result. `.yield_per` (iter-40, above) already bounds PEAK MEMORY but does nothing
+    # to bound how long any ONE chunk holds the GIL uninterrupted. `time.sleep(0)` at each chunk boundary —
+    # a real OS-level GIL hand-off, mirroring `_cooperative_sorted`'s own chunk-then-yield pattern
+    # (`research.py:143-156`) — gives a concurrent `GET /api/health` poll a scheduling opportunity between
+    # chunks instead of relying only on whatever gap CPython's own eval-breaker leaves inside the
+    # SQLAlchemy-internal comprehension. Scheduling only: the SAME `_diag_batch`-sized chunks, the SAME
+    # rows in the SAME order, the SAME resulting `own_dates_by_symbol` — never a second query, never a
+    # changed WHERE clause, never a reordered row (TC-2/TC-5 byte-identity; see
+    # `test_missing_data_diagnostic_cooperative_yield_byte_identical` in test_data_manager.py).
+    _diag_row_count = 0
     for symbol, d in session.exec(
         select(DailyPrice.symbol, DailyPrice.date).where(DailyPrice.symbol.in_(universe))
     ).yield_per(_diag_batch):
         own_dates_by_symbol.setdefault(symbol, set()).add(d)
+        _diag_row_count += 1
+        if _diag_row_count % _diag_batch == 0:
+            time.sleep(0)  # cooperative GIL hand-off between yield_per chunks — see comment block above
 
     no_history: list[dict] = []
     thin: list[dict] = []

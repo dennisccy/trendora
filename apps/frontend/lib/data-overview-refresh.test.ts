@@ -2,7 +2,11 @@
  * Unit tests for the J-07 / auditor-F3 ambient-refresh failure helper (lib/data-overview-refresh.ts).
  *
  * No test framework is installed in this frontend; these run under Node's native TS type-stripping:
- *   node lib/data-overview-refresh.test.ts
+ *   npx tsx lib/data-overview-refresh.test.ts
+ * (ops-hardening iter-63, TC-6: this repo's Node 22 install errors ERR_UNKNOWN_FILE_EXTENSION on a
+ * plain `node lib/data-overview-refresh.test.ts` invocation for a .ts file; only the `npx tsx` form
+ * above actually exits 0 here — the comment previously named the bare `node` form, which does not run.
+ * The test logic itself is unchanged and was already correct/green under `npx tsx`.)
  * Pins the helper's three input cases (TC-6): `ok` preserved unchanged, `loading` -> `error`,
  * `error` -> `error`.
  */

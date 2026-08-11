@@ -666,3 +666,37 @@ launching at ... ===` banner in `logs/backend.log` (13:24:00Z boot vs 14:25 loca
 frame — both showed the honest "initializing history 89/89" chip. Never read such a FAIL as a regression.
 **Applies to:** any iteration reading `*-regression-replay-results.md`, and any change to the browser-QA
 lane's restart/replay ordering.
+
+## iter-63 — 2026-08-11T17:50:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** Rotating a state-mutating golden onto a fresh date is NOT enough when the same round then
+replays it: the dev pass pointed `journey-scripts/J-05.json` at 2010-11-18 and this round's own replay
+lane consumed it 50 minutes later (`data_provider_runs` id=419 → `scanner_runs` id=2960 at 16:34:50Z),
+re-arming the exact false-FAIL the round existed to remove. Four consecutive rounds have now eaten the
+date they set. The durable fix is for the lane to select-and-persist an unsnapshotted trading day AT
+REPLAY TIME (or rotate immediately AFTER consuming), never a human guessing one round ahead.
+**Applies to:** any iteration that rotates, lints or trusts `runs/goal-session-*/journey-scripts/*.json`
+goldens that create data.
+
+## iter-63 — 2026-08-11T17:50:01Z
+
+**Verdict:** CONTINUE
+**Lesson:** A single-worst-case headline can hide a whole-distribution regression. "2.849 s → 2.420 s,
+~50 % overage reduction" compares ONE poll in one run to ONE poll in another, while the same two runs move
+1 → 53 breaches, p90 0.911 s → 1.475 s and p99 1.259 s → 3.002 s. Always recount the raw CSV
+(`evidence-drill/tc5-health-poll.csv`) into a distribution — count over ceiling, p90, p99, max — before
+accepting any latency claim, and check the idle pre-job baseline to test the "host was busier" excuse.
+**Applies to:** any iteration touching `reports/perf-budgets.md` addenda, health-poll drills, or J-07's
+latency acceptance.
+
+## iter-63 — 2026-08-11T17:50:02Z
+
+**Verdict:** CONTINUE
+**Lesson:** The showcase/demo lane is not read-only: when its fill steps fail ("unresolvable target
+job-start-date"), it still clicks Start, and this round that launched a REAL 5-date backfill
+(`data_provider_runs` id=420, 2005-06-24→2005-06-30) which the narration described as finishing "within
+seconds" and which was left `running` with no live process when services were torn down. A demo step whose
+own precondition failed must not proceed to a submit action.
+**Applies to:** any iteration touching the demo/walkthrough recorder, `demo.sh`, or
+`reports/phase-*-demo-*.md` — and any evaluator reading `/data` job rows after a demo pass.

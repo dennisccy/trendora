@@ -1408,6 +1408,54 @@ _wait_for_frontend_ready() {
   done
 }
 
+# ops-hardening iter-63 (dev fix — the replay-lane restart race, iter-62 lesson #2, applied verbatim:
+# "any change to the browser-QA lane's restart/replay ordering"). Waits for the backend's OWN readiness
+# SIGNAL, not merely a live port. `ensure_services_running` / `_start_service_with_retries` (above) treat
+# ANY 1xx-5xx response as "up" — deliberately permissive so a namespaced health route (this project's own
+# `/api/health`, not a bare `/health`) is not misjudged DOWN. But Trendora's boot is DESIGNED to serve
+# `/api/health` INSTANTLY (goal.md Key Capability 4, "instant-serving boot with phase-aware health": boot
+# performs existence checks only) — so a fast 200 proves uvicorn is listening, never that the app has
+# finished its OWN internal readiness stages. The payload's `readiness` field is the single canonical
+# readiness value (`app.engine.readiness.compute_readiness`, the SAME value the frontend's readiness badge
+# reads — `data-testid="readiness-badge" data-state="ready"`, apps/frontend/components/health-badge.tsx).
+# A caller that starts asserting against a backend restarted moments ago, before this field reaches
+# "ready", can race a genuinely-still-warming app and misreport an honest in-progress state as a broken
+# journey — exactly the false FAIL iter-62 measured on J-01 step 09 / J-04 step 02 when the deterministic
+# replay lane ran ~1 minute after a restart. This function only READS the existing `/api/health` payload
+# (never a second/looser readiness computation) and NEVER hard-fails the caller: a timeout returns 1 so
+# the caller can log it and proceed anyway — a project whose `/api/health` lacks this field, or a backend
+# that never reaches steady-state `ready` (a separate, real defect other journeys already catch), must
+# degrade to today's pre-gate behavior, never a new hang.
+#
+# Usage: _wait_for_backend_readiness <health_url> [max_wait_seconds] [log_tag]
+# Returns 0 once the payload's `readiness` field == "ready", 1 on timeout or an empty/unset url (a no-op
+# in that case — nothing to gate on).
+_wait_for_backend_readiness() {
+  local url="$1" max_wait="${2:-${CHAIN_BACKEND_READY_WAIT_S:-60}}" tag="${3:-wait}"
+  [[ -n "$url" ]] || return 0
+  local waited=0 state=""
+  echo "[$tag] Waiting for backend readiness (the 'readiness' field of $url) to reach 'ready' (max ${max_wait}s)..."
+  while true; do
+    state="$(curl -s --max-time 5 "$url" 2>/dev/null | python3 -c "
+import json, sys
+try:
+    print(json.load(sys.stdin).get('readiness', ''))
+except Exception:
+    print('')
+" 2>/dev/null || true)"
+    if [[ "$state" == "ready" ]]; then
+      echo "[$tag] backend readiness == ready (${waited}s)."
+      return 0
+    fi
+    sleep 3
+    waited=$((waited + 3))
+    if [[ $waited -ge $max_wait ]]; then
+      echo "[$tag] Warning: backend readiness did not reach 'ready' within ${max_wait}s (last observed: '${state:-<no response>}') — proceeding anyway (not a hard gate)." >&2
+      return 1
+    fi
+  done
+}
+
 # Clear any stale Next.js dev server that would block a fresh start.
 # Next.js 16+ writes .next/dev/lock with its own PID and refuses to start a
 # second dev server from the same directory — even on a different port. Just

@@ -1,40 +1,40 @@
 # Iteration State — ops-hardening
 
-**After iteration:** 62 · **Date:** 2026-08-11 · **Verdict:** ESCALATE
+**After iteration:** 63 · **Date:** 2026-08-11 · **Verdict:** CONTINUE
 
 ## Journeys
 
-7 passing (J-01 J-03 J-04 J-05 J-06 J-08 J-09) · 1 partial (J-07) — 8 total. J-08 carried unverified (outside iter-62's required set); J-05 + J-07 keep `evidence_makeup` (walkthrough never recorded).
+7 passing (J-01 J-03 J-04 J-05 J-06 J-08 J-09) · 1 partial (J-07 — availability met 983/983 HTTP 200, but
+53 answers over the 2.0 s ceiling vs 1 last round; step 4 fault case not run for 4 rounds) — 8 total
 
 ## Active blockers
 
-- **J-05's golden will FAIL next round (dev, urgent).** `runs/goal-session-ops-hardening/journey-scripts/J-05.json`
-  backfills 2010-11-17 and asserts "0 already snapshotted", but iter-62's own replay created that day
-  (`scanner_runs` id=2958). Rotate the date; also repoint steps 13-15, which still assert 2010-11-16.
-- **Replay lane races the pre-QA restart (dev).** It started 1 min after boot (`logs/backend.log`
-  banner 13:24:00Z) and reported false FAILs on J-01/J-04. Make it wait for `data-state="ready"`.
-- **J-07's last gap has TWO paths now.** (a) OWNER, 14th round: does the ≤2s `/api/health` ceiling apply
-  to a 15-23 min job or only the ~30s window it was written for? (b) DEV: make the 55.20s
-  `coverage_membership_timeline_refresh` finalize phase yield — iter-61's single 2.849s poll was inside it.
-- **OWNER-gated:** `scripts/automation/browser-qa-phase.sh` line 286-before-272 fix (build-system file),
-  plus a cost decision — the replay lane now runs a real 15-minute ingest job every round.
+- **OWNER (15th round):** does the ≤2 s health ceiling apply to a 15-20 min background job, or only the
+  "order ~30 s" window the amendment describes? J-07 cannot close without this sentence.
+- **OWNER-gated:** `scripts/automation/browser-qa-phase.sh` line 286-before-272 fix (target journeys still
+  never replayed on the FULL path); plus the cost of the replay lane's real 15-18 min ingest every round.
+- **(dev)** The 1 → 53 health-latency change is UNATTRIBUTED (52 of 53 in `factor_lab_all_warm`, zero
+  breaches there in the method-identical iter-61 drill). Control re-run on unchanged code comes first.
+- **(dev)** `journey-scripts/J-05.json` still hand-rotated (now `2010-11-22`, verified fresh). Four rounds
+  running the date was eaten by the round that set it — needs run-time date selection in the lane.
+- **(dev)** Demo lane clicks Start after its own fills fail — launched a real 5-date backfill
+  (`data_provider_runs` id=420) and narrated it as instant.
 
 ## Last 2 verdicts
 
-- iter 62: ESCALATE — no journey moved; a lean round surfaced three verification-substrate defects no
-  lane reported (restart race, self-consuming golden, unsanctioned 15-min replay cost).
-- iter 61: CONTINUE — J-05 promoted partial→passing after its only blocker (iter-60/a) proved to be a
-  UTC-vs-local clock misreading.
+- iter 63: CONTINUE — 7/7 required journeys replayed PASS with distinct fresh frames; J-07's DoD ("zero
+  polls > 2.0 s") NOT met and its metric measured worse; coherence PASS, no critical anti-goal.
+- iter 62: ESCALATE — a lean round surfaced verification-substrate defects (replay restart race, a golden
+  consuming its own reserved date) that no lane reported.
 
 ## Do not redo
 
-- `/api/health`'s `last_run_date` is FIXED and verified (`apps/backend/app/api/health.py`, serves
-  2026-08-03 = `max(scanner_runs.asof_date)`); TC-1/TC-2 in `apps/backend/tests/test_health.py`.
-- `/data`'s ambient refresh no longer wipes good data on a transient failure
-  (`apps/frontend/lib/data-overview-refresh.ts` + `app/data/page.tsx`'s two `.catch` sites); test passes
-  via `npx tsx`, NOT `node`.
-- iter-60/a (stale `/data` coverage counts) is VOID — a clock misreading, not a defect. Do not re-open.
-- Target-journey replay routing works on the LEAN path (7 replay rows this round, J-05 + J-07 included);
-  it is still dead on the FULL path.
-- J-05's product behaviour is machine-verified live (run id=412, 15m04s, 1 snapshot). Do not re-plan it.
-- Report-writing defects (headline vs raw file) are lessons, not product code — no fix iteration.
+- The `time.sleep(0)` cooperative yield in `_missing_data_diagnostic` (`data_manager.py:325-331`) is DONE,
+  byte-identity tested and profiled — do not re-guess the bottleneck; if more is needed, profile under
+  live concurrent load and prefer `Result.partitions(size)` (audit B3).
+- The replay-lane readiness gate `_wait_for_backend_readiness` EXISTS and fired live (`lib/common.sh`,
+  `lib/replay-lane.sh`; `engine.log:10692-93`) — only its 60 s default needs raising.
+- `data-overview-refresh.test.ts` header now documents `npx tsx …` (TC-6 verified, 3/3) — settled.
+- J-05's golden is already rotated to `2010-11-22` — do NOT re-rotate by hand; fix the mechanism.
+- iter-60/a (stale `/data` counts) is VOID — a UTC-vs-local misreading, not a defect. J-05 stays
+  `passing` (real 18m13s backfill id=419 → `scanner_runs` id=2960 this round); do not re-open.

@@ -772,3 +772,42 @@ it lands, per the iter-60 lesson) that motivated the OWNER-gated label in the fi
 
 **Reversible:** yes — if this reading is wrong, the fix is small and isolated; a later evaluator or the
 owner can flag it and the change can be reverted or re-gated without affecting J-07's own product fix.
+
+## iter-63 — goal-evaluator (1 of 2): J-07 held `partial`, not `regressed`, though its own metric measured 53x worse
+
+**Ambiguity:** the verdict tree's REGRESSION limb fires when a journey moves `passing`/`already_passing`
+→ `failing`. J-07 has been `partial` since iter-51 (this session's own convention), so the limb cannot fire
+on its wording — yet the thing J-07 measures got dramatically worse this round: 53 health answers over the
+owner's 2.0 s ceiling out of 983, against 1 of 1,078 last round, with p99 moving 1.259 s → 3.002 s and the
+cause explicitly unattributed by the audit (B2). Nothing in the tree says how to score a *deterioration
+inside an already-partial journey*.
+**We chose:** keep `partial`, score the deterioration as a minor ledger entry (iter-63/a), and return
+CONTINUE. Grounds: (1) the clause J-07 is actually named for — "heavy aggregates never take the service
+down" — was met outright and I verified it myself (983/983 HTTP 200, zero non-answers, zero HTTP 500s and
+zero MemoryErrors added all iteration); (2) no displayed number is wrong (SNAPSHOT DATES 2960 = the live
+table's 2960) and nothing is fabricated, so no *(critical)* anti-goal bar is reached; (3) the breached
+ceiling is itself the subject of the owner's outstanding, 15-times-asked policy question — halting the loop
+on a metric whose applicability the owner has not yet decided would spend a halt on an undecided rule;
+(4) the tree is applied top-down and REGRESSION's own wording is explicit about the transition it needs.
+**Cost recorded honestly:** a reader who holds that any Must-have journey whose acceptance measurement
+degrades 53-fold deserves the owner's eye NOW would return REGRESSION and halt, and I would not argue that
+is wrong — the honest counter is that the same reader must then explain why 983/983 successful answers with
+zero errors is a service being "taken down". I have put the number in the first line of the report and in
+the owner paragraph instead of relying on the halt to surface it.
+**Reversible:** yes — the owner or a later evaluator can re-score iter-63/a and halt on the next drill.
+
+## iter-63 — goal-evaluator (2 of 2): `evidence_makeup` cleared on J-07 for a thin walkthrough step
+
+**Ambiguity:** methodology A.7 says the flag clears "the moment a fresh capture lands — whatever the
+outcome". The demo lane ran this round and produced a J-07-tagged step
+(`reports/demo/goal-ops-hardening-iter-63/step-08.png`, `/data` with the live background-compute chip), but
+J-07's Acceptance asks for "the crash-free warm + healthy `/api/health` sequence" — which one still frame
+of a page does not show. J-05 got no step at all.
+**We chose:** clear the flag on J-07 (a fresh capture did land, and the rule is explicit) and KEEP it on
+J-05 (nothing was captured), noting the thinness of J-07's step in the journey record rather than in a
+blocker. Grounds: the rule is literal; my standing instructions forbid treating any capture gap as
+blocking; and the distinction stays visible in the record either way.
+**Cost recorded honestly:** a reader who holds that the capture must show the clause's own content would
+keep the flag on J-07, and would carry a J-07 walkthrough request into the next round. The practical
+difference is one passenger task.
+**Reversible:** yes — a later evaluator can restore the flag.

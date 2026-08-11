@@ -10192,3 +10192,160 @@ runs/goal-ops-hardening-iter-61/evidence-drill/dev.log` returns ZERO hits — on
 real and is evidenced by the launch script's own unconditional code path cited above; unlike Addendum 27,
 this pass captured no `/proc/<pid>/limits` read of the live backend, so the AG-10 evidence here is
 launch-script-level, not process-level. Stated as re-derived, not as originally claimed.
+
+## Addendum 29 (2026-08-11, ops-hardening iter-63 developer pass) — J-07's last measured latency gap:
+profiled, bounded, re-measured. Result: REDUCED, not eliminated — reported honestly as a partial win
+
+Closes the exact gap Addendum 28 left open: the single measured `GET /api/health` breach (2.849s at
+2026-08-11T08:23:13.091Z, the very start of the finalize tail's `coverage_membership_timeline_refresh`
+phase). Per this iteration's own instructions ("profile — never assume"; iter-48/50/53's standing
+discipline), the fix below was applied only after a live GIL-stall profile located the actual bottleneck —
+not force-fit from iter-52/53's prior constructs.
+
+### Profiling methodology (mirrors iter-53's Addendum 15) and result
+
+A worker thread ran the real, unmocked `_compute_coverage_uncached`/`_missing_data_diagnostic`/
+`resolve_with_reasons`/`_trading_days` directly against a throwaway `shutil.copy2` copy of the committed
+dev DB, inside an active `prefilled_bar_cache` context (the exact shape `_do_backfill`/
+`_refresh_ingest_aggregates` set up), while a probe thread sampled `time.monotonic()` for gaps > 50ms and
+captured the worker's live stack via `sys._current_frames()` at the instant each gap resolved.
+
+**Every candidate the plan named by name measured ZERO stalls**: `resolve_with_reasons` (already bounded
+at iter-53 — 0.055-0.060s, no residual GIL-hold), `_trading_days` (0.020-0.065s, no stall despite its own
+unbounded `bars_asof` full-SPY-history fetch — the fetch is simply too small, ~7,700 rows, to single-
+handedly hold the GIL past 50ms), the phase's own entry (the `_coverage_snapshot_is_current` gate + cache
+attach — sub-millisecond). The ONE reproducible stall, found consistently across two independent profiling
+runs (a raw un-pragma'd connection and a second run using `app.db.make_engine` so the SAME sqlite pragmas
+production uses were in effect), bottomed out inside `_missing_data_diagnostic`'s own-dates scan
+(`data_manager.py`, the `for symbol, d in session.exec(...).yield_per(_diag_batch)` loop feeding
+`own_dates_by_symbol`) — specifically inside SQLAlchemy's OWN per-batch row materialization
+(`cursor.fetchmany(yield_per) -> manyrows -> [make_row(row) for row in rows]`), one uninterrupted burst per
+`_diag_batch`-sized (2,000-row) chunk of this query's ~3.1M-row (`WHERE symbol IN (universe)`, no date
+filter — the FULL per-member history, needed because the intra-series-gap check requires every date, not a
+trailing window) result. `.yield_per` (iter-40) already bounds peak MEMORY; it does nothing to bound how
+long any ONE chunk holds the GIL.
+
+**Caveat disclosed honestly**: the throwaway-copy profiling environment (no matching `-wal`/`-shm`
+sidecar, cold OS page cache) measured 18-200x slower WALL TIME than the live warm production DB for the
+identical code path (e.g. `_missing_data_diagnostic` alone: 1,147.8s isolated vs. the whole phase's 7.05s
+in the live drill below) — so the profiling's absolute timings are not representative and are not cited as
+such; only the STALL LOCATION (reproduced identically across two independent runs, under two different
+DB-access configurations) is treated as reliable signal. This is the same class of caveat this session's
+prior addenda have disclosed when a measurement environment diverges from production (Addendum 25/26's
+BST/UTC and interrupted-run corrections).
+
+### The fix
+
+`_missing_data_diagnostic`'s own-dates loop (`data_manager.py`) now calls `time.sleep(0)` — a real OS-
+level GIL hand-off, mirroring `_cooperative_sorted`'s own chunk-then-yield pattern (`research.py:143-156`)
+— every `_diag_batch` rows consumed (i.e. at the SAME boundary where SQLAlchemy's own internal chunk
+materialization is about to run again), instead of relying solely on whatever gap CPython's own eval-
+breaker leaves inside the SQLAlchemy-internal comprehension. Scheduling only: the SAME chunks, the SAME
+rows in the SAME order, the SAME resulting `own_dates_by_symbol` / diagnostic payload — proven by
+`test_missing_data_diagnostic_cooperative_yield_byte_identical` (`test_data_manager.py`), which replicates
+the pre-fix loop as a pinned reference oracle, forces `read_batch_size=2` to cross multiple chunk
+boundaries, asserts byte-identical output, AND asserts `time.sleep(0)` actually fired the expected number
+of times (5, for the fixture's 11-row scan) — proving the yield path is genuinely exercised, not merely
+present. All 218 pre-existing tests in `test_data_manager.py` stay green; `test_universe_resolver.py` (28
+tests, `resolve_with_reasons`'s own iter-53 tests) is unaffected — untouched this iteration, confirmed by
+the profile above to carry no residual stall.
+
+### TC-1 — the live drill (reconciled, mirrors Addenda 15/28's methodology; reused
+`runs/goal-ops-hardening-iter-59/evidence-drill/reconcile_drill.py` verbatim, per this iteration's own
+spec — not rewritten)
+
+Backend launched only via `scripts/dev.sh` (AG-10 caps intact — `project-extensions/host-guard/
+host-guard.env` declares `HOST_GUARD_ENABLED=1`, and `dev.sh`'s backend subshell applies the config-
+derived `ulimit -v`/`MALLOC_ARENA_MAX` + the HOST-GUARD taskset/BLAS-thread block unconditionally, per
+direct read of the script; this pass captured no live `/proc/<pid>/limits` read, so — like Addendum 28 —
+the AG-10 evidence here is launch-script-level, not process-level). A real single-date `backfill` for
+`2010-11-19` (live-verified via direct read-only sqlite query immediately before dispatch: 0
+`scanner_runs` rows, 453 `daily_prices` bars including a real SPY close 92.8132 — a genuine gap trading
+day, not a weekend; deliberately a DIFFERENT date from this same iteration's J-05 golden rotation target,
+2010-11-18, so the two do not consume each other), dispatched via `POST /api/data/jobs` with no `source`
+override (a pure backfill reads only already-fetched bars — AG-9 clean, confirmed: `"source": null` in the
+persisted job record). Outcome: `status: "ok"`, `snapshots_created: 1`, `forward_returns_inserted: 1365`,
+`aggregates_refreshed` all 9 categories. `GET /api/health` polled once per second by a dedicated
+do-nothing-else process (5.0s client timeout) for the job's full 18m05s wall time (`started_at`
+2026-08-11T15:55:19.712Z, `finished_at` 2026-08-11T16:13:24.861Z).
+
+| Figure | Addendum 28 (iter-61, pre-fix) | **Addendum 29 (iter-63, post-fix)** |
+|---|---|---|
+| Total polls | 1,078 | **983** |
+| HTTP 200 | 1,078 (100%) | **983 (100%)** |
+| Non-answers (5.0s client ceiling) | 0 | **0** |
+| Polls breaching the ≤2.0s relaxed ceiling (whole run) | 1 of 1,078 | **53 of 983** (52 new — see below) |
+| **Breach(es) inside `coverage_membership_timeline_refresh`** | **1 — 2.849s at 08:23:13.091Z** | **1 — 2.420s at 2026-08-11T15:55:48.120Z** |
+| `coverage_membership_timeline_refresh` phase duration (job's own markers) | not separately logged this addendum | **7.05s** (15:55:43.907Z → 15:55:50.957Z) |
+
+**Read plainly, honestly, not as a clean pass.** TC-1's DoD line ("every poll answers HTTP 200 within
+≤2.0s... zero polls over 2.0s") is **NOT MET**: one breach still lands inside
+`coverage_membership_timeline_refresh`, at 2.420s — an OVERAGE of 0.420s past the ceiling, DOWN from
+Addendum 28's 0.849s overage (a ~50% reduction), but not zero. The fix measurably helped (the phase itself
+completed in 7.05s this pass — the profiled sub-steps below sum to ~2.1s in isolation, so ~5s of the
+logged 7.05s is concurrency-contention overhead from the SAME health-poll/job/GC pressure the fix cannot
+remove by construction — a scheduling change bounds how long the GIL is held UNINTERRUPTED, not how much
+total CPU time the phase needs under real concurrent load) but did not drive the measured breach count to
+zero. **This iteration does not claim TC-1 closed.**
+
+A follow-up live, warm (page-cache-hot), isolated timing pass of `_compute_coverage_body`'s own sub-steps
+(read-only connection against the live committed DB immediately after the drill above, safe under WAL —
+no write) attributes the residual cost: `price_min/max/count` 0.118s, `snapshot_dates` sort 0.005s,
+`_trading_days` 0.041s, `_resolved_universe` 0.017s, `_per_symbol_coverage` 0.426s,
+**`_missing_data_diagnostic` 1.426s** (still the single dominant sub-step, ~68% of the ~2.1s isolated
+total), `membership_timeline_cached` 0.040s, `_coverage_diagnostic_absent` 0.020s — confirming the fix
+targeted the right function; the residual gap is best read as GIL-hold-under-real-concurrent-contention
+that a 2,000-row chunk boundary does not fully bound when the host is also running other CPU work
+(`factor_lab_all_warm`'s own `_cyclic_gc_paused` window earlier in this SAME job is one candidate
+neighbor, though this pass did not isolate contention sources further — an honest gap, not a claim).
+
+**The 52 NEW breaches (all inside `factor_lab_all_warm`, none inside any phase this iteration targets)**
+are a PRE-EXISTING, OUT-OF-SCOPE, well-carried gap (Addendum 19: "TC-5 NOT MET, 9 of 11 [breaches] inside
+`forward_aggregates_warm`"; this pass's dominant offender is the sibling `factor_lab_all_warm` phase,
+already `_cyclic_gc_paused`-treated since iter-52 but evidently not sufficient under this pass's specific
+concurrent load / larger data volume) — named here for completeness, per this file's own append-only
+"read plainly" convention, NOT claimed as this iteration's own regression (this iteration touched zero
+lines in `research.py`/`compute_factor_lab_all`) and NOT this iteration's target.
+
+### AG-3 / AG-8 / AG-9 for this pass
+
+AG-3: `resolve_with_reasons`'s `admitted`/`excluded_counts`/`resolutions` and the served coverage payload
+are unchanged for the same inputs (TC-2/TC-5, proven by the unit test above — no displayed number moved).
+AG-8: no unbounded whole-table ORM load was added (`_missing_data_diagnostic`'s query is unchanged —
+still the SAME `.yield_per`-streamed, bounded-memory shape from iter-40; only the SCHEDULING between
+already-existing chunks changed). AG-9: the single `data_provider_runs` row this pass created carries
+`"source": null` (offline committed seed only, confirmed in the persisted job record) — no live network
+call. AG-10: `memory_cap_mb`/`malloc_arena_max`/`host-guard.env` values untouched this iteration (explicitly
+out of scope per the spec).
+
+### Honest next-step note
+
+The owner's outstanding one-sentence policy question (does the ≤2s ceiling apply to a background window
+this long, or only the "order ~30s" window the amendment's text describes) remains open and is NOT
+resolved by this iteration's partial fix — with one measured breach still present, the answer is no longer
+moot either way (unlike the "zero breaches either way" framing this iteration's own spec anticipated as
+the OPTIMISTIC outcome). A future iteration wanting to drive this fully to zero should profile
+`_missing_data_diagnostic` UNDER live concurrent load specifically (not the isolated read-only pass above),
+since the isolated 1.426s figure alone does not explain the full 7.05s logged phase duration.
+
+**Correction (iter-63 audit, 2026-08-11) — the 52 `factor_lab_all_warm` breaches are NOT established as
+"pre-existing", and this addendum's own comparison table is the reason.** The paragraph above calls them
+"a PRE-EXISTING, OUT-OF-SCOPE, well-carried gap" on the strength of Addendum 19 (a different phase,
+`forward_aggregates_warm`, and a much older tree). The MOST comparable prior measurement is this
+addendum's own baseline, Addendum 28 — same reconciler, same 1 Hz poller, same 5.0 s client ceiling, same
+host, 7.5 hours earlier — and it recorded **zero** breaching polls inside `factor_lab_all_warm` across
+that phase's own 561.68 s ("every other poll — including all of ... `factor_lab_all_warm` (561.68 s, the
+dominant phase) ... answered inside 2 s"). Re-derived directly from the two raw CSVs by the audit (not
+from either write-up's prose): iter-61 n=1078, median 0.101 s, p90 0.911 s, p99 1.259 s, max 2.849 s,
+66 polls >1 s, 1 >2 s; iter-63 n=983, median 0.080 s, p90 **1.475 s**, p99 **3.002 s**, max **4.181 s**,
+160 polls >1 s, 53 >2 s. The two runs' idle pre-job baselines are equivalent (first-30-poll median
+0.011 s vs 0.013 s), so "the host merely happened to be busier this round" is NOT supported by the
+evidence in hand either. What IS supportable: this iteration's diff cannot plausibly be the cause — it
+adds a `time.sleep(0)` inside a phase that CLOSED at 15:55:50.957Z, ~10 minutes before the first
+`factor_lab_all_warm` breach, and touches zero lines of `research.py`. What is NOT supportable on this
+evidence is the word "pre-existing": between iter-61 and iter-63 the same promise went from 1 breaching
+poll to 53, and the cause is **unattributed** (candidates neither ruled in nor out: three additional
+`scanner_runs` dates landed since Addendum 28, growing every `factor_lab_all` accumulation; a different
+concurrent-load profile during the drill). Stated as unknown, per this file's own "read plainly"
+convention — the next iteration that touches J-07 should treat this as an open measurement question, not
+as a carried gap already understood.

@@ -1,0 +1,147 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-ops-hardening-iter-63",
+  "base_url": "http://localhost:3255",
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Dashboard loads with readiness badge",
+      "narration": "The application starts on the Dashboard. The readiness badge at the top confirms the backend is ready to serve data.",
+      "point_out": "Readiness badge showing 'Ready' status at top of page",
+      "journey": "J-04",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "goto",
+        "url": "/"
+      },
+      "expect": {
+        "text": "Dashboard"
+      }
+    },
+    {
+      "n": 2,
+      "title": "Data Manager shows current status",
+      "narration": "The Data Manager page displays the latest run status and the complete history of past backfill jobs. Each entry shows what was completed and what remains.",
+      "point_out": "Run history panel listing past jobs with their status; last run status showing a real value",
+      "journey": "J-04",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "goto",
+        "url": "/data"
+      },
+      "expect": {
+        "text": "Data Manager"
+      }
+    },
+    {
+      "n": 3,
+      "title": "Zero-work backfill explains itself clearly",
+      "narration": "When a backfill requests dates that are already fully processed, the system explains this honestly. Here, a weekend-only span is submitted and immediately reports zero work to do.",
+      "point_out": "Job report showing '0/0 dates' with neutral gray explanation '2 calendar days · 0 already snapshotted · 2 non-trading'",
+      "journey": "J-01",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "fill",
+        "target": {
+          "data-testid": "job-start-date"
+        },
+        "text": "2026-05-02"
+      }
+    },
+    {
+      "n": 4,
+      "title": "Complete the zero-work backfill request",
+      "narration": "The end date is set to a date on a holiday (Memorial Day), completing the weekend span that contains no trading data.",
+      "point_out": "End date field filled; page ready for job submission",
+      "journey": "J-01",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "fill",
+        "target": {
+          "data-testid": "job-end-date"
+        },
+        "text": "2026-05-03"
+      }
+    },
+    {
+      "n": 5,
+      "title": "Submit and watch the job complete instantly",
+      "narration": "The Start button triggers the backfill. Since all dates are already snapshotted or non-trading, the job finishes within seconds and reports its work clearly.",
+      "point_out": "Job card showing completion status and the zero-work explanation displayed in neutral styling",
+      "journey": "J-01",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "click",
+        "target": {
+          "role": "button",
+          "name": "Start"
+        }
+      },
+      "expect": {
+        "text": "0/0 dates"
+      }
+    },
+    {
+      "n": 6,
+      "title": "Scanner Runs page lists all stored snapshots",
+      "narration": "The Scanner Runs page shows the complete history of every trading day's snapshot. Each row represents data that has been processed and stored.",
+      "point_out": "Table showing multiple scanner run rows, each with a date as-of value",
+      "journey": "J-03",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "goto",
+        "url": "/scanner-runs"
+      },
+      "expect": {
+        "text": "Scanner Runs"
+      }
+    },
+    {
+      "n": 7,
+      "title": "Backtest page serves results instantly from storage",
+      "narration": "The Backtest page displays evidence and summary information immediately, without any recomputation delay. All data is served from the pre-computed snapshot store.",
+      "point_out": "Backtest page with 'Snapshots contributing' text visible immediately upon load",
+      "journey": "J-08",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "goto",
+        "url": "/backtest"
+      },
+      "expect": {
+        "text": "Snapshots contributing"
+      }
+    },
+    {
+      "n": 8,
+      "title": "Data page stays responsive during background compute",
+      "narration": "The Data Manager page shows a background-compute panel that honestly reports the system's current work. No freeze, spinner, or error occurs—the page remains responsive even while heavy calculations run.",
+      "point_out": "Background-compute panel visible with text 'process-lifetime only, never persisted'; readiness badge still shows 'Ready'; last run status and aggregates list show real values",
+      "journey": "J-07",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "goto",
+        "url": "/data"
+      },
+      "expect": {
+        "text": "Data Manager"
+      }
+    }
+  ]
+}

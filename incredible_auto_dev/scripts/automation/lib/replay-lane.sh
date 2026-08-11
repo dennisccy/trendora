@@ -328,6 +328,17 @@ replay_lane_partition_and_verify() {
   REPLAY_MASS_FAIL=""
   REPLAY_CANARIES=""
   if [[ "$_use_replay" == "yes" ]]; then
+    # ops-hardening iter-63 (dev fix — the replay-lane restart race, iter-62 lesson #2): this is the
+    # lane's own FIRST externally-visible action against the live backend — gate it on the backend's own
+    # readiness signal (the SAME `readiness` value the frontend's readiness badge reads), not merely on
+    # whatever liveness `ensure_services_running` already confirmed (a bare 1xx-5xx probe — see
+    # `_wait_for_backend_readiness`'s own docstring in lib/common.sh for the full rationale). A lane
+    # invoked shortly after a pre-QA backend restart previously raced a still-warming app straight into
+    # `_replay_lane_verify_once` below and reported false FAILs on journeys that were honestly not broken
+    # yet (J-01 step 09 / J-04 step 02, iter-62). Best-effort only — a timeout logs a warning and this
+    # still proceeds (never a new hang/hard-fail mode for a project or backend state where `readiness`
+    # never reaches "ready").
+    _wait_for_backend_readiness "${QA_BACKEND_HEALTH_URL:-}" "${CHAIN_BACKEND_READY_WAIT_S:-60}" "replay-lane" || true
     _replay_lane_log "Regression (deterministic replay): $R_REPLAY"
     local _replay_csv _replay_rc=0
     _replay_csv="$(echo "$R_REPLAY" | tr ' ' ',' | sed 's/^,*//;s/,*$//')"

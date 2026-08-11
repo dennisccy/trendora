@@ -1,0 +1,24 @@
+{
+  "phase": "goal-ops-hardening-iter-63",
+  "status": "complete",
+  "current_step": "closure_passed",
+  "updated_at": "2026-08-11T17:36:07.719558Z",
+  "started_at": "2026-08-11T14:51:46.919431Z",
+  "cli": "claude",
+  "blockers": [],
+  "changed_files": [
+    "apps/backend/app/engine/data_manager.py",
+    "apps/backend/tests/test_data_manager.py",
+    "reports/perf-budgets.md",
+    "runs/goal-session-ops-hardening/journey-scripts/J-05.json",
+    "incredible_auto_dev/scripts/automation/lib/common.sh",
+    "incredible_auto_dev/scripts/automation/lib/replay-lane.sh",
+    "apps/frontend/lib/data-overview-refresh.test.ts",
+    "docs/handoffs/goal-ops-hardening-iter-63-dev.md",
+    "reports/phase-goal-ops-hardening-iter-63-implementation-summary.md",
+    "runs/goal-ops-hardening-iter-63/evidence-drill/"
+  ],
+  "tests_run": true,
+  "browser_checks_run": true,
+  "next_action": "qa_complete"
+}

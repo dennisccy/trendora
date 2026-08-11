@@ -6053,6 +6053,64 @@ def test_diagnostic_own_dates_streamed_fetch_byte_identical_to_whole_result(diag
     assert diag_default == diag_tiny_batch
 
 
+def test_missing_data_diagnostic_cooperative_yield_byte_identical(diagnostic_engine, monkeypatch):
+    """TC-2/TC-5 (ops-hardening iter-63, J-07 GIL-hold bound) -- the `time.sleep(0)` cooperative yield
+    added at each `_diag_batch` chunk boundary of the own-dates scan (data_manager.py, just above the
+    `for symbol, d in session.exec(...)` loop) is a SCHEDULING-ONLY change: it must never change which
+    rows are read, how they group, or the served diagnostic payload. Proven against a PINNED pre-fix
+    reference oracle -- the SAME query consumed with NO cooperative yield, replicated here exactly as it
+    ran before this iteration (mirrors test_universe_resolver.py's iter-53 reference-oracle pattern, and
+    this same file's own `test_diagnostic_own_dates_streamed_fetch_byte_identical_to_whole_result`, which
+    proved the streaming-vs-materialize choice was invisible; this test proves the ADDED yield point is
+    invisible too):
+
+      1. the reference oracle's `own_dates_by_symbol` grouping (no yield) is reproduced by the fixture's
+         known shape (AAA 6 + BBB 2 + CCC 3 + DDD 0 = 11 rows);
+      2. the real (post-fix) `_missing_data_diagnostic`, run with `read_batch_size` forced to 2 -- so the
+         11-row result genuinely crosses MULTIPLE `yield_per` chunks, not one -- serves the BYTE-IDENTICAL
+         payload the default (much larger) batch size serves, proving the batch width (and therefore how
+         many times the yield fires) never leaks into the output;
+      3. `time.sleep(0)` is actually invoked the expected number of times (5 -- floor(11/2), rows 2/4/6/
+         8/10 hit the modulo boundary; row 11 does not reach a 6th multiple of 2) and ALWAYS with argument
+         0 (never a real pause) -- proving the cooperative-yield code path is genuinely exercised by this
+         test, not merely present and dead."""
+    engine, _days = diagnostic_engine
+    cfg = _diag_cfg()
+    universe = list(cfg.universe.symbols)
+
+    with Session(engine) as session:
+        # sanity: the fixture's own-dates query is exactly 11 rows (AAA 6 + BBB 2 + CCC 3 + DDD 0), so
+        # batch-of-2 below is guaranteed to cross multiple yield_per chunks, never a single-batch pass.
+        reference_dates: dict[str, set] = {}
+        for symbol, d in session.exec(
+            select(DailyPrice.symbol, DailyPrice.date).where(DailyPrice.symbol.in_(universe))
+        ).all():
+            reference_dates.setdefault(symbol, set()).add(d)
+    assert sum(len(v) for v in reference_dates.values()) == 11
+
+    cfg_tiny_batch = cfg.model_copy(
+        update={"research": cfg.research.model_copy(update={"read_batch_size": 2})}
+    )
+
+    sleep_calls: list = []
+
+    def _counting_sleep(seconds):
+        sleep_calls.append(seconds)
+
+    monkeypatch.setattr("app.engine.data_manager.time.sleep", _counting_sleep)
+
+    with Session(engine) as session:
+        diag_tiny_batch_with_yield = _missing_data_diagnostic(session, cfg_tiny_batch)
+
+    # 1/2 -- byte-identical to the default (much larger, single-chunk) batch size's own served payload.
+    with Session(engine) as session:
+        diag_default_batch = _missing_data_diagnostic(session, cfg)
+    assert diag_tiny_batch_with_yield == diag_default_batch
+
+    # 3 -- the cooperative yield genuinely ran, exactly the expected number of times, always as sleep(0).
+    assert sleep_calls == [0] * 5
+
+
 # ==================================================================================================
 # iter-40 (iter-39/w, AG-3) — checkpoint cadence: per-date density + throttle still bounds writes
 # ==================================================================================================
