@@ -667,3 +667,40 @@ A reader who weighs the empirical override rate above the tree's wording would r
 would not argue that is wrong.
 **Reversible:** yes — the engine or the owner can run the next round at any depth; this only sets the
 default and records why.
+
+## iter-62 — goal-decomposer
+
+**Ambiguity:** the dispatch prompt states "Evaluator depth recommendation for THIS iteration: full —
+BINDING by default. Plan this depth unless one of the four escape conditions holds..." My agent
+instructions' pre-write self-check requires that ANY `full` spec cite one of the same four numbered
+triggers (prior ESCALATE/REGRESSION verdict, prior coherence-audit FAIL, hardening cadence due, or a
+brand-new full-stack journey) truthfully in BACKGROUND, and states the engine's deterministic arbiter
+demotes an unjustified full spec to lean regardless of what is written. The two instructions read as if
+in tension when, as here, the recommendation itself does not correspond to a literally-true trigger.
+
+**We chose:** LEAN depth, not full. Grounds: (1) none of the four triggers is literally true this
+iteration — the prior verdict (iter-61) was CONTINUE, not ESCALATE/REGRESSION; iter-61's own
+`coherence.md` was COHERENCE-PASS (0 blocking, 0 advisory); "Consecutive lean iterations dispatched: 0
+(hardening cadence: 6)" is not due; and this iteration deliberately introduces no new user-visible
+capability (no brand-new full-stack journey — `last_run_date` stays unexposed, and the `/data` refresh
+change is a same-surface bug fix, not a new one, consistent with goal.md's own Loop Mechanics rule "full
+when an iteration first lands user-visible UI changes"); (2) the scope itself is two small, self-contained
+bug fixes (a hardcoded health field, a state-preservation fix on an already-shipped 30s refresh) with a
+blast radius nameable in one sentence — exactly lean's own definition, not a structural/cross-cutting
+change; (3) this session's own evaluators have repeatedly and explicitly refused to "manufacture a clause
+match... to buy a side effect" (iter-59, iter-61 `assumptions.md` entries) when a literal trigger did not
+hold, even though a full round would have been more convenient (e.g., to run the demo/walkthrough
+recorder) — the same discipline applies to depth selection, not just verdict class.
+
+**Cost recorded honestly:** the evaluator's own next-step text asked for full depth, primarily so the
+demo/walkthrough recorder (full-depth-only) could finally satisfy J-05/J-07's `[NEW]` walkthrough clause.
+Choosing lean means that clause is deferred yet again (now unsatisfied for at least 5 consecutive rounds)
+and the auditor/coherence/UI-review lanes that caught this session's recurring "no blockers" headline
+defect do not run this round either. A reader who weighs "the evaluator asked for full" above the literal
+four-trigger test would run this iteration at full and let the arbiter's own judgment decide whether to
+demote it; I chose to make that determination myself up front, consistent with the self-check's explicit
+text ("lean states 'no full trigger holds' — needing unit tests is never the cited reason").
+
+**Reversible:** yes — the engine's arbiter, a later evaluator, or the owner can force full for this
+iteration or the next; the walkthrough and audit-lane gaps remain openly carried in NOTES/OUT OF SCOPE,
+not silently dropped.
