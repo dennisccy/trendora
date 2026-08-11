@@ -750,3 +750,25 @@ badge, which polls `GET /api/health` independently and is evidenced going `unava
 round was asked to fix.
 **Reversible:** yes — a later evaluator or the owner can re-score iter-62/e, and the suggested fix (show
 a "refresh failing / last updated" note after N consecutive failures) is small.
+
+## iter-63 — goal-decomposer
+
+**Ambiguity:** iteration-state's Active blockers list carries two, textually adjacent scripts/automation
+fixes: "Replay lane races the pre-QA restart (dev)" and "OWNER-gated: `scripts/automation/browser-qa-
+phase.sh` line 286-before-272 fix (build-system file)". Both live in the same directory the session has
+repeatedly treated with caution (goal-mode's own pipeline/test harness), and neither iteration-state nor
+any prior eval.md states explicitly whether the `(dev)` tag on the first item means "does not need the
+owner's go-ahead" or is merely descriptive of who would implement it once approved.
+
+**We chose:** treat the restart-race fix as dev-actionable this iteration (in scope), and leave the
+TARGET_JOURNEYS line-286-before-272 ordering fix untouched (out of scope, still owner-gated). Grounds:
+(1) the digest's own wording deliberately labels ONE item `OWNER-gated` and the other only `(dev)` — a
+distinction that would be pointless if both required the same gate; (2) precedent exists for editing
+this same file family without incident: iter-60's own top-priority fix successfully edited
+`scripts/automation/lib/replay-lane.sh`'s partition function with no owner sign-off sought or needed
+(confirmed live on the lean path per "Do not redo"); (3) the restart-race fix is a narrow readiness-wait
+addition, not the specific self-referential ordering bug (a fix that cannot verify itself in the same run
+it lands, per the iter-60 lesson) that motivated the OWNER-gated label in the first place.
+
+**Reversible:** yes — if this reading is wrong, the fix is small and isolated; a later evaluator or the
+owner can flag it and the change can be reverted or re-gated without affecting J-07's own product fix.
