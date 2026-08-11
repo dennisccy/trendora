@@ -704,3 +704,49 @@ text ("lean states 'no full trigger holds' — needing unit tests is never the c
 **Reversible:** yes — the engine's arbiter, a later evaluator, or the owner can force full for this
 iteration or the next; the walkthrough and audit-lane gaps remain openly carried in NOTES/OUT OF SCOPE,
 not silently dropped.
+
+## iter-62 — goal-evaluator: ESCALATE chosen over CONTINUE on a verification-substrate finding
+
+**Ambiguity:** C.4's third clause is "this **lean** iteration surfaced cross-cutting
+ambiguity/complexity". This iteration WAS lean (`depth-dispatched` = `lean`), so the clause is live —
+but "cross-cutting complexity" is not defined, and everything I found was in the VERIFICATION machinery
+(a replay lane that raced the pipeline's own restart and reported two false FAILs; a golden that consumed
+its own reserved date and will report a false FAIL next round; a deterministic lane that now runs a real
+15-minute ingest job every round), not in the product. A reading that confines "complexity" to product
+code would not fire the clause. This session's own evaluators have twice refused to "manufacture a clause
+match to buy a side effect" (iter-59, iter-61), and the side effect here is real: only a full round runs
+the audit lane and the walkthrough recorder.
+**We chose:** ESCALATE. Grounds: (1) the findings are load-bearing for the loop itself — a false FAIL on
+a currently-`passing` journey is exactly what produces a spurious REGRESSION halt, and iter-62/c makes one
+close to certain next round; (2) no lane reported any of the three (the QA write-up called the restart
+race "transient flakiness"), and the audit lane has root-caused this exact class twice (iters 58, 61);
+(3) I did not need the demo lane to justify it — the walkthrough is scored non-blocking under A.7 and is
+listed as a passenger task, not a reason; (4) empirically, a CONTINUE plus a `full` recommendation has
+produced a lean round twice running (iters 60, 62), so CONTINUE would in practice leave these findings to
+another lean pass.
+**Cost recorded honestly:** the last two full rounds breached the wall-clock budget (SPEED-15 shed
+ux-regression at iter-61) and the replay lane now adds ~22 minutes of real ingest by itself, so a full
+iteration 63 may be trimmed or demoted by the arbiter anyway. A reader who holds that the pipeline
+HANDLED this round correctly — both false FAILs were overturned in-round, the reconciliation footer is
+dated and per-journey, no wrong conclusion was drawn — would return CONTINUE with a `full`
+recommendation, and I would not argue that is wrong.
+**Reversible:** yes — the engine's arbiter or the owner can run iteration 63 at any depth; this only
+binds the default and records why.
+
+## iter-62 — goal-evaluator: `/data` keeping stale numbers scored minor, not an AG-8 breach
+
+**Ambiguity:** AG-8 *(critical)* requires the UI to "degrade gracefully... honest '—'/NA placeholder,
+never a blank application-error page". This iteration's fix makes `/data` keep the last-good coverage and
+availability numbers when a refresh fails — and, because the helper never re-enters the error state once
+it holds data, it will keep showing them through a permanent outage, with no local "refresh failing" or
+"last updated" note. That is more honest than the old behaviour in one direction (real data is no longer
+wiped by one blip) and less honest in another (the page no longer says the backend stopped answering).
+**We chose:** minor observation (ledger iter-62/e), not a violation, and no journey held on it. Grounds:
+(1) the numbers shown are real persisted values, never fabricated — the severity bar for critical is
+"fabricated data presented as real"; (2) the canonical surface for backend state is the global readiness
+badge, which polls `GET /api/health` independently and is evidenced going `unavailable` on a real outage
+(iter-53 UT-06), so the truth about the backend is still disclosed where the goal says it lives;
+(3) the previous behaviour destroyed real data on a single transient blip, which is the failure this
+round was asked to fix.
+**Reversible:** yes — a later evaluator or the owner can re-score iter-62/e, and the suggested fix (show
+a "refresh failing / last updated" note after N consecutive failures) is small.

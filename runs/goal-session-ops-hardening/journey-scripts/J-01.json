@@ -185,5 +185,8 @@
         "text": "as of 2026-05-29"
       }
     }
+  ],
+  "_notes": [
+    "ops-hardening iter-62 (browser-qa-agent): re-verified live via Chrome MCP against the shipped tree (iter-62 touches only /api/health's last_run_date and /data's ambient-refresh .catch handlers — neither is on J-01's job-submission path). Both backfills resolved as zero-work (the May range and the weekend-only span are both already fully backfilled from many prior iterations' testing) — the job-progress panel showed 'no new snapshots', '19/19 dates', '28 calendar days · 19 already snapshotted · 9 non-trading', and an explicit zero-work-note ('Zero-work outcome — every requested trading day already had a snapshot... this is not a failure') styled with neutral border/bg-surface-2/text-muted classes, never the success-green treatment — confirmed visually distinct per the goal's acceptance clause. The weekend-only run showed '0/0 dates' / '2 calendar days · 0 already snapshotted · 2 non-trading'. Reloading /data (fresh navigation, no eval/cache) showed BOTH new runs at the top of the persisted Run history table (2026-08-11 14:12:11 and 14:10:58), proving persistence across reload. /scanner-runs/748 rendered 'Immutable snapshot — as of 2026-05-29' with a populated leaderboard (component breakdown, candidate counts, ticker rows led by MU/97.06) — stored values, not a recompute. Lint clean; no step text changed from the iter-61 golden."
   ]
 }

@@ -32,6 +32,7 @@ import { TermInfo } from "@/components/ui/term-info";
 import { cn } from "@/lib/utils";
 import { resolveBackgroundComputePanelBranch } from "@/lib/background-compute-panel-branch";
 import { resolveLastOutcomeSummary } from "@/lib/background-compute-last-outcome";
+import { nextStateAfterFetchError } from "@/lib/data-overview-refresh";
 import { formatIsoDate, formatIsoDateTime, isValidIsoDate, ISO_DATE_PLACEHOLDER } from "@/lib/dates";
 import {
   MEMBERSHIP_TIMELINE_PAGE_SIZE,
@@ -342,7 +343,10 @@ export default function DataManagerPage() {
         }
       })
       .catch(() => {
-        if (!signal?.aborted) setState({ kind: "error" });
+        // goal-ops-hardening iter-62 (auditor F3 fix): a transient failure on the ambient idle-cadence
+        // refresh (iter-60/61) must never erase already-rendered good data -- only the INITIAL-mount
+        // failure (no data yet) becomes the "Backend unavailable" card. See lib/data-overview-refresh.ts.
+        if (!signal?.aborted) setState((prev) => nextStateAfterFetchError(prev));
       });
   }, [asOf]);
 
@@ -354,7 +358,9 @@ export default function DataManagerPage() {
     fetchDataAvailability(signal)
       .then((data) => setAvailability({ kind: "ok", data }))
       .catch(() => {
-        if (!signal?.aborted) setAvailability({ kind: "error" });
+        // goal-ops-hardening iter-62 (auditor F3 fix): same preserve-on-refresh-failure behavior as
+        // loadOverview above, mirrored for the availability heatmap -- see lib/data-overview-refresh.ts.
+        if (!signal?.aborted) setAvailability((prev) => nextStateAfterFetchError(prev));
       });
   }, []);
 

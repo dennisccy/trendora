@@ -4,10 +4,10 @@
       "id": "J-01",
       "name": "Backfill honors the requested range and explains zero-work",
       "status": "passing",
-      "last_verified_iter": "goal-ops-hardening-iter-62",
-      "last_passing_iter": "goal-ops-hardening-iter-62",
+      "last_verified_iter": "goal-ops-hardening-iter-61",
+      "last_passing_iter": "goal-ops-hardening-iter-61",
       "first_seen_iter": "goal-ops-hardening-iter-0",
-      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-62-evidence/UT-J-01-result.png",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-61-evidence/J-01-verify.png",
       "spec_hash": "06b26eaaf82dcdb532465e5c287f1177681a6c8697e4f96cfadddb4fc60b29ad",
       "note": "iter-61: PASSING, re-verified by the deterministic replay lane (engine.log:10484, 10:13:09 -- J-01 J-03 J-04 J-06 J-08 J-09, 6/6 PASS, demo_runner verify 0 failed) with a fresh frame this round. I opened two of the six myself rather than hashing them: J-01-verify.png renders the 2026-05-29 immutable snapshot at regime 75.20 / Risk-on / 68.85% / 59.02% (same figures I matched to scanner_runs.id=748 last round), and J-09-verify.png renders /data with the live 'background compute running (1)' badge and SNAPSHOT DATES 2955 / BACKFILL GAPS 2441 -- which equals the persisted coverage_snapshot payload as it stood at 10:13 local (run 409's finalize only advanced it to 2956/2440 at 10:40:57 local). Neither contradicts its recorded status. J-01's and J-03's replays executed REAL jobs, which I found in the database: data_provider_runs id=406 (2026-05-02->2026-05-29, 19 trading of 28 calendar days, all already snapshotted), id=407 (2026-05-02->2026-05-03, 0 of 2, both non-trading) and id=408 (2025-06-01->2026-07-17, 283 dates, a >370-day span accepted and run to completion) -- so these goldens are not page-title matches."
     },
@@ -15,10 +15,10 @@
       "id": "J-03",
       "name": "No per-run range cap",
       "status": "passing",
-      "last_verified_iter": "goal-ops-hardening-iter-62",
-      "last_passing_iter": "goal-ops-hardening-iter-62",
+      "last_verified_iter": "goal-ops-hardening-iter-61",
+      "last_passing_iter": "goal-ops-hardening-iter-61",
       "first_seen_iter": "goal-ops-hardening-iter-0",
-      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-62-evidence/J-03-verify.png",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-61-evidence/J-03-verify.png",
       "spec_hash": "5457740bbb0cea982e9b1241f19ca50836ff584bbb960a5a088f7168d820c271",
       "note": "iter-61: PASSING, re-verified by the deterministic replay lane (engine.log:10484, 10:13:09 -- J-01 J-03 J-04 J-06 J-08 J-09, 6/6 PASS, demo_runner verify 0 failed) with a fresh frame this round. I opened two of the six myself rather than hashing them: J-01-verify.png renders the 2026-05-29 immutable snapshot at regime 75.20 / Risk-on / 68.85% / 59.02% (same figures I matched to scanner_runs.id=748 last round), and J-09-verify.png renders /data with the live 'background compute running (1)' badge and SNAPSHOT DATES 2955 / BACKFILL GAPS 2441 -- which equals the persisted coverage_snapshot payload as it stood at 10:13 local (run 409's finalize only advanced it to 2956/2440 at 10:40:57 local). Neither contradicts its recorded status. J-01's and J-03's replays executed REAL jobs, which I found in the database: data_provider_runs id=406 (2026-05-02->2026-05-29, 19 trading of 28 calendar days, all already snapshotted), id=407 (2026-05-02->2026-05-03, 0 of 2, both non-trading) and id=408 (2025-06-01->2026-07-17, 283 dates, a >370-day span accepted and run to completion) -- so these goldens are not page-title matches."
     },
@@ -26,10 +26,10 @@
       "id": "J-04",
       "name": "Non-blocking boot with visible status",
       "status": "passing",
-      "last_verified_iter": "goal-ops-hardening-iter-62",
-      "last_passing_iter": "goal-ops-hardening-iter-62",
+      "last_verified_iter": "goal-ops-hardening-iter-61",
+      "last_passing_iter": "goal-ops-hardening-iter-61",
       "first_seen_iter": "goal-ops-hardening-iter-0",
-      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-62-evidence/UT-J-04-result.png",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-61-evidence/J-04-verify.png",
       "spec_hash": "4074a9c952a9a143dc543efef3c8d3e0a1e33a848ab250ec90c7c2f568dbcff8",
       "note": "iter-61: PASSING, re-verified by the deterministic replay lane (engine.log:10484, 10:13:09 -- J-01 J-03 J-04 J-06 J-08 J-09, 6/6 PASS, demo_runner verify 0 failed) with a fresh frame this round. I opened two of the six myself rather than hashing them: J-01-verify.png renders the 2026-05-29 immutable snapshot at regime 75.20 / Risk-on / 68.85% / 59.02% (same figures I matched to scanner_runs.id=748 last round), and J-09-verify.png renders /data with the live 'background compute running (1)' badge and SNAPSHOT DATES 2955 / BACKFILL GAPS 2441 -- which equals the persisted coverage_snapshot payload as it stood at 10:13 local (run 409's finalize only advanced it to 2956/2440 at 10:40:57 local). Neither contradicts its recorded status. J-01's and J-03's replays executed REAL jobs, which I found in the database: data_provider_runs id=406 (2026-05-02->2026-05-29, 19 trading of 28 calendar days, all already snapshotted), id=407 (2026-05-02->2026-05-03, 0 of 2, both non-trading) and id=408 (2025-06-01->2026-07-17, 283 dates, a >370-day span accepted and run to completion) -- so these goldens are not page-title matches."
     },
@@ -37,10 +37,10 @@
       "id": "J-05",
       "name": "Aggregates are precomputed at ingest, never on the fly",
       "status": "passing",
-      "last_verified_iter": "goal-ops-hardening-iter-62",
-      "last_passing_iter": "goal-ops-hardening-iter-62",
+      "last_verified_iter": "goal-ops-hardening-iter-61",
+      "last_passing_iter": "goal-ops-hardening-iter-61",
       "first_seen_iter": "goal-ops-hardening-iter-0",
-      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-62-evidence/J-05-verify.png",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-61-evidence/UT-04-result.png",
       "spec_hash": "63dd5bf0983454e48338557d0f2b1e5ce9726d7aa247c20174ac9323f637564b",
       "note": "iter-61: PROMOTED partial -> PASSING, and the promotion rests on WITHDRAWING iteration 60's own blocker, which I proved was a timezone misreading rather than a defect. THE WITHDRAWAL (iter-60/a, now resolved): data_provider_runs.started_at and coverage_snapshot.computed_at are stored as NAIVE UTC, while the app's own structured log lines and every file mtime are LOCAL (BST, UTC+1). I proved the offset on two independent jobs: run 404's DB started_at 06:58:36 vs its own log marker 'heavy-warm window OPEN' at 07:58:49 local (logs/backend.log:259897), and run 409's DB 09:40:39 vs log 10:40:41 (backend.log:263548). Applying that offset to iteration 60: run 404 ran 07:58:49->08:16:56 LOCAL and wrote coverage 2954/2442 at 07:58:55 local, while iter-60's J-04-verify.png / J-09-verify.png have mtimes 07:47:23 / 07:47:43 local -- ELEVEN MINUTES BEFORE that write. The screens showed 2953/2443 because 2953/2443 was the persisted truth when they were taken. Nothing was stale; iteration 60 compared a screenshot to a database row written after it. WHAT NOW EVIDENCES THE PASS, step by step. Steps 1+2 (in-app backfill of one unsnapshotted historical trading day, then the ingested as-of served from storage): iteration 60's UT-J-05 PASS row and reports/qa/goal-ops-hardening-iter-60-evidence/UT-J-05-result.png, which I re-opened this round -- it renders 'Immutable snapshot -- as of 2010-11-16 - Stored exactly as scanned; never recomputed for today. Scanned 2026-08-11 06:58:48 - provider seed' with Market Regime 61.06 / 'Narrow leadership', equal to scanner_runs.id=2954's stored row. That evidence is durable under methodology A.6 because the product diff since snapshot b250924e is THREE files -- apps/backend/tests/test_data_manager.py (a test), apps/frontend/components/readiness-provider.tsx and apps/frontend/app/data/page.tsx -- so not one line of backend ingest, finalize, coverage or serving code changed. Step 3 (restart -> cold /data from the persisted payload, no 3.3M-row prefill): iteration 59's live phase2-restart drill, durable for the same reason. Step 4 (health stays responsive during a heavy ingest): freshly measured this round and recounted by me from the raw CSV -- runs/goal-ops-hardening-iter-61/evidence-drill/tc5-health-poll.csv, 1078 data rows, 1078/1078 HTTP 200, zero non-answers. The ONE surface this diff did touch (/data) carries fresh evidence I opened and cross-checked against sqlite: UT-04-result.png renders SNAPSHOT DATES 2956 / BACKFILL GAPS 2440 and coverage_snapshot id=1 (asof_key 2026-08-03, dataset_version r2956-rc2956-...) holds snapshot_count=2956 / gap_count=2440 -- rendered = persisted = served. UT-02-result.png additionally shows the honest stale banner ('Coverage as of a prior scan (version r2956-...) -- refreshes on the next data job') after a request-path ScannerRun made the payload one date behind, so the compute-at-ingest contract is disclosed rather than hidden. WHAT IS STILL OWED, and why it does not block: no lane produced a UT-J-05 row THIS iteration (the merged file reads BLOCKED for exactly that reason) because the target-journey replay routing is dead on the full-pipeline path -- browser-qa-phase.sh:272 calls replay_lane_partition_and_verify before :286 assigns TARGET_JOURNEYS (iter-61/a). That is a test-lane defect, not a product defect, and my standing rules forbid holding a journey on a capture/lane gap. The [NEW] walkthrough clause has still never been recorded (demo NOT_YET, empty gallery) -- carried as evidence_makeup, non-blocking, per the iter-60 assumptions entry. NEXT ROUND SHOULD CONVERT THIS DURABLE PASS INTO A FRESH MECHANICAL ONE by replaying J-05's own golden against the reserved unconsumed date.",
       "evidence_makeup": true
@@ -49,10 +49,10 @@
       "id": "J-06",
       "name": "Pages load only what they need",
       "status": "passing",
-      "last_verified_iter": "goal-ops-hardening-iter-62",
-      "last_passing_iter": "goal-ops-hardening-iter-62",
+      "last_verified_iter": "goal-ops-hardening-iter-61",
+      "last_passing_iter": "goal-ops-hardening-iter-61",
       "first_seen_iter": "goal-ops-hardening-iter-0",
-      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-62-evidence/J-06-verify.png",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-61-evidence/J-06-verify.png",
       "spec_hash": "a9654dc139add9c161b5d7e59a431f78bd94fdf0f26b15c4fe2c83a1007db045",
       "note": "iter-61: PASSING, re-verified by the deterministic replay lane (engine.log:10484, 10:13:09 -- J-01 J-03 J-04 J-06 J-08 J-09, 6/6 PASS, demo_runner verify 0 failed) with a fresh frame this round. I opened two of the six myself rather than hashing them: J-01-verify.png renders the 2026-05-29 immutable snapshot at regime 75.20 / Risk-on / 68.85% / 59.02% (same figures I matched to scanner_runs.id=748 last round), and J-09-verify.png renders /data with the live 'background compute running (1)' badge and SNAPSHOT DATES 2955 / BACKFILL GAPS 2441 -- which equals the persisted coverage_snapshot payload as it stood at 10:13 local (run 409's finalize only advanced it to 2956/2440 at 10:40:57 local). Neither contradicts its recorded status. J-01's and J-03's replays executed REAL jobs, which I found in the database: data_provider_runs id=406 (2026-05-02->2026-05-29, 19 trading of 28 calendar days, all already snapshotted), id=407 (2026-05-02->2026-05-03, 0 of 2, both non-trading) and id=408 (2025-06-01->2026-07-17, 283 dates, a >370-day span accepted and run to completion) -- so these goldens are not page-title matches."
     },
@@ -60,10 +60,10 @@
       "id": "J-07",
       "name": "Heavy aggregates never take the service down",
       "status": "partial",
-      "last_verified_iter": "goal-ops-hardening-iter-62",
+      "last_verified_iter": "goal-ops-hardening-iter-61",
       "last_passing_iter": "goal-ops-hardening-iter-34",
       "first_seen_iter": "goal-ops-hardening-iter-14",
-      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-62-evidence/J-07-verify.png",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-60-evidence/UT-J-07-result.png",
       "spec_hash": "1c7c67c3d6cd933820eeac29de54a7442c33e19d3ede0e6353fc044b929bf991",
       "note": "iter-61: STILL PARTIAL, on one clause only, and the measurement half of that clause is now done properly. I recounted the whole drill from the raw CSV rather than reading the write-up: runs/goal-ops-hardening-iter-61/evidence-drill/tc5-health-poll.csv holds 1078 data rows (wc -l 1079), 1078/1078 HTTP 200, ZERO non-answers, 66 answers over 1.0s, and EXACTLY ONE answer over the owner's relaxed 2.0s ceiling -- 2.849s at 2026-08-11T08:23:13.091Z, attributed by the job's own phase markers to coverage_membership_timeline_refresh. My segment counts against the job's own OPEN/CLOSED markers (08:23:09.534Z / 08:40:04.903Z) reconcile exactly: 38 pre + 1005 during + 35 post = 1078. Every figure matches reconciliation.md and the auditor's independent recount. STEP BY STEP: step 1 (full-horizon warm with /api/backtest served throughout, one long-lived process) -- run 405's finalize tail ran forward_aggregates_warm 104.15s, factor_lab_all_warm 561.68s, drawdown_expectations_warm 337.54s in one process with zero errors; step 2 AVAILABILITY MET OUTRIGHT (1078/1078 answered 200), LATENCY NOT MET literally (1 of 1078 = 0.09% over 2.0s -- a real improvement on iter-59's 12 of 1520 = 0.79%); step 3 (VmPeak under memory_cap_mb) durable from iter-59's 71.26% of 8192 with the warm-seam code byte-unchanged since; step 4 (memory-pressure abort never wedges the process) re-evidenced live this round by the TC-4 fault drill, whose frames I opened -- TC-4-degrade-rendered-indicator-closeup.png shows a legible warning triangle and the word 'Unavailable', and tc4-sample-link-unavailable.json records armed = 80 unavailable / 0 active chips vs control = 0 unavailable / 80 active chips at n=16452, so the control arm proves the cohort really holds observations and a disabled injector could not pass as green. THE ONLY THING LEFT IS AN OWNER SENTENCE, now unanswered for a TWELFTH round: the owner amendment's relaxed 2s ceiling was written for a background-compute window 'of order ~30 s' and this window was 16m55s (1015.37s, honestly reported as under the spec's own 18-23 min band). Keep the 2s promise for long jobs and J-07 stays open until the app is faster; apply it to short jobs only and J-07's last gap closes. NOT stalled: there is also an agent-actionable path -- the single breach sits inside one named phase (coverage_membership_timeline_refresh), which could be made to yield. Walkthrough still never recorded (demo NOT_YET) -- carried as evidence_makeup, non-blocking.",
       "evidence_makeup": true
@@ -83,10 +83,10 @@
       "id": "J-09",
       "name": "The backend discloses its own background-compute activity",
       "status": "passing",
-      "last_verified_iter": "goal-ops-hardening-iter-62",
-      "last_passing_iter": "goal-ops-hardening-iter-62",
+      "last_verified_iter": "goal-ops-hardening-iter-61",
+      "last_passing_iter": "goal-ops-hardening-iter-61",
       "first_seen_iter": "goal-ops-hardening-iter-24",
-      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-62-evidence/J-09-verify.png",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-61-evidence/J-09-verify.png",
       "spec_hash": "40d29150860c17a467851359d82af4524204a0cc874c7c3eb568255977363a61",
       "note": "iter-61: PASSING, re-verified by the deterministic replay lane (engine.log:10484, 10:13:09 -- J-01 J-03 J-04 J-06 J-08 J-09, 6/6 PASS, demo_runner verify 0 failed) with a fresh frame this round. I opened two of the six myself rather than hashing them: J-01-verify.png renders the 2026-05-29 immutable snapshot at regime 75.20 / Risk-on / 68.85% / 59.02% (same figures I matched to scanner_runs.id=748 last round), and J-09-verify.png renders /data with the live 'background compute running (1)' badge and SNAPSHOT DATES 2955 / BACKFILL GAPS 2441 -- which equals the persisted coverage_snapshot payload as it stood at 10:13 local (run 409's finalize only advanced it to 2956/2440 at 10:40:57 local). Neither contradicts its recorded status. J-01's and J-03's replays executed REAL jobs, which I found in the database: data_provider_runs id=406 (2026-05-02->2026-05-29, 19 trading of 28 calendar days, all already snapshotted), id=407 (2026-05-02->2026-05-03, 0 of 2, both non-trading) and id=408 (2025-06-01->2026-07-17, 283 dates, a >370-day span accepted and run to completion) -- so these goldens are not page-title matches."
     }
@@ -1359,49 +1359,7 @@
       "severity": "minor",
       "resolved": false,
       "evidence": "iter-61/h -- NEW, OPEN, small. The only artifact pinning this round's actual fix (the ambient idle-cadence refresh at apps/frontend/app/data/page.tsx:383-391) is browser-QA prose (UT-02/UT-03); the backend regression test added this round pins the BACKEND, which was never the defect. Deleting that useEffect would fail nothing. Auditor F2. The frontend handoff's argument -- the codebase has no harness for this shape of wiring -- is true, and the consequence is recorded rather than argued away. Two related sharp edges from auditor F3, noted not scored: 'if (!pollIdleIntervalSeconds) return' treats a served 0 as 'never refresh', and loadOverview's catch now replaces good numbers with the 'Backend unavailable' card every 30s on a single transient failure instead of only at mount."
-    },
-    {
-      "iter": "goal-ops-hardening-iter-62",
-      "anti_goal": "AG-3: A journey passes ONLY if the displayed numbers are correct (evidence-integrity corollary: a cited frame must show what its row claims)",
-      "severity": "minor",
-      "evidence": "iter-62/a — reports/qa/goal-ops-hardening-iter-62-evidence/UT-J-01-result.png and UT-J-07-result.png are BYTE-IDENTICAL (md5 1cf21897eb6a0fccdd9cda4f5d5b545e, verified by me); the single /data coverage frame shows NEITHER row's claims (no zero-work note / run-history for J-01; no background-compute panel, last-run-status or aggregates-refreshed for J-07). J-01's claims were nonetheless corroborated by me from sqlite (data_provider_runs id=413 19/19 dates, id=414 0/0). Recurrence of iter-61/e.",
-      "resolved": false
-    },
-    {
-      "iter": "goal-ops-hardening-iter-62",
-      "anti_goal": "AG-8: honest degrade / never a false failure state (verification-substrate corollary)",
-      "severity": "minor",
-      "evidence": "iter-62/b — the deterministic replay lane started ~1 minute after a backend restart (logs/backend.log boot banner 'start-backend.sh: launching at 2026-08-11T13:24:00Z' = 14:24 local; J-01-verify.png and J-04-verify.png both carry mtime 14:25 and show the 'initializing history 89/89' chip), so J-01 (step 09) and J-04 (step 02 wait_for ready, 20s cap) reported FALSE FAILs on required-still-passing journeys. The LLM lane overturned both correctly but attributed them to 'transient replay-lane flakiness' rather than naming the boot race.",
-      "resolved": false
-    },
-    {
-      "iter": "goal-ops-hardening-iter-62",
-      "anti_goal": "AG-3: displayed numbers correct (golden-integrity corollary: an assertion must follow THIS run's own row)",
-      "severity": "minor",
-      "evidence": "iter-62/c — runs/goal-session-ops-hardening/journey-scripts/J-05.json backfills 2010-11-17 (steps 2-3) but its closing steps 13-15 assert 2010-11-16, a date from two rotations ago; and this iteration's own replay CONSUMED the reserved date (scanner_runs id=2958 asof_date 2010-11-17 created 2026-08-11 13:27:10Z from data_provider_runs id=412, snapshots_created=1). Step 10 asserts '1 calendar day - 0 already snapshotted - 0 non-trading', so the NEXT replay of this golden will FAIL unless the date is rotated first.",
-      "resolved": false
-    },
-    {
-      "iter": "goal-ops-hardening-iter-62",
-      "anti_goal": "Framework honesty: a documented command must actually run",
-      "severity": "minor",
-      "evidence": "iter-62/d — apps/frontend/lib/data-overview-refresh.test.ts's own header instructs 'node lib/data-overview-refresh.test.ts'; I ran it and it fails with ERR_UNKNOWN_FILE_EXTENSION on this Node 22 install. The working command is 'npx tsx lib/data-overview-refresh.test.ts' (3 passed, run by me) — the dev handoff says so honestly, the file does not.",
-      "resolved": false
-    },
-    {
-      "iter": "goal-ops-hardening-iter-62",
-      "anti_goal": "AG-8: the UI degrades gracefully and honestly",
-      "severity": "minor",
-      "evidence": "iter-62/e — apps/frontend/lib/data-overview-refresh.ts never re-enters the error state once a fetch has succeeded, so after ANY number of consecutive ambient-refresh failures /data keeps rendering last-good coverage/availability with no local 'refresh failing / last updated' note. The global readiness badge still discloses backend state (J-04, iter-53 UT-06), which is why this is minor rather than an AG-8 breach — but a sustained outage now leaves stale numbers on screen with no local indication.",
-      "resolved": false
-    },
-    {
-      "iter": "goal-ops-hardening-iter-62",
-      "anti_goal": "AG-3: displayed numbers correct (unverifiable-disclosure corollary)",
-      "severity": "minor",
-      "evidence": "iter-62/f — the top-bar chip 'background compute running (1)' appears in J-07-verify.png (15:06 local) and UT-J-04-result.png (15:14 local), but no artifact can confirm it: logs/backend.log records ingest heavy-warm windows only (all three closed 14:47:04, next opened 15:11:03), not the forward-aggregate/research warms that GET /api/health's background_compute.active actually counts. J-09's headline number is therefore not reconcilable from artifacts.",
-      "resolved": false
     }
   ],
-  "updated_at": "2026-08-11T15:40:00Z"
+  "updated_at": "2026-08-11T10:41:57Z"
 }

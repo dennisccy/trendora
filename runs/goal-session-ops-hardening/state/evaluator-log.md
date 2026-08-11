@@ -6321,3 +6321,157 @@ than 2 seconds (2.849 s, in the job's first few seconds). Please say which you w
 promise for long jobs (J-07 stays open until the app is faster), or apply it to short jobs only (J-07's
 last gap closes). Two facts worth knowing: the app served zero errors of any kind all day, and last
 round's reported defect turned out to be a clock-reading mistake, not a fault in the product.
+
+## Iteration 62 — goal-ops-hardening-iter-62
+
+**Date:** 2026-08-11T15:40:00Z
+**Verdict:** ESCALATE
+**Depth dispatched:** lean (`iter-62/depth-dispatched` = `lean`, matching the spec's own `**Depth:** lean` —
+the decomposer applied the literal four-trigger test and chose lean over my predecessor's `full`
+recommendation, and logged the call in `assumptions.md`. So the plan and the dispatch agreed this round;
+what did not agree is the plan and what the round needed.)
+
+**Journey deltas:**
+- Newly passing: none. Newly failing: none. Regressed: none. Shape stays **7 passing / 1 partial**.
+- **J-05 and J-07 were replayed deterministically for the first time in this session** — the replay file
+  carries **7** rows, not the 6 of every prior round, so iteration 60's target-journey routing fix is now
+  demonstrably live on the lean path. J-05's replay ran a **REAL 15m04s backfill** (`data_provider_runs`
+  id=412, 2010-11-17) that created `scanner_runs` id=2958 — the fresh machine-made pass iteration 61's
+  evaluator asked for, and it confirms that round's promotion of J-05.
+- **Two replay rows FAILED and were correctly overturned** by the LLM lane (J-01 step 09, J-04 step 02),
+  with a dated reconciliation footer naming both. I root-caused them myself: a backend restart one minute
+  earlier, not flakiness.
+- No `browser-infra.json`; no `journeys-changed.md`; no `DEFERRED-BUDGET` row. All 8 `spec_hash`es match
+  `goal_gate.py hash-journeys`, run by me. `pending_infra` clear everywhere. `evidence_makeup` KEPT on
+  J-05/J-07 (the `[NEW]` walkthrough clause has still never been satisfied — no
+  `reports/demo/goal-ops-hardening-iter-62/` exists and iter-61's demo results read NOT_YET with zero
+  captured steps) and clear on the other six.
+- Anti-goal violations: **SIX NEW OPEN, all minor** (iter-62/a one frame cited as two and showing neither
+  row's claims; /b the replay lane raced a restart and produced two false FAILs; /c J-05's golden consumed
+  its own reserved date and will FAIL next round; /d the new test file documents a command that does not
+  run; /e `/data` can now show stale numbers indefinitely with no local note; /f the background-compute
+  chip cannot be reconciled against any log line). Ledger now: **182 total, 94 unresolved, 0 unresolved
+  critical.** scan-report **CLEAN**; coherence **COHERENCE-PASS** (0 blocking, 0 advisory); review
+  **PASS**; merged browser QA **PASS 7/7**; raw replay **FAIL 5/7**, reconciled.
+
+**Reasoning:** I re-derived every load-bearing fact from the source, the database and the app's own log.
+(1) **Both fixes are real and I read them.** `apps/backend/app/api/health.py` now resolves
+`last_run_date` with `session.scalar(select(func.max(ScannerRun.asof_date)))` INSIDE the existing
+`db_ok` try/except (so a DB error degrades to `None`, the same convention `seed_latest_date` already
+uses), and `scanner_runs` carries a UNIQUE INDEX on `asof_date`, so this adds an index-backed `MAX()`
+over 2,958 rows — no latency risk. `apps/frontend/app/data/page.tsx`'s two `.catch` sites both route
+through the new pure helper; I ran the new test myself (`npx tsx`, 3 passed).
+(2) **The served number is correct, checked against the database.** `select max(asof_date) from
+scanner_runs` = **2026-08-03**, exactly what the dev handoff's live curl reported. The field stays
+invisible in the UI (`grep` finds only the type declaration at `apps/frontend/lib/api.ts:191`), so
+nothing new is displayed — only the served value stops being a hardcoded lie.
+(3) **`/data`'s numbers are right this round, and I checked them the way iteration 60 got wrong.**
+`coverage_snapshot` id=1 holds `snapshot_count=2958` / `gap_count=2438`; `count(distinct asof_date)`
+= **2958**; `UT-J-04-result.png` (15:14 local) and `UT-J-01-result.png` (15:19 local) both render
+**SNAPSHOT DATES 2958 / BACKFILL GAPS 2438**. Rendered = persisted = live table. I converted times
+explicitly this time (DB naive UTC, file mtimes and log lines local BST) rather than comparing them raw.
+(4) **J-05's replay did real work and the database proves it.** `data_provider_runs` id=412: 2010-11-17,
+13:25:53→13:40:57Z (**15m04s**), `snapshots_created=1`, `forward_returns_inserted=1360`, and
+`scanner_runs` id=2958 for 2010-11-17 created 13:27:10Z. The golden's step 10 ("1 calendar day · 0
+already snapshotted · 0 non-trading") has teeth and passed.
+(5) **THE SAME FACT IS A TRAP FOR NEXT ROUND.** Because id=2958 now exists, 2010-11-17 is no longer
+unsnapshotted, so step 10 will read "1 already snapshotted" and the golden will FAIL — on a journey that
+is currently `passing`, in a lane whose FAILs a future evaluator could read as a regression halt. Worse,
+the golden's closing steps 13-15 still assert **2010-11-16** (two rotations stale), so its final
+screenshot, `J-05-verify.png`, shows iteration 60's snapshot page (scanned 06:58:48) rather than the day
+this run created. Nobody rotates the date automatically; the golden's own note asks a human to.
+(6) **The two replay failures were a restart race, not flakiness, and I proved it from the boot banner.**
+`logs/backend.log`: `=== start-backend.sh: launching at 2026-08-11T13:24:00Z ===` (14:24 local).
+`J-01-verify.png` and `J-04-verify.png` both carry mtime **14:25** and both show the top-bar chip
+"initializing history 89/89" — the app was honestly still warming up, which is J-04's OWN correct
+behavior. J-04's golden waits 20 s for `ready`; warm-up outlasted it. The LLM lane re-checked live and
+passed both, and the merged file plus a dated reconciliation footer record the overturn correctly — the
+process worked — but the write-up called it "transient replay-lane flakiness", which will not prevent
+the next recurrence.
+(7) **The app had another clean day and I counted it myself.** From the boot line to end of file: **370**
+`GET /api/health` answers, **0** non-200 health answers, **0** HTTP 5xx of any kind, **0** MemoryErrors —
+while THREE ingest jobs ran concurrently in one process (heavy-warm windows opened 14:24:30, 14:25:18,
+14:27:11; all closed by 14:47:04) plus a full browser QA pass. Whole-file totals are unchanged from
+iteration 61 (129 500s, 8,211 MemoryErrors), so this round added none.
+(8) **I found the concrete engineering target that could close J-07 without the owner.** This round's own
+finalize-tail phase log gives the breakdown: `coverage_membership_timeline_refresh` **55.20 s**,
+`forward_aggregates_warm` **297.17 s**, `factor_lab_all_warm` **608.68 s**, `research_hot_keys_warm`
+**23.79 s**. Iteration 61's single >2 s health poll (2.849 s) fell inside the FIRST of those. So "nothing
+further can be measured" is true, but "nothing further can be DONE" is not: making that 55-second phase
+yield is ordinary agent work with a measurable acceptance test.
+(9) **Anti-goals checked at the row and command level.** AG-9: all 30 of today's ingest rows are
+`provider='seed'`; the only non-seed rows since 2026-08-01 are id=297 and id=369, both pre-existing.
+AG-10: `git diff --stat` AND `git status --porcelain` over `config.yaml`, `scripts/` and
+`project-extensions/` are BOTH empty; `config.yaml:1363-1364` still reads 8192 / 2; the boot banner reads
+`memory_cap_mb=8192 malloc_arena_max=2` with `host-guard: cpu_list=0-15 blas_threads=8`. AG-7: scan CLEAN
+over a 5-file diff with no manifest, lockfile or LICENSE.
+(10) **I opened frames rather than trusting rows, and one pair of frames is one frame.**
+`UT-J-01-result.png` and `UT-J-07-result.png` are byte-identical (md5 `1cf21897eb6a…`) and show the
+`/data` coverage panel — which contains NONE of J-01's claims (zero-work note, run history,
+`/scanner-runs/748`) and NONE of J-07's (background-compute panel, `last-run-status`,
+`aggregates-refreshed`). I did not take the rows on trust: J-01's claims reconcile exactly against
+sqlite (`data_provider_runs` id=413, 19/19 dates / 28 calendar days / 19 already snapshotted / 9
+non-trading; id=414, 0/0 / 2 calendar / 2 non-trading — the same two timestamps the row quotes), and
+J-07's own replay produced a separate, real frame (`J-07-verify.png`, `/data` with the live
+background-compute chip and 2958/2438). Nothing blank this round.
+(11) **One thing I could not verify, stated rather than rounded away.** The chip "background compute
+running (1)" appears at 15:06 and 15:14 local, but every ingest heavy-warm window was closed between
+14:47:04 and 15:11:03. The chip counts forward-aggregate/research warms, which log nothing at INFO, so
+J-09's headline number is not reconcilable from any artifact (iter-62/f). I am not calling it wrong — I
+am saying it cannot be checked.
+Rejected **REGRESSION (C.1)**: no journey moved `passing`/`already_passing` → `failing`; the two replay
+FAILs are overturned in the authoritative merged file and I independently root-caused them to a restart.
+Nothing meets the critical list — scan CLEAN, both AG-10 checks empty, every ingest row `seed`, and the
+displayed numbers match the database on every frame I opened.
+Rejected **STALLED (C.2)**: C.2 needs EVERY unblock path to be human-owned, and reasoning 8 shows one
+that is not — the 55-second finalize phase can be made to yield by agents, which would close J-07's last
+measurable half without the owner. Rotating J-05's golden date, re-capturing the duplicated frame and
+adding a staleness note are all ordinary agent work too.
+Rejected **GOAL_ACHIEVED (C.3)**: J-07 is `partial`.
+Rejected **CONTINUE (C.5)**: the tree is top-down and C.4 fires first.
+**Chose ESCALATE (C.4).** Its third clause fires literally and on real content: this WAS a lean iteration
+(`depth-dispatched` = `lean`), and it surfaced cross-cutting complexity in the verification substrate the
+whole session depends on — (a) an intermittent restart race that made two required-still-passing
+journeys report false failures (reasoning 6), (b) a golden that has consumed its own reserved date and
+will report a false failure NEXT round on a currently-passing journey (reasoning 5), and (c) the fact
+that the deterministic lane now runs a real 15-minute ingest job every round, a cost the owner was asked
+to sanction and has not. None of the three was reported by any lane; I derived all three from the boot
+banner, the goldens and the database. The audit lane has root-caused exactly this class of harness defect
+twice (iterations 58 and 61) and does not run at lean depth. I record the cost honestly in
+`assumptions.md`: full rounds have breached the wall-clock budget twice running, and the replay lane now
+adds ~22 minutes of ingest by itself, so the arbiter may trim lanes again.
+**FIVE THINGS I STATE PLAINLY RATHER THAN ROUND AWAY:** (i) **the session's own verification finally
+covered all eight journeys mechanically** — J-05's and J-07's goldens replayed for the first time, and
+J-05's ran a real 15-minute job that created a real new day of data. That is the single best structural
+result in several rounds. (ii) **And the same mechanism has now armed a false alarm for next round**:
+the day it created is the day its own script demands be empty. (iii) **The reporting defect I expected
+did not recur** — the browser-QA write-up names the raw replay's 5/7 and both failures in its own scope
+note, and the reconciliation footer is dated and per-journey. After four rounds of false headlines, that
+deserves saying. (iv) **What replaced it is quieter**: two journeys were handed the same photograph, and
+that photograph shows what neither of them claims. (v) **J-07 is no longer purely the owner's to close.**
+The job's own phase log names a 55-second phase where last round's single slow answer happened; making it
+yield is ordinary work. The owner's sentence is still the fastest path, not the only one.
+
+**Next-step recommendation:** FULL depth (mandatory via ESCALATE). Give the next round this order.
+(1) **Change the date J-05's check script uses, before anything else runs** — it demands an empty day and
+this round filled the one it names; also point its last three steps at the day it creates instead of
+2010-11-16. (2) **Stop the checking robot from starting while the app is still waking up** — it began one
+minute after a restart and reported two failures that were not real. (3) **Make the 55-second first phase
+of the job's tail yield**, then re-run last round's health drill and publish the raw file — this is the
+only path that closes J-07 without the owner. (4) **Record the walkthrough** for J-05 and J-07; it rides
+along and is never a round's own goal. (5) **Take one real picture per journey.** (6) SMALL AND WRITTEN
+DOWN: the new test file documents a command that fails (`node`; `npx tsx` works); `/data` should say when
+its refresh is failing (iter-62/e); the background-compute chip logs nothing that can confirm it
+(iter-62/f). (7) CARRIED, untouched: iter-29/b + the badge wording after a permanently failed warm-up
+(35th round unmade); iter-31/e; iter-32/f; iter-35/k; iter-36/n; iter-37/o; iter-37/q; iter-39/u;
+iter-46/az; iter-46/ba; iter-47/bd; iter-47/bf; iter-47/bi; iter-48/bj; iter-57/f; iter-57/l; iter-59/g;
+iter-59/h; iter-59/k. Deferred a TWENTY-EIGHTH time: iter-33/g, the Regime Lab.
+(8) **OWNER — the same one-sentence decision, 14th round, but it is no longer the only path.** The app
+must answer its health check within 2 seconds while a background job runs; that promise was written for a
+job of about 30 seconds and our jobs last 15 to 23 minutes. Please say which you want — keep the 2-second
+promise for long jobs (J-07 stays open until the app is faster), or apply it to short jobs only (J-07's
+last gap closes). Two facts worth knowing: the app again served zero errors of any kind, this time with
+three jobs running at once in one process; and item 3 above gives the agents a real chance to close J-07
+without you. Still also waiting on you: permission to fix the test-lane file
+(`scripts/automation/browser-qa-phase.sh`) and a cost decision — the automatic check now runs a real
+15-minute data job every round.

@@ -38,7 +38,7 @@ from sqlmodel import Session
 from app.config import get_config
 from app.db import get_engine, get_session
 from app.engine.readiness import compute_preflight, compute_readiness, record_verdict_transition
-from app.models import DailyPrice
+from app.models import DailyPrice, ScannerRun
 
 router = APIRouter(tags=["health"])
 
@@ -81,10 +81,15 @@ def health(session: Session = Depends(get_session)) -> dict:
     try:
         latest = session.scalar(select(func.max(DailyPrice.date)))
         symbol_count = _distinct_symbol_count(session)
+        # goal-ops-hardening iter-62: the SAME query shape `app.engine.data_manager` already uses to
+        # resolve the latest scanner run date (e.g. its `latest_run_date` reads) -- no second derivation.
+        # Null on an empty DB (no scanner run yet), matching this module's own docstring contract.
+        last_run_date = session.scalar(select(func.max(ScannerRun.asof_date)))
         db_ok = True
     except Exception:  # pragma: no cover - DB unreachable is surfaced, never faked
         latest = None
         symbol_count = 0
+        last_run_date = None
         db_ok = False
 
     # The single honest readiness state + warm-up progress (computed once by the readiness producer).
@@ -123,7 +128,7 @@ def health(session: Session = Depends(get_session)) -> dict:
         "status": "ok" if db_ok else "degraded",
         "db_ok": db_ok,
         "provider": provider,
-        "last_run_date": None,
+        "last_run_date": last_run_date.isoformat() if last_run_date else None,
         "seed_latest_date": latest.isoformat() if latest else None,
         "symbol_count": symbol_count,
         # iter-28 (J-40): the single canonical readiness value (state + warm-up progress).

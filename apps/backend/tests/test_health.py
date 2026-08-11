@@ -8,7 +8,7 @@ from sqlalchemy import event, func, select as sa_select
 from sqlmodel import Session, select
 
 import main
-from app.api.health import _distinct_symbol_count
+from app.api.health import _distinct_symbol_count, health
 from app.config import load_config
 from app.db import create_db_and_tables, make_engine
 from app.engine import readiness
@@ -18,6 +18,12 @@ from app.models import DailyPrice, ScannerRun
 
 
 def test_health_returns_ok_shape(loaded_engine):
+    # TC-1: `last_run_date` reflects the real latest scanner run -- read directly via the same query
+    # shape the endpoint uses (`select(func.max(ScannerRun.asof_date))`), against the SAME loaded_engine,
+    # which genuinely carries ScannerRun rows (iter-9/iter-28 warm-up fixture history).
+    with Session(loaded_engine) as session:
+        expected_last_run_date = session.scalar(sa_select(func.max(ScannerRun.asof_date)))
+    assert expected_last_run_date is not None  # the fixture is not vacuously empty here
     # loaded_engine registers the temp DB as the process engine (see conftest).
     with TestClient(main.app) as client:
         resp = client.get("/api/health")
@@ -26,9 +32,22 @@ def test_health_returns_ok_shape(loaded_engine):
     assert body["status"] == "ok"
     assert body["db_ok"] is True
     assert body["provider"] == "seed"
-    assert body["last_run_date"] is None
+    assert body["last_run_date"] == expected_last_run_date.isoformat()
     assert body["seed_latest_date"] is not None
     assert body["symbol_count"] > 100
+
+
+def test_health_last_run_date_is_null_on_empty_db(tmp_path):
+    """TC-2: a freshly created, unloaded engine (tables exist, zero ScannerRun rows) reports
+    `last_run_date: null` -- preserves the pre-existing empty-DB contract this module's own docstring
+    already promises. Calls the handler directly against an isolated session (mirrors
+    test_api_watchlist.py:173's test_watchlist_raises_503_when_no_price_data), leaving the shared
+    process engine untouched."""
+    engine = make_engine(f"sqlite:///{tmp_path / 'health_empty.db'}")
+    create_db_and_tables(engine)  # tables exist, but no rows were ever loaded
+    with Session(engine) as session:
+        body = health(session)
+    assert body["last_run_date"] is None
 
 
 def test_health_carries_readiness_and_warmup(loaded_engine):

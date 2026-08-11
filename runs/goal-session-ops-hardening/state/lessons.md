@@ -643,3 +643,26 @@ and confirm from the engine log's own line — its distinctive "Target journey �
 appeared once in this session.
 **Applies to:** any change to `scripts/automation/lib/*.sh` consumed by both `goal-iter-lean.sh` and
 `browser-qa-phase.sh`; any DoD item phrased as "the engine log lists X".
+
+## iter-62 — 2026-08-11T15:40:00Z
+
+**Verdict:** ESCALATE
+**Lesson:** A golden that performs REAL work can destroy its own precondition: J-05's script backfills
+2010-11-17 and asserts "0 already snapshotted", so this round's own successful replay (creating
+`scanner_runs` id=2958) guarantees the SAME script fails next round. Any golden that mutates state needs
+either a fresh target chosen at run time or an explicit rotation step — and its closing assertions must
+name the row it just created, not a date from two rotations ago (steps 13-15 still assert 2010-11-16).
+**Applies to:** any iteration that runs, edits or trusts `runs/goal-session-*/journey-scripts/*.json`
+goldens that create data (J-05 today; any future state-mutating golden).
+
+## iter-62 — 2026-08-11T15:40:01Z
+
+**Verdict:** ESCALATE
+**Lesson:** The deterministic replay lane can start while the backend is still warming up after the
+pipeline's own pre-QA restart, and then reports FALSE FAILs on required-still-passing journeys — this
+round J-01 (step 09) and J-04 (step 02, a 20 s `wait_for` on `data-state="ready"`). Proof is cheap and
+should be the first check on any replay FAIL: compare the frame's mtime with the `=== start-backend.sh:
+launching at ... ===` banner in `logs/backend.log` (13:24:00Z boot vs 14:25 local frames), and look at the
+frame — both showed the honest "initializing history 89/89" chip. Never read such a FAIL as a regression.
+**Applies to:** any iteration reading `*-regression-replay-results.md`, and any change to the browser-QA
+lane's restart/replay ordering.
