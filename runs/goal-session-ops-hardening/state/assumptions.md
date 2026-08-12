@@ -1047,3 +1047,31 @@ drill alone already contains a breach), so this choice changes the number the ow
 **Reversible:** yes — a later evaluator or the owner can rule that only the spec's chartered drills
 constitute J-07's acceptance measurement; both counts are recorded separately in `journey-history.json`'s
 J-07 gap field and in this round's eval.md table.
+
+## iter-69 — goal-decomposer
+
+**Ambiguity:** iter-68's next-step item (2) orders "arm `TRENDORA_HEALTH_WATCHDOG=1` for the whole
+iteration, including the replay/browser lane's backend" without naming a mechanism. The browser-QA/replay
+lane's backend is (re)started by pipeline automation (`scripts/automation/browser-qa-phase.sh` / the pump)
+outside any product-code or dev-drill process's control, and no `.env`/dotenv loader exists in
+`apps/backend` for a checked-in file to pre-seed the flag — the only two mechanisms that would
+GUARANTEE the flag reaches that lane's process are (a) editing `scripts/automation/*` to export it, which
+is framework/owner-gated territory this session has repeatedly declined to enter without explicit
+permission (iter-56 precedent; the still-pending `browser-qa-phase.sh` ordering-bug sign-off), or
+(b) flipping the flag's own default to armed, which contradicts the module's explicit "off by default,
+zero behavior change when unset" design commitment repeated in every iteration since iter-67.
+
+**We chose:** direct the browser-qa-agent, via this iteration's own TESTING REQUIREMENTS (a legitimate
+spec-level lever, not a framework-file edit — same lever iter-66's assumption ledger chose for the
+canonical-poll-script direction), to export the flag itself before it triggers/relies on any backend
+restart for its own J-07 drill, and to name the constraint explicitly in its report if it inherits an
+already-running, unarmed backend it cannot restart. Grounds: (1) it does not touch any
+`scripts/automation/*` file, preserving the owner-gated boundary; (2) it does not change the flag's
+default, preserving the zero-risk-when-unset commitment; (3) it mirrors the session's own precedent for
+directing lane behavior without editing framework code, with the same honest-disclosure-either-way
+requirement iter-66/iter-68 already established for the canonical-script direction.
+
+**Reversible:** yes — if this lever again fails to arm the flag for the QA lane (this NOTES section names
+that outcome explicitly), a later iteration can escalate to an actual `scripts/automation/*` change made
+with the owner's explicit awareness, or the owner can decide the lane-level attribution gap is acceptable
+and instead answer the standing ceiling-policy question directly.
