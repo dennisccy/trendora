@@ -11384,3 +11384,237 @@ AG-10: both drills ran through `scripts/start-backend.sh` with host-guard's decl
 (`memory_cap_mb=8192`, `malloc_arena_max=2`, `cpu_list=0-15`, `blas_threads=8` — live-read from
 `logs/backend.log`; `git status --porcelain -- config.yaml project-extensions/ scripts/` empty before and
 after this pass).
+
+## Addendum 36 (2026-08-12, ops-hardening iter-70 developer pass) — `GET /api/health` reads a bounded-interval background-refresh cache instead of recomputing readiness/preflight on every request; two iter-69 write-up corrections
+
+### The fix (IN SCOPE items 1-6, `app/engine/readiness.py` + `app/api/health.py` + `main.py` + `app/config.py` + `config.yaml` + `app/engine/data_manager.py`)
+
+Per iter-69's own next-step recommendation ("Stop `GET /api/health` recomputing readiness and preflight on
+every request... Serve them from a stored/bounded value... keeping `app.engine.readiness` as the single
+producer — no second implementation, no new endpoint"): `app.engine.readiness` gains a bounded-interval
+background-refresh cache around its SAME two producer functions (`compute_readiness`/`compute_preflight`,
+byte-unchanged) — a new daemon thread (`start_readiness_refresh`/`stop_readiness_refresh`), started/stopped
+from the SAME `lifespan` boot sequence that already starts/would-need-to-stop
+`app.engine.warmup.start_warmup`, ticking every `readiness.refresh_interval_seconds` (new config knob,
+`config.yaml`, default `0.5s` — well under `startup.health_poll_interval_seconds`'s `2.0s`). `GET /api/health`
+now reads `get_readiness_and_preflight`'s cached `{"readiness": ..., "preflight": ...}` dict instead of
+calling either producer directly; the three existing DB reads (`func.max(DailyPrice.date)`,
+`_distinct_symbol_count`, `func.max(ScannerRun.asof_date)`) are untouched (out of scope — iter-69's
+attribution never implicated them). `record_verdict_transition`'s existing on-transition-only write moved
+from the request path into the tick (same dedup-against-last-recorded-verdict logic, same verdict-history
+file). A cold-start fallback (no completed tick yet — boot, or a direct `health(session)` call with no
+thread running) computes once synchronously, byte-identical to the pre-cache per-request behavior. An
+immediate-refresh trigger fires at the end of `data_manager._refresh_ingest_aggregates` — the SAME finalize
+hook every other ingest-time aggregate already refreshes from — so a job-completion state flip is reflected
+within one tick, not up to a full period. A tick whose compute raises degrades to the last-known-good cached
+value (never blanks/500s `GET /api/health`); the thread keeps ticking. The cache read (request thread) and
+write (background thread / immediate trigger) never produce a torn read: the whole `{"readiness":...,
+"preflight":...}` payload is built, then published via a single atomic dict-reference swap, serialized
+against concurrent writers by one lock (`_TICK_LOCK`) — proven by a dedicated concurrency test.
+
+**Fix pass, mid-implementation:** the FIRST cut of `start_readiness_refresh` left the shared cache dict
+untouched across repeated `lifespan` entries (only the THREAD was single-flight-guarded) — under the real
+test suite this let one earlier test's (possibly monkeypatched) cached value leak into an unrelated LATER
+test's very first request against a freshly-booted, different engine, caught live by
+`test_health_background_compute_serves_failed_outcome_verbatim` failing (`IndexError: list index out of
+range` — the served `background_compute.recent_outcomes` was `[]`, a stale value from an earlier boot, not
+the test's own crafted `failed` outcome). Fixed by resetting the cache to `None` whenever
+`start_readiness_refresh` actually spawns a fresh thread (never on the single-flight no-op path) — a
+genuinely new boot now always starts clean, and the cold-start fallback's own synchronous compute covers the
+brief window before that boot's first tick completes. Zero effect on real deployment (`start_readiness_
+refresh` runs exactly once per process there, and the cache already starts `None`); the bug and its fix are
+both artifacts of one process re-entering `lifespan` repeatedly against different engines — every
+`TestClient` block in the test suite — a scenario that does not exist outside tests.
+
+### TC-3 — live-warm drill (dev drill), phase-grouped: zero breaches, zero non-answers
+
+**Method.** Backend launched via `scripts/start-backend.sh` with `TRENDORA_HEALTH_WATCHDOG=1` (AG-10 caps
+confirmed live in `logs/backend.log`: `memory_cap_mb=8192 malloc_arena_max=2`, `host-guard: cpu_list=0-15
+blas_threads=8`; `git status --porcelain -- config.yaml project-extensions/ scripts/` shows only this
+iteration's OWN `readiness.refresh_interval_seconds` line added to `config.yaml` — no HOST-GUARD block, cap
+value, or launch script touched). `2019-02-05` was live-verified unsnapshotted immediately before dispatch
+(direct sqlite read against the real dev DB: SPY has a bar for that date, `scanner_runs` has none — a real
+historical trading day, not a fixture). Dispatched via `POST /api/data/jobs` (`kind=backfill`,
+`start=end=2019-02-05`, job_id `22057414bbff44e2ab9141d31ae70846`) while `scripts/qa/poll_health.py` polled
+`GET /api/health` at 1 Hz throughout. Job reached `status: ok`: `started_at 2026-08-12T13:29:43.297634Z` →
+`finished_at 2026-08-12T13:47:03.306426Z` (17m20.0s — within 2s of iter-69's own 17m18.9s live-job drill on
+a different date), `"source": null` in the FINAL persisted record (AG-9 clean — `bars_fetched: 0`, no live
+network call; `backfill` computes snapshots from ALREADY-STORED bars only, confirmed by direct code read of
+`data_manager._do_backfill`), 1 snapshot, 2,290 forward returns, all 9 `aggregates_refreshed` categories
+including `factor_lab_all` (564.77s) and `drawdown_expectations` (340.99s) — the SAME two phases iter-65/66's
+own profiling found dominant and this session's "Do not redo" ban leaves un-bounded this round (OUT OF
+SCOPE). Poller ran `2026-08-12T13:30:15.372Z` → `13:47:24.747Z` (1,030 polls). **Correction (iter-70 audit,
+applied before this addendum was ever committed — the sentence originally read "Poller ran
+`2026-08-12T13:29:43Z` → `13:47:24Z` (1,030 polls, a few seconds either side of the job for margin)", which
+overstated the coverage at the head):** the first poll landed **32.1s AFTER the job started**
+(job `started_at` 13:29:43.297634Z; first CSV row 13:30:15.372420Z), so the drill did NOT cover the job's
+opening 32.1s — see the corrected † footnote under the phase table. It DID cover the whole tail with
+21.6s of post-completion margin. A short idle-control drill (120 polls, ~2 min, same already-warm backend,
+no job running) followed for baseline comparison.
+
+**Headline: 0 of 1,030 live-warm polls breached the 2.0s ceiling; 0 non-answers; every poll answered HTTP
+200.** Idle-control: 0 of 120 breached (p50 0.008s / p90 0.008s / max 0.017s). Live-warm `elapsed_s`: p50
+0.1135s / p90 0.329s / p99 0.6148s / **max 1.226s** — the single worst poll of the entire 17-minute drill
+stayed 39% under the ceiling. This is the FIRST round in this session's own multi-iteration health-poll
+measurement history (iter-63 through iter-69) with a live-warm breach rate of exactly zero.
+
+**Phase-grouped breakdown** (phase windows derived from `logs/backend.log`'s own `J-05 finalize-tail phase
+timing` lines for this job, converted from the log's LOCAL/BST timestamps to the poll CSV's UTC — this
+session's own standing timestamp-correlation discipline):
+
+| Phase | Window (UTC) | Duration | Polls | Breaches | `elapsed_s` p50 | p90 | max |
+|---|---|---|---|---|---|---|---|
+| backfill scan stage | 13:29:43–13:29:58 | 14.70s | 0† | 0 | — | — | — |
+| `coverage_membership_timeline_refresh` | 13:29:58–13:30:04 | 6.49s | 0† | 0 | — | — | — |
+| `per_date_coverage_warm` | 13:30:04–13:30:07 | 2.11s | 0† | 0 | — | — | — |
+| `market_phase_warm` | 13:30:07–13:30:07 | 0.76s | 0† | 0 | — | — | — |
+| `forward_aggregates_warm` (5 horizons) | 13:30:07–13:31:54 | 106.52s | 99 | 0 | 0.0180s | 0.1060s | 0.6070s |
+| `research_hot_keys_warm` | 13:31:54–13:31:56 | 2.27s | 2 | 0 | 0.0075s | 0.0079s | 0.0080s |
+| `index_series_warm` | 13:31:56–13:31:56 | 0.02s | 0† | 0 | — | — | — |
+| `availability_heatmap_warm` | 13:31:56–13:31:57 | 1.18s | 1 | 0 | 0.0190s | 0.0190s | 0.0190s |
+| **`factor_lab_all_warm`** | 13:31:57–13:41:22 | **564.77s** | **565** | **0** | **0.2030s** | **0.3688s** | **0.7940s** |
+| `drawdown_expectations_warm` (7 claims) | 13:41:22–13:47:03 | 340.99s | 341 | 0 | 0.0270s | 0.1490s | 1.2260s |
+| teardown | 13:47:03–13:47:03 | 0.16s | 0† | 0 | — | — | — |
+| post-completion tail (was labelled "pre-finalize / boundary gaps" — corrected) | 13:47:03–13:47:24 | 21.6s | 22 | 0 | 0.0080s | 0.0110s | 0.0380s |
+| **TOTAL** | | **17m20.0s** | **1,030** | **0** | | | |
+
+† **Corrected (iter-70 audit, applied before this addendum was ever committed).** The footnote originally
+read: "Sub-second-to-few-second phases naturally land zero or very few 1 Hz polls inside their own narrow
+window — not a coverage gap, a sampling-rate artifact (the SAME phases' own health was continuously
+exercised by the immediately adjacent phases' polls)." That is TRUE only for `index_series_warm` (0.02s) and
+`teardown` (0.16s). It is FALSE for the first four rows: the poller had **not started yet**. Verified
+against the drill CSV — **zero** rows precede 13:30:07.357Z (`forward_aggregates_warm`'s start), the first
+row is 13:30:15.372Z, and the `forward_aggregates_warm` row's 99 polls over a 106.52s window is itself the
+arithmetic signature of that late start. So the `backfill scan stage` (14.70s), `coverage_membership_
+timeline_refresh` (6.49s), `per_date_coverage_warm` (2.11s), and `market_phase_warm` (0.76s) rows are a
+**genuine 32.1s coverage gap at the head of the job**, not a sampling-rate artifact: at 1 Hz those windows
+would have collected roughly 15, 6, 2, and 1 polls respectively. Also corrected: the 22 polls in the row
+above were logged AFTER the job finished (13:47:03.101Z → 13:47:24.747Z), not "pre-finalize". Nothing else
+in this addendum changes — the headline (0 of 1,030 polls breached, 0 non-answers) is unaffected, and
+`coverage_membership_timeline_refresh` — the one heavy phase inside the unmeasured window, and the phase the
+RELEASED bounding ban names alongside `factor_lab_all_warm` — is therefore **unmeasured this round**, not
+proven clean. `factor_lab_all_warm` — this session's own confirmed 96%-of-breaches
+phase in iter-69 (74 of 77 breaches, 400 of 952 polls) and the phase the "Do not redo" ban's own RELEASE
+clause names as the fallback target if this fix proved insufficient — now runs its full 565-poll, 9.4-minute
+span with **zero** breaches, p90 0.369s (against the pre-fix session record of `readiness_s` alone at
+p90 0.5631s + `preflight_s` p90 0.5439s during this exact phase class). The RELEASED bounding-`factor_lab_
+all_warm` alternative is therefore NOT needed this round — reported honestly per this session's own standing
+discipline (see NOTES).
+
+**Sub-span correlation (`TRENDORA_HEALTH_WATCHDOG=1`), same drill window:** 1,066 in-window `handler_compute`
+records. `readiness_s` and `preflight_s`: **p50 = p90 = p99 = max = 0.0000s** — literally zero across every
+sample, live-warm included (a bare cache-dict read costs less than this instrument's own float rounding).
+`db_reads_s` (unaffected, unchanged code): p50 0.0064s / p90 0.0525s / p99 0.1042s / max 0.4800s — genuine,
+elevated-under-load DB read cost, exactly where iter-69's attribution said this component (never dominant)
+belonged. `handler_compute_s` (whole-handler): p50 0.0235s / p90 0.0901s / p99 0.1918s / max 0.5162s.
+
+### Byte-identity (AG-3) and no second read path
+
+`compute_readiness`/`compute_preflight` are UNCHANGED (not one line touched) — this iteration adds a
+caching/scheduling layer strictly around the SAME two calls, never a second implementation, never a new
+endpoint. Proven by: a fixture-backed test asserting the served fields are byte-identical to a live
+`compute_readiness`/`compute_preflight` call taken at the same instant (cold-start path); a steady-state test
+proving repeated reads serve the cache without re-invoking either producer (call-counting monkeypatch, not
+merely comparing output values); and `test_watchdog_flag_never_changes_response_body_or_shape` (unchanged)
+re-passing, confirming the response body/shape is unaffected by the flag either way.
+
+### Unit test results
+
+`test_readiness.py` (10 new tests: config validation, cold-start, steady-state cache-read-not-recompute,
+degrade-on-error, verdict-transition-fires-once-under-concurrency, the atomic-swap concurrency test, the
+immediate-refresh trigger, and the single-flight thread guard), `test_health.py` (2 new tests: cold-start
+byte-identity and steady-state cache-read-not-recompute at the handler level; 1 existing test's fault
+injection point updated from `compute_readiness` to `get_readiness_and_preflight`, since the request path no
+longer calls the former), `test_health_watchdog.py` (1 new test proving `readiness_s`/`preflight_s` read
+near-zero under the cached path — TC-7; 2 existing tests' fault injection points updated for the same reason
+as above), and `test_data_manager.py` (1 new test proving the finalize hook fires the immediate-refresh
+trigger with the correct session — TC-4's finalize-hook half) all pass. `test_health_watchdog.py` run alone
+(its own dedicated lightweight fixture, not `loaded_engine`): **16/16 passed**, 118.09s. Full combined run of
+the other three files (`test_readiness.py test_health.py test_data_manager.py`, `loaded_engine` built once,
+session-scoped, 280 collected): first pass caught a REAL bug this addendum documents below (fixed, re-run
+clean); final run **279 passed, 1 failed** in 1:10:53 wall-clock — the one failure is a PRE-EXISTING
+test-order-sensitivity artifact, unrelated to this iteration's diff, diagnosed and NOT fixed (out of scope):
+`test_data_manager.py::test_availability_from_storage_stuck_running_row_from_crashed_process_still_reads_as_
+in_flight` asserts `data_manager._JOBS == {}` as a sanity precondition; this developer pass's own non-default
+invocation order (`test_readiness.py test_health.py test_data_manager.py`) runs test_health.py's `TestClient
+(main.app)` calls FIRST, which populate the process-global `_JOBS['warmup']` registry
+(`app.engine.warmup.start_warmup`'s own pre-existing bookkeeping, not touched by this iteration), tripping
+this test's sanity assertion. Confirmed pre-existing/order-only by re-running the test in isolation (passes,
+0.55s) — under the project's DEFAULT alphabetical collection order, `test_data_manager.py` runs BEFORE
+`test_health.py`, so this ordering never manifests there. Named here per this session's own
+honest-reporting discipline, not silently rounded to "all green."
+
+### TC-7 (near-zero cache read) — live confirmation, `TRENDORA_HEALTH_WATCHDOG=1`
+
+`test_watchdog_enabled_records_sub_spans_summing_to_handler_compute` (unchanged) and the new
+`test_readiness_and_preflight_sub_spans_read_near_zero_under_cached_path` both confirm, under the SAME
+`db_reads_s`/`readiness_s`/`preflight_s` watchdog instrument iter-69 shipped: once the cache holds a
+completed tick, `readiness_s` and `preflight_s` are consistently well under 0.01s (a bare cache-dict read),
+against iter-69's own idle-baseline p50 of 0.0020s/0.0056s and live-warm p90 of 0.5631s/0.5439s for the SAME
+two spans under the OLD per-request-compute path — the exact components iter-69's attribution named as
+dominant (58%/42% of 74 answered breaches).
+
+### Correction (b) — Addendum 35's "3 additional records" mis-statement (closes iter-69/b)
+
+Addendum 35's "Join method" paragraph states: *"3 additional `handler_compute` entries in-window belong to
+this agent's own manual `curl` checks between the two drills and are outside both CSVs' own timestamp ranges
+— excluded from both drills' own statistics."*
+
+**Correction.** The correct count is **83** in-window `handler_compute` records outside both drills' own
+matched-poll sets, not 3 — and they belong to a THIRD CLIENT, not this agent's own manual `curl` checks.
+Addendum 35's OWN "Join method" paragraph, two sentences earlier, already names this third client and its
+own reason for being active during the drill window: *"a THIRD process was confirmed concurrently polling
+the same backend during this drill (`goal-iter-lean.sh`, pid 1312367, this session's own outer orchestration
+loop — `logs/backend.log` shows interleaved `GET /api/data`, `GET /api/data/availability`, `GET /api/runs`
+calls from a second client throughout the window)"* — the "3" in the "3 additional records... this agent's
+own manual `curl` checks" sentence undercounted this SAME third client's own contribution by roughly 27x and
+mis-attributed it to the wrong source. Independently re-run this pass against the SAME committed evidence
+(`runs/goal-ops-hardening-iter-69/evidence-drill/health-watchdog-slice.jsonl`, `reconcile_drill.py`'s own
+join logic): of the file's 1,370 `handler_compute` records carrying the new sub-fields, 1,282 are matched by
+the two drills' own 952+330 polls; the unmatched residual is 88 records, of which 82-87 fall within either
+drill's own send-timestamp window depending on whether a small buffer is allowed for `t_received_wall`
+trailing its poll's send time (the exact boundary convention the original pass used is not fully
+reconstructable from the addendum's own prose) — landing in the same neighborhood as, and consistent with,
+the recorded 83. This is a bookkeeping correction to one sentence's own count and attribution, not a
+re-measurement: no corrected figure changes any of Addendum 35's own reported percentiles, breach counts, or
+attribution conclusions.
+
+### Correction (c) — Addendum 35's TC-6 scorecard label (closes iter-69/c)
+
+Addendum 35's TC-6 section (correcting iter-68's own browser-QA write-up) quotes the Forward-test scorecard
+as showing *"every one of its 1d/5d/10d/20d/**65d** rows showing `— n/a` / `— n=0` placeholder cells."*
+
+**Correction.** The configured horizon is **60d**, not 65d. `config.yaml:777` reads
+`horizons: [1, 5, 10, 20, 60]` (`walk_forward.horizons`, confirmed by a direct read this pass) — the
+Forward-test scorecard's per-horizon rows are driven by this SAME config list (`app.config.WalkForwardCfg.
+horizons`), so its rendered row labels are `1d/5d/10d/20d/60d`, never 65d. No prior addendum's own recorded
+measurement depended on the mis-typed digit; this corrects the label only.
+
+### AG-3 / AG-8 / AG-9 / AG-10 for this pass
+
+AG-3: `compute_readiness`/`compute_preflight` are byte-unchanged; `GET /api/health`'s response body/shape is
+identical to pre-iteration (re-proven by the fixture-backed byte-identity test and by
+`test_watchdog_flag_never_changes_response_body_or_shape`, unchanged, re-passing). AG-8: no unbounded
+whole-table load added — the cache is a bounded in-process dict; the warm-path code
+(`compute_forward_aggregates`, `research.py`, `data_manager.py`'s aggregate compute) is untouched this
+iteration (only `health.py`/`readiness.py`/`main.py`/the finalize hook's own trigger call change), so its
+existing AG-8 posture carries forward unchanged. AG-9: the live-job drill's FINAL job record carries
+`"source": null` (offline committed-DB-only backfill, `bars_fetched: 0`) — confirmed directly. AG-10: the
+drill ran through `scripts/start-backend.sh` with host-guard's declared caps intact (`memory_cap_mb=8192`,
+`malloc_arena_max=2`, `cpu_list=0-15`, `blas_threads=8` — live-read from `logs/backend.log`); `git status
+--porcelain -- config.yaml project-extensions/ scripts/` shows only this iteration's own new
+`readiness.refresh_interval_seconds` config line — no cap value, HOST-GUARD block, or launch script touched.
+
+### NOTES
+
+- Per this session's standing discipline (iter-63/65/66/67/68/69): TC-3's phase-grouped result shows ZERO
+  breaches concentrated in `factor_lab_all_warm` (or anywhere else) this round — the RELEASED
+  bounding-`factor_lab_all_warm` alternative is NOT invoked; reported plainly, not rounded toward a stronger
+  claim than the evidence supports (a single clean drill is strong, direct evidence for THIS iteration's
+  specific fix, not a permanent guarantee against a future, differently-shaped load).
+- This addendum's live-warm drill doubles as this round's required J-01/J-03/J-05 ingest coverage (a real
+  backfill against the committed dev DB, `bars_fetched: 0`) — no second ingest round was launched solely for
+  this measurement, per this session's own "piggyback, don't duplicate" rule.
+- The browser-qa lane's own independent J-07 drill (TC-3's "union of both drills") is a separate pipeline
+  step from this developer pass; this addendum reports the dev drill's own complete, self-sufficient result
+  (zero breaches, zero non-answers) rather than waiting on or pre-empting that lane's own report.

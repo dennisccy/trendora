@@ -1148,3 +1148,28 @@ tight and testable (TC-7 proves the untouched reads stay live and fast).
 future round's drill still shows breaches attributable to this path), a later iteration can either
 tighten `readiness.refresh_interval_seconds` or promote the cache to a persisted table without changing
 the canonical producer/endpoint again.
+
+## iter-70 — goal-evaluator
+
+**Ambiguity:** Methodology A.3's pending-infra carve-out (score `partial`, set `pending_infra: true`) is
+keyed to the presence of `iter-<N>/browser-infra.json`. No token was written this round: the engine's
+classifier (`lib/replay-lane.sh`, `bqa_results_infra_reason`) fires only on browser/Chrome infrastructure
+reasons and is gated behind `CHAIN_BQA_PREFLIGHT` (default false), while THIS failure was a backend SERVICE
+death ("backend unreachable"), not a browser failure. The literal fallback rule ("no evidence → `unknown`")
+and the carve-out ("infra → `partial` + `pending_infra`") therefore point at two different statuses for the
+same eight journeys.
+**We chose:** apply the carve-out anyway — all eight journeys scored `partial` with gap `pending-infra` and
+`pending_infra: true`. Grounds: (1) the failure class is identical in every way that matters — a verification
+lane that could not run for a non-product reason, with the replay artifact itself distinguishing BLOCKED
+("never checked") from FAIL; (2) `run-goal.sh:2206-2226` schedules the verify-only make-up ride from the
+`pending_infra` FLAG IN JOURNEY-HISTORY, not from the token, so `unknown` would record the same ignorance
+while silently discarding the mechanism that fixes it; (3) both statuses block GOAL_ACHIEVED identically, so
+this choice cannot round anything toward "done"; (4) `last_passing_iter` stays at iter-69 and every journey's
+note states plainly that it was NOT tested this round, so no reader inherits a false pass.
+**Cost recorded honestly:** the two-strike counter (`CHAIN_BQA_PREV_ATTEMPTS`) reads the previous
+iteration's token, which does not exist, so it enters the next round at 1 rather than being carried by the
+token — the next evaluator must apply the two-strike STALLED rule from this ledger entry and the evaluator
+log rather than from the counter alone. I wrote that trigger explicitly into both.
+**Reversible:** yes — a later evaluator can re-score any of these journeys the moment a fresh frame lands
+(pass or fail clears `pending_infra` either way), and can rule that a service death outside the browser
+stack should have been `unknown` instead.

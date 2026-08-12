@@ -1,0 +1,11 @@
+290775:2026-08-12 14:30:04,483 INFO trendora.data_manager: J-05 finalize-tail phase timing: job=22057414bbff44e2ab9141d31ae70846 phase=coverage_membership_timeline_refresh elapsed=6.49s
+290776:2026-08-12 14:30:06,596 INFO trendora.data_manager: J-05 finalize-tail phase timing: job=22057414bbff44e2ab9141d31ae70846 phase=per_date_coverage_warm elapsed=2.11s
+290777:2026-08-12 14:30:07,357 INFO trendora.data_manager: J-05 finalize-tail phase timing: job=22057414bbff44e2ab9141d31ae70846 phase=market_phase_warm elapsed=0.76s
+290892:2026-08-12 14:31:53,875 INFO trendora.data_manager: J-05 finalize-tail phase timing: job=22057414bbff44e2ab9141d31ae70846 phase=forward_aggregates_warm elapsed=106.52s
+290896:2026-08-12 14:31:56,144 INFO trendora.data_manager: J-05 finalize-tail phase timing: job=22057414bbff44e2ab9141d31ae70846 phase=research_hot_keys_warm elapsed=2.27s
+290897:2026-08-12 14:31:56,166 INFO trendora.data_manager: J-05 finalize-tail phase timing: job=22057414bbff44e2ab9141d31ae70846 phase=index_series_warm elapsed=0.02s
+290899:2026-08-12 14:31:57,347 INFO trendora.data_manager: J-05 finalize-tail phase timing: job=22057414bbff44e2ab9141d31ae70846 phase=availability_heatmap_warm elapsed=1.18s
+291521:2026-08-12 14:41:22,115 INFO trendora.data_manager: J-05 finalize-tail phase timing: job=22057414bbff44e2ab9141d31ae70846 phase=factor_lab_all_warm elapsed=564.77s
+291903:2026-08-12 14:47:03,101 INFO trendora.data_manager: J-05 finalize-tail phase timing: job=22057414bbff44e2ab9141d31ae70846 phase=drawdown_expectations_warm elapsed=340.99s
+291906:2026-08-12 14:47:03,263 INFO trendora.data_manager: J-05 finalize-tail teardown timing: job=22057414bbff44e2ab9141d31ae70846 shared_bar_cache_drop=0.00s total_teardown=0.16s
+291907:2026-08-12 14:47:03,263 INFO trendora.data_manager: ingest heavy-warm window CLOSED: job=22057414bbff44e2ab9141d31ae70846 depth=0

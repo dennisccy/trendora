@@ -16,6 +16,8 @@ and that `record_verdict_transition` appends ONLY on a verdict change (bounded g
 """
 from __future__ import annotations
 
+import threading
+import time
 from datetime import date, datetime, timedelta
 
 import pytest
@@ -683,3 +685,334 @@ def test_resolve_verdict_history_path_defaults_to_config(monkeypatch):
     cfg = load_config()
     resolved = resolve_verdict_history_path()
     assert resolved.endswith(cfg.readiness.verdict_history_path)
+
+
+# ==================================================================================================
+# ops-hardening iter-70 (J-07) -- config validation for the new readiness.refresh_interval_seconds knob
+# ==================================================================================================
+def test_readiness_cfg_refresh_interval_defaults_to_half_second():
+    from app.config import ReadinessCfg
+
+    cfg = ReadinessCfg(
+        freshness_max_age_days=5,
+        severity={"servability": "no-go", "freshness": "degraded", "integrity": "no-go", "drift": "degraded"},
+        verdict_history_path="x.jsonl",
+    )
+    assert cfg.refresh_interval_seconds == 0.5
+
+
+def test_readiness_cfg_rejects_nonpositive_refresh_interval():
+    from app.config import ReadinessCfg
+
+    with pytest.raises(ValueError, match="refresh_interval_seconds must be > 0"):
+        ReadinessCfg(
+            freshness_max_age_days=5,
+            severity={"servability": "no-go", "freshness": "degraded", "integrity": "no-go", "drift": "degraded"},
+            verdict_history_path="x.jsonl",
+            refresh_interval_seconds=0,
+        )
+
+
+# ==================================================================================================
+# ops-hardening iter-70 (J-07) -- bounded-interval background-refresh cache: cold-start fallback (TC-1),
+# steady-state cache-read vs. recompute (TC-2), concurrency/atomic-swap, degrade-on-error (TC-6), the
+# verdict-transition write firing exactly once under concurrent ticks (TC-5), the immediate-refresh
+# trigger, and the single-flight thread guard. A tiny, dedicated `cache_engine` fixture (NOT the shared
+# `loaded_engine`/`empty_engine`/etc. fixtures above) keeps these tests fast; an autouse fixture stops any
+# live background thread and resets the shared cache before AND after every test in this file, so nothing
+# here can leak a ticking thread or a stale cached value into another test module.
+# ==================================================================================================
+@pytest.fixture(autouse=True)
+def _isolated_readiness_cache():
+    readiness.stop_readiness_refresh()
+    readiness.reset_readiness_refresh_cache()
+    yield
+    readiness.stop_readiness_refresh()
+    readiness.reset_readiness_refresh_cache()
+
+
+@pytest.fixture
+def cache_engine(tmp_path, config):
+    """A tiny, fast, dedicated DB with one servable snapshot, for the background-refresh CACHE tests
+    only -- independent of the shared fixtures above."""
+    engine = make_engine(f"sqlite:///{tmp_path / 'cache_test.db'}")
+    create_db_and_tables(engine)
+    benchmark = config.etfs.index[0]
+    d0 = date(2024, 3, 4)
+    with Session(engine) as session:
+        session.add(DailyPrice(symbol=benchmark, date=d0, open=1, high=1, low=1, close=1, volume=1))
+        session.add(ScannerRun(
+            asof_date=d0, created_at=datetime(2024, 3, 4), provider="seed", benchmark=benchmark,
+            regime_score=50.0, regime_label="Choppy", regime_components_json="[]",
+            new_high_low_json="{}", candidate_counts_json="{}",
+        ))
+        session.commit()
+    return engine
+
+
+def test_readiness_cache_cold_start_matches_direct_compute(cache_engine, config, monkeypatch, tmp_path):
+    """TC-1: before the background thread's first tick completes, `get_readiness_and_preflight` computes
+    once synchronously -- byte-identical to a direct `compute_readiness`/`compute_preflight` call taken
+    at the same moment (no thread has been started against `cache_engine` in this test)."""
+    monkeypatch.setenv(readiness.VERDICT_HISTORY_PATH_ENV, str(tmp_path / "history.jsonl"))
+    with Session(cache_engine) as session:
+        cached = readiness.get_readiness_and_preflight(session, engine=cache_engine, config=config)
+        direct_readiness = compute_readiness(session, engine=cache_engine, config=config)
+        direct_preflight = compute_preflight(session, config=config)
+    assert cached["readiness"] == direct_readiness
+    assert cached["preflight"] == direct_preflight
+
+
+def test_readiness_cache_cold_start_never_raises_on_a_first_tick_failure(cache_engine, config, monkeypatch):
+    """A first-ever tick failure (before any completed tick exists) degrades to the SAME honest
+    unavailable/NO-GO fallback shape `compute_readiness`/`compute_preflight` already produce on their own
+    internal errors -- `get_readiness_and_preflight` never raises."""
+    def _boom(session, engine=None, config=None):
+        raise RuntimeError("simulated DB failure")
+
+    monkeypatch.setattr(readiness, "compute_readiness", _boom)
+    with Session(cache_engine) as session:
+        result = readiness.get_readiness_and_preflight(session, engine=cache_engine, config=config)
+    assert result["readiness"]["state"] == "unavailable"
+    assert result["preflight"]["verdict"] == "NO-GO"
+
+
+def test_readiness_cache_steady_state_reads_do_not_recompute(cache_engine, config, monkeypatch, tmp_path):
+    """TC-2: once the background thread has ticked at least once, repeated `get_readiness_and_preflight`
+    calls serve the SAME cached payload without re-invoking `compute_readiness`/`compute_preflight` --
+    proven by a call-counting monkeypatch (output-value equality alone would also hold under a per-call
+    recompute on an unchanging DB, so this proves the READ PATH itself, not just the result)."""
+    monkeypatch.setenv(readiness.VERDICT_HISTORY_PATH_ENV, str(tmp_path / "history.jsonl"))
+    readiness.start_readiness_refresh(cache_engine, config)
+    deadline = time.monotonic() + 5.0
+    while readiness._READINESS_CACHE is None and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert readiness._READINESS_CACHE is not None, "background thread never completed its first tick"
+
+    calls = {"readiness": 0, "preflight": 0}
+    real_compute_readiness = readiness.compute_readiness
+    real_compute_preflight = readiness.compute_preflight
+
+    def _counting_readiness(*a, **kw):
+        calls["readiness"] += 1
+        return real_compute_readiness(*a, **kw)
+
+    def _counting_preflight(*a, **kw):
+        calls["preflight"] += 1
+        return real_compute_preflight(*a, **kw)
+
+    monkeypatch.setattr(readiness, "compute_readiness", _counting_readiness)
+    monkeypatch.setattr(readiness, "compute_preflight", _counting_preflight)
+
+    with Session(cache_engine) as session:
+        results = [
+            readiness.get_readiness_and_preflight(session, engine=cache_engine, config=config)
+            for _ in range(50)
+        ]
+    readiness.stop_readiness_refresh()  # before the NEXT (interval-away) tick could fire and get counted
+
+    assert calls == {"readiness": 0, "preflight": 0}
+    assert all(r == results[0] for r in results)
+
+
+def test_readiness_cache_degrades_to_last_known_good_on_tick_failure(cache_engine, config, monkeypatch, tmp_path):
+    """TC-6: a tick whose compute raises leaves the cache serving the PRIOR last-known-good value -- never
+    blanked, never raised out to the caller. The thread keeps ticking on schedule: once the failure clears,
+    the NEXT tick resumes normal cache updates."""
+    monkeypatch.setenv(readiness.VERDICT_HISTORY_PATH_ENV, str(tmp_path / "history.jsonl"))
+    real_compute_readiness = readiness.compute_readiness
+    with Session(cache_engine) as session:
+        good = readiness._tick_and_cache(session, config, engine=cache_engine)
+    assert good is not None
+
+    def _boom(session, engine=None, config=None):
+        raise RuntimeError("simulated DB/ledger read failure")
+
+    monkeypatch.setattr(readiness, "compute_readiness", _boom)
+    with Session(cache_engine) as session:
+        failed = readiness._tick_and_cache(session, config, engine=cache_engine)
+    assert failed is None
+    assert readiness._READINESS_CACHE == good  # untouched by the failed tick
+
+    with Session(cache_engine) as session:
+        served = readiness.get_readiness_and_preflight(session, engine=cache_engine, config=config)
+    assert served == good  # a reader still gets the last-known-good value -- HTTP 200 shape intact
+
+    monkeypatch.setattr(readiness, "compute_readiness", real_compute_readiness)  # the failure clears
+    with Session(cache_engine) as session:
+        recovered = readiness._tick_and_cache(session, config, engine=cache_engine)
+    assert recovered is not None
+    assert readiness._READINESS_CACHE == recovered
+
+
+def test_readiness_cache_verdict_transition_fires_once_under_concurrent_ticks(
+    cache_engine, config, monkeypatch, tmp_path
+):
+    """TC-5: when the SAME new verdict is observed by two ticks racing concurrently (e.g. the periodic
+    thread and an ingest finalize hook's immediate-refresh trigger landing at the same instant),
+    `record_verdict_transition` still appends exactly ONE entry for that transition -- `_TICK_LOCK`
+    serializes the read-last-entry-then-maybe-append sequence so two concurrent ticks never both observe
+    'no transition recorded yet' and both append."""
+    history_path = tmp_path / "history.jsonl"
+    monkeypatch.setenv(readiness.VERDICT_HISTORY_PATH_ENV, str(history_path))
+
+    def _fixed_preflight(session, config=None):
+        return {
+            "verdict": "DEGRADED", "reasons": ["forced"], "components": {},
+            "as_of": "2024-03-04", "reference": "2024-03-04",
+        }
+
+    monkeypatch.setattr(readiness, "compute_preflight", _fixed_preflight)
+
+    barrier = threading.Barrier(2)
+
+    def _run():
+        barrier.wait()
+        with Session(cache_engine) as session:
+            readiness._tick_and_cache(session, config, engine=cache_engine)
+
+    threads = [threading.Thread(target=_run) for _ in range(2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    entries = read_entries(str(history_path))
+    assert [e["verdict"] for e in entries] == ["DEGRADED"]
+
+
+def test_readiness_cache_read_never_observes_a_torn_write(cache_engine, config, monkeypatch, tmp_path):
+    """Concurrency: a cache read on one thread never observes a torn/partial write from an in-flight tick
+    on another thread. `readiness["state"]` and `preflight["verdict"]` observed together in ONE read are
+    always tagged from the SAME tick (an incrementing counter shared by both crafted producers), never a
+    mix of two different ticks' halves -- proving the cache swap is atomic, not merely usually-fast."""
+    monkeypatch.setenv(readiness.VERDICT_HISTORY_PATH_ENV, str(tmp_path / "history.jsonl"))
+    monkeypatch.setattr(readiness, "record_verdict_transition", lambda *a, **kw: False)
+    tick_counter = {"n": 0}
+
+    def _tagged_readiness(session, engine=None, config=None):
+        tick_counter["n"] += 1
+        tag = tick_counter["n"]
+        time.sleep(0.001)  # widen the window a torn read would need to land in
+        return {
+            "state": f"tag-{tag}", "detail": None,
+            "warmup": {"done": tag, "total": tag, "status": "ok", "message": f"history {tag}/{tag}"},
+            "background_compute": {"active": [], "recent_outcomes": []},
+        }
+
+    def _tagged_preflight(session, config=None):
+        tag = tick_counter["n"]  # the SAME counter value the readiness call just used
+        return {"verdict": f"tag-{tag}", "reasons": [], "components": {}, "as_of": None, "reference": None}
+
+    monkeypatch.setattr(readiness, "compute_readiness", _tagged_readiness)
+    monkeypatch.setattr(readiness, "compute_preflight", _tagged_preflight)
+
+    stop_flag = {"stop": False}
+    observed: list[dict] = []
+
+    def _writer():
+        with Session(cache_engine) as session:
+            while not stop_flag["stop"]:
+                readiness._tick_and_cache(session, config, engine=cache_engine)
+
+    def _reader():
+        with Session(cache_engine) as session:
+            for _ in range(200):
+                observed.append(readiness.get_readiness_and_preflight(session, engine=cache_engine, config=config))
+
+    writer_thread = threading.Thread(target=_writer)
+    reader_threads = [threading.Thread(target=_reader) for _ in range(4)]
+    writer_thread.start()
+    for t in reader_threads:
+        t.start()
+    for t in reader_threads:
+        t.join()
+    stop_flag["stop"] = True
+    writer_thread.join()
+
+    assert observed, "no reads were captured -- the test setup itself is broken"
+    for cached in observed:
+        readiness_tag = cached["readiness"]["state"].split("-")[1]
+        preflight_tag = cached["preflight"]["verdict"].split("-")[1]
+        assert readiness_tag == preflight_tag, f"torn read observed: {cached}"
+
+
+def test_trigger_readiness_refresh_updates_the_cache_immediately(cache_engine, config, monkeypatch, tmp_path):
+    """The immediate-refresh trigger (called from the ingest finalize hook) runs one tick right now and
+    publishes it to the shared cache -- TC-4's cache-level half (the finalize hook actually FIRING the
+    trigger is covered by test_data_manager.py's own dedicated test)."""
+    monkeypatch.setenv(readiness.VERDICT_HISTORY_PATH_ENV, str(tmp_path / "history.jsonl"))
+    assert readiness._READINESS_CACHE is None
+    with Session(cache_engine) as session:
+        readiness.trigger_readiness_refresh(session, config=config, engine=cache_engine)
+    assert readiness._READINESS_CACHE is not None
+    assert readiness._READINESS_CACHE["readiness"]["state"] in {
+        "ready", "initializing", "unavailable", "awaiting_snapshot",
+    }
+
+
+def test_start_readiness_refresh_is_single_flight(cache_engine, config):
+    """Mirrors `warmup.start_warmup`'s own single-flight guard shape: a re-entry while the thread is
+    already alive is a no-op (no second concurrent thread spawned)."""
+    readiness.start_readiness_refresh(cache_engine, config)
+    first_thread = readiness._REFRESH_THREAD
+    readiness.start_readiness_refresh(cache_engine, config)
+    assert readiness._REFRESH_THREAD is first_thread
+    readiness.stop_readiness_refresh()
+    assert readiness._REFRESH_THREAD.is_alive() is False
+
+
+# ==================================================================================================
+# ops-hardening iter-70 AUDIT (finding B1) -- a tick failure whose OWN `logger.exception` render also
+# raises (the `MemoryError`-under-an-exhausted-`ulimit -v` class `data_manager._log_isolation_failure`
+# was built for in iter-45) must still not escape. Two callers make the escape matter: the ingest
+# finalize hook (`_refresh_ingest_aggregates` -> `trigger_readiness_refresh`), where an escape discards
+# the whole `refreshed` list, and `_refresh_loop`, where an escape kills the daemon thread and freezes
+# the cache forever with no error surfaced.
+# ==================================================================================================
+def test_tick_failure_never_escapes_even_when_its_own_logging_raises(cache_engine, config, monkeypatch, tmp_path):
+    monkeypatch.setenv(readiness.VERDICT_HISTORY_PATH_ENV, str(tmp_path / "history.jsonl"))
+
+    def _boom(session, engine=None, config=None):
+        raise MemoryError()
+
+    def _logging_also_boom(*a, **kw):
+        raise MemoryError()
+
+    monkeypatch.setattr(readiness, "compute_readiness", _boom)
+    monkeypatch.setattr(readiness.logger, "exception", _logging_also_boom)
+    monkeypatch.setattr(readiness.logger, "error", _logging_also_boom)
+
+    with Session(cache_engine) as session:
+        # `_tick_and_cache`'s own contract: returns None, never raises.
+        assert readiness._tick_and_cache(session, config, engine=cache_engine) is None
+        # the ingest finalize hook's contract: "never raises out into the calling ingest job".
+        readiness.trigger_readiness_refresh(session, config=config, engine=cache_engine)
+
+
+def test_refresh_loop_survives_a_tick_whose_logging_raises(cache_engine, config, monkeypatch, tmp_path):
+    """The background thread keeps ticking (and stays alive) even when both the tick AND its own failure
+    logging raise -- a dead thread would freeze the cache indefinitely while `GET /api/health` went on
+    serving the stale value with no error anywhere."""
+    monkeypatch.setenv(readiness.VERDICT_HISTORY_PATH_ENV, str(tmp_path / "history.jsonl"))
+    ticks = {"n": 0}
+
+    def _boom(session, engine=None, config=None):
+        ticks["n"] += 1
+        raise MemoryError()
+
+    def _logging_also_boom(*a, **kw):
+        raise MemoryError()
+
+    monkeypatch.setattr(readiness, "compute_readiness", _boom)
+    monkeypatch.setattr(readiness.logger, "exception", _logging_also_boom)
+    monkeypatch.setattr(readiness.logger, "error", _logging_also_boom)
+
+    readiness.start_readiness_refresh(cache_engine, config)
+    deadline = time.monotonic() + 5.0
+    while ticks["n"] < 2 and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert ticks["n"] >= 2, "the refresh thread stopped ticking after the first failing tick"
+    assert readiness._REFRESH_THREAD.is_alive() is True
+    assert readiness._READINESS_CACHE is None  # never blanked into a partial/undefined value
+    readiness.stop_readiness_refresh()

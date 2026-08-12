@@ -4821,6 +4821,19 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
         # this job's peak footprint.
         _exit_ingest_heavy_warm(prog.job_id)
 
+    # ops-hardening iter-70 (J-07): immediate-refresh trigger for the readiness/preflight background-
+    # refresh cache -- the SAME finalize hook every other ingest-time aggregate above already refreshes
+    # from, so a job-completion state flip (e.g. awaiting_snapshot -> ready) is reflected within one tick
+    # rather than waiting up to a full readiness.refresh_interval_seconds period (TC-4). Deferred import
+    # (mirrors this module's own `indexes`/`market_phase` deferred-import convention): `readiness` imports
+    # `warmup`, which imports THIS module at load time, so a top-level import here would cycle. Reuses
+    # THIS session (not a fresh one) so the trigger sees this job's own just-persisted rows even before an
+    # outer caller's own commit. Non-fatal -- `trigger_readiness_refresh` never raises (mirrors this
+    # function's own "never raises" contract).
+    from app.engine import readiness as readiness_module
+
+    readiness_module.trigger_readiness_refresh(session, config=cfg)
+
     return refreshed
 
 

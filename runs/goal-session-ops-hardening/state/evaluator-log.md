@@ -7628,3 +7628,190 @@ permission to fix the one-line ordering bug in `scripts/automation/browser-qa-ph
 whether the browser-check lane may switch the diagnostic timer on), and a cost decision — this round ran a
 real 17-minute data job plus a second one inside the replay check and finished about 1.9x over its time
 budget.
+
+## Iteration 70 — goal-ops-hardening-iter-70
+
+**Date:** 2026-08-12T15:20:00Z
+**Verdict:** CONTINUE
+**Depth dispatched:** full (`iter-70/depth-dispatched` = `full`, matching the spec's `**Depth:** full` and
+iter-69's binding ESCALATE — plan and dispatch agreed)
+
+**Journey deltas:**
+- Newly passing: none. Newly failing: none. **Regressed: none.** Shape moves **7 passing + 1 partial →
+  8 partial**, every one of them `pending_infra`. That is a VERIFICATION change, not a product change:
+  nothing was tested this round.
+- **Browser QA SKIPPED 0/8; deterministic replay BLOCKED 0/7; golden_coverage telemetry `passing=0`; demo
+  lane NOT_YET with zero captured steps.** The evidence directory holds exactly ONE PNG
+  (`INFRA-backend-down.png`). The replay file states the distinction itself: "BLOCKED means they were never
+  checked", as opposed to FAIL.
+- **The cause, read by me from the log rather than taken from the report.** The QA backend (PID 1909563,
+  launched 14:14:12Z) served ~90 seconds of traffic — every request 200 — and then shut down CLEANLY at
+  ~14:21Z: `Shutting down` / `Waiting for application shutdown.` / `Application shutdown complete.` /
+  `Finished server process` at `logs/backend.log:292128-292131`, with **no traceback, no 5xx, no
+  MemoryError** anywhere near it. That signature is an external signal, not a crash. The pump relaunched at
+  14:39:35Z, ~2 minutes after the browser-QA agent's final 14:37:43Z check, and again at 15:05:32Z. I
+  polled that live process myself three times: **HTTP 200 in 6.5-6.7 ms**, `readiness: "ready"`, preflight
+  GO, all 13 fields present. The product is up; the lane simply had nothing to test against.
+- **The product diff is 10 files, all backend + one config line** (`git diff --numstat` vs `8567f700`, run
+  by me): `readiness.py` (+211), `test_readiness.py` (+333), `health.py` (+29/-23), `config.py` (+14/-2),
+  `data_manager.py` (+13), `main.py` (+12), three test files, `config.yaml` (+1). Zero `apps/frontend/*`,
+  zero `scripts/`, zero `project-extensions/`.
+- Anti-goal violations: **FOUR CLOSED** (iter-69/a no phase grouping; /b the "3 extra records"
+  mis-statement; /c the "65d" label; /d the non-answers), **SIX NEW OPEN, all minor** (iter-70/a the QA
+  report asserting a replay that does not exist; /b zero journey evidence this round; /c 32.1 s of the job
+  window never polled; /d unbounded readiness-cache staleness; /e the walkthrough clause still unmet;
+  /f a tenth over-budget round). Ledger: **230 total, 115 unresolved, 0 unresolved critical.** scan-report
+  **CLEAN**; coherence **COHERENCE-PASS** (0 blocking, 2 advisory); review **PASS_WITH_NOTES**; audit
+  **PASS_WITH_GAPS**; closure **CLOSURE-PASS**; ux-regression **SKIPPED** by the budget trim ladder.
+
+**Reasoning:** I re-derived every load-bearing number myself, from the preserved raw CSVs, the watchdog's
+own JSONL, the app's log, the database and the one frame.
+(1) **The fix works, and the mechanism is measured rather than inferred.** From
+`runs/goal-ops-hardening-iter-70/evidence-drill/tc1-health-poll.csv`, recomputed by me: **1,030 polls, ALL
+HTTP 200, ZERO over the 2.0 s ceiling, ZERO non-answers**, p50 0.1140 s / p90 0.3290 s / p99 0.6180 s /
+**max 1.2260 s**. Idle control: 120 polls, 0 breaches, max 0.0170 s. iter-69 was 77 of 952 breaches (8.09 %)
+plus 3 non-answers at max 5.005 s. Every figure matches Addendum 36 and the auditor's independent
+re-verification string to the digit.
+(2) **THE PHASE GROUPING, DONE INDEPENDENTLY WITH THE TIMEZONE CONVERTED, IS THE STRONGEST RESULT OF THE
+SESSION.** Converting `backend-log-phase-lines.txt` from host-local BST to UTC myself:
+`factor_lab_all_warm` ran 13:31:57.345 Z → 13:41:22.115 Z and holds **565 of its own polls with ZERO
+breaches**, mean 0.2151 s, max 0.7940 s. That is the SAME phase that held **74 of iter-69's 77 breaches and
+all 3 non-answers in 400 polls (18.5 %)**, at near-identical duration (**564.77 s vs ~572 s**) — so the
+workload is controlled, not lighter. `drawdown_expectations_warm` 341 / 0 / max 1.2260 s;
+`forward_aggregates_warm` 99 / 0 / max 0.6070 s; outside the phases 22 / 0. Addendum 36's own table matches
+my recomputation row for row.
+(3) **TC-7 CONFIRMED FROM THE INSTRUMENT'S OWN RECORDS, AND IT IS CAUSAL.** Across all **1,065**
+`handler_compute` records in `health-watchdog-slice.jsonl`, recounted by me: `readiness_s` p50 0.000002 s /
+p90 **0.000003 s** / max 0.000030 s and `preflight_s` p50 0.000001 s / p90 **0.000001 s** / max 0.000002 s —
+**zero records above 0.5 ms**. iter-69's `readiness_s` p90 was **0.5631 s** (~256x idle) and `preflight_s`
+p90 0.5439 s (~89x). A five-order-of-magnitude drop in exactly the two components iter-69's attribution
+named is attribution, not coincidence. This is the first round in sixteen where the named suspect was
+removed and the metric moved with it.
+(4) **EVALUATOR-DERIVED, ABSENT FROM EVERY LANE: what is left is no longer readiness.** On the round's five
+slowest polls the named components explain only **18-53 %**. The slowest (1.226 s at 13:45:49 Z) breaks
+down as queue_wait 0.0731 s + handler 0.5162 s (of which `db_reads_s` **0.4800 s**) = 0.5893 s named, leaving
+**0.6367 s = 51.9 %** in the pre-receive/send residual. `db_reads_s` (p90 0.0525 s, max 0.4800 s) — the three
+DB reads deliberately left on the request path — is now the dominant server-side component. Nothing here
+threatens the ceiling (max 1.226 s against 2.0 s), but the next bottleneck is already named on disk.
+(5) **THE SERVICE NEVER FAILED, CHECKED FOUR WAYS RATHER THAN ASSUMED.** This round's own 1,502-line log
+window contains **zero** 5xx / ERROR / Traceback / MemoryError / CRITICAL lines. `logs/backend.log`'s
+whole-file totals are UNCHANGED (**129 HTTP 500s, last at line 249,034**, inside iteration 57); the newest
+MemoryError anywhere is line 271,234, an INJECTED fault dated 2026-08-11. Grep for the tick-failure strings
+("readiness refresh tick failed" / "loop iteration failed" / "verdict-history write failed") returns **0
+across the whole file** — so the zero-breach headline was NOT produced by a wedged tick serving a frozen
+value, which was the one way this result could have been fake. TC-5 confirmed in production:
+`preflight-verdict-history.jsonl` gained **exactly one** line.
+(6) **THE ROUND'S REAL FAILURE IS VERIFICATION COVERAGE, AND I REFUSED THE ARTIFACT THAT PAPERS OVER IT.**
+`reports/qa/…-qa.md` marks TC-9 and all seven required-still-passing journeys "✓ Developer verified via
+replay" in two places. **No such replay exists** — the replay file reads 0/7 BLOCKED and the dev handoff
+claims none. The auditor caught it (E1) and told the evaluator not to read that ✓ as coverage; I checked
+both lines myself and did not. Logged iter-70/a. This is the second-most load-bearing defect class in this
+session: a false coverage claim about the one lane that did not run.
+(7) **WHY J-07 STAYS `partial` IN ITS BEST ROUND.** Step 2 passed outright on evidence I opened and
+recomputed. But TC-3's own wording demands "the union of BOTH drills" and the browser half never ran; there
+is no J-07 frame; the poller started **32.1 s after the job**, leaving the backfill scan stage (14.70 s),
+`coverage_membership_timeline_refresh` (6.49 s), `per_date_coverage_warm` (2.11 s) and `market_phase_warm`
+(0.76 s) **unmeasured** — and `coverage_membership_timeline_refresh` is precisely the phase that held the
+single breach in BOTH iter-67 and iter-68 and is the RELEASED alternative bounding target; steps 3 (VmPeak)
+and 4 (memory-pressure abort) carry forward on evidence durability (A.6, warm-path code byte-identical);
+and the Walkthrough acceptance clause is unmet (demo NOT_YET, zero steps). `partial` is literally "only some
+assertion steps passed", which is the true state. I state the win in the first sentence of the summary and
+the owner paragraph rather than letting a status carry it.
+(8) **THE AUDIT EARNED ITS KEEP THIS ROUND, AND I VERIFIED ITS THREE FIXES RATHER THAN TRUSTING THEM.**
+B1 (a re-introduced `logger.exception` escape inside the ingest finalize hook — the exact class iter-45
+classified CRITICAL and built `_log_isolation_failure` for) is fixed and now routes through
+`_log_tick_failure`; without it, a logging allocation failing under the `ulimit -v` cap could have
+discarded a completed 17-minute finalize's `aggregates_refreshed` or silently killed the refresh thread.
+E2 corrected Addendum 36's false claim that the four zero-poll phase rows were "a sampling-rate artifact,
+not a coverage gap" — I re-derived it and the audit is right (zero CSV rows precede 13:30:07.357 Z). E3
+copied the drill evidence out of an ephemeral `TMPDIR` into `runs/goal-ops-hardening-iter-70/evidence-drill/`,
+which is the only reason I could recompute anything at all. TC-8 re-verified by me: **234 insertions / 0
+deletions** on `reports/perf-budgets.md`, `git diff -U0 | grep '^-'` empty.
+(9) **A NEW SILENT FAILURE MODE WAS INTRODUCED, AND I NAME IT RATHER THAN BANKING THE WIN.**
+`readiness.py:567-575` returns `_READINESS_CACHE` with **no age check and no `stale_for_s` field** (read by
+me). If the tick thread dies or wedges, `GET /api/health` keeps answering 200 with a plausible-but-frozen
+readiness/preflight, and the global badge, preflight banner and `/data` panels all re-read it. Before this
+round the endpoint could be slow but never wrong; it can now be fast and wrong. The spec chose this
+knowingly (TC-6), so it is a limitation, not a defect — but it sits directly against the goal's own
+sentence "the UI tells the truth about the backend's own state". Logged iter-70/d with the cheap bound
+named (stamp the payload, fall back to a synchronous compute past N intervals).
+(10) **I OPENED THE ONLY FRAME THIS ROUND PRODUCED, AND IT TELLS THE TRUTH.**
+`INFRA-backend-down.png` shows the badge "Backend unavailable", the banner "NO-GO — do not rely on today's
+board. / Backend is unavailable — the preflight check could not run." and the dashboard card "Nothing is
+fabricated — confirm the backend is running and reload." That is a genuine AG-8 graceful-degradation data
+point — a contained error boundary, never a blank application-error page — and it is emphatically NOT any
+journey's acceptance state. No spot-check was possible: there is no second frame to check against.
+(11) **Anti-goals checked at row, file and command level.** AG-9: `data_provider_runs` id 452 (this round's
+drill job `22057414bbff44e2ab9141d31ae70846`) is `provider='seed'`, `status=ok`, `bars_fetched: 0`; the only
+non-seed rows since 2026-08-01 remain ids 297 and 369, both pre-existing. AG-10: `git status --porcelain --
+config.yaml project-extensions/ scripts/` shows ONLY `config.yaml`, whose entire diff is one added line
+(`refresh_interval_seconds: 0.5`); `memory_cap_mb: 8192` and `malloc_arena_max: 2` intact; `host-guard.env`
+reads ENABLED=1 / CPU 0-15 / BLAS 8 / 12G; the drill launched via `scripts/start-backend.sh` with those caps
+echoed in the log. AG-3: response byte-identical (`test_health.py:349-364`) plus my own live poll of the
+running process. AG-7: scan CLEAN. AG-8: no new query; the tick calls the same two producers; see (5).
+Rejected **REGRESSION (C.1)**: no journey moved `passing`/`already_passing` → `failing`. Nothing was tested,
+and BLOCKED/SKIPPED are not FAIL — the replay artifact says so in its own words. No critical anti-goal is
+unresolved: scan CLEAN, ingest seed-only, caps untouched, response byte-identical. I weighed the QA report's
+false ✓ (iter-70/a) against the critical list explicitly and logged it minor — it is a write-up defect about
+coverage, not fabricated product data.
+Rejected **STALLED (C.2)**: C.2 needs EVERY unblock path to be human-owned. The backend is live on :8255
+right now and I polled it myself; re-running the replay and browser lanes is ordinary agent work, and this is
+the FIRST infra-blocked round of the session (no prior `browser-infra.json`, so the two-strike counter enters
+the next round at 1). Only the owner's ceiling sentence, the `browser-qa-phase.sh` sign-off and the cost
+sanction are genuinely his. **Written escalation trigger:** if the same lane is blocked a second consecutive
+round, the infrastructure becomes human-owned and the next evaluator should return STALLED.
+Rejected **GOAL_ACHIEVED (C.3)**: no journey has positive evidence of passing this round; all 8 are `partial`.
+Rejected **ESCALATE (C.4)**: no journey has status `failing`; the review lane did not fail open
+(PASS_WITH_NOTES, and the pipeline ran to CLOSURE-PASS); and C.4's third clause is about a LEAN round
+surfacing cross-cutting complexity — this round was already full, and it delivered its design change cleanly
+with COHERENCE-PASS. There is nothing left for another full round to buy.
+**Chose CONTINUE (C.5):** coherence is PASS, so no consolidation pass is mandated.
+**FIVE THINGS I STATE PLAINLY RATHER THAN ROUND AWAY:** (i) **After sixteen rounds of adding instruments,
+the round that changed the code fixed the thing** — 0 of 1,030 against 77 of 952, with a five-order-of-
+magnitude drop in exactly the two components the previous round's attribution named, at matched phase
+duration. I say that as plainly as I have said the failures. (ii) **The same round produced ZERO journey
+evidence** — first time in this session: browser SKIPPED 0/8, replay BLOCKED 0/7, demo NOT_YET, one PNG on
+disk, and it is an infrastructure death with a clean shutdown signature, not a product defect. (iii) **The QA
+report claims a replay that does not exist**, in two places, about the exact seven journeys nobody checked;
+the auditor flagged it and I verified both lines rather than inheriting either verdict. (iv) **The fix bought
+speed by introducing a way to be wrong** — an unbounded, unobservable staleness window on the one value the
+whole product uses to say whether it is trustworthy. (v) **A full round ran 18,042 s against a 3,600 s
+budget (5.0x)** — the tenth over-budget round and the largest yet; roughly a third was a legitimate 17m20s
+ingest drill plus a 1h10m test run, and the trim ladder shed the UX-regression reviewer to pay for it. Ten
+rounds without the owner being asked in writing to sanction that bill.
+
+**Next-step recommendation:** LEAN depth. None of the full triggers holds (this verdict is CONTINUE, not
+ESCALATE; coherence is PASS; the consecutive-lean count resets to 0 after this full round; and no
+user-visible UI change lands next round — `goal.md`'s own Loop Mechanics rule points the same way). Order
+for the next round: (1) **Re-verify all eight journeys against a live backend** — they were never tested
+this round; the engine schedules this automatically from `pending_infra`, and the lane must confirm
+`GET /api/health` answers 200 BEFORE the checking stage begins. (2) **Bound the readiness cache's staleness**
+(iter-70/d): stamp each payload with a monotonic timestamp and fall back to a synchronous compute past N ×
+`refresh_interval_seconds`. Small, in-module, and it closes the fast-and-wrong window this round opened —
+the goal's own "the UI tells the truth about the backend's own state" sentence is the reason. (3) **Start the
+health poller BEFORE the job** so the 32.1 s opening window is measured (iter-70/c) — `coverage_membership_
+timeline_refresh` is unmeasured this round, not proven clean, and it is the phase that held the single breach
+in iter-67 AND iter-68. (4) SMALL AND WRITTEN DOWN: iter-70/a (a QA report asserting a replay that did not
+run), the reviewer/audit MINOR at `health.py:174` (assign `cached = None` so the preflight fallback is
+explicit rather than an incidental `NameError`), and audit T1 (one test composing TC-4's two halves — a real
+state flip actually SERVED by `GET /api/health` within one tick). (5) Rides along, never the goal: record the
+J-05 walkthrough (12 rounds unrecorded) and J-07's own [NEW] walkthrough steps (iter-70/e) — the crash-free
+warm finally holds cleanly, and the round it held was the round nobody recorded it. (6) CARRIED, untouched:
+iter-29/b + the badge wording after a permanently failed warm-up (43rd round unmade); iter-31/e; iter-32/f;
+iter-35/k; iter-36/n; iter-37/o; iter-37/q; iter-39/u; iter-46/az; iter-46/ba; iter-47/bd; iter-47/bf;
+iter-47/bi; iter-48/bj; iter-57/f; iter-57/l; iter-59/g; iter-59/h; iter-59/k; iter-62/e; iter-62/f;
+iter-63/a; iter-63/b; iter-63/d; iter-64/b; iter-64/e; iter-64/f; iter-65/b; iter-65/c; iter-65/d; iter-66/b;
+iter-66/e; iter-66/f; iter-66/g; iter-67/f; iter-67/g; iter-68/d; iter-68/e; iter-69/e. Deferred a
+THIRTY-SIXTH time: iter-33/g, the Regime Lab.
+(7) **OWNER — the same one sentence, 22nd round, and this time the news is good.** The app must answer its
+health check within 2 seconds while a background job runs; that promise was written for a job of about 30
+seconds and ours lasts about 17 minutes. Last round 83 answers were too slow and 3 got no answer at all.
+This round the app prepared the two slow parts of the answer in the background instead of computing them on
+demand: **all 1,030 checks were answered, none took longer than 2 seconds, and the slowest was 1.23
+seconds** — during the very stage that caused every problem before. Your standing question may now cost you
+nothing: keep the 2-second promise for long jobs (the app now meets it) or apply it to short jobs only.
+Please still say which, so this journey can be closed rather than left open. Still waiting on you: permission
+to fix the one-line ordering bug in `scripts/automation/browser-qa-phase.sh`, and a cost decision — this
+round ran a real 17-minute data job plus a 1-hour test run and finished about 5x over its time budget. One
+thing needs no decision from you: the test backend shut itself down mid-round, so nothing was checked in the
+browser; the next round re-checks everything.

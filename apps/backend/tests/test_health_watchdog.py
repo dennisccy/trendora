@@ -286,7 +286,9 @@ def test_watchdog_sub_spans_captured_even_when_readiness_computation_raises(
     """Error case (iter-69): with the flag set, a request that hits an internal readiness-computation
     exception (already caught, degrading to `unavailable`) must still be logged with whatever sub-span
     samples were captured before/around the error -- readiness_s/preflight_s still time their own
-    (degraded) outcome, never a suppressed or partial record."""
+    (degraded) outcome, never a suppressed or partial record. ops-hardening iter-70: the fault is now
+    injected at `get_readiness_and_preflight` (the cache accessor `health()` actually calls under the new
+    cached-read path) rather than `compute_readiness` directly."""
     import app.api.health as health_module
 
     monkeypatch.setenv(readiness.VERDICT_HISTORY_PATH_ENV, str(tmp_path / "history.jsonl"))
@@ -297,7 +299,7 @@ def test_watchdog_sub_spans_captured_even_when_readiness_computation_raises(
     def _boom(session, engine=None, config=None):
         raise RuntimeError("simulated readiness failure")
 
-    monkeypatch.setattr(health_module, "compute_readiness", _boom)
+    monkeypatch.setattr(health_module, "get_readiness_and_preflight", _boom)
     fake_request = SimpleNamespace(state=SimpleNamespace(
         health_watchdog_t_received_monotonic=0.0,
         health_watchdog_t_received_wall="2026-08-12T00:00:00+00:00",
@@ -370,7 +372,9 @@ def test_watchdog_records_sample_even_when_readiness_computation_raises(watchdog
     the exception is caught INSIDE the endpoint (never escapes `health()`), execution still reaches the
     handler_compute_s recording point near the end of the function -- so a full (not partial) sample is
     captured for this request too, satisfying the iter-68 error-case requirement (whatever samples were
-    captured before/around the error are never suppressed)."""
+    captured before/around the error are never suppressed). ops-hardening iter-70: the fault is now
+    injected at `get_readiness_and_preflight` (the cache accessor `health()` actually calls under the new
+    cached-read path) rather than `compute_readiness` directly."""
     import app.api.health as health_module
 
     monkeypatch.setenv(readiness.VERDICT_HISTORY_PATH_ENV, str(tmp_path / "history.jsonl"))
@@ -381,7 +385,7 @@ def test_watchdog_records_sample_even_when_readiness_computation_raises(watchdog
     def _boom(session, engine=None, config=None):
         raise RuntimeError("simulated readiness failure")
 
-    monkeypatch.setattr(health_module, "compute_readiness", _boom)
+    monkeypatch.setattr(health_module, "get_readiness_and_preflight", _boom)
     fake_request = SimpleNamespace(state=SimpleNamespace(
         health_watchdog_t_received_monotonic=0.0,
         health_watchdog_t_received_wall="2026-08-12T00:00:00+00:00",
@@ -396,3 +400,33 @@ def test_watchdog_records_sample_even_when_readiness_computation_raises(watchdog
     handler_compute_samples = _handler_compute_entries(log_path)
     assert len(handler_compute_samples) == 1
     assert handler_compute_samples[0]["handler_compute_s"] >= 0
+
+
+# ======================================================================================================
+# ops-hardening iter-70 (J-07) -- under the NEW cached-read path, readiness_s/preflight_s read near-zero
+# (a cache-dict read, not a compute_readiness/compute_preflight call) while db_reads_s is unaffected. This
+# is the request-path half of the fix iter-69's own attribution motivated (readiness_s/preflight_s
+# dominated 43/31 of 74 answered health-poll breaches at ~256x/~89x above idle p90 during a heavy warm).
+# ======================================================================================================
+_NEAR_ZERO_CACHE_READ_CEILING_S = 0.01  # generous vs. a plain dict-key lookup; far below any real compute
+
+
+def test_readiness_and_preflight_sub_spans_read_near_zero_under_cached_path(
+    watchdog_engine, monkeypatch, tmp_path
+):
+    monkeypatch.setenv(readiness.VERDICT_HISTORY_PATH_ENV, str(tmp_path / "history.jsonl"))
+    monkeypatch.setenv(health_watchdog.ENABLED_ENV, "1")
+    log_path = tmp_path / "health-watchdog.jsonl"
+    monkeypatch.setenv(health_watchdog.LOG_PATH_ENV, str(log_path))
+
+    app = main.create_app()
+    with TestClient(app) as client:
+        client.get("/api/health")  # warms the cache -- may itself be a cold-start compute
+        resp = client.get("/api/health")  # measured: must be a pure cache-dict read
+    assert resp.status_code == 200
+
+    entries = _handler_compute_entries(log_path)
+    assert len(entries) == 2
+    entry = entries[-1]  # the SECOND request's own record
+    assert entry["readiness_s"] < _NEAR_ZERO_CACHE_READ_CEILING_S
+    assert entry["preflight_s"] < _NEAR_ZERO_CACHE_READ_CEILING_S

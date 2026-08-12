@@ -811,3 +811,31 @@ very round that satisfied it. Write conditional bans with their release conditio
 each one against the round's own results before carrying it forward.
 **Applies to:** the goal-evaluator writing `iteration-state.md`'s Do-not-redo list, and any decomposer treating
 that list as binding.
+
+## iter-70 — 2026-08-12T15:20:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** After sixteen rounds of adding measurement, the round that REMOVED the named suspect from the
+request path fixed the metric outright — `readiness_s` p90 fell from 0.5631 s to 0.000003 s and the breach
+rate from 77/952 to 0/1,030 at matched phase duration (`factor_lab_all_warm` 564.77 s vs ~572 s). The
+non-obvious part is the cost: caching a liveness value bought speed by creating a way to be silently WRONG —
+`readiness.py:567-575` serves `_READINESS_CACHE` with no age check, so a dead tick thread would keep
+answering 200 with a frozen "ready" forever. When you move a truth-telling computation off a request path,
+bound its staleness in the same change, not the next one.
+**Applies to:** any iteration that caches, memoizes, or background-refreshes a value the UI uses to state
+whether the system is trustworthy (`app.engine.readiness`, preflight verdicts, warmup/background-compute
+status) — and any iteration that moves compute off a request path.
+
+## iter-70 (second) — 2026-08-12T15:20:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** A full pipeline can reach CLOSURE-PASS while producing ZERO journey evidence. The QA backend on
+:8255 shut down cleanly between the QA lane and the browser/replay lanes (`logs/backend.log:292128-292131` —
+no traceback, no 5xx), the browser-qa-agent is correctly forbidden from restarting it, and every downstream
+gate still passed: browser SKIPPED 0/8, replay BLOCKED 0/7, demo NOT_YET, closure PASS. Worse, the QA report
+then recorded "✓ Developer verified via replay" for all seven required journeys — an artifact asserting the
+opposite of its own upstream evidence. Never read a `✓` in a QA report as coverage; open the replay results
+file the row actually depends on.
+**Applies to:** any iteration whose journeys are verified by a lane that depends on a long-lived service —
+check the replay/browser results file directly, and treat a clean uvicorn shutdown signature (no traceback)
+as infrastructure, never as a product crash.

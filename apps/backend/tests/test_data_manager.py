@@ -1435,6 +1435,34 @@ def test_finalize_hook_index_series_second_run_hit_not_reported_as_refreshed(fin
     assert len(rows) == 1  # still exactly one row — the second run never wrote a duplicate
 
 
+# ==================================================================================================
+# ops-hardening iter-70 (J-07) -- the finalize hook fires the readiness/preflight cache's immediate-
+# refresh trigger, the SAME finalize hook every other ingest-time aggregate above already refreshes from.
+# ==================================================================================================
+def test_finalize_hook_triggers_immediate_readiness_refresh(finalize_hook_engine, monkeypatch):
+    """TC-4: `_refresh_ingest_aggregates` fires the readiness/preflight cache's immediate-refresh trigger
+    exactly once, with THIS SAME session (so it sees this job's just-persisted rows immediately), at the
+    end of the finalize hook. The cache's own correctness (cold-start, steady-state, degrade-on-error,
+    concurrency) is covered by test_readiness.py's dedicated tests; this test only proves the finalize
+    hook actually FIRES the trigger."""
+    import app.engine.readiness as readiness_module
+
+    engine, d = finalize_hook_engine
+    cfg = load_config()
+    calls: list[Session] = []
+
+    def _recording(session_arg, config=None, engine=None):
+        calls.append(session_arg)
+
+    monkeypatch.setattr(readiness_module, "trigger_readiness_refresh", _recording)
+    with Session(engine) as session:
+        prog = JobProgress(job_id="readiness-trigger-probe", kind="backfill", start=d, end=d)
+        prog.new_snapshot_dates = [d]
+        data_manager._refresh_ingest_aggregates(session, cfg, prog)
+        assert len(calls) == 1
+        assert calls[0] is session  # the SAME session -- sees this job's just-persisted rows immediately
+
+
 def test_finalize_hook_index_series_memory_error_isolated_and_not_reported(
     finalize_hook_engine, monkeypatch
 ):

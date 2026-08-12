@@ -34,7 +34,9 @@ progress and the analytics pages show their "warming up (n/m)" state — both re
 from __future__ import annotations
 
 import json
+import logging
 import os
+import threading
 from datetime import date as date_cls
 from pathlib import Path
 from typing import Optional
@@ -460,3 +462,212 @@ def record_verdict_transition(
         return False
     append_entry(resolved, {"verdict": verdict, "reasons": reasons, "reference": reference})
     return True
+
+
+# ====================================================================================================
+# Bounded-interval background-refresh cache (ops-hardening iter-70, J-07) -- serves `compute_readiness`/
+# `compute_preflight`'s combined output from a periodically-refreshed cache instead of recomputing them
+# synchronously on every `GET /api/health` request. iter-69's own watchdog sub-span instrumentation named
+# `readiness_s`/`preflight_s` as the dominant components (43/31 of 74 answered health-poll breaches, at
+# ~256x/~89x above idle p90) while a heavy background aggregate warm is live -- this closes that gap the
+# SAME way this session's other heavy computations were already moved off the request path: compute at a
+# bounded interval, publish to a cache, serve reads from storage (here, in-process memory, since
+# readiness/preflight are liveness state, not data that must survive a restart -- see the iter-70
+# assumption-ledger entry for the interpretation call).
+#
+# SAME two producers (`compute_readiness`/`compute_preflight`), SAME one endpoint (`GET /api/health`) --
+# this section adds ONLY a caching/scheduling layer around them, never a second implementation.
+# ====================================================================================================
+logger = logging.getLogger("trendora.readiness")
+
+
+def _log_tick_failure(msg: str) -> None:
+    """ops-hardening iter-70 AUDIT FIX (B1) — the SAME guard `data_manager._log_isolation_failure`
+    (iter-45, reviewer CRITICAL) already applies to every isolation handler inside
+    `_refresh_ingest_aggregates`, applied here for the SAME reason and the SAME reachable path.
+    `logger.exception()` formats and renders the FULL live traceback, which itself ALLOCATES; under the
+    exhausted `ulimit -v` cap that produced the exception being logged, that allocation can raise a SECOND
+    exception — and it is raised INSIDE the `except` clause, past the point that clause's own `try`
+    protects, so it propagates. Two callers below make that propagation matter: `_tick_and_cache`, reached
+    from `data_manager._refresh_ingest_aggregates`'s finalize hook (where an escape discards the whole
+    `refreshed` list, reporting a completed 17-minute finalize as zero aggregates refreshed), and
+    `_refresh_loop`, where an escape KILLS the daemon thread — leaving `GET /api/health` serving a frozen
+    cached value forever with no error surfaced anywhere. Full traceback first (unchanged behavior for
+    every normal failure); on ANY failure while logging, a minimal-allocation, traceback-free record; if
+    even that raises, give up silently — logging is diagnostic-only and must never itself be the reason a
+    "never raises" contract breaks."""
+    try:
+        logger.exception(msg)
+    except Exception:  # pragma: no cover - the logging allocation itself failed (memory pressure)
+        try:
+            logger.error(msg)
+        except Exception:  # pragma: no cover - nothing left to try; diagnostics are never load-bearing
+            pass
+
+# Serializes tick EXECUTION (compute + the verdict-transition write + the cache swap) -- guards against
+# two concurrent callers (the periodic background thread's own tick and an ingest finalize hook's
+# immediate-refresh trigger, `trigger_readiness_refresh` below) racing `record_verdict_transition`'s own
+# read-last-entry-then-maybe-append sequence (which would otherwise risk a duplicate transition record --
+# TC-5), and so two concurrent computes never interleave.
+_TICK_LOCK = threading.Lock()
+
+# The shared cache: the last completed tick's `{"readiness": ..., "preflight": ...}` payload, or `None`
+# before the first tick has ever completed in this process. A reader always gets either the PRIOR complete
+# payload or the NEW complete payload, never a torn mix of the two -- this single name is only ever
+# reassigned to a FRESH, fully-built dict (never mutated in place), and a bare name rebind is one atomic
+# bytecode operation under the GIL, so no lock is needed on the READ side.
+_READINESS_CACHE: Optional[dict] = None
+
+# Single-flight guard for the background thread's own lifecycle (mirrors `warmup._WARMUP_LOCK`'s shape).
+# Unlike warmup's one-shot job, this thread runs for the process's life -- `stop_readiness_refresh` (called
+# symmetrically from `main.lifespan`, mirroring the health-watchdog loop-lag probe's own start/cancel
+# shape) ends it cleanly, so repeated TestClient lifespan entries in tests each get a thread scoped to
+# their OWN engine rather than a stale thread from an earlier test/engine still ticking against a
+# torn-down DB.
+_REFRESH_LOCK = threading.Lock()
+_REFRESH_THREAD: Optional[threading.Thread] = None
+_REFRESH_STOP: Optional[threading.Event] = None
+
+
+def _compute_tick(session: Session, cfg: Config, engine=None) -> dict:
+    """One readiness+preflight compute -- byte-identical to the pre-cache per-request compute (the SAME
+    two producer calls), including the verdict-transition write (moved here from the request path -- SAME
+    dedup-against-last-recorded-verdict logic, SAME verdict-history file). This SAME body backs the
+    periodic background tick, the immediate-refresh trigger, and the cold-start synchronous fallback --
+    only the SCHEDULING differs between the three callers."""
+    readiness_result = compute_readiness(session, engine=engine, config=cfg)
+    preflight_result = compute_preflight(session, config=cfg)
+    try:
+        record_verdict_transition(
+            preflight_result["verdict"], preflight_result["reasons"], preflight_result["reference"]
+        )
+    except Exception:  # pragma: no cover - a history-log write failure must never break the tick
+        _log_tick_failure("readiness verdict-history write failed (non-fatal)")
+    return {"readiness": readiness_result, "preflight": preflight_result}
+
+
+def _tick_and_cache(session: Session, cfg: Config, engine=None) -> Optional[dict]:
+    """Run one tick and, on success, atomically publish it as the shared cache. Serialized by `_TICK_LOCK`
+    so two concurrent callers (the periodic thread and an ingest finalize hook's immediate trigger) never
+    interleave a compute or double-write a verdict transition (TC-5). Degrade-on-error (TC-6): a raising
+    compute is caught, logged, and leaves the PRIOR cache (if any) completely untouched -- the caller keeps
+    serving the last-known-good value, never a blank/partial one. Returns the fresh payload on success, or
+    `None` when the tick itself failed."""
+    global _READINESS_CACHE
+    with _TICK_LOCK:
+        try:
+            payload = _compute_tick(session, cfg, engine=engine)
+        except Exception:  # pragma: no cover - a tick failure must never crash the thread or blank the cache
+            _log_tick_failure("readiness refresh tick failed (non-fatal) -- serving last-known-good cache")
+            return None
+        _READINESS_CACHE = payload
+        return payload
+
+
+def get_readiness_and_preflight(session: Session, engine=None, config: Optional[Config] = None) -> dict:
+    """The SINGLE read accessor `GET /api/health` calls: serves `{"readiness": ..., "preflight": ...}`
+    from the shared cache. Cold-start fallback (TC-1): before the background thread's first tick
+    completes (boot, or a direct `health(session)` call with no thread running), computes once
+    synchronously here -- byte-identical to the pre-cache per-request behavior, so boot-time and
+    unit-test call shapes are unaffected. Never raises: even a first-ever tick failure (e.g. DB
+    unreachable at boot) degrades to the SAME honest fallback shape `compute_readiness`/`compute_preflight`
+    already produce on their own internal errors -- `GET /api/health` never serves an undefined value."""
+    cache = _READINESS_CACHE
+    if cache is not None:
+        return cache
+    cfg = config or get_config()
+    ticked = _tick_and_cache(session, cfg, engine=engine)
+    if ticked is not None:
+        return ticked
+    return {
+        "readiness": {
+            "state": UNAVAILABLE,
+            "detail": None,
+            "warmup": {"done": 0, "total": 0, "status": "pending", "message": "history 0/0"},
+            "background_compute": {"active": [], "recent_outcomes": []},
+        },
+        "preflight": {
+            "verdict": NO_GO,
+            "reasons": ["The preflight check itself failed to run."],
+            "components": {},
+            "as_of": None,
+            "reference": None,
+        },
+    }
+
+
+def trigger_readiness_refresh(session: Session, config: Optional[Config] = None, engine=None) -> None:
+    """Immediate-refresh trigger (TC-4): called from `data_manager._refresh_ingest_aggregates`'s own
+    finalize hook -- the SAME finalize hook every other ingest-time aggregate already refreshes from --
+    runs one tick right now (reusing the ingest job's OWN session, so it sees this job's just-persisted
+    rows) rather than waiting up to a full `readiness.refresh_interval_seconds` period for the periodic
+    thread's next tick. Non-fatal: `_tick_and_cache` already degrades a failure to a no-op (the prior
+    cache, if any, is left untouched) -- this never raises out into the calling ingest job."""
+    cfg = config or get_config()
+    _tick_and_cache(session, cfg, engine=engine)
+
+
+def _refresh_loop(engine, cfg: Config, stop: threading.Event) -> None:
+    """The background thread body: tick immediately (so the cache is warm as soon as possible after
+    boot), then repeat every `readiness.refresh_interval_seconds`, until `stop` is set. Opens its OWN
+    session per tick on `engine` (mirrors `warmup._run_warmup`'s own session-per-worker pattern) -- never
+    a request session."""
+    interval = cfg.readiness.refresh_interval_seconds
+    while not stop.is_set():
+        try:
+            with Session(engine) as session:
+                _tick_and_cache(session, cfg, engine=engine)
+        except Exception:  # pragma: no cover - opening the session itself must never kill the loop
+            _log_tick_failure("readiness refresh loop iteration failed (non-fatal)")
+        stop.wait(interval)
+
+
+def start_readiness_refresh(engine, config: Optional[Config] = None) -> None:
+    """Start the bounded-interval background-refresh daemon thread (single-flight: a re-entry while one
+    is already alive is a no-op, mirroring `warmup.start_warmup`'s guard shape). Started from the SAME
+    `lifespan` boot sequence that already starts `app.engine.warmup.start_warmup` -- reuses that existing
+    daemon-thread idiom, no second threading abstraction.
+
+    Resets the shared cache to `None` whenever it actually spawns a fresh thread (never on the single-
+    flight no-op path): a genuinely new boot must never go on serving a value some UNRELATED earlier
+    engine/process cached (`get_readiness_and_preflight`'s cold-start fallback then computes fresh,
+    synchronously, for the first request that lands before this boot's own first tick completes -- the
+    SAME TC-1 behavior a true process boot already relies on). In real deployment this reset is a no-op
+    (`start_readiness_refresh` runs exactly once per process, and the cache already starts `None`); it
+    matters only where one process re-enters `lifespan` repeatedly against DIFFERENT engines -- every
+    `TestClient` block in the test suite -- which is exactly the scenario that, unfixed, let one test's
+    monkeypatched/stale cached value leak into an unrelated later test's request."""
+    cfg = config or get_config()
+    global _REFRESH_THREAD, _REFRESH_STOP, _READINESS_CACHE
+    with _REFRESH_LOCK:
+        if _REFRESH_THREAD is not None and _REFRESH_THREAD.is_alive():
+            return
+        _READINESS_CACHE = None
+        stop = threading.Event()
+        thread = threading.Thread(
+            target=_refresh_loop, args=(engine, cfg, stop), daemon=True, name="readiness-refresh",
+        )
+        _REFRESH_STOP = stop
+        _REFRESH_THREAD = thread
+        thread.start()
+
+
+def stop_readiness_refresh(timeout: float = 2.0) -> None:
+    """Signal the background thread to stop and join briefly (best-effort -- mirrors `main.lifespan`'s
+    own `watchdog_task.cancel()` symmetry for the health-watchdog loop-lag probe). A thread mid-tick past
+    the timeout is left to finish on its own; it never blocks shutdown."""
+    global _REFRESH_THREAD, _REFRESH_STOP
+    with _REFRESH_LOCK:
+        stop = _REFRESH_STOP
+        thread = _REFRESH_THREAD
+    if stop is not None:
+        stop.set()
+    if thread is not None:
+        thread.join(timeout=timeout)
+
+
+def reset_readiness_refresh_cache() -> None:
+    """Test seam: clear the shared cache so the next `get_readiness_and_preflight` call takes the
+    cold-start synchronous path -- mirrors `reset_readiness_cache`'s existing cadence-memo reset above."""
+    global _READINESS_CACHE
+    _READINESS_CACHE = None

@@ -196,15 +196,17 @@ def test_health_background_compute_serves_failed_outcome_verbatim(loaded_engine,
 
 
 def test_health_background_compute_degrades_honestly_when_readiness_fails(loaded_engine, monkeypatch):
-    """A total `compute_readiness` failure degrades the WHOLE readiness payload to `unavailable` (the
+    """A total readiness-cache-accessor failure degrades the WHOLE readiness payload to `unavailable` (the
     pre-existing convention) -- `background_compute` still serves the honest empty shape, never omitted
-    and never left dangling on a partially-constructed fallback dict."""
+    and never left dangling on a partially-constructed fallback dict. ops-hardening iter-70: the fault is
+    now injected at `get_readiness_and_preflight` (the cache accessor `health()` actually calls) rather
+    than `compute_readiness` directly, since the request path no longer calls that function itself."""
     import app.api.health as health_module
 
     def _boom(session, engine=None, config=None):
         raise RuntimeError("simulated readiness failure")
 
-    monkeypatch.setattr(health_module, "compute_readiness", _boom)
+    monkeypatch.setattr(health_module, "get_readiness_and_preflight", _boom)
     with TestClient(main.app) as client:
         body = client.get("/api/health").json()
     assert body["readiness"] == "unavailable"
@@ -341,3 +343,57 @@ def test_health_symbol_count_matches_naive_count_distinct_on_loaded_engine(loade
     with TestClient(main.app) as client:
         body = client.get("/api/health").json()
     assert body["symbol_count"] == naive
+
+
+# ==================================================================================================
+# ops-hardening iter-70 (J-07) -- GET /api/health reads the bounded-interval background-refresh cache
+# (app.engine.readiness) instead of computing readiness/preflight on the request thread.
+# ==================================================================================================
+def test_health_cold_start_direct_call_matches_live_compute(loaded_engine, tmp_path, monkeypatch):
+    """TC-1 at the handler level: with no completed tick (`readiness.reset_readiness_refresh_cache()`
+    forces the cold-start path), a direct `health(session)` call still returns a valid readiness/preflight
+    payload, computed synchronously -- byte-identical to a direct `compute_readiness`/`compute_preflight`
+    call taken immediately after (the DB is unchanged between the two calls)."""
+    monkeypatch.setenv(readiness.VERDICT_HISTORY_PATH_ENV, str(tmp_path / "history.jsonl"))
+    readiness.reset_readiness_refresh_cache()
+    cfg = load_config()
+    with Session(loaded_engine) as session:
+        body = health(session)
+        direct_readiness = readiness.compute_readiness(session, config=cfg)
+        direct_preflight = readiness.compute_preflight(session, config=cfg)
+    assert body["readiness"] == direct_readiness["state"]
+    assert body["readiness_detail"] == direct_readiness["detail"]
+    assert body["preflight"] == direct_preflight
+
+
+def test_health_repeated_calls_serve_cache_not_recompute(loaded_engine, tmp_path, monkeypatch):
+    """TC-2 at the handler level: once the cache holds a completed tick, several direct `health(session)`
+    calls in a row never invoke `compute_readiness`/`compute_preflight` again -- proven by a
+    call-counting monkeypatch (mirrors test_readiness.py's own steady-state test), not merely by comparing
+    output values."""
+    monkeypatch.setenv(readiness.VERDICT_HISTORY_PATH_ENV, str(tmp_path / "history.jsonl"))
+    readiness.reset_readiness_refresh_cache()
+    with Session(loaded_engine) as session:
+        health(session)  # warms the cache via the cold-start path
+    assert readiness._READINESS_CACHE is not None
+
+    calls = {"readiness": 0, "preflight": 0}
+    real_readiness = readiness.compute_readiness
+    real_preflight = readiness.compute_preflight
+
+    def _counting_readiness(*a, **kw):
+        calls["readiness"] += 1
+        return real_readiness(*a, **kw)
+
+    def _counting_preflight(*a, **kw):
+        calls["preflight"] += 1
+        return real_preflight(*a, **kw)
+
+    monkeypatch.setattr(readiness, "compute_readiness", _counting_readiness)
+    monkeypatch.setattr(readiness, "compute_preflight", _counting_preflight)
+
+    with Session(loaded_engine) as session:
+        for _ in range(10):
+            health(session)
+
+    assert calls == {"readiness": 0, "preflight": 0}

@@ -43,13 +43,20 @@ as only ~11% of its one breach's magnitude; this sample names the previously-unt
 SAME writer, SAME log file — no second instrument.
 
 ops-hardening iter-69 (J-07) decomposes that SAME `handler_compute_s` sample into its three constituent
-parts — `db_reads_s` (the three DB reads immediately below), `readiness_s` (the `compute_readiness` call),
-`preflight_s` (the `compute_preflight` call, including its own nested `record_verdict_transition` write —
-not split out this round) — timed with the SAME monotonic clock, wrapped around the SAME already-existing
-try/except blocks (so an internal exception, already caught and degraded below, still yields a real
-elapsed-time sample for that span rather than a partial/missing one). Written into the SAME
+parts — `db_reads_s` (the three DB reads immediately below), `readiness_s` (the readiness read),
+`preflight_s` (the preflight read) — timed with the SAME monotonic clock, wrapped around the SAME
+already-existing try/except blocks (so an internal exception, already caught and degraded below, still
+yields a real elapsed-time sample for that span rather than a partial/missing one). Written into the SAME
 `handler_compute` record via `record_handler_compute`'s new keyword-only params — no second flag, writer,
 or record type. Diagnostic-log-only: the response body/shape below is unaffected either way (TC-8).
+
+ops-hardening iter-70 (J-07) replaces the direct `compute_readiness`/`compute_preflight` calls (and the
+request-path `record_verdict_transition` write) with a single read from `app.engine.readiness`'s new
+bounded-interval background-refresh cache (`get_readiness_and_preflight`) — the SAME two producer
+functions, the SAME one endpoint, no second implementation. Under the new cached-read path `readiness_s`/
+`preflight_s` (above) time a cache-dict read, not a compute call — near-zero in steady state (TC-7), which
+is what keeps this endpoint answering promptly during a heavy background aggregate warm (J-07 step 2). The
+three DB reads below are unaffected (out of scope — iter-69's attribution never implicated them).
 """
 from __future__ import annotations
 
@@ -62,7 +69,7 @@ from sqlmodel import Session
 from app.config import get_config
 from app.db import get_engine, get_session
 from app.engine import health_watchdog
-from app.engine.readiness import compute_preflight, compute_readiness, record_verdict_transition
+from app.engine.readiness import get_readiness_and_preflight
 from app.models import DailyPrice, ScannerRun
 
 router = APIRouter(tags=["health"])
@@ -144,13 +151,17 @@ def health(session: Session = Depends(get_session), request: Request = None) -> 
         db_ok = False
     db_reads_s = (time.monotonic() - _t_db_reads_start) if watchdog_active else None
 
-    # The single honest readiness state + warm-up progress (computed once by the readiness producer).
-    # `engine` lets it compute the expected cadence total when no warm-up record exists yet. A DB error
-    # inside the producer degrades to `unavailable` (never a fabricated `ready`).
-    # ops-hardening iter-69 (J-07): readiness_s -- wraps this SAME call, success or degraded alike.
+    # ops-hardening iter-70 (J-07): the single honest readiness state + warm-up progress, now served from
+    # `app.engine.readiness`'s bounded-interval background-refresh cache instead of computed on this
+    # request thread -- `get_readiness_and_preflight` degrades to the honest `unavailable` fallback shape
+    # on its own internal errors and never raises; this try/except is defensive belt-and-braces (mirrors
+    # every other block in this handler) and is what a test exercises by monkeypatching the accessor.
+    # ops-hardening iter-69 (J-07): readiness_s -- wraps this SAME call. Under the cached-read path this
+    # is a near-zero cache-dict read in steady state (TC-7), not a compute_readiness call.
     _t_readiness_start = time.monotonic() if watchdog_active else None
     try:
-        readiness = compute_readiness(session, engine=get_engine())
+        cached = get_readiness_and_preflight(session, engine=get_engine(), config=cfg)
+        readiness = cached["readiness"]
     except Exception:  # pragma: no cover - never let a readiness error blank the health probe
         readiness = {
             "state": "unavailable",
@@ -160,20 +171,15 @@ def health(session: Session = Depends(get_session), request: Request = None) -> 
         }
     readiness_s = (time.monotonic() - _t_readiness_start) if watchdog_active else None
 
-    # iter-33 (J-20): the single daily preflight verdict (GO/DEGRADED/NO-GO + reasons). A compute error
-    # degrades to an honest NO-GO — never a blank/fabricated field (anti-goal #8).
-    # ops-hardening iter-69 (J-07): preflight_s -- wraps this SAME call AND its own nested
-    # record_verdict_transition write (not split into a fourth span this round, per spec).
+    # ops-hardening iter-70 (J-07): the single daily preflight verdict, read from the SAME cached payload
+    # fetched above (a bare dict-key access, not a second compute) — `record_verdict_transition`'s
+    # append-only, only-on-a-transition write now fires from INSIDE the background tick, never on this
+    # request path (moved alongside the compute itself).
+    # ops-hardening iter-69 (J-07): preflight_s -- wraps this SAME read.
     _t_preflight_start = time.monotonic() if watchdog_active else None
     try:
-        preflight = compute_preflight(session, config=cfg)
-        try:
-            # Append-only, ONLY on a transition (never on every ~2s poll) -- a history-write failure must
-            # never blank the health probe (mirrors the readiness try/except immediately above).
-            record_verdict_transition(preflight["verdict"], preflight["reasons"], preflight["reference"])
-        except Exception:  # pragma: no cover - a history-log write failure must never blank /health
-            pass
-    except Exception:  # pragma: no cover - never let a preflight error blank the health probe
+        preflight = cached["preflight"]
+    except Exception:  # pragma: no cover - never let a preflight read error blank the health probe
         preflight = {
             "verdict": "NO-GO",
             "reasons": ["The preflight check itself failed to run."],

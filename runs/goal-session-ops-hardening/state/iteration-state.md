@@ -1,40 +1,27 @@
 # Iteration State — ops-hardening
 
-**After iteration:** 69 · **Date:** 2026-08-12 · **Verdict:** ESCALATE
+**After iteration:** 70 · **Date:** 2026-08-12 · **Verdict:** CONTINUE
 
 ## Journeys
 
-7 passing (J-01 J-03 J-04 J-05 J-06 J-08 J-09) · 1 partial (J-07) — 8 total. Replay 8/8, zero overturns.
+8 partial, all pending-infra (J-01 J-03 J-04 J-05 J-06 J-07 J-08 J-09) — 8 total · 0 failing · 0 regressed. NOTHING FAILED: the QA backend died between lanes, so browser QA was SKIPPED 0/8 and replay BLOCKED 0/7 ("never checked", not FAIL). Seven were passing at iter-69; J-07 was already partial.
 
 ## Active blockers
 
-- **Dev (the round's finding):** `GET /api/health` recomputes `compute_readiness` + `compute_preflight` on
-  EVERY request (`apps/backend/app/api/health.py:128-184`) — dominant in all 74 answered breaches (43 / 31),
-  ~256x / ~89x above idle at p90 while `factor_lab_all_warm` is live.
-- **Human (owner), 21st round:** does the ≤2 s health-check ceiling apply to a 17-minute job, or only to the
-  ~30 s job it was written for? J-07's last gap is exactly this (`docs/goal.md`, 2026-07-31 amendment). The
-  session's FIRST 3 non-answers (5 s client timeout) landed this round, so the question got sharper.
-- **Human (owner):** may `scripts/automation/*` change to arm the browser-QA lane's backend (iter-69/e, 4th
-  round)? Plus the `browser-qa-phase.sh` sign-off and a cost sanction — 9th over-budget round (~6,988 s).
+- **Re-verification owed for all 8 journeys** (dev) — the engine auto-schedules the make-up ride from `pending_infra`; the lane must confirm `GET /api/health` on :8255 answers 200 BEFORE checking starts. Backend is live now (PID 2027165). **Two-strike rule: if the lane is blocked a second consecutive round, that is human-owned → STALLED.**
+- **J-07 last gaps** (dev + human) — browser half of TC-3 never ran; the poller started 32.1s late so `coverage_membership_timeline_refresh` is unmeasured, not proven clean; walkthrough clause unmet. Human: the 2-second ceiling policy (22nd round), `scripts/automation/browser-qa-phase.sh` sign-off, cost sanction (10th over-budget round, 18,042s vs 3,600s).
+- **New silent failure mode** (dev) — `apps/backend/app/engine/readiness.py:567-575` serves the cache with no age check; a dead tick thread would answer 200 with a frozen "ready" forever (iter-70/d).
 
 ## Last 2 verdicts
 
-- iter 69: ESCALATE — the sub-spans named the slow part as the health handler's OWN readiness+preflight
-  work, so the next step becomes a design change to a canonical producer, not more measurement.
-  Availability went backwards: 83 of 1,402 polls over 2 s and the session's first 3 non-answers.
-- iter 68: CONTINUE — the third watchdog sample named 79.4 % of the one breach; 1,609/1,609 HTTP 200 but
-  10 over 2.0 s, so J-07 stayed partial. `test_health.py` finally ran: 17 passed.
+- iter 70: CONTINUE — the fix landed and was verified from raw artifacts (1,030 polls, 0 breaches, 0 non-answers, max 1.226s; `readiness_s` p90 0.5631s → 0.000003s), but zero journey evidence was produced this round.
+- iter 69: ESCALATE — a lean round surfaced a design change to a canonical producer (readiness/preflight off the request path), landing alongside the session's first non-answers.
 
 ## Do not redo
 
-- **Re-running a suspect compute chain in a STANDALONE script** — three null results (iter-52/53, 65, 66).
-  Extend the live instrument instead: `apps/backend/app/engine/health_watchdog.py`.
-- **A second health-poll counter, JSONL writer, or env flag** — `scripts/qa/poll_health.py`,
-  `ledger.append_entry`, `TRENDORA_HEALTH_WATCHDOG` are canonical; both lanes shared the script again.
-- **Re-proving flag on/off byte-identity** (`test_health_watchdog.py` 15 passed twice) **or re-deriving the
-  pre-receive gap / watchdog write cost** (Addendum 35 TC-5 / TC-7 — iter-68/a, /b, /c closed).
-- **RELEASED, not banned:** the "diagnostic only until the handler-body sub-timing names a component"
-  condition on bounding `factor_lab_all_warm` is MET (`readiness_s` 43 of 74, `preflight_s` 31) — a
-  legitimate alternative target if the health-handler fix proves insufficient.
-- **Touching `config.yaml` caps, `project-extensions/host-guard/`, or the HOST-GUARD blocks in the launch
-  scripts** — owner-set envelope (AG-10), verified clean again this round.
+- **Moving readiness/preflight off the request path is DONE and PROVEN** — `app.engine.readiness` background-refresh cache, `health.py` reads `get_readiness_and_preflight`; TC-7 confirmed (`readiness_s`/`preflight_s` p90 ≈ 1e-6s across 1,065 records). Do not re-instrument these two components.
+- **Bounding `factor_lab_all_warm` / `coverage_membership_timeline_refresh` by code change is NOT NEEDED** — 565 polls inside `factor_lab_all_warm` with 0 breaches (was 74/400). Released-but-unused alternative; revisit only if a re-measurement shows breaches there again.
+- **iter-69/a /b /c /d are CLOSED** (phase grouping shipped; 83-record count corrected; 60d label corrected; the non-answers gone). Do not re-fix them. `reports/perf-budgets.md` Addendum 36 is append-only and audit-corrected — do not edit prior addenda.
+- **Steps 3 (VmPeak) and 4 (memory-pressure abort) of J-07 carry on evidence durability** — warm-path code (`compute_forward_aggregates`, `research.py`) byte-identical. Re-measure only if that seam changes.
+- **The three DB reads in `GET /api/health` stay on the request path** — deliberate, out of scope; `db_reads_s` is now the dominant server-side component but max 0.480s against a 2.0s ceiling.
+- **Do not touch `config.yaml` caps, `project-extensions/host-guard/`, or the HOST-GUARD blocks** — AG-10 envelope is owner-set and verified intact this round.

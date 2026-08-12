@@ -580,15 +580,25 @@ class ReadinessCfg(BaseModel):
         verdict changes, never on every ~2s poll). A relative path resolves against the repo root; the
         `READINESS_VERDICT_HISTORY_PATH` env override takes precedence (test/gate seam — mirrors
         `app.engine.evidence.LEDGER_PATH_ENV`).
+      - `refresh_interval_seconds` (ops-hardening iter-70, J-07) — the bounded-interval background-refresh
+        cache's tick cadence (`app.engine.readiness`'s new daemon thread, started alongside
+        `app.engine.warmup.start_warmup`): how often `compute_readiness`/`compute_preflight` are
+        recomputed and published to the cache `GET /api/health` now reads from, instead of recomputing on
+        every request. MUST be well under `startup.health_poll_interval_seconds` (2.0s) so a fresh cached
+        value always predates the badge's next poll — MUST be `> 0`. Defaults to `0.5` (present so a
+        config fixture predating this field still loads unchanged — the established `extra="allow"`/
+        back-compat-default convention this class already uses, mirroring `StartupCfg`'s own
+        `background_compute_history_size` default).
 
     Boot-validated: `severity` must name exactly `{servability, freshness, integrity, drift}` with every
-    value one of `"degraded"`/`"no-go"`, covering both. An invalid block raises `ConfigError`, never a
-    silent default."""
+    value one of `"degraded"`/`"no-go"`, covering both, and `refresh_interval_seconds` must be `> 0`. An
+    invalid block raises `ConfigError`, never a silent default."""
 
     model_config = ConfigDict(extra="allow")
     freshness_max_age_days: int
     severity: dict[str, str]
     verdict_history_path: str
+    refresh_interval_seconds: float = 0.5
 
     @model_validator(mode="after")
     def _validate(self) -> "ReadinessCfg":
@@ -605,6 +615,8 @@ class ReadinessCfg(BaseModel):
                 "readiness.severity must configure at least one component as 'degraded' and at least "
                 "one as 'no-go' so the fixture matrix can induce both states"
             )
+        if self.refresh_interval_seconds <= 0:
+            raise ValueError("readiness.refresh_interval_seconds must be > 0")
         return self
 
 

@@ -43,6 +43,7 @@ from app.config import load_config
 from app.db import create_db_and_tables, get_engine
 from app.engine import health_watchdog
 from app.engine.data_manager import sweep_orphaned_runs
+from app.engine.readiness import start_readiness_refresh, stop_readiness_refresh
 from app.engine.warmup import ensure_latest_snapshot, start_warmup
 from app.logging_config import configure_app_logging
 from app.seed_loader import load_seed
@@ -109,6 +110,12 @@ async def lifespan(app: FastAPI):
     # inside the worker; the server keeps serving persisted snapshots and the next boot finishes it).
     if latest is not None:
         start_warmup(engine, config)
+    # ops-hardening iter-70 (J-07): start the bounded-interval readiness/preflight background-refresh
+    # cache thread -- the SAME boot sequence that starts the warm-up above, reusing that daemon-thread
+    # idiom. Started unconditionally (even on an empty DB): `compute_readiness`/`compute_preflight`
+    # already degrade to their own honest `unavailable`/`NO-GO` shape when there is no data, so the cache
+    # is useful from its first tick regardless of `latest`.
+    start_readiness_refresh(engine, config)
     # ops-hardening iter-67 (J-07): the optional event-loop-lag probe -- started on THIS SAME event loop
     # (the one the health route is served from) only when TRENDORA_HEALTH_WATCHDOG=1. Returns None (no
     # task created) on the default path -- zero added overhead when unset.
@@ -119,6 +126,11 @@ async def lifespan(app: FastAPI):
             "(samples -> logs/health-watchdog.jsonl)"
         )
     yield
+    # ops-hardening iter-70 (J-07): stop the readiness-refresh thread symmetrically with its own start
+    # above -- mirrors the watchdog loop-lag probe's own start/cancel shape immediately below, so each
+    # lifespan entry/exit cycle (every TestClient block in tests; a real process's own shutdown) leaves no
+    # stale thread ticking against a torn-down engine.
+    stop_readiness_refresh()
     if watchdog_task is not None:
         watchdog_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):

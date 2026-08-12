@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-ops-hardening-iter-70",
+  "base_url": "http://localhost:3255",
+  "not_yet": true,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Backend optimization iteration — infrastructure unavailable",
+      "narration": "This iteration implemented a background-refresh cache for the health endpoint to improve availability during heavy workloads. Unit tests passed, but browser QA could not complete because the backend became unreachable during testing.",
+      "point_out": "Check backend health at the configured port (typically 8255) when ready to verify this iteration",
+      "journey": "",
+      "new": false,
+      "verified": false,
+      "section": "full_tour",
+      "action": {
+        "type": "goto",
+        "url": "/"
+      }
+    }
+  ]
+}
