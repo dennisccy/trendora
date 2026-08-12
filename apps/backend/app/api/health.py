@@ -28,15 +28,25 @@ ops-hardening iter-24 (J-09) additively extends this SAME endpoint with the `bac
 introduced (previously visible only by reconstructing it from raw DB timestamps). Degrades to
 `{"active": [], "recent_outcomes": []}` on any compute error — the SAME degrade-on-error convention as
 `readiness`/`preflight` above, never a blank/fabricated field.
+
+ops-hardening iter-67 (J-07) additively wires in the optional, env-flag-gated health-request-wait
+watchdog (`app.engine.health_watchdog`) — DIAGNOSTIC ONLY, off by default (`TRENDORA_HEALTH_WATCHDOG`
+unset/`0`). When armed it times how long THIS request waited between arriving at the ASGI layer and this
+handler body starting to execute, appending the sample to `logs/health-watchdog.jsonl` — it never
+changes what is computed or what this endpoint returns (the `request` param defaults to `None` so the
+pre-existing direct-call test shape, `health(session)`, is unaffected).
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+import time
+
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy import func, select, text
 from sqlmodel import Session
 
 from app.config import get_config
 from app.db import get_engine, get_session
+from app.engine import health_watchdog
 from app.engine.readiness import compute_preflight, compute_readiness, record_verdict_transition
 from app.models import DailyPrice, ScannerRun
 
@@ -75,7 +85,25 @@ def _distinct_symbol_count(session: Session) -> int:
 
 
 @router.get("/health")
-def health(session: Session = Depends(get_session)) -> dict:
+def health(session: Session = Depends(get_session), request: Request = None) -> dict:
+    # ops-hardening iter-67 (J-07): the watchdog's own t_handler_start, taken BEFORE any of the
+    # readiness/preflight computation below runs, so a queue-wait sample is captured for THIS request
+    # regardless of what happens later in the handler (a readiness-computation exception is already
+    # caught below and degrades honestly -- it never reaches here). Only does anything when the flag is
+    # armed AND `HealthWatchdogMiddleware` actually ran for this request (real ASGI traffic); a
+    # direct-call test invoking `health(session)` with no `request` is untouched. A watchdog write
+    # failure must never suppress, delay, or alter this route's own response (AG-8: never a wedge) --
+    # mirrors this file's own existing degrade-on-error convention.
+    if health_watchdog.enabled() and request is not None:
+        try:
+            t_handler_start = time.monotonic()
+            t_received = getattr(request.state, "health_watchdog_t_received_monotonic", None)
+            t_received_wall = getattr(request.state, "health_watchdog_t_received_wall", None)
+            if t_received is not None and t_received_wall is not None:
+                health_watchdog.record_queue_wait(t_received, t_received_wall, t_handler_start)
+        except Exception:  # pragma: no cover - a watchdog write failure must never blank/break /health
+            pass
+
     cfg = get_config()
     provider = cfg.provider
     try:

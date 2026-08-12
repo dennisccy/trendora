@@ -1007,3 +1007,24 @@ instrument.
 **Reversible:** yes — if this instrument also finds nothing, a later iteration can add thread-stack
 interrupt sampling of the live process as a second, still-different method, or the owner's ceiling
 question can resolve J-07 without a further code-level hold ever being named.
+
+## iter-67 — goal-evaluator
+
+**Ambiguity:** J-07 has four acceptance steps. This round exercised steps 1-2 in full (a real 17m46s
+ingest with 1,036 one-second health polls plus a 330-poll idle control), but step 3 (record the process's
+VmPeak during the warm, with the margin recorded in `reports/perf-budgets.md`) produced only a
+non-authoritative browser-lane point read (6,528,660 kB against the 8,388,608 kB cap), and step 4 (induce
+memory pressure and prove the warm aborts honestly while the same process keeps serving) was not re-run at
+all — its last real exercise was iter-64. Nothing says whether an un-re-measured acceptance step makes a
+journey worse this round or simply carries forward.
+**We chose:** carry steps 3 and 4 forward on evidence durability (methodology A.6) and keep J-07 at
+`partial` on step 2's ceiling alone — not downgrade it further, and not treat the missing measurements as
+a new gap severe enough to change the verdict. Grounds: the warm-path code that steps 3 and 4 test
+(`compute_forward_aggregates`, `research.py`, `data_manager.py`) is byte-identical to the iterations where
+those steps last passed — this round's 4-file diff touches only `health.py`, `main.py` and a new
+diagnostic module — so their prior evidence has not expired by change; and the journey is already
+`partial`, so no status is being propped up by the carry-forward. I recorded both as named gaps in
+`journey-history.json` rather than leaving them silent.
+**Reversible:** yes — a later iteration can re-run either drill; if the warm seam is ever modified (the
+owner amendment explicitly unfroze it for bounding work), steps 3 and 4 must be re-measured in that same
+round and the carry-forward stops applying.

@@ -1,40 +1,40 @@
 # Iteration State — ops-hardening
 
-**After iteration:** 66 · **Date:** 2026-08-12 · **Verdict:** CONTINUE
+**After iteration:** 67 · **Date:** 2026-08-12 · **Verdict:** CONTINUE
 
 ## Journeys
 
-7 passing (J-01 J-03 J-04 J-05 J-06 J-08 J-09) · 1 partial (J-07) — 8 total
+7 passing (J-01 J-03 J-04 J-05 J-06 J-08 J-09) · 1 partial (J-07) — 8 total. Replay 8/8, zero overturns.
 
 ## Active blockers
 
-- **J-07's ≤2.0 s health ceiling (dev).** Worst drill of the session: 70 of 1,024 polls over
-  2.0 s (max 4.413 s), plus 6 of 150 in the second lane — both through the new canonical
-  `scripts/qa/poll_health.py`. My alignment against `dev.log`'s phase lines puts **68 of the 70
-  inside `factor_lab_all_warm`** (15.7 % of its 433 polls) and **0 in the 382 polls after it
-  closed**. Raw: `runs/goal-ops-hardening-iter-66/evidence-drill/tc1-health-poll.csv`.
-- **OWNER (18th round): the 2-second ceiling policy** — does it bind an 18-20 minute job, or
-  short jobs only? J-07 cannot close either way until this is answered.
-- **OWNER: cost sanction** for the replay lane's real ~18-minute ingest every round (sixth
-  over-budget round, 8,641 s vs 3,600 s); **OWNER: sign-off** on the one-line ordering fix in
-  `scripts/automation/browser-qa-phase.sh`.
+- **Human (owner), 19th round:** does the ≤2 s health-check ceiling apply to an 18-minute job, or only to
+  the ~30 s job it was written for? J-07's last gap is exactly this. `docs/goal.md`, "Additional binding
+  notes" (2026-07-31 amendment).
+- **Human (owner):** sign-off on the `scripts/automation/browser-qa-phase.sh` ordering bug, and a cost
+  sanction — 7th over-budget round (10,543 s vs 3,600 s, two real ~18-minute ingest jobs inside it).
+- **Dev:** ~2.55 s of the round's one 2.875 s health-check answer is unexplained — it sits inside the
+  handler body (readiness/preflight + DB reads), which no instrument times yet
+  (`apps/backend/app/api/health.py`, `app/engine/health_watchdog.py`).
 
 ## Last 2 verdicts
 
-- iter 66: CONTINUE — profiling found nothing to bound (2nd null result running), but the
-  unified stopwatch localized 97 % of the slow answers to one job phase; J-07 stays partial.
-- iter 65: CONTINUE — empty product diff; four profiles of `factor_lab_all_warm` found no hold; J-07 held partial.
+- iter 67: CONTINUE — the new in-app watchdog worked and named a real component (queue-wait 160x, loop-lag
+  23x above idle), but it explains only ~11 % of the single breach; 1 of 1,036 polls over 2.0 s, 0 of 330
+  idle, so J-07 stays partial.
+- iter 66: CONTINUE — worst drill of the session (70 of 1,024 over 2.0 s), 68 inside `factor_lab_all_warm`;
+  the duplicate job-history row was root-caused and fixed.
 
 ## Do not redo
 
-- **Re-profiling `coverage_membership_timeline_refresh`** (2 passes, one at a 5x finer 0.05 s
-  threshold, 0 stalls — `stall_summary_coverage.json`) and **re-running any compute chain in a
-  STANDALONE script** to find the hold: two consecutive null results — watch the live process.
-- **iter-64/d duplicate job-history row — FIXED**: `_reopen_interrupted_run_record`
-  (`data_manager.py`) + 2 tests in `test_data_manager_jobs_pipeline.py`; reviewer re-ran them.
-- **iter-64/c wrong sentinel window — FIXED**: `journey-scripts/J-05.json` states
-  2005-03-01..2016-12-31, verified against `demo_runner.py:233-234`.
-- **iter-65/a two disagreeing counters — CLOSED**: one checked-in `scripts/qa/poll_health.py`,
-  both lanes used it, rates now agree (6.8 % vs 4.0 %).
-- **NOTE, overrides iter-65's ban:** `factor_lab_all_warm` is RE-OPENED as a target — see the
-  blocker above and `runs/goal-session-ops-hardening/state/assumptions.md` (iter-66 entry).
+- **Re-running a suspect compute chain in a STANDALONE script** — three null results now (iter-65
+  `factor_lab_all_warm`, iter-66 `coverage_membership_timeline_refresh`, iter-52/53's sampler). Watch the
+  live process instead: `apps/backend/app/engine/health_watchdog.py` already exists to extend.
+- **Building a second health-poll counter or a second JSONL writer** — `scripts/qa/poll_health.py` and
+  `app.engine.ledger.append_entry` are canonical; the watchdog already reuses both.
+- **Re-proving `GET /api/health` is unchanged by the watchdog flag** — fixture-backed equality test at
+  `apps/backend/tests/test_health_watchdog.py:422-443`, plus the direct-call shape test.
+- **Re-deriving iter-66's breach attribution or its timezone correction** — settled and dated in
+  `reports/perf-budgets.md` Addendum 33 (TC-5) and the iter-66 results files (iter-66/a, /c, /d closed).
+- **Touching `config.yaml` caps, `project-extensions/host-guard/`, or the launch scripts' HOST-GUARD
+  blocks** — owner-set envelope (AG-10), verified clean again this round.

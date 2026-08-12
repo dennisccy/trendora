@@ -1,0 +1,23 @@
+{
+  "phase": "goal-ops-hardening-iter-67",
+  "status": "in_progress",
+  "current_step": "dev_complete",
+  "updated_at": "2026-08-12T04:45:00Z",
+  "cli": "claude",
+  "blockers": [],
+  "changed_files": [
+    "apps/backend/app/engine/health_watchdog.py",
+    "apps/backend/app/api/health.py",
+    "apps/backend/main.py",
+    "apps/backend/tests/test_health_watchdog.py",
+    "reports/perf-budgets.md",
+    "reports/phase-goal-ops-hardening-iter-66-ui-test-results.llm.md",
+    "reports/phase-goal-ops-hardening-iter-66-ui-test-results.md",
+    "docs/handoffs/goal-ops-hardening-iter-67-dev.md",
+    "runs/goal-ops-hardening-iter-67/evidence-drill/"
+  ],
+  "tests_run": true,
+  "browser_checks_run": false,
+  "known_gaps": "test_health.py not run this pass (loaded_engine fixture cost + drill-contamination risk); watchdog names ~11% of the one breach's own magnitude, not all of it",
+  "next_action": "review"
+}

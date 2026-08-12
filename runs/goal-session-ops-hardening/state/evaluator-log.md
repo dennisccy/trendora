@@ -7087,3 +7087,191 @@ jobs (J-07 stays open until the app is faster), or apply it to short jobs only (
 now). Still also waiting on you: permission to fix the one-line ordering bug in
 `scripts/automation/browser-qa-phase.sh`, and a cost decision — this round again ran two real multi-minute
 data jobs and finished 2.4x over its time budget.
+
+## Iteration 67 — goal-ops-hardening-iter-67
+
+**Date:** 2026-08-12T06:05:00Z
+**Verdict:** CONTINUE
+**Depth dispatched:** lean (`iter-67/depth-dispatched` = `lean`, matching the spec's own `**Depth:** lean`
+and iter-66's binding recommendation — plan and dispatch agreed for a fifth round running)
+
+**Journey deltas:**
+- Newly passing: none. Newly failing: none. Regressed: none. Shape stays **7 passing / 1 partial**.
+- All 8 journeys replayed deterministically with their OWN fresh, byte-distinct frames (9 PNGs, all
+  md5-distinct from each other AND from iter-66's, checked by me). **Raw replay 8/8 with ZERO overturned
+  rows** — no reconciliation footer. Merged file **PASS 8/8**.
+- **The product diff is 4 files, backend only**: `app/api/health.py` (+1 optional `request` param, +9-line
+  guarded block), `main.py` (conditional middleware + probe task), the new `app/engine/health_watchdog.py`,
+  and its new test file. `research.py`, `data_manager.py`, `config.yaml`, `project-extensions/`,
+  `scripts/` and every `apps/frontend/*` file are untouched (`git status --porcelain`, run by me).
+- **J-07's own metric produced the second-cleanest drill of the session**: 1,036 polls, 1,036 HTTP 200,
+  0 unanswered, **1 over the 2.0 s ceiling (0.10 %)**, p50 0.115 s, p90 1.085 s, p99 1.589 s, max 2.875 s.
+  The idle-control drill: 330 polls, **0 breaches**, max 0.085 s. Held `partial` (see reasoning 4-6).
+- No `browser-infra.json`; no `journeys-changed.md`; no `DEFERRED-BUDGET` row. All 8 `spec_hash`es match
+  `goal_gate.py hash-journeys`, run by me. `pending_infra` clear everywhere. `evidence_makeup` KEPT on
+  J-05 (no showcase lane again — 9th round with no J-05 walkthrough) and clear elsewhere.
+- Anti-goal violations: **THREE CLOSED** (iter-66/a the handoff burying its whole-run count — the first
+  paragraph now carries it; iter-66/c the mis-clustered breach — re-derived correctly and dated;
+  iter-66/d the one-hour timezone error — corrected in place in the SAME artifacts, original text kept),
+  **SEVEN NEW OPEN, all minor** (iter-67/a a NEW phase misattribution inside the very addendum written to
+  fix one; /b a conclusion that ignores its own sub-threshold distribution; /c the browser lane reverting
+  to its own stopwatch and overstating its polling coverage; /d a lane describing code changes this round
+  did not make; /e a review recording `issues: []` over a disclosed skipped test module; /f an instrument
+  that perturbs what it measures without saying so; /g a seventh consecutive over-budget round). Ledger
+  now: **213 total, 110 unresolved, 0 unresolved critical.** scan-report **CLEAN**; coherence
+  **COHERENCE-PASS** (0 blocking, 0 advisory); review **PASS**; merged browser QA **PASS 8/8**; raw
+  replay **PASS 8/8**.
+
+**Reasoning:** I re-derived every load-bearing number myself, from the raw CSVs, the watchdog's own JSONL,
+the app's log, the database and the frames.
+(1) **The round did the thing it was chartered to do, and the instrument works.** iter-66 ordered a
+genuinely different method — watch the LIVE serving process instead of re-running the suspect compute in a
+standalone script (a method that had produced two consecutive null results). What shipped is exactly that
+and nothing more: an ASGI-layer timestamp pair (`queue_wait_s`) plus an event-loop-lag probe
+(`loop_lag_s`), both behind `TRENDORA_HEALTH_WATCHDOG=1`, off by default, writing through the EXISTING
+`ledger.append_entry` rather than a second JSONL writer. `GET /api/health`'s body is proven byte-identical
+with the flag on or off by a real equality test (`test_health_watchdog.py:422-443`), not asserted. This is
+the first round in four that produced a positive signal instead of a null result.
+(2) **I recounted the acceptance drill from scratch and the handoff's headline is exact.**
+`runs/goal-ops-hardening-iter-67/evidence-drill/tc1-health-poll.csv`: **1,036 data rows**, **1,036/1,036
+HTTP 200**, **0 non-answers**, p50 0.115 s, p90 1.085 s, p99 1.589 s, max 2.875 s, 131 over 1.0 s,
+**exactly 1 over 2.0 s** — the dev's "1 of 1,036 (0.10 %)" reproduces to the digit, and it is in the FIRST
+paragraph of both the handoff and Addendum 33 (iter-66/a closed). `tc3-idle-poll.csv`: **330 rows, 330
+HTTP 200, 0 over 2.0 s, 0 even over 1.0 s, max 0.085 s**. The idle control is the cheap test iter-66 asked
+for and it answers cleanly: an idle machine does not breach.
+(3) **The watchdog's own numbers reproduce, and the join is honest about its limit.** From
+`health-watchdog-slice.jsonl` (1,367 queue-wait + 12,436 loop-lag records, parsed by me): live-job
+`queue_wait_s` p50 0.0109 s / max **0.3239 s** vs idle p50 0.0010 s / max 0.0020 s; live `loop_lag_s` max
+**1.3822 s** vs idle 0.0608 s. The sample matched to the breach (03:14:04.868 Z, 0.095 s after the poll's
+own start) IS the drill's single largest queue-wait — a direct, named measurement, not an inference from
+absence. And the handoff says plainly what it does not explain: 0.324 s is ~11 % of the breach's 2.875 s;
+the other ~2.55 s sits inside the handler body, which this instrument does not measure. That is the right
+way to report a partial answer.
+(4) **The breach's phase, checked against the app's own log with the timezone converted.** The one breach
+starts 03:14:04.774 Z. `logs/backend.log` puts `coverage_membership_timeline_refresh` at 04:14:08,115 BST
+with `elapsed=6.67s`, i.e. **03:14:01.445 Z → 03:14:08.115 Z** — the breach opens and closes inside it.
+`factor_lab_all_warm` ran 03:16:01.52 Z → 03:25:32.50 Z (570.98 s) with **zero** of its 541 polls over
+2.0 s. So this round's location contradicts iter-66's (68 of 70 inside `factor_lab_all_warm`) and matches
+iter-65's (its single breach was also inside the coverage/membership step). Third different answer in
+three rounds on a compute path unchanged since iter-52.
+(5) **But the sub-threshold distribution does NOT move, and the write-up's conclusion skips it.**
+Addendum 33 argues that a moving breach location is "evidence against a stable, phase-specific code-level
+hold". My own per-phase recount of the same CSV: `factor_lab_all_warm` holds **120 of the drill's 131
+polls over 1.0 s** — 22.2 % of the 541 polls inside it, mean 0.596 s, max 1.836 s — against 5 of 343
+(mean 0.080 s) during `drawdown_expectations_warm` and 4 of 106 during `forward_aggregates_warm`. The
+phase is still the loudest thing in the run by a factor of seven; only the 2.0 s crossings moved. Logged
+as iter-67/b, and it changes the next target rather than the verdict.
+(6) **Why J-07 stays `partial`.** Its named promise — heavy aggregates never take the service down — is
+met outright for a sixth round: 1,456 polls across three drills, all HTTP 200, zero non-answers, and
+`logs/backend.log`'s whole-file totals are UNCHANGED (**129 HTTP 500s, last at line 249,034**, inside
+iteration 57) with **zero** ERROR/Traceback/MemoryError/5xx lines in this round's own 3,358-line window,
+counted by me. Step 2's literal wording is "every poll answers HTTP 200 within its existing budget" and
+one of 1,036 did not. Two further acceptance steps also went unrecorded this round: step 3 (VmPeak) has
+only a non-authoritative browser-lane point read (6,528,660 kB vs the 8,388,608 kB cap, ~22 % margin) and
+step 4 (the memory-pressure abort) was not re-run. `partial` is exactly the schema's "only some assertion
+steps passed". Promoting on the best drill in three would be the rounding-toward-fixed behaviour this
+session has criticised for sixteen rounds.
+(7) **The round that fixed a phase misattribution introduced a new one.** Addendum 33 says the drill's
+whole-run max loop lag, 1.382 s, was "recorded later during `factor_lab_all_warm`". From the raw JSONL:
+that sample is timestamped **03:13:54.529811 Z** — EARLIER than the breach and ~2 minutes BEFORE
+`factor_lab_all_warm` even started. Inside that phase the loop-lag max is **0.240 s** across 3,848
+samples. Nine of the ten largest loop-lag samples sit in the drill's first 25 seconds, next to the BOOT
+warm-up thread's own cache warms (`backend-log-slice.log:32-33`: "membership-timeline cache warmed"
+04:13:54,607 and "evidence drawdown-expectations cache warmed" 04:13:54,802 BST). The ~23x loop-lag
+elevation the headline attributes to heavy background compute is real, but its largest instance belongs to
+the start-up warm-up thread, not the ingest tail. iter-67/a.
+(8) **I opened the frames rather than trusting the rows.** `UT-J-07-result.png` is a genuine full-page
+capture this round (unlike iter-66's top-of-page crop): it shows `/backtest` mid-warm with the top-bar
+badge honestly reading **"background compute running (1)"**, the per-horizon scorecard honestly EMPTY for
+as-of 2026-08-03 ("No elapsed forward window for this date yet … n=0"), and — the row's substantive claim
+— the all-history forward-tested-evidence block fully rendered from storage: buckets A-E, excess vs SPY
++3.76 %/+3.41 %, excess vs QQQ +3.76 %/+4.86 %, setup-type, regime, VCP, pullback, flat-base and the
+control-group table. Unlike iter-66/e, the row and the picture agree on everything load-bearing. Two
+stable spot-checks contradict nothing: `J-01-verify.png` renders "Immutable snapshot — as of 2026-05-29"
+with breadth 68.85 %, and `J-05-verify.png` renders a full ranked leaderboard with entry-quality chips and
+no error boundary — iter-64/a has not recurred for a third round.
+(9) **The browser lane went backwards on the one thing iter-66 fixed.** Its own CSVs
+(`j07-health-poll-1.csv`, `-2.csv`) carry a DIFFERENT schema from the canonical
+`scripts/qa/poll_health.py` this iteration's TESTING REQUIREMENTS name — `ts_utc,http_code,…` with
+nanosecond `date -u` stamps — and the report says "two consecutive 1 Hz curl polling loops". Its numbers
+are fine (90/90 HTTP 200, max 1.685 s, 0 breaches, which I recounted), but "observed continuously for
+~6 minutes" describes 44 s of polling plus 58 s of polling with a 50-second gap between them. iter-67/c.
+Its step 4 also states this round's dev pass modified `compute_forward_aggregates` "to bound peak
+footprint" — no such change exists in a 4-file diff I read in full. iter-67/d.
+(10) **A test that should have been run was not, and the review did not record it.** `test_health.py` —
+the existing test module for the exact file this iteration changed — was skipped (fixture cost plus a real
+risk of contaminating the contention measurement, both disclosed in the handoff's Known Issues), yet the
+review reports `definition_of_done: complete` with `issues: []` against a DoD that says "Unit tests pass;
+no regressions". Same class as iter-64/e and iter-66/f, logged as iter-67/e. I weighed the actual risk
+myself rather than only filing it: the new parameter is additive with a `None` default and is exercised by
+a direct-call test in the exact `health(session)` shape the old tests use; the byte-identity test pins the
+full 13-key response; and the route served 1,456 real HTTP requests at 200 across three drills plus the
+whole replay lane, in both flag states. So the change is very likely fine — but "likely" is why it is item
+2 of the next round rather than a shrug.
+(11) **Anti-goals checked at row, file and command level.** AG-9: `data_provider_runs` ids 437-441, every
+row this round, all `provider='seed'`; the only non-seed rows since 2026-08-01 remain ids 297 and 369,
+both pre-existing; `tc1-job-create.json`'s `"source":"yahoo"` is a request default and the same job's final
+record reads `"source": null`. AG-10: `git status --porcelain -- config.yaml project-extensions/ scripts/`
+is EMPTY; `config.yaml:1363-1364` reads 8192 / 2; `host-guard.env` reads ENABLED=1 / CPU 0-15 / BLAS 8 /
+12G; both drills launched via `scripts/start-backend.sh`. AG-3: PRICE HISTORY `1996-01-02 → 2026-08-03`
+and `591 symbols` on the frame equal sqlite's own `daily_prices` min/max and 591 distinct symbols. AG-7:
+scan CLEAN; the two new identifiers are env-var NAMES, not values. AG-8: the watchdog adds no query, and
+the health route's error path still degrades to `readiness: "unavailable"` with its sample already
+written.
+Rejected **REGRESSION (C.1)**: no journey moved `passing`/`already_passing` → `failing`; raw replay 8/8
+with zero overturns; nothing meets the critical list — no crash, no wrong number, no non-seed ingest, no
+cap touched, no secret.
+Rejected **STALLED (C.2)**: C.2 needs EVERY unblock path to be human-owned. This round narrowed the
+unknown to one nameable place — the ~2.55 s inside the health handler's own body — and the instrument to
+measure it is a third sample type in a module that now exists. Running `test_health.py` and unifying the
+stopwatch are likewise ordinary agent work. Only the owner's ceiling sentence, the `browser-qa-phase.sh`
+sign-off and the cost sanction are genuinely his.
+Rejected **GOAL_ACHIEVED (C.3)**: J-07 is `partial`.
+Rejected **ESCALATE (C.4)**: no journey has status `failing`; the review lane did not fail open (PASS, and
+a PASS with a missing note is not a fail-open); and this lean round produced a NARROWER target with a
+named next experiment, not cross-cutting complexity. I considered escalating purely to get a full QA lane
+onto the skipped `test_health.py`, and rejected it: needing a test run is explicitly not an escalation
+trigger, and a full round costs more than the one command it would buy.
+**Chose CONTINUE (C.5):** coherence is PASS, so no consolidation pass is mandated.
+**FIVE THINGS I STATE PLAINLY RATHER THAN ROUND AWAY:** (i) **The instrument found something real, and it
+is not enough** — queue-wait and loop-lag are 160x and 23x above the idle baseline during a job, yet they
+account for about a ninth of the only breach; the remaining ~2.55 s is in code nobody has timed. (ii)
+**The breach location has now been in three different places in three rounds on unchanged code**, so
+location alone has stopped being evidence; the sub-2 s distribution, which stays firmly inside
+`factor_lab_all_warm` (120 of 131 slow answers), is the stabler signal and the write-up does not mention
+it. (iii) **The round chartered to fix a phase misattribution made a new one** — the largest loop stall
+belongs to the boot warm-up thread, not the factor-lab phase. (iv) **A file was changed without running
+its own test module, and the review recorded no issue**; I judged the risk low from four independent
+angles rather than either ignoring it or halting on it. (v) **A lean round ran 10,543 s against a 3,600 s
+budget** — the seventh over-budget round and the largest overrun of the session (2.9x), with two real
+~18-minute ingest jobs inside it, a bill the owner has now gone seven rounds without being asked to
+approve in writing.
+
+**Next-step recommendation:** LEAN depth. None of the four full triggers holds literally (prior verdict is
+CONTINUE, coherence is PASS, consecutive-lean count is 4 against a cadence of 6, and no new user-visible
+capability lands), and goal.md's own Loop Mechanics rule points the same way. Order for the next round:
+(1) **Time the health check's own work** — the ~2.55 s of the one breach that neither queue-wait nor
+loop-lag explains sits inside the handler body (the readiness/preflight computation and its DB reads); add
+a third sample type behind the same off-by-default flag and re-run the same live + idle drill pair. This
+is the first genuinely new place in four rounds. (2) **Run `tests/test_health.py`** as an ordinary step,
+decoupled from any drill — `app/api/health.py` changed this round and its own module was not run.
+(3) **Correct two statements in this round's write-up**: the 1.382 s loop stall belongs to the boot
+warm-up thread at 03:13:54 Z, not to `factor_lab_all_warm` (iter-67/a), and the "location moves, so no
+phase-specific hold" conclusion must state that `factor_lab_all_warm` still owns 120 of 131 over-1 s polls
+(iter-67/b). (4) **One stopwatch in every lane** — the browser lane reverted to its own curl loop this
+round after using the canonical script last round (iter-67/c). (5) Rides along, never the goal: record the
+J-05 walkthrough (9 rounds unrecorded). (6) CARRIED, untouched: iter-29/b + the badge wording after a
+permanently failed warm-up (40th round unmade); iter-31/e; iter-32/f; iter-35/k; iter-36/n; iter-37/o;
+iter-37/q; iter-39/u; iter-46/az; iter-46/ba; iter-47/bd; iter-47/bf; iter-47/bi; iter-48/bj; iter-57/f;
+iter-57/l; iter-59/g; iter-59/h; iter-59/k; iter-62/e; iter-62/f; iter-63/a; iter-63/b; iter-63/d;
+iter-64/b; iter-64/e; iter-64/f; iter-65/b; iter-65/c; iter-65/d; iter-66/b; iter-66/e; iter-66/f;
+iter-66/g. Deferred a THIRTY-THIRD time: iter-33/g, the Regime Lab.
+(7) **OWNER — the same one sentence, 19th round, with the cleanest numbers yet.** The app must answer its
+health check within 2 seconds while a background job runs; that promise was written for a job of about 30
+seconds and ours last about 18 minutes. This round all 1,456 checks were answered, the app served no
+errors of any kind, and exactly ONE answer took longer than 2 seconds — 2.875 s, in a short early step —
+while with no job running the slowest answer of 330 was 0.085 s. Please say which you want: keep the
+2-second promise for long jobs (J-07 stays open until that last answer is under the line), or apply it to
+short jobs only (J-07's last gap closes now). Still also waiting on you: permission to fix the one-line
+ordering bug in `scripts/automation/browser-qa-phase.sh`, and a cost decision — this round ran two real
+~18-minute data jobs and finished 2.9x over its time budget, the largest overrun of the session.

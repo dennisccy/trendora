@@ -7,6 +7,8 @@ origins come from the `CORS_ORIGINS` env var set by the start script.
 """
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import logging
 import os
 import signal
@@ -39,6 +41,7 @@ from app.api import (
 )
 from app.config import load_config
 from app.db import create_db_and_tables, get_engine
+from app.engine import health_watchdog
 from app.engine.data_manager import sweep_orphaned_runs
 from app.engine.warmup import ensure_latest_snapshot, start_warmup
 from app.logging_config import configure_app_logging
@@ -106,7 +109,20 @@ async def lifespan(app: FastAPI):
     # inside the worker; the server keeps serving persisted snapshots and the next boot finishes it).
     if latest is not None:
         start_warmup(engine, config)
+    # ops-hardening iter-67 (J-07): the optional event-loop-lag probe -- started on THIS SAME event loop
+    # (the one the health route is served from) only when TRENDORA_HEALTH_WATCHDOG=1. Returns None (no
+    # task created) on the default path -- zero added overhead when unset.
+    watchdog_task = health_watchdog.start_loop_lag_probe()
+    if watchdog_task is not None:
+        logger.info(
+            "health watchdog: TRENDORA_HEALTH_WATCHDOG=1 -- loop-lag probe started "
+            "(samples -> logs/health-watchdog.jsonl)"
+        )
     yield
+    if watchdog_task is not None:
+        watchdog_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await watchdog_task
 
 
 def _cors_origins() -> list[str]:
@@ -139,6 +155,12 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
         allow_credentials=False,
     )
+    # ops-hardening iter-67 (J-07): the health-request-wait watchdog middleware is added to the ASGI
+    # stack ONLY when TRENDORA_HEALTH_WATCHDOG=1 -- read once here, at app-construction time (mirrors
+    # `_cors_origins`/`_cors_origin_regex` above). The default (unset) path never installs it, so it
+    # costs nothing on every other request.
+    if health_watchdog.enabled():
+        application.add_middleware(health_watchdog.HealthWatchdogMiddleware)
 
     application.include_router(health.router, prefix="/api")
     application.include_router(sectors.router, prefix="/api")

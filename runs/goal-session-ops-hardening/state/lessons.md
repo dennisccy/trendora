@@ -756,3 +756,18 @@ averaged load 1.77 vs 1.90 for non-breaching, so "the host was busy" is contradi
 always compare the two groups, never just cite the values).
 **Applies to:** any iteration chasing `GET /api/health` latency during ingest/warm phases; any lane that
 cross-checks a UTC measurement against a Trendora log timestamp; any round that adds an explanatory metric.
+
+## iter-67 — 2026-08-12T06:05:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** Counting only the polls that cross a threshold hides the stabler signal. This round had
+1 breach over 2.0 s (in `coverage_membership_timeline_refresh`) and concluded that the moving breach
+location argues against a phase-specific hold — but 120 of the drill's 131 polls over **1.0 s** sat inside
+`factor_lab_all_warm` (22.2 % of its 541 polls, mean 0.596 s vs 0.080 s in the next phase), exactly where
+iter-66 put its breaches. Whenever a latency claim is made, group the FULL distribution by phase, not just
+the ceiling crossings. Second trap from the same round: a "whole-run max" sample is not automatically in
+the phase you are discussing — the drill's max `loop_lag_s` (1.382 s) was timestamped 03:13:54 Z, two
+minutes BEFORE `factor_lab_all_warm` opened, next to the boot warm-up thread's own cache warms; always
+re-read the sample's own timestamp before naming its phase.
+**Applies to:** any iteration reporting `scripts/qa/poll_health.py` drills, `logs/health-watchdog.jsonl`
+samples, or any phase attribution in `reports/perf-budgets.md`.
