@@ -980,3 +980,30 @@ else and lose the only phase-level signal this session has produced; the honest 
 costs one lean round and its acceptance test is cheap and unambiguous.
 **Reversible:** yes — if the live-process watch again finds nothing inside that phase, the ban can be
 restored and the target moved with one more round's evidence.
+
+## iter-67 — goal-decomposer
+
+**Ambiguity:** iter-66's next-step recommendation names the required METHOD change only at the
+concept level — "an in-app watchdog timing how long a health request waits before it is served" —
+without specifying an implementation. That phrase is consistent with several different designs
+(APM-style distributed tracing, thread-stack interrupt sampling of the live process, an ASGI-layer
+request-timestamp pair, or a periodic event-loop-lag probe), each with a different code footprint
+and risk profile.
+
+**We chose:** the smallest one that still directly answers the question: an ASGI-layer timestamp
+pair around the existing `GET /api/health` route (`t_received` vs `t_handler_start`) plus a
+periodic event-loop-lag probe, both gated behind a new `TRENDORA_HEALTH_WATCHDOG=1` env var
+(off by default) and written to a new diagnostic-only log (`logs/health-watchdog.jsonl`). Grounds:
+(1) it observes the LIVE process while a real job runs, unlike the standalone-script method already
+spent twice (iter-65 on `factor_lab_all_warm`, iter-66 on `coverage_membership_timeline_refresh`);
+(2) it is additive and env-flag-gated, so it is zero-risk to the existing readiness computation and
+serving path when unset, keeping this iteration's one-risky-action budget (rule 5) spent on a low-risk
+instrumentation add rather than a second attempt at bounding a phase the profiling method has not yet
+implicated at the call-site level; (3) thread-stack interrupt sampling (the iter-52/53/66 precedent)
+was considered and rejected for this round specifically because it is closer in spirit to "re-run and
+inspect," not "watch what the live serving path actually experiences" — the two are not the same
+instrument.
+
+**Reversible:** yes — if this instrument also finds nothing, a later iteration can add thread-stack
+interrupt sampling of the live process as a second, still-different method, or the owner's ceiling
+question can resolve J-07 without a further code-level hold ever being named.
