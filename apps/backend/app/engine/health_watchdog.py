@@ -18,6 +18,11 @@ process. This module instruments three things about that live process, from INSI
      readiness/preflight computation and any DB reads, before serialization. iter-67's own drill found
      `queue_wait_s` named only ~11% of its one 2.875s breach's magnitude; this sample names the component
      covering the rest -- the handler body's own execution, previously untimed.
+  4. **db_reads_s / readiness_s / preflight_s** (iter-69) -- the SAME `handler_compute` record additionally
+     carries `handler_compute_s`'s own three constituent parts: the three existing `GET /api/health` DB
+     reads, the `compute_readiness` call, and the `compute_preflight` call (including its own nested
+     `record_verdict_transition` write). No new flag, writer, or record type -- `app.api.health.health()`
+     times each span itself and passes them to the SAME `record_handler_compute` call above.
 
 All three are DIAGNOSTIC ONLY: gated behind `TRENDORA_HEALTH_WATCHDOG=1` (unset/`0` -- the default --
 adds NO middleware to the ASGI stack, starts NO probe task, records NOTHING, costs NOTHING on the request
@@ -91,7 +96,13 @@ def record_queue_wait(
 
 
 def record_handler_compute(
-    t_handler_start_monotonic: float, t_before_return_monotonic: float, t_received_wall: Optional[str] = None
+    t_handler_start_monotonic: float,
+    t_before_return_monotonic: float,
+    t_received_wall: Optional[str] = None,
+    *,
+    db_reads_s: Optional[float] = None,
+    readiness_s: Optional[float] = None,
+    preflight_s: Optional[float] = None,
 ) -> dict:
     """Append ONE handler-compute sample (iter-68): `handler_compute_s = t_before_return -
     t_handler_start`, measured on the monotonic clock, from `t_handler_start` (the SAME timestamp
@@ -101,13 +112,28 @@ def record_handler_compute(
     request's own UTC arrival instant (`t_received_wall`) as its sibling `queue_wait_s` sample for the
     SAME request, so a downstream join keys both on the identical instant (TC-1/TC-2) rather than a
     nearest-neighbor match. Clamped to >= 0 as a defensive floor. Returns the entry written (test
-    convenience)."""
+    convenience).
+
+    iter-69 (J-07): additionally records the SAME `handler_compute` entry's three constituent sub-spans,
+    when the caller supplies them -- `db_reads_s` (the three existing `GET /api/health` DB reads:
+    `func.max(DailyPrice.date)`, `_distinct_symbol_count`, `func.max(ScannerRun.asof_date)`),
+    `readiness_s` (the `compute_readiness` call), and `preflight_s` (the `compute_preflight` call,
+    including its own nested `record_verdict_transition` write -- not split out this round). SAME record
+    type, SAME flag, SAME writer -- no second instrument. Each is clamped to >= 0 and omitted from the
+    entry entirely when not supplied (keeps the pre-iter-69 direct-call shape from `test_health_watchdog.
+    py` working unchanged)."""
     handler_compute_s = max(0.0, t_before_return_monotonic - t_handler_start_monotonic)
     entry = {
         "type": HANDLER_COMPUTE_TYPE,
         "timestamp": t_received_wall,
         "handler_compute_s": round(handler_compute_s, 6),
     }
+    if db_reads_s is not None:
+        entry["db_reads_s"] = round(max(0.0, db_reads_s), 6)
+    if readiness_s is not None:
+        entry["readiness_s"] = round(max(0.0, readiness_s), 6)
+    if preflight_s is not None:
+        entry["preflight_s"] = round(max(0.0, preflight_s), 6)
     append_entry(resolve_log_path(), entry)
     return entry
 

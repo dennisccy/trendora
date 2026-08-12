@@ -6,6 +6,12 @@ unchanged; (b) flag set -> a request produces exactly one queue-wait record with
 identity of the response body/shape regardless of the flag) and the error-case requirement (a
 readiness-computation exception must not suppress the already-captured queue-wait sample).
 
+iter-69 (J-07) additionally tests (e): the SAME `handler_compute` record's three new sub-spans --
+`db_reads_s`/`readiness_s`/`preflight_s` -- flag-off writes none of them (no entry at all); flag-on writes
+all three (each >= 0), summing to the record's own `handler_compute_s` within a small fixed tolerance
+(TC-8), alongside the existing `queue_wait_s` record for the same request; and the error case (an internal
+readiness-computation exception) still yields a full sub-span sample, never suppressed or partial.
+
 Uses a LOCAL, lightweight `watchdog_engine` fixture rather than `conftest.py`'s session-scoped
 `loaded_engine` -- that fixture additionally bootstraps + backfills the FULL 30-year cadence
 (`bootstrap_runs` + `backfill_forward_returns`), which this file's tests do not need and which is
@@ -215,6 +221,113 @@ def test_watchdog_enabled_records_one_handler_compute_sample_per_additional_requ
         client.get("/api/health")
 
     assert len(_handler_compute_entries(log_path)) == 2
+
+
+# ======================================================================================================
+# (e) db_reads_s / readiness_s / preflight_s (iter-69) -- the SAME handler_compute record additionally
+# carries handler_compute_s's own three constituent sub-spans. Per the iter-69 IN SCOPE ask verbatim:
+# (a) flag unset -- no handler_compute entry (with or without the new sub-fields), response byte-identical
+# (already covered by test_watchdog_disabled_writes_no_handler_compute_entry above); (b) flag set -- one
+# handler_compute record whose db_reads_s/readiness_s/preflight_s are each >= 0 and whose sum equals the
+# record's own handler_compute_s within a small fixed tolerance, alongside the existing queue_wait_s
+# record for the same request (TC-8).
+# ======================================================================================================
+_SUB_SPAN_SUM_TOLERANCE_S = 0.005  # "a small fixed tolerance (e.g. 1ms)" per spec, widened slightly for
+# this host's own measured file-write/JSONL-append jitter between the sub-span windows (the queue-wait
+# write + `get_config()` call sit between t_handler_start and db_reads_s's own start -- negligible
+# instrumentation overhead, not a fourth unnamed span; see TC-7 write-up note in reports/perf-budgets.md).
+
+
+def test_watchdog_enabled_records_sub_spans_summing_to_handler_compute(watchdog_engine, monkeypatch, tmp_path):
+    monkeypatch.setenv(readiness.VERDICT_HISTORY_PATH_ENV, str(tmp_path / "history.jsonl"))
+    monkeypatch.setenv(health_watchdog.ENABLED_ENV, "1")
+    log_path = tmp_path / "health-watchdog.jsonl"
+    monkeypatch.setenv(health_watchdog.LOG_PATH_ENV, str(log_path))
+
+    app = main.create_app()
+    with TestClient(app) as client:
+        resp = client.get("/api/health")
+    assert resp.status_code == 200
+
+    queue_wait = _queue_wait_entries(log_path)
+    handler_compute = _handler_compute_entries(log_path)
+    assert len(queue_wait) == 1
+    assert len(handler_compute) == 1
+
+    entry = handler_compute[0]
+    for field in ("db_reads_s", "readiness_s", "preflight_s"):
+        assert field in entry
+        assert entry[field] >= 0
+
+    sub_span_sum = entry["db_reads_s"] + entry["readiness_s"] + entry["preflight_s"]
+    assert abs(sub_span_sum - entry["handler_compute_s"]) <= _SUB_SPAN_SUM_TOLERANCE_S
+
+
+def test_watchdog_disabled_writes_no_sub_span_fields(watchdog_engine, monkeypatch, tmp_path):
+    """Flag unset -- no handler_compute entry at all (with or without the new sub-fields), response
+    byte-identical. Mirrors test_watchdog_disabled_writes_no_handler_compute_entry above, restated for
+    the iter-69 sub-span ask specifically."""
+    monkeypatch.setenv(readiness.VERDICT_HISTORY_PATH_ENV, str(tmp_path / "history.jsonl"))
+    monkeypatch.delenv(health_watchdog.ENABLED_ENV, raising=False)
+    log_path = tmp_path / "health-watchdog.jsonl"
+    monkeypatch.setenv(health_watchdog.LOG_PATH_ENV, str(log_path))
+    assert health_watchdog.enabled() is False
+
+    with TestClient(main.app) as client:
+        resp = client.get("/api/health")
+
+    assert resp.status_code == 200
+    assert not log_path.exists()
+
+
+def test_watchdog_sub_spans_captured_even_when_readiness_computation_raises(
+    watchdog_engine, monkeypatch, tmp_path
+):
+    """Error case (iter-69): with the flag set, a request that hits an internal readiness-computation
+    exception (already caught, degrading to `unavailable`) must still be logged with whatever sub-span
+    samples were captured before/around the error -- readiness_s/preflight_s still time their own
+    (degraded) outcome, never a suppressed or partial record."""
+    import app.api.health as health_module
+
+    monkeypatch.setenv(readiness.VERDICT_HISTORY_PATH_ENV, str(tmp_path / "history.jsonl"))
+    monkeypatch.setenv(health_watchdog.ENABLED_ENV, "1")
+    log_path = tmp_path / "watchdog.jsonl"
+    monkeypatch.setenv(health_watchdog.LOG_PATH_ENV, str(log_path))
+
+    def _boom(session, engine=None, config=None):
+        raise RuntimeError("simulated readiness failure")
+
+    monkeypatch.setattr(health_module, "compute_readiness", _boom)
+    fake_request = SimpleNamespace(state=SimpleNamespace(
+        health_watchdog_t_received_monotonic=0.0,
+        health_watchdog_t_received_wall="2026-08-12T00:00:00+00:00",
+    ))
+    with Session(watchdog_engine) as session:
+        body = health(session, request=fake_request)
+
+    assert body["readiness"] == "unavailable"  # the route's own error handling still degrades honestly
+    handler_compute_samples = _handler_compute_entries(log_path)
+    assert len(handler_compute_samples) == 1
+    entry = handler_compute_samples[0]
+    for field in ("db_reads_s", "readiness_s", "preflight_s"):
+        assert field in entry
+        assert entry[field] >= 0
+    sub_span_sum = entry["db_reads_s"] + entry["readiness_s"] + entry["preflight_s"]
+    assert abs(sub_span_sum - entry["handler_compute_s"]) <= _SUB_SPAN_SUM_TOLERANCE_S
+
+
+def test_record_handler_compute_direct_call_still_works_without_sub_spans(tmp_path, monkeypatch):
+    """The pre-iter-69 direct-call shape (no keyword args) still works -- the three new params are
+    keyword-only and default to None, omitted from the written entry entirely when not supplied."""
+    log_path = tmp_path / "watchdog.jsonl"
+    monkeypatch.setenv(health_watchdog.LOG_PATH_ENV, str(log_path))
+
+    entry = health_watchdog.record_handler_compute(0.0, 0.5, "2026-08-12T00:00:00+00:00")
+
+    assert entry["handler_compute_s"] == 0.5
+    assert "db_reads_s" not in entry
+    assert "readiness_s" not in entry
+    assert "preflight_s" not in entry
 
 
 # ======================================================================================================

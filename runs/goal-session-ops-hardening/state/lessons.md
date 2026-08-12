@@ -786,3 +786,28 @@ share. Corollary from the same round: the instrument was armed only on the devel
 **Applies to:** any iteration adding a timing/diagnostic instrument, and any iteration whose measurement is
 taken by one lane while a second lane independently measures the same thing (arm the flag session-wide, and
 derive the cross-lane deltas before asking for a new sample type).
+
+## iter-69 — 2026-08-12T10:05:00Z
+
+**Verdict:** ESCALATE
+**Lesson:** When a round blames a metric's regression on an external confound, test whether the confound is
+distributed the same way the metric is before accepting it. Addendum 35 attributed this round's 8.09 % health-check
+breach rate to a concurrent caller (`goal-iter-lean.sh`); grouping the same 952 rows of
+`runs/goal-ops-hardening-iter-69/evidence-drill/tc1-health-poll.csv` against `logs/backend.log`'s phase windows
+showed 74 of 77 breaches and all 3 non-answers inside `factor_lab_all_warm` (0 of 124 and 0 of 343 in its two
+neighbours) while the confound was polling at 0.149 / 0.213 / 0.180 requests per health poll across those same
+three phases — uniform, so it cannot produce that split.
+**Applies to:** any iteration reporting a performance/availability metric that moved, especially J-07 health-poll
+drills — group by ingest phase and report the grouping, and normalize any named confound by the same buckets.
+
+## iter-69 — 2026-08-12T10:06:00Z
+
+**Verdict:** ESCALATE
+**Lesson:** A "Do not redo" entry written with a condition attached expires when the condition is met, and nobody
+re-reads it to notice. iteration-state's ban read "bounding `factor_lab_all_warm` / `coverage_membership_timeline_
+refresh` by code change — diagnostic only **until the handler-body sub-timing names a component**"; iter-69's
+sub-spans named two (`readiness_s` 43 of 74 breaches, `preflight_s` 31), so the ban lapsed by its own terms in the
+very round that satisfied it. Write conditional bans with their release condition in the same bullet, and check
+each one against the round's own results before carrying it forward.
+**Applies to:** the goal-evaluator writing `iteration-state.md`'s Do-not-redo list, and any decomposer treating
+that list as binding.

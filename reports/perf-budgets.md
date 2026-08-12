@@ -11140,3 +11140,247 @@ diff, `git status --porcelain -- config.yaml project-extensions/ scripts/` empty
 Backend shutdown after both drills was clean (`kill -TERM`, `logs/backend.log` shows "Application shutdown
 complete" with no tracebacks/`CancelledError` noise — the loop-lag probe task and the new sample's own code
 path both cancel/complete cleanly at lifespan shutdown).
+
+## Addendum 35 (2026-08-12, ops-hardening iter-69 developer pass) — `handler_compute_s` decomposed into `db_reads_s`/`readiness_s`/`preflight_s`; median breach now ~94% NAMED (residual 5.99%) once the pre-receive gap + `queue_wait_s` join the new sub-spans; iter-68/a and iter-68/c write-up defects corrected
+
+### Whole-run headline (stated first, per this session's own TC-6 discipline)
+
+**Live-job drill: 77 of 952 polls over the 2.0s ceiling (8.09%), including 3 non-answers at the 5.0s client
+ceiling. Idle-control drill: 0 of 330 polls over the ceiling (0.00%).** This round's breach RATE is far
+higher than iter-67/iter-68's single-breach rounds (see "Host-load context" below for why) — reported
+exactly as measured, not smoothed toward the prior rounds' near-zero baseline. Read plainly, the SAME round
+also produced this session's best-ever ATTRIBUTION: joining the two new instruments this iteration adds
+(`db_reads_s`/`readiness_s`/`preflight_s`, plus the pre-receive gap already recoverable from existing
+artifacts) alongside the two EXISTING per-request components (`pre_receive_gap_s`, `queue_wait_s`) against
+every one of the 74 answered breaches, the **median breach is now ~94.0% NAMED (residual 5.99%)** — up from
+iter-68's own ~80.4% combined-of-three-components headline. `readiness_s` dominates 43 of the 74 answered
+breaches (58%), `preflight_s` dominates the other 31 (42%); `db_reads_s`, `queue_wait_s`, and
+`pre_receive_gap_s` are never the single dominant component this round. Full method, every number, and both
+write-up corrections below.
+
+### The instrument (IN SCOPE items 1-2, `app/engine/health_watchdog.py` + `app/api/health.py`)
+
+`record_handler_compute` (`app/engine/health_watchdog.py`) gained three keyword-only params —
+`db_reads_s`, `readiness_s`, `preflight_s` — written into the SAME `handler_compute` record, through the
+SAME `TRENDORA_HEALTH_WATCHDOG=1` flag and the SAME `app.engine.ledger.append_entry` writer, no second flag
+or file. `app/api/health.py`'s `health()` times each of its three existing computation blocks with the SAME
+monotonic clock `t_handler_start`/`handler_compute_s` already use: `db_reads_s` wraps the three existing DB
+reads (`func.max(DailyPrice.date)`, `_distinct_symbol_count`, `func.max(ScannerRun.asof_date)`);
+`readiness_s` wraps the `compute_readiness` call; `preflight_s` wraps the `compute_preflight` call
+INCLUDING its own nested `record_verdict_transition` write (not split into a fourth span this round, per
+spec). Each timing block is placed OUTSIDE its own try/except so it captures a full elapsed-time sample
+whether the wrapped call succeeds or raises internally (the exception is already caught and degrades
+honestly — never reaches the caller). `GET /api/health`'s response body/shape is unaffected either way — the
+three new fields are diagnostic-log-only (TC-8). 6 new unit tests added to
+`apps/backend/tests/test_health_watchdog.py` (15 total, all passing, 116.45s): flag-unset writes no
+`handler_compute` entry at all (with or without the new sub-fields); flag-set writes a record whose three
+sub-fields are each `>= 0` and sum to the record's own `handler_compute_s` within a small fixed tolerance
+(5ms — widened slightly from the spec's own "e.g. 1ms" example to absorb this host's own measured
+instrumentation jitter between spans, see "A new finding" below); the error case (`compute_readiness`
+raising internally) still yields a full, non-suppressed sub-span sample; the pre-iter-69 direct-call shape
+(`record_handler_compute(t0, t1, ts)`, no keyword args) still works, omitting the three new fields entirely
+when not supplied.
+
+### Method — live-job + idle-control drills, piggybacked on this round's own required live ingest
+
+**Live-job drill (TC-1).** Backend launched via `scripts/start-backend.sh` with `TRENDORA_HEALTH_WATCHDOG=1`
+(AG-10 caps confirmed live in `logs/backend.log`: `memory_cap_mb=8192 malloc_arena_max=2`,
+`host-guard: cpu_list=0-15 blas_threads=8` — `git status --porcelain -- config.yaml project-extensions/
+scripts/` empty before and after). `2018-01-08` was live-verified unsnapshotted immediately before dispatch
+(direct sqlite read: 0 `scanner_runs` rows, a real SPY close of $243.843 — a genuine trading day, distinct
+from every prior round's date: `2018-01-02/03/04/05/17/22/30`). Dispatched via `POST /api/data/jobs`
+(`job_id=29c72f278f2445e88e7d976837824dbd`) while `scripts/qa/poll_health.py` polled `GET /api/health` at 1
+Hz throughout. Job reached `status: ok`: `started_at 2026-08-12T08:27:00.850828Z` →
+`finished_at 2026-08-12T08:45:19.706411Z` (17m18.9s), `"source": null` in the FINAL persisted record (AG-9
+clean — `bars_fetched: 0`, no live network call), 1 snapshot, 2,145 forward returns, all 9
+`aggregates_refreshed` categories including `factor_lab_all` and `drawdown_expectations` (the finalize-tail
+path this iteration's spec asks for). Poller ran `2026-08-12T08:26:53.539817Z` →
+`2026-08-12T08:45:44.500067Z` (952 polls, a few seconds either side of the job itself for margin).
+
+**Idle-control drill (TC-3).** SAME already-warm backend, no restart, `scripts/qa/poll_health.py --count
+330` launched immediately after the live-job poller stopped, NO job running:
+`2026-08-12T08:46:51.613573Z` → `08:52:20.701517Z` (330 polls, ~5.5 minutes).
+
+**Join method.** `logs/health-watchdog.jsonl` was sliced to this run's window
+(`runs/goal-ops-hardening-iter-69/evidence-drill/health-watchdog-slice.jsonl`, 14,335 entries, 1,370
+`handler_compute` records carrying the new sub-fields). Each poll's OWN send timestamp was matched to the
+EARLIEST `handler_compute` entry whose `t_received_wall >= send timestamp` (never an earlier one — a
+request cannot be received before it is sent on the same host clock), rather than plain nearest-neighbor:
+a THIRD process was confirmed concurrently polling the same backend during this drill
+(`goal-iter-lean.sh`, pid 1312367, this session's own outer orchestration loop — `logs/backend.log` shows
+interleaved `GET /api/data`, `GET /api/data/availability`, `GET /api/runs` calls from a second client
+throughout the window), and a plain nearest-neighbor join occasionally paired a poll with THAT caller's own
+nearby `handler_compute` record instead of its own (one case produced a physically-impossible **negative**
+pre-receive gap before this fix; zero negative gaps after it, across all 1,282 joined rows). Every one of
+952 + 330 = 1,282 polls matched (TC-1: no missing sample); 3 additional `handler_compute` entries in-window
+belong to this agent's own manual `curl` checks between the two drills and are outside both CSVs' own
+timestamp ranges — excluded from both drills' own statistics.
+
+### TC-1 — no missing sample
+
+952/952 live-job polls and 330/330 idle-control polls each matched a `handler_compute` record carrying
+`db_reads_s`/`readiness_s`/`preflight_s` — zero missing samples in either drill.
+
+### TC-3 — both drills' component distributions, side by side
+
+| Component | Live-job (TC-1) p50/p90/p99/max | Idle-control (TC-3) p50/p90/p99/max |
+|---|---|---|
+| `elapsed_s` (client-observed) | 0.068 / 1.660 / 4.083 / 5.005 | 0.015 / 0.016 / 0.017 / 0.082 |
+| `pre_receive_gap_s` (TC-5) | 0.0161 / 0.0716 / 0.3186 / 1.4367 | 0.0010 / 0.0011 / 0.0012 / 0.0057 |
+| `queue_wait_s` | 0.0014 / 0.0464 / 0.2349 / 0.8949 | 0.0010 / 0.0011 / 0.0014 / 0.0018 |
+| **`db_reads_s`** | 0.0041 / 0.0547 / 0.1707 / 0.5616 | 0.0031 / 0.0033 / 0.0035 / 0.0041 |
+| **`readiness_s`** | 0.0016 / 0.5631 / 2.1279 / 2.9620 | 0.0020 / 0.0022 / 0.0028 / 0.0030 |
+| **`preflight_s`** | 0.0028 / 0.5439 / 1.9632 / 3.5687 | 0.0056 / 0.0061 / 0.0074 / 0.0751 |
+| Breaches (>2.0s) | 77 of 952 (8.09%) | 0 of 330 (0.00%) |
+| Non-answers (5.0s ceiling) | 3 of 952 (0.32%) | 0 of 330 (0.00%) |
+
+Every one of `db_reads_s`/`readiness_s`/`preflight_s` is dramatically elevated during the live job vs. idle
+(`readiness_s` p90 ~261x, `preflight_s` p90 ~89x, `db_reads_s` p90 ~17x) — consistent with `queue_wait_s`
+(~42x at p90) and `pre_receive_gap_s` (~65x at p90) from the SAME two drills, and with iter-67/68's own
+`queue_wait_s`/`loop_lag_s`/`handler_compute_s` idle-vs-live separations. All five now-named components move
+together with "job running vs. idle" — a clean, decisive, five-component-wide confirmation, not merely the
+whole-window `handler_compute_s` figure prior rounds reported.
+
+### Host-load context for this round's elevated breach rate
+
+77/952 (8.09%) is markedly higher than iter-67's 1/1,057 or iter-68's 1/1,039. This drill ran with this
+session's own orchestration loop (`goal-iter-lean.sh`) actively polling the SAME backend concurrently (see
+"Join method" above) — additional concurrent HTTP load on the same process this round's drills did not
+control for and prior rounds' drills did not have running alongside them. This iteration does not attempt
+to attribute the rate difference to that confound vs. genuine phase-level contention (that attribution work,
+per OUT OF SCOPE, is not this round's ask) — it is named here as a material difference in measurement
+conditions between this round and iter-67/68, not silently absorbed into a round-over-round trend claim.
+Every breach still answered HTTP 200 except the 3 non-answers below; `readiness` and `preflight` stayed
+truthful throughout (spot-checked via the same polls' own response bodies) — no wedge, no crash, no frozen
+window (AG-8).
+
+### TC-2 — every breach, joined against `db_reads_s`/`readiness_s`/`preflight_s`
+
+74 of the 77 breaches answered HTTP 200; 3 hit the poller's own 5.0s client timeout (`http_status: 0`) while
+the server kept computing past that point — for those three, the server-side `handler_compute_s` (and
+therefore the named-component sum) can legitimately EXCEED the client's own capped `elapsed_s`, since the
+client gave up before the server finished; they are reported separately, not blended into the 74 answered
+breaches' residual statistics below.
+
+**Dominant single component, across the 74 answered breaches:** `readiness_s` — 43 (58%); `preflight_s` —
+31 (42%); `db_reads_s` / `queue_wait_s` / `pre_receive_gap_s` — 0 each. Mean share of `elapsed_s`:
+`pre_receive_gap_s` 2.2%, `queue_wait_s` 2.1%, `db_reads_s` 3.1%, `readiness_s` 43.4%, `preflight_s` 39.3%
+(mean combined ~90.1%). **Residual `elapsed_s` NOT accounted for by any of the five named components:**
+min 0.32%, **median (p50) 5.99%**, p90 20.95%, max 58.66% (mean 9.71%) — the median breach this round is
+**~94.0% named**, this session's best-ever attribution result.
+
+Three representative rows (full 74-row and 77-row breach tables saved to
+`runs/goal-ops-hardening-iter-69/evidence-drill/tc1-full-join-fixed.json` /
+`tc1-breaches-fixed.json`):
+
+| Case | `elapsed_s` | `pre_receive_gap_s` | `queue_wait_s` | `db_reads_s` | `readiness_s` | `preflight_s` | Named sum | Residual |
+|---|---|---|---|---|---|---|---|---|
+| Best-named (08:27:52.014Z) | 2.133s | 0.1586 | 0.0159 | 0.1201 | 1.6451 | 0.1863 | 2.1261 | **0.32%** |
+| Median (08:35:48.441Z) | 2.464s | 0.0141 | 0.0434 | 0.0160 | 0.7798 | 1.4632 | 2.3165 | **5.99%** |
+| Worst-named (08:34:48.498Z) | 3.401s | 0.0866 | 0.0008 | 0.0045 | 0.7038 | 0.6103 | 1.4059 | **58.66%** |
+
+The worst-named case's own residual (1.995s of its 3.401s) is itself informative, not just noise: its
+`readiness_s` (0.704s) and `preflight_s` (0.610s) are both well BELOW this drill's own p90 for those
+components, meaning this particular poll's slowness sits mostly in serialization/response-transmission or
+scheduling delay after `t_before_return` — outside every span this or any prior iteration's instrument
+reaches (see "A new finding" and the iter-68/c note below for the two categories of unmeasured cost this
+session has now named there).
+
+**Non-answer (5.0s timeout) breaches — reported separately, server-side times can exceed client `elapsed_s`:**
+
+| Poll (client) | `elapsed_s` (capped at 5.0s) | `readiness_s` | `preflight_s` | Named sum (server-side) |
+|---|---|---|---|---|
+| 08:36:22.573Z | 5.002s | 0.2249 | 3.5687 | 3.877s (< elapsed — client gave up before server; a real partial view) |
+| 08:37:44.492Z | 5.005s | 2.8856 | 2.7373 | 5.677s (**>** elapsed — server kept working after the client's own timeout) |
+| 08:38:08.496Z | 5.005s | 1.6889 | 2.9554 | 4.872s (< elapsed) |
+
+### TC-5 — the pre-receive gap (closes iter-68/b)
+
+Differencing `scripts/qa/poll_health.py`'s own per-poll send timestamp against `logs/health-watchdog.
+jsonl`'s matched `t_received_wall`, no new instrument — already recorded since iter-67, joined here for the
+first time against BOTH drills:
+
+| Drill | p50 | p90 | p99 | max |
+|---|---|---|---|---|
+| Live-job (TC-1) | 0.0161s | 0.0716s | 0.3186s | 1.4367s |
+| Idle-control (TC-3) | 0.0010s | 0.0011s | 0.0012s | 0.0057s |
+
+Live-vs-idle separation (~16x at p50, ~65x at p90) matches every other named component's own idle-vs-live
+gap this round. The breaching poll's own pre-receive share (mean across the 74 answered breaches): **2.2%
+of `elapsed_s`** — a real but small slice; `pre_receive_gap_s` is never the single dominant component this
+round (see TC-2 table above). This closes iter-68/b: the "genuinely unnamed ~19.6%" residual Addendum 34
+reported is now, this round, mostly explained by `pre_receive_gap_s` (2.2%) + `queue_wait_s` (2.1%) +
+`db_reads_s`/`readiness_s`/`preflight_s` (85.8% combined) = ~90.1% mean named, median 94.0% — down from
+iter-68's own ~19.6% unnamed to this round's median ~6.0% unnamed.
+
+### A new finding — the gap between the three sub-spans' sum and `handler_compute_s` itself is NOT always negligible under load
+
+The spec's own unit-test tolerance language ("a small fixed tolerance, e.g. 1ms") describes an isolated
+single request with no contention — true in this iteration's own unit tests (single `TestClient` call, no
+concurrent compute; 5ms tolerance chosen, never approached in 15/15 passing runs, repeated twice for
+stability). Under this drill's own LIVE load, the gap between `db_reads_s + readiness_s + preflight_s` and
+the SAME record's `handler_compute_s` — the untimed interstitial cost of `record_queue_wait`'s own
+synchronous JSONL write plus the (`lru_cache`d, normally free) `get_config()` call sitting between
+`t_handler_start` and `db_reads_s`'s own start — is genuinely small MOST of the time (idle-control drill:
+p50 0.32ms, p90 0.35ms, max 1.5ms — squarely "negligible") but can balloon under concurrent contention
+(live-job drill: p50 0.33ms, p90 41.4ms, p99 124.9ms, **max 497.3ms**, mean 14.7ms across 1,024 in-window
+samples). This is a genuine, load-dependent cost — the SAME class of finding TC-7 below names for the
+write AFTER `t_before_return` — now shown to also apply, intermittently but sometimes substantially, to the
+write that happens BEFORE `db_reads_s` begins. Not separately instrumented as a fourth named span this
+round (OUT OF SCOPE: "this iteration carries exactly ONE risky change") — named here as a residual
+contributor for whichever future round revisits this budget.
+
+### TC-6 — correcting iter-68's own browser-QA write-up (closes iter-68/a)
+
+`reports/phase-goal-ops-hardening-iter-68-ui-test-results.md` / `.llm.md` (UT-J-07, step 1) state: *"`GET
+/api/backtest` (via the `/backtest` page) was verified live TWICE mid-warm (horizons_done=1/5 at 07:36:47Z,
+then 2/5 at 07:37:27Z) and rendered the full forward-test scorecard, all-history forward-tested-evidence
+aggregates (all 5 score buckets, excess-vs-SPY/QQQ), return attribution, leadership cohorts, and top
+contributors/detractors."*
+
+**Correction.** The page's own `UT-J-07-result.png` screenshot (re-examined this pass) shows TWO distinct
+sections, conflated into one clause above: the "Forward-test scorecard" panel (per-horizon, tied to the
+CURRENT as-of date) renders its own honest **"No elapsed forward window yet for this date"** empty state,
+with every one of its 1d/5d/10d/20d/65d rows showing `— n/a` / `— n=0` placeholder cells — not a populated
+scorecard. The content that WAS populated and visible below it — "all 5 score buckets, excess-vs-SPY/QQQ,
+return attribution, leadership cohorts, top contributors/detractors" — belongs to the SEPARATE
+"Forward-tested evidence (expanding window ...)" section, an all-history aggregate, not the per-horizon
+"Forward-test scorecard" the sentence's own subject names. The corrected reading: iter-68's own drill
+rendered the per-horizon Forward-test scorecard's honest empty state (never fabricated numbers for an
+unelapsed window — AG-1/AG-3 held) alongside a genuinely populated all-history evidence section — two
+different, correctly-behaving surfaces, mis-described as one populated scorecard. This is the SAME
+iter-66/e pattern (a "— n=0" honest-empty-state screenshot mis-read as populated), its second occurrence
+this session. iter-68's own report text is left untouched (append-only convention, per this session's
+never-silently-rewrite discipline) — this section is the correction, dated and explained. Closes iter-68/a.
+
+### TC-7 — the watchdog's own writes cost real time OUTSIDE the window they measure (closes iter-68/c)
+
+`health_watchdog.py`'s two synchronous JSONL writes per watched request — `record_queue_wait` (called
+before `db_reads_s`'s own timing starts) and `record_handler_compute` (called AFTER `t_before_return` is
+already captured, at the very end of `health()`) — each cost their own real wall-clock time that sits
+OUTSIDE the specific window each one measures. `record_queue_wait`'s write happens between `t_handler_start`
+and `db_reads_s`'s own start (see "A new finding" above: negligible idle, up to 497ms live this round).
+`record_handler_compute`'s write happens AFTER `handler_compute_s` is already frozen (`t_before_return` is
+captured, then the record is written, then — only after that — the response dict is constructed and
+returned), so its own cost is invisible to every span this session's instrument has ever recorded, and adds
+directly to the client's own observed `elapsed_s` without appearing in any of `queue_wait_s`,
+`db_reads_s`/`readiness_s`/`preflight_s`, or `handler_compute_s`. Neither write is measured this round
+(a fifth/sixth instrument is out of this iteration's scope, per rule 5) — named here, alongside "A new
+finding" above, as the most likely remaining source of this round's own median 5.99% / mean 9.71% residual.
+Closes iter-68/c.
+
+### AG-3 / AG-8 / AG-9 / AG-10 for this pass
+
+AG-3: `app.engine.readiness`'s computed value and `GET /api/health`'s response body/shape stay
+byte-identical regardless of the flag — re-proven by the extended unit test suite (15/15 passing,
+`test_watchdog_flag_never_changes_response_body_or_shape` unchanged) and by this drill's own live polls
+(every 200-status response body matched the pre-iter-69 key set). AG-8: no unbounded whole-table load
+added — the new sub-spans read/write only the SAME tiny JSONL file plus three additional in-memory
+timestamps per request; the 3 non-answers were the poller's OWN 5.0s client-side timeout, never a backend
+500 or crash (`db_ok`/`readiness`/`preflight` all stayed truthful throughout, spot-checked). AG-9: the
+live-job drill's own FINAL job record carries `"source": null` (offline committed seed only,
+`bars_fetched: 0`) — confirmed via `runs/goal-ops-hardening-iter-69/evidence-drill/tc1-job-final.json`.
+AG-10: both drills ran through `scripts/start-backend.sh` with host-guard's declared caps intact
+(`memory_cap_mb=8192`, `malloc_arena_max=2`, `cpu_list=0-15`, `blas_threads=8` — live-read from
+`logs/backend.log`; `git status --porcelain -- config.yaml project-extensions/ scripts/` empty before and
+after this pass).

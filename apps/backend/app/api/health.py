@@ -41,6 +41,15 @@ ops-hardening iter-68 (J-07) additively extends the SAME watchdog with a third s
 preflight computation and DB reads above, before serialization). iter-67's own drill named `queue_wait_s`
 as only ~11% of its one breach's magnitude; this sample names the previously-untimed remainder. SAME flag,
 SAME writer, SAME log file — no second instrument.
+
+ops-hardening iter-69 (J-07) decomposes that SAME `handler_compute_s` sample into its three constituent
+parts — `db_reads_s` (the three DB reads immediately below), `readiness_s` (the `compute_readiness` call),
+`preflight_s` (the `compute_preflight` call, including its own nested `record_verdict_transition` write —
+not split out this round) — timed with the SAME monotonic clock, wrapped around the SAME already-existing
+try/except blocks (so an internal exception, already caught and degraded below, still yields a real
+elapsed-time sample for that span rather than a partial/missing one). Written into the SAME
+`handler_compute` record via `record_handler_compute`'s new keyword-only params — no second flag, writer,
+or record type. Diagnostic-log-only: the response body/shape below is unaffected either way (TC-8).
 """
 from __future__ import annotations
 
@@ -116,6 +125,10 @@ def health(session: Session = Depends(get_session), request: Request = None) -> 
 
     cfg = get_config()
     provider = cfg.provider
+    # ops-hardening iter-69 (J-07): db_reads_s -- wraps the SAME three reads below, whether they succeed
+    # or raise (the except block already degrades honestly; timing still stops right after it either
+    # way, so a real elapsed-time sample is captured for both outcomes, never a partial/missing one).
+    _t_db_reads_start = time.monotonic() if watchdog_active else None
     try:
         latest = session.scalar(select(func.max(DailyPrice.date)))
         symbol_count = _distinct_symbol_count(session)
@@ -129,10 +142,13 @@ def health(session: Session = Depends(get_session), request: Request = None) -> 
         symbol_count = 0
         last_run_date = None
         db_ok = False
+    db_reads_s = (time.monotonic() - _t_db_reads_start) if watchdog_active else None
 
     # The single honest readiness state + warm-up progress (computed once by the readiness producer).
     # `engine` lets it compute the expected cadence total when no warm-up record exists yet. A DB error
     # inside the producer degrades to `unavailable` (never a fabricated `ready`).
+    # ops-hardening iter-69 (J-07): readiness_s -- wraps this SAME call, success or degraded alike.
+    _t_readiness_start = time.monotonic() if watchdog_active else None
     try:
         readiness = compute_readiness(session, engine=get_engine())
     except Exception:  # pragma: no cover - never let a readiness error blank the health probe
@@ -142,9 +158,13 @@ def health(session: Session = Depends(get_session), request: Request = None) -> 
             "warmup": {"done": 0, "total": 0, "status": "pending", "message": "history 0/0"},
             "background_compute": {"active": [], "recent_outcomes": []},
         }
+    readiness_s = (time.monotonic() - _t_readiness_start) if watchdog_active else None
 
     # iter-33 (J-20): the single daily preflight verdict (GO/DEGRADED/NO-GO + reasons). A compute error
     # degrades to an honest NO-GO — never a blank/fabricated field (anti-goal #8).
+    # ops-hardening iter-69 (J-07): preflight_s -- wraps this SAME call AND its own nested
+    # record_verdict_transition write (not split into a fourth span this round, per spec).
+    _t_preflight_start = time.monotonic() if watchdog_active else None
     try:
         preflight = compute_preflight(session, config=cfg)
         try:
@@ -161,15 +181,24 @@ def health(session: Session = Depends(get_session), request: Request = None) -> 
             "as_of": None,
             "reference": None,
         }
+    preflight_s = (time.monotonic() - _t_preflight_start) if watchdog_active else None
 
     # ops-hardening iter-68 (J-07): the third sample, handler_compute_s -- t_handler_start (above) to
     # HERE, immediately before the response is constructed/returned, after every readiness/preflight
     # computation and DB read above (all already error-guarded, so this line is always reached whenever
     # the watchdog is active -- there is no partial/unreached case to handle). SAME degrade-on-error
     # convention: a watchdog write failure must never suppress, delay, or alter this route's own response.
+    # iter-69: additionally passes the three sub-spans just timed above into the SAME record.
     if watchdog_active:
         try:
-            health_watchdog.record_handler_compute(t_handler_start, time.monotonic(), t_received_wall)
+            health_watchdog.record_handler_compute(
+                t_handler_start,
+                time.monotonic(),
+                t_received_wall,
+                db_reads_s=db_reads_s,
+                readiness_s=readiness_s,
+                preflight_s=preflight_s,
+            )
         except Exception:  # pragma: no cover - a watchdog write failure must never blank/break /health
             pass
 

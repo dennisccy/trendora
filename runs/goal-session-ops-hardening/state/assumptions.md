@@ -1075,3 +1075,48 @@ requirement iter-66/iter-68 already established for the canonical-script directi
 that outcome explicitly), a later iteration can escalate to an actual `scripts/automation/*` change made
 with the owner's explicit awareness, or the owner can decide the lane-level attribution gap is acceptable
 and instead answer the standing ceiling-policy question directly.
+
+## iter-69 — goal-evaluator (1 of 2)
+
+**Ambiguity:** J-07 step 2 says "assert every poll answers HTTP 200 within its existing budget — no frozen or
+unresponsive window". This round, for the first time in this session, 3 of 952 live-drill polls received NO answer
+inside the poller's own 5.0 s client timeout (`http_status: 0`), while the server itself logged 1,006 `GET
+/api/health` 200s and zero 5xx in the same window and the poll immediately after each non-answer answered 200. The
+schema does not say whether a client-side timeout on a request the server was still computing (one finished at
+5.677 s server-side, after the client hung up) makes the journey `failing` or leaves it `partial`.
+**We chose:** keep `partial`, and record the deterioration explicitly in the journey's `gap` field, in the eval
+table, and in the first line of the owner paragraph. Grounds: (1) step 1 passed outright with fresh evidence I
+opened myself; (2) the journey's named promise is "heavy aggregates never take the service DOWN", and by every
+measure the server itself produced it was up — no non-200, no 5xx, no crash, no wedge, whole-file 500 total
+unchanged at 129, zero ERROR/Traceback/MemoryError in the round's own 4,021-line window; (3) the browser-QA lane's
+independent 120-poll drill in the same round was 120/120 HTTP 200; (4) `partial` is literally "only some assertion
+steps passed", which is the true state (step 1 passed, step 2 did not, steps 3-4 carried on durability).
+**Cost recorded honestly:** a reader who holds that a 5-second non-answer IS an unresponsive window would score
+J-07 `failing` this round; under the decision tree that changes no verdict (prior status was `partial`, so C.1's
+regression clause cannot fire and C.4 needs two consecutive failing rounds), but it would change the ledger's own
+story from "same status, worse evidence" to "first failing round". I put the non-answers in the first sentence of
+the summary and the owner paragraph so the status is not the only thing carrying that news.
+**Reversible:** yes — a later evaluator or the owner can rule that a client-observed 5 s non-answer is a step-2
+failure; both counts (server-side 200s and client-side non-answers) are recorded separately in
+`journey-history.json`'s J-07 note and gap and in this round's eval.md.
+
+## iter-69 — goal-evaluator (2 of 2)
+
+**Ambiguity:** `iteration-state.md`'s Do-not-redo list is binding on the decomposer unless `docs/goal.md` changed,
+and iter-68 put this on it: "Bounding `factor_lab_all_warm` / `coverage_membership_timeline_refresh` by code change
+— diagnostic only until the handler-body sub-timing names a component; profile before bounding." `docs/goal.md`
+has not changed. But this round's sub-timing DID name components (`readiness_s` dominates 43 of the 74 answered
+breaches, `preflight_s` 31), so the ban's own release condition was met inside the round it was carried into.
+Nothing states who declares such a condition satisfied.
+**We chose:** declare it satisfied and rewrite that bullet as released, naming the two components that released
+it, so the next decomposer is not blocked by a stale ban. I did NOT make bounding that phase the recommended
+target: the recommendation is the narrower, better-evidenced one (stop `GET /api/health` recomputing readiness and
+preflight per request), with the phase bound named as the legitimate alternative if that proves insufficient.
+Grounds: (1) the ban was explicitly conditional, not absolute; (2) leaving it standing would suppress the only
+target this round's data actually supports as a second option; (3) stating it here rather than silently is what
+lets a later reader reverse it.
+**Cost recorded honestly:** a reader who holds Do-not-redo as absolute until an evaluator re-proves the underlying
+null result would keep the ban and lose the alternative; the honest counter is that the ban's own text names its
+release condition and this round met it verbatim.
+**Reversible:** yes — any later evaluator can restore the ban with one round's evidence that the phase is not the
+cause.
