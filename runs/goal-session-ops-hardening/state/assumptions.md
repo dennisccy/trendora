@@ -958,3 +958,25 @@ and avoids re-opening the framework-vs-product boundary iter-56 already drew.
 **Reversible:** yes — if the browser-qa-agent's own ad hoc behavior persists on a future round despite
 the spec's direction, a later iteration can escalate to an actual framework/agent-instruction change
 with the owner's awareness that it crosses into `.claude/`/`agents/` maintenance territory.
+
+## iter-66 — goal-evaluator
+
+**Ambiguity:** iteration-state's "Do not redo" list is binding on the decomposer unless `docs/goal.md`
+changed for that item, and iter-65 put `factor_lab_all_warm` on it ("four independent escalating tests
+already found none" — no further GIL/lock hold to bound). `docs/goal.md` has not changed. But this round's
+own drill puts 68 of its 70 health-check breaches inside that exact phase's window (15.7 % of the 433 polls
+taken during it) with zero breaches in the 382 polls immediately after it. Nothing in the rules says what
+outranks a binding "Do not redo" when fresh measurement contradicts the finding that created it.
+**We chose:** recommend RE-OPENING `factor_lab_all_warm` as the next iteration's target, with an explicit
+method change (watch the live serving process, rather than re-run the computation standalone — the method
+that produced the four clean profiles). Grounds: (1) the ban was written on a null profiling result, not on
+a measurement showing the phase is fast in production; (2) this round's alignment is a positive measurement
+with a built-in control (0 of 382 polls after the phase closed); (3) the same standalone method has now
+produced two consecutive null results on two different phases, so repeating it elsewhere has low expected
+value; (4) I state the conflict here rather than letting the next decomposer discover it as a contradiction
+between its state digest and its spec.
+**Cost recorded honestly:** a reader who holds "Do not redo" as absolute would send the next round somewhere
+else and lose the only phase-level signal this session has produced; the honest counter is that re-opening
+costs one lean round and its acceptance test is cheap and unambiguous.
+**Reversible:** yes — if the live-process watch again finds nothing inside that phase, the ban can be
+restored and the target moved with one more round's evidence.

@@ -741,3 +741,18 @@ millisecond `logs/backend.log` phase markers BEFORE chartering a code fix — th
 **Applies to:** any iteration whose goal is derived from a latency/throughput measurement, and any J-07-class
 work in `apps/backend/app/engine/research.py` / `data_manager.py`; also any round planning to piggyback a
 drill on a lane that runs a browser at the same time.
+
+## iter-66 — 2026-08-12T02:40:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** Two rounds of "profile the phase" found zero stalls because both re-ran the computation in a
+standalone script; the thing that finally localized the problem was arithmetic on artifacts that already
+existed — aligning the 1,024 health-poll timestamps in `tc1-health-poll.csv` against `dev.log`'s own phase
+lines put 68 of 70 breaches inside `factor_lab_all_warm` (15.7 % of 433 polls) with ZERO in the 382 polls
+right after it. Two traps to avoid next time: `dev.log`/`logs/backend.log` timestamps are host-local
+(UTC+1) while every CSV and DB row is UTC — the browser-QA lane's phase attribution this round was wrong by
+exactly one hour — and a newly added metric can refute the theory it was added to support (breaching polls
+averaged load 1.77 vs 1.90 for non-breaching, so "the host was busy" is contradicted by its own column;
+always compare the two groups, never just cite the values).
+**Applies to:** any iteration chasing `GET /api/health` latency during ingest/warm phases; any lane that
+cross-checks a UTC measurement against a Trendora log timestamp; any round that adds an explanatory metric.

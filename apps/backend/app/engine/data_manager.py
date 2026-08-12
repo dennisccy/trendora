@@ -5198,6 +5198,48 @@ def _has_open_run_record(engine: Engine, job_id: Optional[str]) -> bool:
         return _open_run_record(session, job_id) is not None
 
 
+def _reopen_interrupted_run_record(engine: Engine, job_id: Optional[str]) -> bool:
+    """ops-hardening iter-66 (J-05, TC-7 — the iter-64/d duplicate-run-row fix): a `kill -9` mid-job
+    leaves its `data_provider_runs` row `running`; the NEXT boot's `sweep_orphaned_runs` (the ONLY writer
+    of the `interrupted` status — see that function's own docstring) honestly closes it `interrupted`
+    since nothing more is known. That status is NOT a deliberate terminal outcome the way `failed`/
+    `failed_backfill` are (both are set by an in-process handler that had the chance to run — a SIGKILL
+    never gives one) — it is exactly the row a checkpoint-driven Resume of the SAME `job_id` is trying to
+    continue (`_progress_from_checkpoint` always seeds `job_id=cp.import_id`, the ORIGINAL job's id).
+
+    Before this fix, `_run_job`'s `_has_open_run_record` gate treated `interrupted` identically to a
+    genuinely terminal row and always fell through to `_create_run_record`, inserting a SECOND
+    `data_provider_runs` row for the resume attempt — iter-64/d's observed pattern: one `job_id`
+    producing both an `interrupted` row (the dead attempt) and a post-restart `ok` row (the resumed one),
+    5 occurrences all-time. Reopening the SAME interrupted row here (status back to `running`,
+    `finished_at` cleared — mirroring `_create_run_record`'s own fresh-row shape) instead of inserting a
+    new one restores the "one record per job_id, one honest transition" contract `DataProviderRun`'s own
+    docstring already claims: `_finalize_run_record`'s existing `_open_run_record` lookup then finds and
+    UPDATEs this SAME row when the resume reaches its terminal state, exactly as it already does for a
+    graceful 429 `resumable` pause (unchanged).
+
+    Returns True iff a row was reopened (so the caller skips its own `_create_run_record` call); False
+    when no `interrupted` row exists for this job_id — the ordinary "already-terminal (failed/
+    failed_backfill-driven), fresh Retry audit row" path is completely unchanged (J-38 Retry's documented
+    "the audit trail of every attempt stays complete" intent — untouched by this fix)."""
+    if not job_id:
+        return False
+    with Session(engine) as session:
+        row = session.exec(
+            select(DataProviderRun)
+            .where(DataProviderRun.job_id == job_id)
+            .where(DataProviderRun.status == "interrupted")
+            .order_by(DataProviderRun.id.desc())
+        ).first()
+        if row is None:
+            return False
+        row.status = "running"
+        row.finished_at = None
+        session.add(row)
+        session.commit()
+    return True
+
+
 # ops-hardening iter-9 (F1) — how often a long-running backfill re-writes its CURRENT progress onto its
 # OPEN run-history row. One small UPDATE per interval bounds the write amplification regardless of how
 # fast dates complete, while keeping a killed job's persisted progress at most one interval stale.
@@ -5395,11 +5437,21 @@ def _run_job(
     # `running`/`resumable`) reuses that row; a resume of an ALREADY-TERMINAL record (a `failed_backfill`
     # whose `both`-job row finalized to `failed`) is a fresh attempt and writes its OWN honest record
     # (like J-38 Retry) — so the audit trail of every attempt stays complete.
+    #
+    # ops-hardening iter-66 (J-05, TC-7 — iter-64/d fix): a THIRD case existed between these two, unhandled
+    # until now — a resume whose row is `interrupted` (a `kill -9` mid-job, swept by the boot sweep, NEVER
+    # a deliberate terminal outcome the way `failed`/`failed_backfill` are). That row is not "open" per
+    # `_has_open_run_record`, so this gate always fell through to `_create_run_record` for it too, inserting
+    # a SECOND row that shares the interrupted row's `job_id` (the observed duplicate-row pattern).
+    # `_reopen_interrupted_run_record` reclaims that SAME interrupted row (status back to `running`) when
+    # one exists for this job_id, so the gate below only creates a fresh row for a genuinely fresh job OR a
+    # genuinely terminal (failed/failed_backfill-driven) Retry — both unchanged from before this fix.
     if not is_resume or not _has_open_run_record(eng, prog.job_id):
-        try:
-            _create_run_record(eng, cfg, prog)
-        except Exception as exc:  # noqa: BLE001 — a bookkeeping failure must not crash the worker
-            _record_error(prog, scrub(f"failed to create run record: {exc}"))
+        if not (is_resume and _reopen_interrupted_run_record(eng, prog.job_id)):
+            try:
+                _create_run_record(eng, cfg, prog)
+            except Exception as exc:  # noqa: BLE001 — a bookkeeping failure must not crash the worker
+                _record_error(prog, scrub(f"failed to create run record: {exc}"))
     try:
         with Session(eng) as session:
             if (prog.kind in _FETCH_KINDS or is_expand) and not skip_fetch:

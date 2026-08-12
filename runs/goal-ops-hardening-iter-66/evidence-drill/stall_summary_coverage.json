@@ -1,0 +1,46 @@
+{
+  "summary": {
+    "total_elapsed_s": 10.82,
+    "worker_result": {
+      "trading_days_count": 5391,
+      "universe_count": 539,
+      "per_symbol_rows": 591,
+      "missing_data_affected": 5,
+      "absent_count": 0
+    },
+    "phase_marks": [
+      {
+        "step": "prefill",
+        "elapsed_s": 8.604
+      },
+      {
+        "step": "_trading_days",
+        "elapsed_s": 0.003
+      },
+      {
+        "step": "_resolved_universe",
+        "elapsed_s": 0.017
+      },
+      {
+        "step": "_per_symbol_coverage",
+        "elapsed_s": 0.437
+      },
+      {
+        "step": "_missing_data_diagnostic",
+        "elapsed_s": 1.529
+      },
+      {
+        "step": "_universe_diagnostic",
+        "elapsed_s": 0.0
+      },
+      {
+        "step": "_coverage_diagnostic_absent",
+        "elapsed_s": 0.003
+      }
+    ],
+    "stall_count_gt_0.30s": 0,
+    "worst_stall_s": 0.0,
+    "stalls_by_innermost_app_frame": []
+  },
+  "stalls": []
+}

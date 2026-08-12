@@ -10568,3 +10568,210 @@ from. Written into the ledger per the spec's own "either way" instruction: **rep
 not recur, no traceback found; the backend's own responses were clean both times.** `apps/frontend/*` is
 unmodified this iteration (out of this pass's scope), so no frontend-side investigation was attempted
 beyond this API-level check.
+
+## Addendum 32 (2026-08-12, ops-hardening iter-66 developer pass) — `coverage_membership_timeline_refresh` re-profiled at escalating fidelity, finds nothing to bound (mirrors iter-65's own Item Y finding for the sibling phase); canonical `scripts/qa/poll_health.py` shipped; iter-64/c and iter-64/d closed
+
+### Method (TC-1 profiling step) — mirrors iter-52/53/63's own interrupt-driven stall method, retargeted
+
+iter-65's own next-step order named this phase "the last named in-code target left for J-07" off its own
+TC-1 drill (1 breach, 2.370s, entirely inside `coverage_membership_timeline_refresh`'s 6.81s window). Per
+this iteration's own instructions ("profile — never assume"; the binding "iter-52's blind-yield-only first
+pass measured WORSE" lesson), two independent profiling passes were run against the REAL committed DB
+(`apps/backend/data/trendora.db`) before any code was touched:
+
+1. **Solo, in-process** (`runs/goal-ops-hardening-iter-66/evidence-drill/stall_profile_coverage.py`): a
+   worker thread runs the SAME sub-chain `_compute_coverage_body` itself calls — `_trading_days` →
+   `_resolved_universe` (→ `universe_resolver.resolve_with_reasons`) → `_per_symbol_coverage` →
+   `_missing_data_diagnostic` → `_universe_diagnostic` → `_coverage_diagnostic_absent` — inside a REAL
+   `prefilled_bar_cache(session, expected_symbols=pool_symbols)` context, the exact shared-cache shape
+   `_do_backfill`/`_refresh_ingest_aggregates` set up for a live ingest. A probe thread sleeps 0.02s in a
+   loop and flags any wake-up overrun > 0.30s (this session's own binding threshold), capturing the
+   worker's stack via `sys._current_frames()` the instant a stall resolves. Deliberately OMITS
+   `membership_timeline_cached` (the ONE write in this sub-chain — a dataset-version-keyed cache
+   upsert+commit) so the profile can run safely against the real committed DB with zero risk of mutating
+   it; that step was already independently measured at 0.040s / zero stalls in iter-63's own isolated pass
+   (Addendum 29) and is not re-measured here. **Three runs, including one at a 5x finer 0.05s stall
+   threshold: 10.7-12.9s total wall-clock (`_missing_data_diagnostic` 1.48-1.56s, `_per_symbol_coverage`
+   0.37-0.44s, `prefill` 8.6-9.1s, everything else sub-20ms) — 0 stalls at EITHER threshold, worst 0.0s,
+   every run.**
+2. **Concurrent with the REAL `/api/health` route** (`stall_profile_coverage_concurrent.py`, iter-65's
+   `stall_profile_concurrent.py` methodology retargeted): the SAME sub-chain in a worker thread, plus a
+   second thread calling `app.api.health.health()` (the actual route function, not a re-implementation)
+   once per second on its own dedicated session, timing every call. **Three independent runs: 12/12 health
+   polls each (36 total), 0 breaches > 2.0s, worst single call 0.224s** — the real health route stays
+   comfortably inside budget throughout the whole sub-chain, including during the 8.6-9.1s `prefill` step.
+
+Both passes are archived under `runs/goal-ops-hardening-iter-66/evidence-drill/` (`stall_summary_coverage.
+json`, `stall_profile_coverage_concurrent_summary.json`). **Neither found a single stall or breach
+attributable to this phase's own code** — the SAME clean-profile-yet-live-breach pattern iter-65's Item Y
+found for `factor_lab_all_warm` (four independent tests, zero holds), now reproduced for
+`coverage_membership_timeline_refresh` at two independent techniques. `resolve_with_reasons`'s own cost
+(inside `_per_symbol_coverage`/`_resolved_universe`) stays negligible (iter-53's `bars_asof_window` bound
+holds); `_missing_data_diagnostic`'s own-dates loop stays yield-bounded (iter-63's fix holds, confirmed
+live again this round).
+
+### TC-1 — the live acceptance drill, through the canonical script
+
+Backend launched only via `scripts/dev.sh` (AG-10 caps intact — `project-extensions/host-guard/host-guard.
+env` declares `HOST_GUARD_ENABLED=1`; `dev.sh`'s backend subshell applies the config-derived `ulimit -v`/
+`MALLOC_ARENA_MAX` + the HOST-GUARD taskset/BLAS-thread block unconditionally, per direct read of the
+script). Its stdout/stderr (uvicorn's own log stream, including every `trendora.data_manager` phase-timing
+line — `dev.sh` execs uvicorn directly with no file redirect of its own, unlike `start-backend.sh`'s
+`>> "$LOG_FILE" 2>&1`) was captured to `runs/goal-ops-hardening-iter-66/evidence-drill/dev.log` — cited
+below in place of `logs/backend.log` for that reason, same content, different path (noted honestly rather
+than silently treated as interchangeable).
+
+A real single-date `backfill` for `2019-02-06` (live-verified read-only immediately before dispatch: 0
+`scanner_runs` rows, a real SPY close of 247.402 — a genuine gap trading day) was dispatched via `POST
+/api/data/jobs` with no `source` override (`"source": null` in the persisted job record — AG-9 clean, no
+live network call). The canonical `scripts/qa/poll_health.py` (below) polled `GET /api/health` at 1 Hz for
+the job's full wall time. Outcome: `status: "ok"`, 1 snapshot, 2,290 forward returns inserted,
+`aggregates_refreshed` all 9 categories, `started_at` 00:01:04Z → `finished_at` 00:20:25Z (19m21s).
+
+`dev.log` names the phase's own window precisely: `J-05 finalize-tail phase timing: job=8fcf75fb057c...
+phase=coverage_membership_timeline_refresh elapsed=15.65s` at `2026-08-12 01:02:26,054` BST (this host's
+local zone; = `2026-08-12T00:02:26.054Z`) → window `[00:02:10.404Z, 00:02:26.054Z)`.
+
+| Figure | Addendum 28 (iter-61) | Addendum 29 (iter-63) | Addendum 30 (iter-64) | Item Y Test 4 (iter-65) | **Addendum 32 (iter-66, this pass)** |
+|---|---|---|---|---|---|
+| Total polls | 1,078 | 983 | 930 | 1,057 | **1,024** |
+| HTTP 200 | 1,078 (100%) | 983 (100%) | 930 (100%) | 1,057 (100%) | **1,024 (100%)** |
+| Non-answers | 0 | 0 | 0 | 0 | **0** |
+| Polls breaching ≤2.0s (whole run) | 1 | 53 | 59 | 1 | **70** |
+| **Breach(es) inside `coverage_membership_timeline_refresh`'s own window** | 1 — 2.849s | 1 — 2.420s | not separately reconciled | 0 (breach fell in a different phase that round) | **1 — 3.068s** |
+| Phase's own logged duration | not logged | 7.05s | — | 6.81s | **15.65s** |
+
+Full distribution (`runs/goal-ops-hardening-iter-66/evidence-drill/tc1-health-poll.csv`, n=1024):
+p50 0.075s, p90 1.633s, p99 3.171s, max 4.413s, count-over-2.0s 70 (whole run).
+
+**Read plainly.** TC-1's own DoD line ("0 breaches attributable to this phase") is **NOT MET this round
+either** — a single poll starting at `00:02:22.912Z` took 3.068s, landing inside the phase's own window.
+This is the FOURTH consecutive round (iter-61, 63, 65 — via Item Y Test 4's own reconciliation, 0 that
+round but only because a different phase's breach fell nearby — and now iter-66) this exact phase has
+produced either 0 or 1 breach per live drill, never more, on CODE this round's own profiling proves has
+zero discoverable stall > 0.30s at two independent techniques. The 69 OTHER breaches this round (all
+outside `coverage_membership_timeline_refresh`'s own window, concentrated `00:09:23Z`-`00:14:24Z`, well
+after this phase closed) belong to the SAME already-litigated `factor_lab_all_warm`/`forward_aggregates_
+warm` intermittency Item Y examined and closed with "Do not redo" — not re-attributed or re-opened here
+(out of this iteration's own scope; `research.py`/`forward_testing.py` are untouched — `git status
+--porcelain` confirms).
+
+**New evidence this round, from the canonical script's own host-load column**: every poll in the
+`00:09:23Z`-`00:14:24Z` breach cluster (and the single in-phase breach at `00:02:22.912Z`) carries a
+`load_avg_1m` reading of 1.5-2.28 on this 16-core host (`cpu_count` in `tc1-health-poll.csv.meta.json`) —
+roughly double this host's typical near-idle baseline (sub-1.0 in prior addenda's own steady-state
+readings), consistent with real, measured concurrent host contention at the exact moments the breaches
+occurred, not a silent code-level regression. This is the FIRST round with a directly-measured host-load
+figure alongside the breach — every prior round's "transient host/scheduling state" explanation
+(Addenda 29/31) was inference from absence of a code-level cause, never a positive load reading. It does
+not PROVE contention caused these specific breaches (no controlled A/B is possible on a live shared host),
+but it is the first piece of DIRECT, positive evidence consistent with that explanation rather than merely
+the absence of a competing one.
+
+**Conclusion, honestly stated per this iteration's own NOTES**: after profiling every hold this round's
+tooling can find (two independent techniques, one at 5x finer threshold), a residual single breach remains
+inside `coverage_membership_timeline_refresh`'s own window, matching the SAME low-single-digit,
+round-to-round-variable pattern this exact phase has shown since iter-61 despite iter-53's and iter-63's
+own real, verified fixes (`resolve_with_reasons` bounded; `_missing_data_diagnostic`'s own-dates loop
+yield-bounded — both re-confirmed zero-stall this round). **No code change was made this iteration** — per
+the spec's own instruction, inventing a speculative third bound with zero profiling evidence behind it
+would be worse than reporting the honest number. TC-1's own literal bar is not met; whether J-07 should
+move off `partial` on the strength of "profiled clean at 2 techniques, 4 consecutive rounds of ≤1 breach,
+now with direct load evidence for the contention theory" is an evaluator judgment call this dev pass does
+not make for it (mirrors iter-65's own delegation).
+
+### TC-2 — no code changed, no equality test needed
+
+`_compute_coverage_body`'s call chain is byte-for-byte unchanged this iteration (`git status --porcelain`
+over `apps/backend/app/engine/data_manager.py` shows only the TC-7 `_reopen_interrupted_run_record`
+addition, an unrelated function in the job-resume path — see below; `universe_resolver.py` is completely
+untouched). TC-2's own premise ("the bounded implementation") does not apply when profiling names nothing
+to bound — the SAME reasoning Item Y applied to `compute_forward_aggregates` for iter-65.
+
+### TC-3 — the existing MemoryError-distinct isolation handler, unmodified, still passes
+
+`data_manager.py`'s `coverage_membership_timeline_refresh` phase (~4339-4345, iter-53/iter-8 convention) is
+untouched. Its existing test, `test_finalize_hook_coverage_membership_timeline_fault_injected_releases_
+memory_honestly` (`test_data_manager.py`), passes unmodified — confirmed as part of this iteration's full
+`test_data_manager.py` run (218 passed, see Tests Run in the dev handoff).
+
+### TC-4/TC-5 — the canonical `scripts/qa/poll_health.py`
+
+Promoted from the per-iteration throwaway copy (`runs/goal-ops-hardening-iter-N/evidence-drill/poll_health.
+py`, iter-53 through iter-65) to ONE checked-in script, `scripts/qa/poll_health.py`: a single `urllib`
+client, one poll per second, no subprocess spawned per poll (closing the iter-65 Addendum 31 ~40x
+instrument-disagreement gap: a subprocess-per-poll bash/curl loop pays real fork/exec overhead under CPU
+contention that a single long-lived HTTP client never does). CSV schema (TC-4): `timestamp, http_status,
+elapsed_s, breach_over_2s, load_avg_1m` — this iteration's own dev drill above is the FIRST artifact to use
+it; every column is populated on every one of the 1,024 rows (TC-5), including `load_avg_1m` (`os.
+getloadavg()[0]`, sampled at poll time). `os.cpu_count()` (the IN SCOPE ask's other host-load figure) is a
+per-run HOST CONSTANT, not a per-poll observation — written once to a sibling `<csv>.meta.json` instead of
+repeated onto every row (schema rationale in the script's own module docstring). Unit-tested:
+`apps/backend/tests/test_poll_health.py` (6 tests: CSV schema, `load_avg_1m` population, breach flagging,
+connection-error handling as `http_status=0`, `run()`'s exact schema + meta.json, stop-file convention).
+The J-07 browser-qa test case (TESTING REQUIREMENTS) is asked to route its own supplementary drill through
+this SAME script in its next live pass — this dev pass cannot itself dispatch that agent's future run, but
+the canonical script is now checked in and discoverable for it to use, closing the "no ad hoc curl/bash
+loop, no second counter" ask from this dev pass's own side.
+
+### TC-6 — `journey-scripts/J-05.json`'s mis-stated sentinel window, corrected
+
+The closing `_notes` entry (iter-64/c) claimed `demo_runner.py`'s sentinel-resolution window was
+`1996-01-01..2004-12-31`. Direct read of the shipped constants (`scripts/automation/lib/demo_runner.py`
+— `incredible_auto_dev/scripts/automation/lib/demo_runner.py` is this file's tracked home, `scripts/` is a
+top-level symlink into that subtree) shows `_SENTINEL_WINDOW_START = "2005-03-01"` /
+`_SENTINEL_WINDOW_END = "2016-12-31"` — introduced in the SAME iter-64 commit as the wrong note text
+(`git show` on that commit: the constant and the mis-stating prose landed together, a stray-draft-value
+documentation bug from the moment it was written, not a later drift). The note is corrected in place to
+state the actual shipped window, with the correction itself dated and explained (never silently
+rewritten) — `runs/goal-session-ops-hardening/journey-scripts/J-05.json`. A live query of the real
+committed DB confirms the corrected window is NOT "barely touched" the way the old (wrong) window's own
+parenthetical claimed (every year 2005-2016 already carries 26-181 `scanner_runs` snapshots, none anywhere
+near that year's ~252 trading days) — the resolver only needs ONE still-unsnapshotted date per replay,
+always findable regardless. No behavior change: `demo_runner.py` itself is untouched (out of this dev
+pass's own file scope — it is framework/automation tooling, not this session's product/journey-script
+artifact).
+
+### TC-7 — the iter-64/d duplicate-run-row pattern: root-caused and fixed (small, isolated)
+
+Investigated at its named call site (`_run_job`, `app.engine.data_manager` — both `start_data_job` and
+`resume_data_job` funnel through it). Root cause: `DataProviderRun.status` and `ImportCheckpoint.status`
+are written in TWO SEPARATE commits when a fetch chunk 429s into a graceful pause — the checkpoint reaches
+`resumable` first (`_advance_checkpoint`), then a SEPARATE `_finalize_run_record` UPDATE mirrors that same
+status onto the run-history row. A process killed in the narrow window between those two commits leaves a
+genuinely-resumable checkpoint paired with a run-history row still at its creation-time `running` default
+— which the NEXT boot's `sweep_orphaned_runs` (the ONLY writer of the `interrupted` status) honestly closes
+`interrupted`, since nothing more is known. Before this fix, `_run_job`'s `_has_open_run_record` gate
+treated that `interrupted` row identically to a genuinely terminal one (`failed`/`failed_backfill`) and
+always inserted a SECOND row for the resume attempt — the observed pattern (one job_id, an `interrupted`
+row + a post-restart `ok` row, 5 occurrences all-time per the ledger).
+
+**Fix (small, isolated — one new helper + a 2-line gate change, `data_manager.py`)**:
+`_reopen_interrupted_run_record(engine, job_id)` reclaims the SAME row (status back to `running`,
+`finished_at` cleared) when — and ONLY when — a row with status EXACTLY `interrupted` exists for that
+job_id; the `_run_job` gate tries it before falling through to `_create_run_record`. A genuinely terminal
+row (`ok`/`failed`/`partial`/`failed_backfill`-driven) is left completely untouched — the documented
+"fresh Retry audit row, like J-38" path (multiple rows per job_id across genuine retry attempts) is
+unchanged, exactly as before this fix.
+
+Proven at TC-7(a)'s own bar — "a fresh kill-9-mid-job/restart/resume drill produces exactly one persisted
+`data_provider_runs` row for that `job_id`" — by two new tests in `test_data_manager_jobs_pipeline.py`:
+`test_reopen_interrupted_run_record_reuses_row_never_a_genuinely_terminal_one` (the helper in isolation:
+reopens an `interrupted` row, leaves a `failed` row and an unknown job_id alone) and
+`test_resume_of_a_row_left_running_by_a_kill_reopens_it_not_a_duplicate` (end to end: a real graceful 429
+pause, the run-history row forced back to `running` to simulate the exact race, a real `sweep_orphaned_
+runs` boot sweep, then a real `resume_data_job` call — asserts exactly ONE `data_provider_runs` row remains
+for the job_id, `status: "ok"`). Both pass; the full `test_data_manager_jobs_pipeline.py` suite (23 tests)
+and `test_data_manager.py` (218 tests) stay green — no regression to the existing "like J-38 Retry" fresh
+audit-row behavior for genuinely terminal jobs.
+
+### AG-3 / AG-8 / AG-9 / AG-10 for this pass
+
+AG-3: no displayed/served value changed — `_compute_coverage_body`'s output is byte-for-byte unchanged
+(TC-2); `_reopen_interrupted_run_record` only ever mutates `status`/`finished_at` on a row already keyed to
+the SAME job_id, never a computed figure. AG-8: no unbounded whole-table ORM load added or removed this
+pass (the profiled sub-chain's own loading shape — `prefilled_bar_cache`'s streamed prefill, `_missing_
+data_diagnostic`'s `yield_per` scan — is completely unchanged, confirmed clean by the profile itself). AG-9:
+the TC-1 drill's own job record carries `"source": null` (offline committed seed only). AG-10: `scripts/
+dev.sh` launched this pass's own drill; `memory_cap_mb`/`malloc_arena_max`/`host-guard.env` values are
+untouched this iteration (out of scope per the spec).

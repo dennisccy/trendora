@@ -1,0 +1,145 @@
+{
+  "summary": {
+    "total_elapsed_s": 12.73,
+    "worker_result": {
+      "trading_days_count": 5391,
+      "universe_count": 539,
+      "per_symbol_rows": 591,
+      "missing_data_affected": 5,
+      "absent_count": 0
+    },
+    "phase_marks": [
+      {
+        "step": "prefill",
+        "elapsed_s": 9.004
+      },
+      {
+        "step": "_trading_days",
+        "elapsed_s": 0.003
+      },
+      {
+        "step": "_resolved_universe",
+        "elapsed_s": 0.016
+      },
+      {
+        "step": "_per_symbol_coverage",
+        "elapsed_s": 0.386
+      },
+      {
+        "step": "_missing_data_diagnostic",
+        "elapsed_s": 1.561
+      },
+      {
+        "step": "_universe_diagnostic",
+        "elapsed_s": 0.0
+      },
+      {
+        "step": "_coverage_diagnostic_absent",
+        "elapsed_s": 0.003
+      }
+    ],
+    "health_polls_total": 12,
+    "health_polls_breach_gt_2s": 0,
+    "health_polls_error": 0,
+    "worst_health_elapsed_s": 0.221,
+    "breaches_by_worker_innermost_app_frame": []
+  },
+  "health_polls": [
+    {
+      "poll_id": 1,
+      "t": 87518.626,
+      "elapsed_s": 0.221,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 2,
+      "t": 87519.626,
+      "elapsed_s": 0.006,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 3,
+      "t": 87520.626,
+      "elapsed_s": 0.006,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 4,
+      "t": 87521.626,
+      "elapsed_s": 0.009,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 5,
+      "t": 87522.628,
+      "elapsed_s": 0.006,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 6,
+      "t": 87523.628,
+      "elapsed_s": 0.009,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 7,
+      "t": 87524.628,
+      "elapsed_s": 0.008,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 8,
+      "t": 87525.63,
+      "elapsed_s": 0.009,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 9,
+      "t": 87526.632,
+      "elapsed_s": 0.006,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 10,
+      "t": 87527.632,
+      "elapsed_s": 0.005,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 11,
+      "t": 87528.633,
+      "elapsed_s": 0.007,
+      "ok": true,
+      "err": null,
+      "breach": false
+    },
+    {
+      "poll_id": 12,
+      "t": 87529.673,
+      "elapsed_s": 0.008,
+      "ok": true,
+      "err": null,
+      "breach": false
+    }
+  ]
+}

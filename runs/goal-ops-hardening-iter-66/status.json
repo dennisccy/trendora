@@ -1,0 +1,22 @@
+{
+  "phase": "goal-ops-hardening-iter-66",
+  "status": "in_progress",
+  "current_step": "dev_complete",
+  "updated_at": "2026-08-12T01:30:00Z",
+  "cli": "claude",
+  "blockers": [],
+  "changed_files": [
+    "apps/backend/app/engine/data_manager.py",
+    "apps/backend/tests/test_data_manager_jobs_pipeline.py",
+    "apps/backend/tests/test_poll_health.py",
+    "scripts/qa/poll_health.py",
+    "runs/goal-session-ops-hardening/journey-scripts/J-05.json",
+    "reports/perf-budgets.md",
+    "docs/handoffs/goal-ops-hardening-iter-66-dev.md",
+    "runs/goal-ops-hardening-iter-66/evidence-drill/"
+  ],
+  "tests_run": true,
+  "browser_checks_run": false,
+  "known_pre_existing_flake": "test_ingest_finalize_memory_pressure.py::test_tight_cap_aborts_forward_aggregates_with_caught_memory_error_and_recovers",
+  "next_action": "review"
+}
