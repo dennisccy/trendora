@@ -1120,3 +1120,31 @@ null result would keep the ban and lose the alternative; the honest counter is t
 release condition and this round met it verbatim.
 **Reversible:** yes — any later evaluator can restore the ban with one round's evidence that the phase is not the
 cause.
+
+## iter-70 — goal-decomposer
+
+**Ambiguity:** iter-69's next-step recommendation orders "serve them from a stored/bounded value in the
+spirit of the goal's own compute-at-ingest rule" for `compute_readiness`/`compute_preflight`, without
+naming a mechanism. That phrase is consistent with several designs: a genuinely PERSISTED row (mirroring
+`coverage_snapshot`'s DB-table precedent) or an in-process cache refreshed by a background thread
+(mirroring `app.engine.warmup`'s existing daemon-thread precedent) — with materially different
+restart/staleness/schema tradeoffs. It also does not say whether the DB-reachability + `last_run_date`/
+`seed_latest_date`/`symbol_count` reads in the SAME handler move off the request path too.
+
+**We chose:** an in-process, bounded-interval background-refresh CACHE (not a persisted DB table) inside
+`app.engine.readiness` itself, reusing `app.engine.warmup`'s existing daemon-thread/single-flight idiom —
+plus leaving the DB-reachability/`last_run_date`/`seed_latest_date`/`symbol_count` reads on the request
+path unchanged. Grounds: (1) readiness/preflight are operational LIVENESS state, not data that must
+survive a process restart the way `coverage_snapshot`/job history must — a synchronous cold-start
+fallback already covers the restart case with zero staleness risk, so a DB table would add schema/
+migration surface for no correctness benefit; (2) `app.engine.warmup`'s daemon-thread pattern is an
+established, already-reviewed precedent in the SAME module family, avoiding a second threading
+abstraction; (3) iter-69's own re-derived attribution names `readiness_s`/`preflight_s` as the dominant
+breach components (43/31 of 74) while `db_reads_s` is not implicated at all — narrowing the fix to
+exactly the two functions the evidence names keeps this iteration's one-risky-action budget (rule 5)
+tight and testable (TC-7 proves the untouched reads stay live and fast).
+
+**Reversible:** yes — if the cache's tick cadence or cold-start fallback proves insufficient (e.g. a
+future round's drill still shows breaches attributable to this path), a later iteration can either
+tighten `readiness.refresh_interval_seconds` or promote the cache to a persisted table without changing
+the canonical producer/endpoint again.
