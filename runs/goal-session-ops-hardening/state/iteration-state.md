@@ -1,6 +1,6 @@
 # Iteration State — ops-hardening
 
-**After iteration:** 67 · **Date:** 2026-08-12 · **Verdict:** CONTINUE
+**After iteration:** 68 · **Date:** 2026-08-12 · **Verdict:** CONTINUE
 
 ## Journeys
 
@@ -8,33 +8,33 @@
 
 ## Active blockers
 
-- **Human (owner), 19th round:** does the ≤2 s health-check ceiling apply to an 18-minute job, or only to
-  the ~30 s job it was written for? J-07's last gap is exactly this. `docs/goal.md`, "Additional binding
-  notes" (2026-07-31 amendment).
+- **Human (owner), 20th round:** does the ≤2 s health-check ceiling apply to a 17-minute job, or only to
+  the ~30 s job it was written for? J-07's last gap is exactly this (`docs/goal.md`, 2026-07-31 amendment).
 - **Human (owner):** sign-off on the `scripts/automation/browser-qa-phase.sh` ordering bug, and a cost
-  sanction — 7th over-budget round (10,543 s vs 3,600 s, two real ~18-minute ingest jobs inside it).
-- **Dev:** ~2.55 s of the round's one 2.875 s health-check answer is unexplained — it sits inside the
-  handler body (readiness/preflight + DB reads), which no instrument times yet
-  (`apps/backend/app/api/health.py`, `app/engine/health_watchdog.py`).
+  sanction — 8th over-budget round (9,933 s pipeline / 10,538 s elapsed vs 3,600 s).
+- **Dev:** the slow time is located but not named — 79 % of the one breach and a 79x p90 elevation sit
+  inside `GET /api/health`'s own body, which does 3 DB reads + `compute_readiness` + `compute_preflight`
+  per request (`apps/backend/app/api/health.py:117-163`). No sub-timing exists yet.
 
 ## Last 2 verdicts
 
-- iter 67: CONTINUE — the new in-app watchdog worked and named a real component (queue-wait 160x, loop-lag
-  23x above idle), but it explains only ~11 % of the single breach; 1 of 1,036 polls over 2.0 s, 0 of 330
-  idle, so J-07 stays partial.
-- iter 66: CONTINUE — worst drill of the session (70 of 1,024 over 2.0 s), 68 inside `factor_lab_all_warm`;
-  the duplicate job-history row was root-caused and fixed.
+- iter 68: CONTINUE — the third watchdog sample named 79.4 % of the one breach (the handler BODY, 0.484 s
+  mean during the heaviest phase vs 0.019 s idle); 1,609/1,609 HTTP 200 but 10 over 2.0 s (worst 4.19 s),
+  so J-07 stays partial. `test_health.py` finally ran: 17 passed.
+- iter 67: CONTINUE — the watchdog named a real component (queue-wait 160x above idle) but explained only
+  ~11 % of the single breach; 1 of 1,036 polls over 2.0 s.
 
 ## Do not redo
 
-- **Re-running a suspect compute chain in a STANDALONE script** — three null results now (iter-65
-  `factor_lab_all_warm`, iter-66 `coverage_membership_timeline_refresh`, iter-52/53's sampler). Watch the
-  live process instead: `apps/backend/app/engine/health_watchdog.py` already exists to extend.
-- **Building a second health-poll counter or a second JSONL writer** — `scripts/qa/poll_health.py` and
-  `app.engine.ledger.append_entry` are canonical; the watchdog already reuses both.
-- **Re-proving `GET /api/health` is unchanged by the watchdog flag** — fixture-backed equality test at
-  `apps/backend/tests/test_health_watchdog.py:422-443`, plus the direct-call shape test.
-- **Re-deriving iter-66's breach attribution or its timezone correction** — settled and dated in
-  `reports/perf-budgets.md` Addendum 33 (TC-5) and the iter-66 results files (iter-66/a, /c, /d closed).
-- **Touching `config.yaml` caps, `project-extensions/host-guard/`, or the launch scripts' HOST-GUARD
-  blocks** — owner-set envelope (AG-10), verified clean again this round.
+- **Re-running a suspect compute chain in a STANDALONE script** — three null results (iter-52/53, 65, 66).
+  Extend the live instrument instead: `apps/backend/app/engine/health_watchdog.py`.
+- **A second health-poll counter, JSONL writer, or env flag** — `scripts/qa/poll_health.py`,
+  `ledger.append_entry`, `TRENDORA_HEALTH_WATCHDOG` are canonical; both lanes shared the script this round.
+- **Re-proving `GET /api/health` is byte-identical with the flag on/off** — `test_health_watchdog.py`
+  (11 tests) + `test_health.py` (17 passed, `runs/goal-ops-hardening-iter-68/test_health.log`).
+- **Re-deriving iter-67's loop-lag misattribution / phase-distribution correction** — settled and dated in
+  `reports/perf-budgets.md` Addendum 34, TC-5/TC-6 (iter-67/a, /b closed).
+- **Bounding `factor_lab_all_warm` / `coverage_membership_timeline_refresh` by code change** — diagnostic
+  only until the handler-body sub-timing names a component; profile before bounding.
+- **Touching `config.yaml` caps, `project-extensions/host-guard/`, or the HOST-GUARD blocks in the launch
+  scripts** — owner-set envelope (AG-10), verified clean again this round.

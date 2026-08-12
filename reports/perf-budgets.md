@@ -10950,3 +10950,193 @@ persisted response. AG-10: both drills ran through `scripts/start-backend.sh` wi
 caps intact (`HOST_GUARD_ENABLED=1`, `CPU_LIST="0-15"`, `memory_cap_mb: 8192` — unread/unmodified by this
 iteration's diff, `git status --porcelain -- config.yaml project-extensions/ scripts/` empty before this
 pass began).
+
+## Addendum 34 (2026-08-12, ops-hardening iter-68 developer pass) — the third sample (`handler_compute_s`) names ~80% of a fresh breach (vs. ~11% named by iter-67's two samples); `test_health.py` run clean (17/17, not skipped); Addendum 33's iter-67/a and iter-67/b write-up defects corrected
+
+### Whole-run headline (stated first, per this session's own TC-6 discipline — continues the iter-66/a-closed convention)
+
+**Live-job drill: 1 of 1,039 polls over the 2.0s ceiling (0.10%). Idle-control drill: 0 of 330 polls over the
+ceiling (0.00%).** `apps/backend/tests/test_health.py` — the module for `app/api/health.py`, disclosed-skipped
+in iter-67's Known Issues — ran as an ordinary step this round, decoupled from both drills (not piggybacked,
+not skipped): **17 passed** in 3842.23s (1:04:02), zero failures (TC-4). The new third sample,
+`handler_compute_s`, matched against this round's ONE breach, accounts for **~79.4% of its 2.543s total
+elapsed time on its own** (~80.4% combined with the same-request `queue_wait_s`/`loop_lag_s`) — the first
+NAMED majority-attribution in this session's J-07 work, against iter-67's own ~11%. A ~19.6% (0.497s) residual
+remains genuinely unnamed even after all three samples — reported honestly below, not rounded toward "fully
+explained."
+
+### The instrument (IN SCOPE items 1-2, `app/engine/health_watchdog.py` + `app/api/health.py`)
+
+iter-67's own drill named `queue_wait_s` (ASGI dispatch/threadpool-queue delay) as only ~11% of its one
+breach's 2.875s magnitude, leaving ~89% — the handler BODY's own execution (the readiness/preflight
+computation + its DB reads, after `t_handler_start`) — untimed. This iteration adds exactly that third
+sample, `handler_compute_s = t_before_return − t_handler_start`, measured from the SAME `t_handler_start`
+`record_queue_wait` already uses to immediately before `app.api.health.health()` constructs/returns its
+response dict (after every readiness/preflight try/except block above it — all of which were already
+error-guarded before this iteration, so this point is reached on every request the watchdog is active for,
+success or internally-degraded-to-`unavailable` alike). SAME env flag (`TRENDORA_HEALTH_WATCHDOG=1`), SAME
+writer (`app.engine.ledger.append_entry`), SAME file (`logs/health-watchdog.jsonl`) — no second flag, no
+second writer, no second file. `handler_compute_s` is timestamped with the SAME `t_received_wall` its
+sibling `queue_wait_s` sample carries for the SAME request, so both entries share an identical timestamp —
+a downstream join keys on it directly (TC-1/TC-2) instead of a nearest-neighbor match.
+`app.engine.readiness`'s computed value and `GET /api/health`'s response body/shape stay byte-identical
+regardless of the flag (unchanged; the new sample only ever writes to the diagnostic JSONL, never to the
+response). 3 new unit tests added to `apps/backend/tests/test_health_watchdog.py` (11 total, all passing,
+122.09s): flag-unset writes no `handler_compute_s` entry (byte-identical response); flag-set writes exactly
+one `handler_compute_s` record (`>= 0`) alongside the existing `queue_wait_s` record for the SAME request,
+sharing its timestamp; two requests write two samples. The existing error-case unit test
+(`test_watchdog_records_sample_even_when_readiness_computation_raises`) was extended to also assert a
+`handler_compute_s` sample is captured when `compute_readiness` raises (already caught internally,
+degrading to `unavailable`) — the watchdog write never suppresses, delays, or alters the route's own
+degraded response (AG-8).
+
+### TC-1 — no missing sample
+
+Backend launched via `scripts/start-backend.sh` (AG-10 caps intact — live-read confirmed:
+`HOST_GUARD_ENABLED=1`, `HOST_GUARD_CPU_LIST="0-15"`, `config.yaml` `memory_cap_mb: 8192`) with
+`TRENDORA_HEALTH_WATCHDOG=1`. A real single-date `backfill` for `2018-01-05` (live-verified read-only
+immediately before dispatch: no `scanner_runs` row for that date, a real SPY close of $243.408 — a genuine
+unsnapshotted trading day, distinct from iter-67's `2018-01-03`/`2018-01-04`, both now already snapshotted)
+was dispatched via `POST /api/data/jobs` (`job_id=b2bbcd8699fd4937afed351e4b0249c9`, `"source": null` in the
+FINAL persisted record — AG-9 clean, `bars_fetched: 0`, no live network call). `scripts/qa/poll_health.py`
+polled `GET /api/health` at 1 Hz for the job's full wall time: `started_at`
+`2026-08-12T06:18:48.474212Z` → `finished_at` `2026-08-12T06:35:58.913461Z` (17m10.4s), 1 snapshot, 2,145
+forward returns, all 9 `aggregates_refreshed` categories including `factor_lab_all` and
+`drawdown_expectations`.
+
+For every one of the drill's 1,039 polls, the nearest `handler_compute_s` entry in
+`logs/health-watchdog.jsonl` (sliced to `runs/goal-ops-hardening-iter-68/evidence-drill/health-watchdog-
+slice.jsonl`) lands within 0.42s — no poll went unmatched. No missing sample.
+
+### TC-2 — the one breach, joined against all three components
+
+`elapsed_s`: p50 0.104s, p90 1.097s, p99 1.505s, **max 2.543s**. **Exactly ONE poll breached the 2.0s
+ceiling**: started `2026-08-12T06:19:05.641037Z`, `elapsed_s=2.543`, landing inside
+`coverage_membership_timeline_refresh`'s own window (`[06:19:01.880Z, 06:19:08.340Z)`) — the SAME phase
+iter-67's own ONE breach landed in, a second consecutive round (this round's `factor_lab_all_warm` window,
+`[06:20:59.994Z, 06:30:21.013Z)`, again had ZERO `>2.0s` breaches, mirroring iter-67).
+
+Joined within ±1s (the sibling `queue_wait_s`/`handler_compute_s` pair shares an EXACT timestamp with each
+other, 0.353s after the breach's own start; the nearest `loop_lag_s` probe sample sits 0.081s away):
+
+| Component | Value | Share of breach's 2.543s |
+|---|---|---|
+| `queue_wait_s` | 0.016469s | 0.6% |
+| `loop_lag_s` | 0.008958s | 0.4% |
+| **`handler_compute_s`** | **2.020307s** | **79.4%** |
+| **Combined** | **2.045734s** | **80.4%** |
+| **Residual (unnamed)** | **0.497266s** | **19.6%** |
+
+**The first majority-NAMED breach in this session's J-07 work.** `handler_compute_s` alone accounts for the
+large majority of this breach's magnitude — a genuine, positive, DIRECT measurement of time spent inside the
+handler body's own readiness/preflight computation and DB reads, not inferred from absence of a cause. This
+is the SAME sample that is also the single highest `handler_compute_s` value recorded anywhere in the
+drill's 1,038 in-window samples (whole-drill `handler_compute_s`: p50 0.052s, p90 0.936s, p99 1.378s,
+**max 2.020s** — this exact sample) — coincident with the breach, not a separate outlier.
+
+**Read plainly: still not fully explained.** 19.6% (0.497s) of the breach's own elapsed time is not
+accounted for by any of the three measured components. The most likely remaining sources — not measured by
+this iteration's instrument, named here rather than silently absorbed into "explained" — are pre-`t_received`
+overhead this session's own client-side/ASGI-layer instrumentation does not reach: TCP connection
+accept/handshake, any middleware ahead of `HealthWatchdogMiddleware` in the stack (`CORSMiddleware` is
+registered before it in `main.create_app`), and `scripts/qa/poll_health.py`'s own client-side `urllib`
+overhead before/after the wire. A null/partial result is reported as such — a fourth instrument naming that
+remainder (if ever pursued) is explicitly out of this iteration's OUT OF SCOPE ("this iteration carries
+exactly ONE risky change").
+
+### TC-3 — the idle-control drill, `handler_compute_s` side by side with the live-job drill
+
+Same host, same already-warm backend (no restart), same `TRENDORA_HEALTH_WATCHDOG=1`,
+`scripts/qa/poll_health.py --count 330` (330 polls ≈ 5.5 minutes, `06:36:32.176799Z` → `06:42:01.245297Z`),
+**NO job running**, launched immediately after the live-job drill's poller was stopped (no gap job in
+between).
+
+| Metric | Live-job drill (TC-1) | Idle-control drill (TC-3) |
+|---|---|---|
+| Polls | 1,039 | 330 |
+| HTTP 200 | 1,039 (100%) | 330 (100%) |
+| Breaches (>2.0s) | 1 (0.10%) | **0 (0.00%)** |
+| `elapsed_s` p50 / p90 / p99 / max | 0.104 / 1.097 / 1.505 / 2.543 | 0.015 / 0.016 / 0.017 / **0.082** |
+| `queue_wait_s` p50 / p90 / p99 / max | 0.0109 / 0.0522 / 0.1038 / 0.3551 | 0.0010 / 0.0011 / 0.0014 / **0.0015** |
+| `loop_lag_s` p50 / p90 / p99 / max | 0.0054 / 0.0283 / 0.1291 / 0.5497 | 0.0003 / 0.0006 / 0.0014 / **0.0021** |
+| **`handler_compute_s` p50 / p90 / p99 / max** | **0.0517 / 0.9364 / 1.3776 / 2.0203** | **0.0111 / 0.0118 / 0.0133 / 0.0773** |
+| `load_avg_1m` mean (min-max) | ~1.39 (0.79-2.11) | ~0.70 (0.35-1.19) |
+
+**`handler_compute_s` is dramatically elevated during the live job vs. idle**: p90 ~79x (0.936s vs 0.012s),
+max ~26x (2.020s vs 0.077s) — a clean, decisive separation, consistent with `queue_wait_s`
+(~68x at p99) and `loop_lag_s` (~92x at p99) from the SAME two drills. All three named components move
+together with "job running vs. idle," reinforcing iter-67's own idle-control finding rather than
+contradicting it: this host's raw `load_avg_1m` again OVERLAPS between the two drills' ranges (idle
+0.35-1.19 vs live-job 0.79-2.11) and does not by itself distinguish them — the watchdog's own three samples
+do.
+
+**Phase-level corroboration for TC-6's correction (below), now visible in `handler_compute_s` too**: within
+this drill's own live-job window, mean `handler_compute_s` across ALL of `factor_lab_all_warm`'s 533 samples
+is 0.484s vs. 0.043s across `drawdown_expectations_warm`'s 336 samples (~11x) — the SAME phase-concentration
+pattern TC-6 finds in the raw `elapsed_s` distribution, now independently confirmed in the handler-body-only
+component.
+
+### TC-5 — correcting Addendum 33's loop-lag misattribution (closes iter-67/a)
+
+Addendum 33 (TC-2 section) states: *"`loop_lag_s` in the same ±1s window stays modest (max ~0.109s, well
+under the drill's own whole-run max of 1.382s recorded later during `factor_lab_all_warm`) — loop-lag is NOT
+the elevated component for this particular breach; queue-wait is."*
+
+**Correction.** Re-deriving the 1.382s whole-run-max `loop_lag_s` sample's own raw JSONL timestamp
+(`2026-08-12T03:13:54.529811Z`, read directly from `runs/goal-ops-hardening-iter-67/evidence-drill/health-
+watchdog-slice.jsonl`) against `factor_lab_all_warm`'s own logged start (`03:16:01.520Z`, per Addendum 33's
+own phase table — ~2m7s LATER, not "later during" that phase) shows the sample does NOT belong to
+`factor_lab_all_warm` at all. `logs/backend.log`'s own line at the equivalent host-local BST instant
+(`2026-08-12 04:13:54,607` BST = `03:13:54.607Z`, 77ms after the sample) reads *"membership-timeline cache
+warmed (2966 snapshot dates)"* — the BOOT warm-up thread's own cache-warm step (`app.engine.warmup`), running
+concurrently with the live job's earlier phases, not any `_do_backfill` finalize-tail phase. The 1.382s
+sample belongs to the boot warm-up thread's cache-warm window, not `factor_lab_all_warm`.
+
+`factor_lab_all_warm`'s own actual max `loop_lag_s`, measured across its own full logged window
+(`[03:16:01.520Z, 03:25:32.500Z)`, 3,848 `loop_lag_s` samples — every probe sample whose timestamp falls
+inside that window), is **0.240048s** — nearly 6x below the misattributed 1.382s figure. Addendum 33's own
+headline conclusion (`queue_wait_s`, not `loop_lag_s`, is the elevated component coincident with iter-67's
+own breach; the breach itself lands in `coverage_membership_timeline_refresh`) is UNCHANGED by this
+correction — only the parenthetical claim about where the 1.382s sample was recorded was wrong. Addendum
+33's own text is left untouched (append-only convention, per this session's never-silently-rewrite
+discipline) — this section is the correction, dated and explained. Closes iter-67/a.
+
+### TC-6 — correcting Addendum 33's phase-specific-hold conclusion (closes iter-67/b)
+
+Addendum 33 (immediately after its "genuinely different result from iter-66's own drill" observation) states:
+*"round-to-round breach LOCATION varying this much is itself evidence against a stable, phase-specific
+code-level hold and for transient, moment-to-moment contention."*
+
+**Correction, stated in the SAME paragraph rather than as a disconnected note**: the moving `>2.0s` CROSSING
+point is real (iter-66: 68/70 breaches inside `factor_lab_all_warm`; iter-67: the ONE breach inside
+`coverage_membership_timeline_refresh`, ZERO inside `factor_lab_all_warm`; this iteration's own fresh drill,
+above: again the ONE breach inside `coverage_membership_timeline_refresh`, ZERO inside `factor_lab_all_warm`)
+— but the underlying phase-level ELEVATION, measured at the `>1.0s` sub-ceiling rather than the `>2.0s`
+crossing, did NOT move in Addendum 33's own iter-67 drill. Regrouping the FULL `>1.0s` distribution by phase
+from the SAME `runs/goal-ops-hardening-iter-67/evidence-drill/tc1-health-poll.csv` Addendum 33's own drill
+produced: of the drill's 131 polls over 1.0s, **120 (91.6%) fall inside `factor_lab_all_warm`'s own
+window** — 22.2% of that phase's own 541 polls — and the phase's OWN mean `elapsed_s` across all 541 of its
+polls (not just its over-1.0s subset) is **0.596s**, vs. **0.080s** across the 343 polls of the
+immediately-following `drawdown_expectations_warm`. So: the specific poll that crosses the `>2.0s` ceiling is
+transient / moment-to-moment (it has landed in three different phases across three different rounds now) —
+but the elevated-latency PHASE underneath it is stable, concentrated in `factor_lab_all_warm` across every
+round back to iter-61/63/65/66, and independently re-confirmed by this iteration's OWN fresh drill's
+`handler_compute_s` distribution (TC-3, above: 0.484s mean in `factor_lab_all_warm` vs. 0.043s in
+`drawdown_expectations_warm`, a THIRD component showing the same phase concentration). Both observations are
+true together, not in tension: the `>2.0s` crossing moved, but the phase-level signal did not. Addendum 33's
+own numbers/table are left untouched (append-only); this section is the correction. Closes iter-67/b.
+
+### AG-3 / AG-8 / AG-9 / AG-10 for this pass
+
+AG-3: `app.engine.readiness`'s computed value and `GET /api/health`'s response body/shape stay byte-identical
+regardless of the flag (unchanged from iter-67; re-verified by the extended unit test suite, 11/11 passing).
+AG-8: no unbounded whole-table load added — the third sample reads/writes only the SAME tiny JSONL file and
+one additional in-memory timestamp per request; no new middleware, no new route. AG-9: the live-job drill's
+own FINAL job record carries `"source": null` (`bars_fetched: 0`, offline committed seed only) — confirmed
+via the job's own persisted response (`runs/goal-ops-hardening-iter-68/evidence-drill/tc1-job-final.json`).
+AG-10: both drills ran through `scripts/start-backend.sh` with host-guard's declared caps intact
+(`HOST_GUARD_ENABLED=1`, `CPU_LIST="0-15"`, `memory_cap_mb: 8192` — unread/unmodified by this iteration's
+diff, `git status --porcelain -- config.yaml project-extensions/ scripts/` empty before and after this pass).
+Backend shutdown after both drills was clean (`kill -TERM`, `logs/backend.log` shows "Application shutdown
+complete" with no tracebacks/`CancelledError` noise — the loop-lag probe task and the new sample's own code
+path both cancel/complete cleanly at lifespan shutdown).

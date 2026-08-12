@@ -60,6 +60,10 @@ def _loop_lag_entries(log_path) -> list[dict]:
     return [e for e in read_entries(str(log_path)) if e.get("type") == health_watchdog.LOOP_LAG_TYPE]
 
 
+def _handler_compute_entries(log_path) -> list[dict]:
+    return [e for e in read_entries(str(log_path)) if e.get("type") == health_watchdog.HANDLER_COMPUTE_TYPE]
+
+
 # ======================================================================================================
 # (a) flag unset (the default) -- no log entries, response unchanged
 # ======================================================================================================
@@ -154,6 +158,66 @@ def test_loop_lag_probe_writes_at_least_n_records_over_short_interval(tmp_path, 
 
 
 # ======================================================================================================
+# (d) handler_compute_s (iter-68) -- the third sample, t_handler_start to immediately before the route
+# returns its response. Per the iter-68 IN SCOPE ask verbatim: (a) flag unset -- no handler_compute_s
+# entry, response unchanged; (b) flag set -- exactly one handler_compute_s record with
+# handler_compute_s >= 0, alongside the existing queue_wait_s record for the SAME request.
+# ======================================================================================================
+def test_watchdog_disabled_writes_no_handler_compute_entry(watchdog_engine, monkeypatch, tmp_path):
+    monkeypatch.setenv(readiness.VERDICT_HISTORY_PATH_ENV, str(tmp_path / "history.jsonl"))
+    monkeypatch.delenv(health_watchdog.ENABLED_ENV, raising=False)
+    log_path = tmp_path / "health-watchdog.jsonl"
+    monkeypatch.setenv(health_watchdog.LOG_PATH_ENV, str(log_path))
+    assert health_watchdog.enabled() is False
+
+    with TestClient(main.app) as client:  # the shared singleton -- built with the flag off at import time
+        resp = client.get("/api/health")
+
+    assert resp.status_code == 200
+    assert not log_path.exists()  # neither queue_wait_s, loop_lag_s, nor handler_compute_s is written
+
+
+def test_watchdog_enabled_records_handler_compute_alongside_queue_wait(watchdog_engine, monkeypatch, tmp_path):
+    monkeypatch.setenv(readiness.VERDICT_HISTORY_PATH_ENV, str(tmp_path / "history.jsonl"))
+    monkeypatch.setenv(health_watchdog.ENABLED_ENV, "1")
+    log_path = tmp_path / "health-watchdog.jsonl"
+    monkeypatch.setenv(health_watchdog.LOG_PATH_ENV, str(log_path))
+
+    app = main.create_app()
+    with TestClient(app) as client:
+        resp = client.get("/api/health")
+    assert resp.status_code == 200
+
+    queue_wait = _queue_wait_entries(log_path)
+    handler_compute = _handler_compute_entries(log_path)
+    assert len(queue_wait) == 1
+    assert len(handler_compute) == 1
+    assert handler_compute[0]["handler_compute_s"] >= 0
+    assert isinstance(handler_compute[0]["timestamp"], str) and handler_compute[0]["timestamp"]
+    # SAME request -> both sibling samples share the identical t_received wall-clock timestamp, so a
+    # downstream join keys on it directly rather than a nearest-neighbor match (TC-1/TC-2).
+    assert handler_compute[0]["timestamp"] == queue_wait[0]["timestamp"]
+
+
+def test_watchdog_enabled_records_one_handler_compute_sample_per_additional_request(
+    watchdog_engine, monkeypatch, tmp_path
+):
+    """Two requests -> two handler_compute_s samples (never batched, never deduped, never dropped) --
+    mirrors the existing queue_wait_s two-request test above."""
+    monkeypatch.setenv(readiness.VERDICT_HISTORY_PATH_ENV, str(tmp_path / "history.jsonl"))
+    monkeypatch.setenv(health_watchdog.ENABLED_ENV, "1")
+    log_path = tmp_path / "health-watchdog.jsonl"
+    monkeypatch.setenv(health_watchdog.LOG_PATH_ENV, str(log_path))
+
+    app = main.create_app()
+    with TestClient(app) as client:
+        client.get("/api/health")
+        client.get("/api/health")
+
+    assert len(_handler_compute_entries(log_path)) == 2
+
+
+# ======================================================================================================
 # TC-7 -- byte-identical response body/shape regardless of the flag. Direct function calls (not
 # TestClient) against the SAME session in immediate succession -- fully deterministic, no dependence on
 # a background warm-up thread's progress between two separate app/lifespan instances.
@@ -189,7 +253,11 @@ def test_watchdog_records_sample_even_when_readiness_computation_raises(watchdog
     """The watchdog's queue-wait record is written BEFORE readiness/preflight computation runs, so a
     readiness-computation exception (already caught internally, degrading to `unavailable` -- this
     endpoint's own pre-existing convention) never suppresses, delays, or alters the sample the watchdog
-    already captured, nor the route's own honest degraded response (AG-8: never a wedge)."""
+    already captured, nor the route's own honest degraded response (AG-8: never a wedge). iter-68: because
+    the exception is caught INSIDE the endpoint (never escapes `health()`), execution still reaches the
+    handler_compute_s recording point near the end of the function -- so a full (not partial) sample is
+    captured for this request too, satisfying the iter-68 error-case requirement (whatever samples were
+    captured before/around the error are never suppressed)."""
     import app.api.health as health_module
 
     monkeypatch.setenv(readiness.VERDICT_HISTORY_PATH_ENV, str(tmp_path / "history.jsonl"))
@@ -212,3 +280,6 @@ def test_watchdog_records_sample_even_when_readiness_computation_raises(watchdog
     samples = _queue_wait_entries(log_path)
     assert len(samples) == 1
     assert samples[0]["queue_wait_s"] >= 0
+    handler_compute_samples = _handler_compute_entries(log_path)
+    assert len(handler_compute_samples) == 1
+    assert handler_compute_samples[0]["handler_compute_s"] >= 0

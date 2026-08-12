@@ -1028,3 +1028,22 @@ diagnostic module — so their prior evidence has not expired by change; and the
 **Reversible:** yes — a later iteration can re-run either drill; if the warm seam is ever modified (the
 owner amendment explicitly unfroze it for bounding work), steps 3 and 4 must be re-measured in that same
 round and the carry-forward stops applying.
+
+## iter-68 — goal-evaluator
+
+**Ambiguity:** J-07 step 2 says "poll `GET /api/health` once per second; assert every poll answers HTTP 200
+within its existing budget". It does not say WHICH polls count. This round two lanes polled the same
+endpoint with the same canonical script but in different windows against different workloads: the
+developer's chartered TC-1/TC-3 drills (1,039 + 330 polls, 1 breach, max 2.543 s) and the browser-QA lane's
+own 240-poll drill during a heavier ambient 5-horizon warm (9 breaches, max 4.190 s). The spec's own
+acceptance tests name only the developer's drills.
+**We chose:** score the journey against ALL 1,609 polls taken in the iteration — 10 breaches, worst
+4.190 s — and put that union in the owner paragraph, rather than the dev drill's 1-of-1,039 headline.
+Grounds: (1) step 2's wording is about the service's behaviour, not about a designated drill; (2) both
+lanes used the identical canonical instrument and schema this round, so their rows are directly comparable
+for the first time; (3) reporting the smaller number would round toward "fixed" in exactly the direction
+this session has criticised for seventeen rounds. J-07's status is `partial` under either reading (the dev
+drill alone already contains a breach), so this choice changes the number the owner reads, not the verdict.
+**Reversible:** yes — a later evaluator or the owner can rule that only the spec's chartered drills
+constitute J-07's acceptance measurement; both counts are recorded separately in `journey-history.json`'s
+J-07 gap field and in this round's eval.md table.

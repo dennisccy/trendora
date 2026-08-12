@@ -771,3 +771,18 @@ minutes BEFORE `factor_lab_all_warm` opened, next to the boot warm-up thread's o
 re-read the sample's own timestamp before naming its phase.
 **Applies to:** any iteration reporting `scripts/qa/poll_health.py` drills, `logs/health-watchdog.jsonl`
 samples, or any phase attribution in `reports/perf-budgets.md`.
+
+## iter-68 — 2026-08-12T07:50:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** Before commissioning a new instrument, join the instruments you already have. This round's
+"~19.6% genuinely unnamed" residual on the one health-check breach was ~14 points recoverable with zero new
+code, by differencing the poller's own send timestamp in `evidence-drill/tc1-health-poll.csv` against the
+server's `t_received_wall` in `health-watchdog-slice.jsonl` (0.353 s for the breach; p99 183 ms live vs
+1.0 ms idle across the drill). Addendum 34 even printed that 0.353 s offset without converting it into a
+share. Corollary from the same round: the instrument was armed only on the developer's own backend, so the
+9 worst breaches of the round — caught by the browser lane against a backend with
+`TRENDORA_HEALTH_WATCHDOG` unset — carry no attribution at all.
+**Applies to:** any iteration adding a timing/diagnostic instrument, and any iteration whose measurement is
+taken by one lane while a second lane independently measures the same thing (arm the flag session-wide, and
+derive the cross-lane deltas before asking for a new sample type).

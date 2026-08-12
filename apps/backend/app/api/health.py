@@ -35,6 +35,12 @@ unset/`0`). When armed it times how long THIS request waited between arriving at
 handler body starting to execute, appending the sample to `logs/health-watchdog.jsonl` — it never
 changes what is computed or what this endpoint returns (the `request` param defaults to `None` so the
 pre-existing direct-call test shape, `health(session)`, is unaffected).
+
+ops-hardening iter-68 (J-07) additively extends the SAME watchdog with a third sample, `handler_compute_s`
+— from the SAME `t_handler_start` to immediately before this function returns (after the readiness/
+preflight computation and DB reads above, before serialization). iter-67's own drill named `queue_wait_s`
+as only ~11% of its one breach's magnitude; this sample names the previously-untimed remainder. SAME flag,
+SAME writer, SAME log file — no second instrument.
 """
 from __future__ import annotations
 
@@ -86,17 +92,21 @@ def _distinct_symbol_count(session: Session) -> int:
 
 @router.get("/health")
 def health(session: Session = Depends(get_session), request: Request = None) -> dict:
-    # ops-hardening iter-67 (J-07): the watchdog's own t_handler_start, taken BEFORE any of the
+    # ops-hardening iter-67/68 (J-07): the watchdog's own t_handler_start, taken BEFORE any of the
     # readiness/preflight computation below runs, so a queue-wait sample is captured for THIS request
     # regardless of what happens later in the handler (a readiness-computation exception is already
     # caught below and degrades honestly -- it never reaches here). Only does anything when the flag is
     # armed AND `HealthWatchdogMiddleware` actually ran for this request (real ASGI traffic); a
     # direct-call test invoking `health(session)` with no `request` is untouched. A watchdog write
     # failure must never suppress, delay, or alter this route's own response (AG-8: never a wedge) --
-    # mirrors this file's own existing degrade-on-error convention.
-    if health_watchdog.enabled() and request is not None:
+    # mirrors this file's own existing degrade-on-error convention. `t_handler_start`/`t_received_wall`
+    # are kept (not scoped to this block) so the iter-68 `handler_compute_s` sample near the bottom of
+    # this function can time against the SAME start instant.
+    watchdog_active = health_watchdog.enabled() and request is not None
+    t_handler_start = time.monotonic() if watchdog_active else None
+    t_received_wall = None
+    if watchdog_active:
         try:
-            t_handler_start = time.monotonic()
             t_received = getattr(request.state, "health_watchdog_t_received_monotonic", None)
             t_received_wall = getattr(request.state, "health_watchdog_t_received_wall", None)
             if t_received is not None and t_received_wall is not None:
@@ -151,6 +161,17 @@ def health(session: Session = Depends(get_session), request: Request = None) -> 
             "as_of": None,
             "reference": None,
         }
+
+    # ops-hardening iter-68 (J-07): the third sample, handler_compute_s -- t_handler_start (above) to
+    # HERE, immediately before the response is constructed/returned, after every readiness/preflight
+    # computation and DB read above (all already error-guarded, so this line is always reached whenever
+    # the watchdog is active -- there is no partial/unreached case to handle). SAME degrade-on-error
+    # convention: a watchdog write failure must never suppress, delay, or alter this route's own response.
+    if watchdog_active:
+        try:
+            health_watchdog.record_handler_compute(t_handler_start, time.monotonic(), t_received_wall)
+        except Exception:  # pragma: no cover - a watchdog write failure must never blank/break /health
+            pass
 
     return {
         "status": "ok" if db_ok else "degraded",

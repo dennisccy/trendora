@@ -1,10 +1,10 @@
-"""Health-request-wait watchdog (ops-hardening iter-67, J-07) -- DIAGNOSTIC ONLY, off by default.
+"""Health-request-wait watchdog (ops-hardening iter-67/68, J-07) -- DIAGNOSTIC ONLY, off by default.
 
 iter-66's own next-step order was explicit: the standalone-script profiling method (re-running the
 suspect compute chain in isolation) has now produced TWO consecutive null results on two different
 phases (iter-65 on `factor_lab_all_warm`, iter-66 on `coverage_membership_timeline_refresh`) -- a third
 repeat has low expected value. The genuinely different method it ordered instead: watch the LIVE serving
-process. This module instruments two things about that live process, from INSIDE it:
+process. This module instruments three things about that live process, from INSIDE it:
 
   1. **queue_wait_s** -- how long a `GET /api/health` request waits between arriving at the ASGI layer
      (`t_received`, timestamped by `HealthWatchdogMiddleware` at the very top of the middleware/dispatch
@@ -13,15 +13,20 @@ process. This module instruments two things about that live process, from INSIDE
      inside `app.api.health.health()`, before the readiness computation runs).
   2. **loop_lag_s** -- how far the SAME event loop the health route is served from overruns a fixed 0.1s
      `asyncio.sleep` wake-up (`run_loop_lag_probe`), sampled continuously while the flag is set.
+  3. **handler_compute_s** (iter-68) -- how long the handler BODY itself takes, from the SAME
+     `t_handler_start` (above) to immediately before the route returns its response -- after the
+     readiness/preflight computation and any DB reads, before serialization. iter-67's own drill found
+     `queue_wait_s` named only ~11% of its one 2.875s breach's magnitude; this sample names the component
+     covering the rest -- the handler body's own execution, previously untimed.
 
-Both are DIAGNOSTIC ONLY: gated behind `TRENDORA_HEALTH_WATCHDOG=1` (unset/`0` -- the default -- adds NO
-middleware to the ASGI stack, starts NO probe task, records NOTHING, costs NOTHING on the request path).
-`app.engine.readiness`'s computed value and `GET /api/health`'s response body/shape are byte-identical
-either way (TC-7) -- this module never touches what is computed or returned, only when. Samples are
-appended as JSON lines to `logs/health-watchdog.jsonl` via the EXISTING append-only JSONL writer
-(`app.engine.ledger.append_entry` -- no second implementation, mirrors
+All three are DIAGNOSTIC ONLY: gated behind `TRENDORA_HEALTH_WATCHDOG=1` (unset/`0` -- the default --
+adds NO middleware to the ASGI stack, starts NO probe task, records NOTHING, costs NOTHING on the request
+path). `app.engine.readiness`'s computed value and `GET /api/health`'s response body/shape are
+byte-identical either way (TC-7) -- this module never touches what is computed or returned, only when.
+Samples are appended as JSON lines to `logs/health-watchdog.jsonl` via the EXISTING append-only JSONL
+writer (`app.engine.ledger.append_entry` -- no second implementation, mirrors
 `app.engine.readiness.record_verdict_transition`'s own reuse of the same helper), one shared file with a
-`type` discriminator (`"queue_wait"` / `"loop_lag"`) rather than two files.
+`type` discriminator (`"queue_wait"` / `"loop_lag"` / `"handler_compute"`) rather than separate files.
 """
 from __future__ import annotations
 
@@ -47,6 +52,7 @@ LOG_PATH_ENV = "TRENDORA_HEALTH_WATCHDOG_LOG_PATH"
 
 QUEUE_WAIT_TYPE = "queue_wait"
 LOOP_LAG_TYPE = "loop_lag"
+HANDLER_COMPUTE_TYPE = "handler_compute"
 LOOP_LAG_INTERVAL_S = 0.1
 
 _HEALTH_PATH = "/api/health"
@@ -79,6 +85,28 @@ def record_queue_wait(
         "type": QUEUE_WAIT_TYPE,
         "timestamp": t_received_wall,
         "queue_wait_s": round(queue_wait_s, 6),
+    }
+    append_entry(resolve_log_path(), entry)
+    return entry
+
+
+def record_handler_compute(
+    t_handler_start_monotonic: float, t_before_return_monotonic: float, t_received_wall: Optional[str] = None
+) -> dict:
+    """Append ONE handler-compute sample (iter-68): `handler_compute_s = t_before_return -
+    t_handler_start`, measured on the monotonic clock, from `t_handler_start` (the SAME timestamp
+    `record_queue_wait` above already uses, taken as the first statement inside
+    `app.api.health.health()`) to immediately before the route returns its response -- after the
+    readiness/preflight computation and any DB reads, before serialization. Timestamped with the SAME
+    request's own UTC arrival instant (`t_received_wall`) as its sibling `queue_wait_s` sample for the
+    SAME request, so a downstream join keys both on the identical instant (TC-1/TC-2) rather than a
+    nearest-neighbor match. Clamped to >= 0 as a defensive floor. Returns the entry written (test
+    convenience)."""
+    handler_compute_s = max(0.0, t_before_return_monotonic - t_handler_start_monotonic)
+    entry = {
+        "type": HANDLER_COMPUTE_TYPE,
+        "timestamp": t_received_wall,
+        "handler_compute_s": round(handler_compute_s, 6),
     }
     append_entry(resolve_log_path(), entry)
     return entry
