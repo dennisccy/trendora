@@ -839,3 +839,38 @@ file the row actually depends on.
 **Applies to:** any iteration whose journeys are verified by a lane that depends on a long-lived service —
 check the replay/browser results file directly, and treat a clean uvicorn shutdown signature (no traceback)
 as infrastructure, never as a product crash.
+
+
+## iter-71 — 2026-08-12T18:35:00Z
+
+**Verdict:** ESCALATE
+**Lesson:** When a round's availability numbers look catastrophic, find out WHICH launcher
+produced them before believing the size of the failure. This round's 165-second health-check
+outage was measured against `scripts/dev.sh`, whose `exec` line is
+`uvicorn main:app --reload --host 0.0.0.0 --port $BACKEND_PORT` — no `--limit-concurrency`,
+which `scripts/start-backend.sh:107` applies from `config.yaml:1362` (64) and which
+`config.yaml:1355-1362` documents as the exact defence against "N connection-holding resolves
+that exhaust the pool". The observed failure WAS pool exhaustion
+(`QueuePool limit of size 10 overflow 20 reached`). The tell that a round ran on `dev.sh` is
+free and instant: `logs/backend.log` stops updating, because `dev.sh` writes no persistent
+logfile at all — the real log lands in the harness temp dir (`$TMPDIR/dev-start-*.log`), which
+is also the ONLY place the tracebacks, the 500s and the per-phase finalize timings exist.
+**Applies to:** any iteration scoring J-04, J-06 or J-07 (all three name prod-mode measurement
+conditions, two of them saying "never dev.sh" verbatim); any iteration that cannot find
+backend evidence in `logs/backend.log`; any launcher-parity work on `scripts/dev.sh`.
+
+## iter-71 (second) — 2026-08-12T18:35:00Z
+
+**Verdict:** ESCALATE
+**Lesson:** Bounding a cached value's staleness by falling back to a synchronous recompute can
+convert a slow-but-safe path into a self-amplifying stall. `readiness.py:165-194` serves the
+cache while fresh but, past `max_stale_intervals × refresh_interval_seconds` (1.5 s), routes
+every request into `_tick_and_cache`, which takes a global `_TICK_LOCK` and recomputes
+**without any post-lock recheck** — so N queued requests each pay a full compute serially, and
+the slower things get, the staler the cache gets, the more requests take that path. iter-70
+removed exactly this compute from the request path and measured 0 of 1,030 breaches; iter-71
+put a conditional version of it back and the next drill measured 58 of 900 non-answers. If you
+bound staleness, prefer serving the aged value WITH its age disclosed over blocking on a
+recompute, and always double-check the cache after acquiring the lock.
+**Applies to:** any change adding a cache-staleness bound or a synchronous fallback on a
+request path; any future work on `app.engine.readiness` / `_TICK_LOCK` / `GET /api/health`.

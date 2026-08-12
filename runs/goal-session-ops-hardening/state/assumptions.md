@@ -1201,3 +1201,56 @@ is separable and deferred.
 (at full depth, per goal.md's own UI-change rule) without touching the field's producer or
 endpoint; the config knob's default (3) can be re-tuned with one round's evidence if the
 synchronous-fallback threshold proves too loose or too tight.
+
+
+## iter-71 — goal-evaluator (1 of 2)
+
+**Ambiguity:** J-07 step 2 says "assert every poll answers HTTP 200 within its existing budget — no
+frozen or unresponsive window", and J-07 step 1 says the warm runs "in one long-lived backend
+process". Neither names a launcher. But J-04 step 1 and J-06 step 1 BOTH say prod mode,
+"never `dev.sh`", and J-07's budget resolves to a `reports/perf-budgets.md` entry measured in prod.
+This round's drill ran against `scripts/dev.sh`, which omits `--limit-concurrency` (prod: 64) — the
+guard `config.yaml:1355-1362` documents as the defence against pool-exhausting concurrent resolves —
+and the observed failure was precisely `QueuePool limit of size 10 overflow 20 reached`. Nothing
+states whether a severe failure measured under non-conforming launch conditions scores the journey
+`failing` or leaves it `partial` pending a conforming re-measurement.
+**We chose:** `failing`, with the confound named first in the journey's gap field, first in the
+eval summary, and first in the next-step order. Grounds: (1) 165 consecutive seconds with zero
+answers is the journey's own named failure mode ("never take the service down"), not a budget
+overrun; (2) a real non-200 was served (one `GET /api/data` 500) — iter-69's evaluator used "no
+non-200 anywhere" as an explicit reason to hold that round at `partial`, and that reason no longer
+exists; (3) prod's `--limit-concurrency` would have shed the overload as 503s, which step 2's "every
+poll answers HTTP 200" also forbids — so the launcher changes the SHAPE of the breach, not whether
+there is one.
+**Cost recorded honestly:** a reader who holds that only a prod-launcher drill can score J-07 would
+leave it `partial` this round. Under the decision tree that changes no verdict (C.1 needs
+`passing` → `failing` and J-07 was already `partial`; C.4's first clause needs two consecutive
+failing rounds), but it would change the ledger's story from "first failing round" to "same status,
+much worse evidence". I put both readings in the eval and made the prod re-measurement item (1) of
+the next round so the question resolves with data rather than with a preference.
+**Reversible:** yes — the next full round's prod-launcher drill either reproduces the outage (J-07
+stays `failing` on conforming evidence) or does not (a later evaluator restores `partial`/`passing`
+and records the dev-launcher artifact); both the raw CSV and the launcher proof are preserved in
+`runs/goal-ops-hardening-iter-71/browser-qa-drill/` and this round's gap field.
+
+## iter-71 — goal-evaluator (2 of 2)
+
+**Ambiguity:** J-05 step 4 is *"While a heavy ingest job runs, poll `GET /api/health`; assert it
+stays responsive throughout"* — textually the same assertion as J-07 step 2, exercised this round by
+the same drill on the same job. The browser-QA lane scored J-05 **PASS** and attributed the
+responsiveness failure entirely to J-07 ("J-05's own defining acceptance … is fully and cleanly met
+independent of that finding"). Nothing states whether an acceptance step shared between two journeys
+may be scored against only one of them.
+**We chose:** score it against both — J-05 drops to `partial` (steps 1-2 passed outright and were
+re-verified by me in the database; step 4 failed on measured evidence; step 3 carries on durability),
+while J-07 goes `failing`. Grounds: (1) the step is written into J-05's own Steps list, so its result
+belongs to J-05 regardless of which journey the failure is "about"; (2) accepting the lane's
+re-attribution would let a measured failure disappear from the one journey whose acceptance names it,
+which is the rounding-toward-fixed pattern this session has criticised for eighteen rounds;
+(3) `partial` is literally "only some assertion steps passed", which is the true state.
+**Cost recorded honestly:** this denies J-05 a "newly passing" that its ingest evidence — a real
+20-minute backfill, all 9 finalize categories, `scanner_runs` id 2974 verified fresh in the DB — would
+otherwise have earned outright, and it is the strongest J-05 evidence in many rounds. I said that in
+the journey note rather than letting the status carry only the bad half.
+**Reversible:** yes — if the prod-launcher re-measurement shows the app stays responsive, J-05 step 4
+passes and the journey returns to `passing` in that same round, with no other step needing re-work.

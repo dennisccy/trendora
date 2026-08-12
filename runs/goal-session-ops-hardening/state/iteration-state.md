@@ -1,27 +1,28 @@
 # Iteration State — ops-hardening
 
-**After iteration:** 70 · **Date:** 2026-08-12 · **Verdict:** CONTINUE
+**After iteration:** 71 · **Date:** 2026-08-12 · **Verdict:** ESCALATE
 
 ## Journeys
 
-8 partial, all pending-infra (J-01 J-03 J-04 J-05 J-06 J-07 J-08 J-09) — 8 total · 0 failing · 0 regressed. NOTHING FAILED: the QA backend died between lanes, so browser QA was SKIPPED 0/8 and replay BLOCKED 0/7 ("never checked", not FAIL). Seven were passing at iter-69; J-07 was already partial.
+6 passing (J-01 J-03 J-04 J-06 J-08 J-09) · 1 partial (J-05) · 1 failing (J-07) — 8 total. All 8 checked live this round; `pending_infra` cleared on every one.
 
 ## Active blockers
 
-- **Re-verification owed for all 8 journeys** (dev) — the engine auto-schedules the make-up ride from `pending_infra`; the lane must confirm `GET /api/health` on :8255 answers 200 BEFORE checking starts. Backend is live now (PID 2027165). **Two-strike rule: if the lane is blocked a second consecutive round, that is human-owned → STALLED.**
-- **J-07 last gaps** (dev + human) — browser half of TC-3 never ran; the poller started 32.1s late so `coverage_membership_timeline_refresh` is unmeasured, not proven clean; walkthrough clause unmet. Human: the 2-second ceiling policy (22nd round), `scripts/automation/browser-qa-phase.sh` sign-off, cost sanction (10th over-budget round, 18,042s vs 3,600s).
-- **New silent failure mode** (dev) — `apps/backend/app/engine/readiness.py:567-575` serves the cache with no age check; a dead tick thread would answer 200 with a frozen "ready" forever (iter-70/d).
+- **J-07 + J-05 step 4 — the app stopped answering `/api/health` 58 of 900 times during a heavy job (longest gap 165 s) and served one 500.** Owner: dev. Cause found in the round's real log: `QueuePool limit of size 10 overflow 20 reached` (`config.yaml:119-122` pool 30 vs `server.limit_concurrency` 64).
+- **The measurement is not conforming.** It ran on `scripts/dev.sh`, which omits `--limit-concurrency` (`scripts/dev.sh:85-88` vs `scripts/start-backend.sh:107`). J-04/J-06 say "never dev.sh". Owner: dev — re-measure on `scripts/start-backend.sh` FIRST.
+- **Suspect in this round's own change:** `readiness.py` `_tick_and_cache` recomputes with no post-lock recheck, so past 1.5 s staleness every request computes serially behind `_TICK_LOCK`. Owner: dev.
+- **Owner-owned, 23rd round:** (a) keep the 2 s health promise for long jobs or apply it to short jobs only; (b) may we bound how many heavy computes run at once (card B-1107 — it is what bit); (c) sign-off on `scripts/automation/browser-qa-phase.sh`; (d) cost sanction (11th over-budget round, 2.9x).
 
 ## Last 2 verdicts
 
-- iter 70: CONTINUE — the fix landed and was verified from raw artifacts (1,030 polls, 0 breaches, 0 non-answers, max 1.226s; `readiness_s` p90 0.5631s → 0.000003s), but zero journey evidence was produced this round.
-- iter 69: ESCALATE — a lean round surfaced a design change to a canonical producer (readiness/preflight off the request path), landing alongside the session's first non-answers.
+- iter 71: ESCALATE — six journeys newly passing, but the first measured multi-minute outage of the session, with a root cause spanning the DB pool, the ingest warm, J-09's dispatch and the launcher.
+- iter 70: CONTINUE — the readiness cache fixed the breaches (0 of 1,030), but the QA backend died mid-round so nothing was journey-checked.
 
 ## Do not redo
 
-- **Moving readiness/preflight off the request path is DONE and PROVEN** — `app.engine.readiness` background-refresh cache, `health.py` reads `get_readiness_and_preflight`; TC-7 confirmed (`readiness_s`/`preflight_s` p90 ≈ 1e-6s across 1,065 records). Do not re-instrument these two components.
-- **Bounding `factor_lab_all_warm` / `coverage_membership_timeline_refresh` by code change is NOT NEEDED** — 565 polls inside `factor_lab_all_warm` with 0 breaches (was 74/400). Released-but-unused alternative; revisit only if a re-measurement shows breaches there again.
-- **iter-69/a /b /c /d are CLOSED** (phase grouping shipped; 83-record count corrected; 60d label corrected; the non-answers gone). Do not re-fix them. `reports/perf-budgets.md` Addendum 36 is append-only and audit-corrected — do not edit prior addenda.
-- **Steps 3 (VmPeak) and 4 (memory-pressure abort) of J-07 carry on evidence durability** — warm-path code (`compute_forward_aggregates`, `research.py`) byte-identical. Re-measure only if that seam changes.
-- **The three DB reads in `GET /api/health` stay on the request path** — deliberate, out of scope; `db_reads_s` is now the dominant server-side component but max 0.480s against a 2.0s ceiling.
-- **Do not touch `config.yaml` caps, `project-extensions/host-guard/`, or the HOST-GUARD blocks** — AG-10 envelope is owner-set and verified intact this round.
+- **Readiness/preflight background-refresh cache + staleness bound: DONE.** `readiness.py:127,165-194`, `config.yaml:1348-1349` (`refresh_interval_seconds` 0.5, `max_stale_intervals` 3), `health.py:174,208` (`cached = None`, `stale_for_s`). Reviewer PASS, coherence PASS, iter-70/d closed. Do not re-instrument `readiness_s`/`preflight_s` — proven near-zero.
+- **Rendering `stale_for_s` in the UI: deliberately deferred**, not forgotten — it would be this cycle's first user-visible UI change (goal.md Loop Mechanics ties that to full depth). Next round IS full, so it may ship if scoped.
+- **J-07 steps 3 (VmPeak) and 4 (memory-pressure abort): carry forward on evidence durability** — warm-path code byte-unchanged; do not re-run those drills.
+- **AG-10 envelope (`config.yaml` caps, `project-extensions/host-guard/`, HOST-GUARD script blocks): untouched, owner-set.** Verified clean this round. Do not edit.
+- **`scripts/automation/*` stays owner-gated** — the `browser-qa-phase.sh` ordering bug is still awaiting sign-off; do not edit it unprompted.
+- **The Regime Lab (iter-33/g) is deferred** — 37th round; not scope.

@@ -1,0 +1,23 @@
+{
+  "phase": "goal-ops-hardening-iter-71",
+  "status": "in_progress",
+  "current_step": "dev_complete",
+  "updated_at": "2026-08-12T17:05:46Z",
+  "cli": "claude",
+  "blockers": [],
+  "changed_files": [
+    "apps/backend/app/engine/readiness.py",
+    "apps/backend/app/api/health.py",
+    "apps/backend/app/config.py",
+    "config.yaml",
+    "apps/backend/tests/test_readiness.py",
+    "apps/backend/tests/test_health.py",
+    "apps/backend/tests/test_data_manager.py",
+    "docs/handoffs/goal-ops-hardening-iter-71-dev.md"
+  ],
+  "tests_run": true,
+  "tests_passed": true,
+  "browser_checks_run": false,
+  "known_gaps": "All 8 journeys re-verification (J-01/J-03/J-04/J-05/J-06/J-07/J-08/J-09) and the J-07 TC-3 health-poll drill's opening-window fix are QA-lane work, not developer-lane -- neither is in this iteration's IN SCOPE Backend list (3 items only). stale_for_s is intentionally NOT rendered in the UI this round (Out of Scope, deferred to a future full-depth round per goal.md Loop Mechanics).",
+  "next_action": "review"
+}

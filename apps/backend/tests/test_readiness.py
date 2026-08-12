@@ -714,6 +714,32 @@ def test_readiness_cfg_rejects_nonpositive_refresh_interval():
 
 
 # ==================================================================================================
+# ops-hardening iter-71 (J-07 closure) -- the readiness-cache staleness bound's config knob.
+# ==================================================================================================
+def test_readiness_cfg_max_stale_intervals_defaults_to_three():
+    from app.config import ReadinessCfg
+
+    cfg = ReadinessCfg(
+        freshness_max_age_days=5,
+        severity={"servability": "no-go", "freshness": "degraded", "integrity": "no-go", "drift": "degraded"},
+        verdict_history_path="x.jsonl",
+    )
+    assert cfg.max_stale_intervals == 3
+
+
+def test_readiness_cfg_rejects_nonpositive_max_stale_intervals():
+    from app.config import ReadinessCfg
+
+    with pytest.raises(ValueError, match="max_stale_intervals must be > 0"):
+        ReadinessCfg(
+            freshness_max_age_days=5,
+            severity={"servability": "no-go", "freshness": "degraded", "integrity": "no-go", "drift": "degraded"},
+            verdict_history_path="x.jsonl",
+            max_stale_intervals=0,
+        )
+
+
+# ==================================================================================================
 # ops-hardening iter-70 (J-07) -- bounded-interval background-refresh cache: cold-start fallback (TC-1),
 # steady-state cache-read vs. recompute (TC-2), concurrency/atomic-swap, degrade-on-error (TC-6), the
 # verdict-transition write firing exactly once under concurrent ticks (TC-5), the immediate-refresh
@@ -812,7 +838,11 @@ def test_readiness_cache_steady_state_reads_do_not_recompute(cache_engine, confi
     readiness.stop_readiness_refresh()  # before the NEXT (interval-away) tick could fire and get counted
 
     assert calls == {"readiness": 0, "preflight": 0}
-    assert all(r == results[0] for r in results)
+    # ops-hardening iter-71: `stale_for_s` is a REAL elapsed-time measurement (re-derived every call
+    # against `computed_at`), so it legitimately differs call-to-call even when served from the SAME
+    # cache entry -- compare the entry's actual content (readiness/preflight), not the whole dict.
+    assert all(r["readiness"] == results[0]["readiness"] for r in results)
+    assert all(r["preflight"] == results[0]["preflight"] for r in results)
 
 
 def test_readiness_cache_degrades_to_last_known_good_on_tick_failure(cache_engine, config, monkeypatch, tmp_path):
@@ -836,7 +866,12 @@ def test_readiness_cache_degrades_to_last_known_good_on_tick_failure(cache_engin
 
     with Session(cache_engine) as session:
         served = readiness.get_readiness_and_preflight(session, engine=cache_engine, config=config)
-    assert served == good  # a reader still gets the last-known-good value -- HTTP 200 shape intact
+    # a reader still gets the last-known-good value -- HTTP 200 shape intact. `stale_for_s` (ops-hardening
+    # iter-71) is compared separately: it's an ADDITIVE, real elapsed-time reading, not part of `good`'s
+    # own identity (`_tick_and_cache`'s raw return has no `stale_for_s` key at all).
+    assert served["readiness"] == good["readiness"]
+    assert served["preflight"] == good["preflight"]
+    assert served["stale_for_s"] >= 0.0
 
     monkeypatch.setattr(readiness, "compute_readiness", real_compute_readiness)  # the failure clears
     with Session(cache_engine) as session:
@@ -960,6 +995,104 @@ def test_start_readiness_refresh_is_single_flight(cache_engine, config):
     assert readiness._REFRESH_THREAD is first_thread
     readiness.stop_readiness_refresh()
     assert readiness._REFRESH_THREAD.is_alive() is False
+
+
+# ==================================================================================================
+# ops-hardening iter-71 (J-07 closure) -- the readiness-cache staleness bound: a wedged/dead
+# background-refresh tick thread must never let `get_readiness_and_preflight` go on serving an
+# ever-more-frozen cache entry forever. TC-1 (synchronous fallback past the bound) and TC-2 (a fresh
+# entry is still served as-is, with a real `stale_for_s` reading) both live here.
+# ==================================================================================================
+def test_readiness_cache_serves_fresh_entry_with_stale_for_s_below_threshold(cache_engine, config, monkeypatch, tmp_path):
+    """TC-2: a cache entry younger than `max_stale_intervals x refresh_interval_seconds` is served AS-IS
+    -- `stale_for_s` is a real, non-negative measurement strictly below that threshold, and NO synchronous
+    compute fires (call-count instrumentation, not just output-value equality)."""
+    monkeypatch.setenv(readiness.VERDICT_HISTORY_PATH_ENV, str(tmp_path / "history.jsonl"))
+    with Session(cache_engine) as session:
+        readiness._tick_and_cache(session, config, engine=cache_engine)
+
+    calls = {"n": 0}
+    real_compute_readiness = readiness.compute_readiness
+
+    def _counting(*a, **kw):
+        calls["n"] += 1
+        return real_compute_readiness(*a, **kw)
+
+    monkeypatch.setattr(readiness, "compute_readiness", _counting)
+    with Session(cache_engine) as session:
+        result = readiness.get_readiness_and_preflight(session, engine=cache_engine, config=config)
+
+    threshold = config.readiness.max_stale_intervals * config.readiness.refresh_interval_seconds
+    assert calls["n"] == 0  # served straight from the cache -- no fallback compute
+    assert 0.0 <= result["stale_for_s"] < threshold
+
+
+def test_readiness_cache_falls_back_to_synchronous_compute_past_the_staleness_bound(
+    cache_engine, config, monkeypatch, tmp_path
+):
+    """TC-1: given the readiness background-refresh tick thread effectively stopped (a test hook backdates
+    the cache entry's `computed_at`, simulating a wedged/dead tick thread with no live thread required),
+    when the entry's age exceeds `max_stale_intervals x refresh_interval_seconds` and a client calls
+    `GET /api/health`'s read path, then the response is produced by a SYNCHRONOUS `compute_readiness` call
+    (proven by call-count instrumentation, not the stale cache) and `stale_for_s` equals 0 -- never served
+    indefinitely stale."""
+    monkeypatch.setenv(readiness.VERDICT_HISTORY_PATH_ENV, str(tmp_path / "history.jsonl"))
+    with Session(cache_engine) as session:
+        readiness._tick_and_cache(session, config, engine=cache_engine)
+    assert readiness._READINESS_CACHE is not None
+
+    threshold = config.readiness.max_stale_intervals * config.readiness.refresh_interval_seconds
+    stale = dict(readiness._READINESS_CACHE)
+    stale["computed_at"] -= (threshold + 10.0)  # well past the bound
+    readiness._READINESS_CACHE = stale
+
+    # Counts `compute_preflight`, not `compute_readiness` -- `compute_preflight` itself calls
+    # `compute_readiness` a second time internally (servability reuses it verbatim), so counting
+    # `compute_readiness` directly would over-count by 2x per tick. `compute_preflight` is invoked
+    # exactly once per tick, making it the clean "did exactly one synchronous tick fire" signal.
+    calls = {"n": 0}
+    real_compute_preflight = readiness.compute_preflight
+
+    def _counting(*a, **kw):
+        calls["n"] += 1
+        return real_compute_preflight(*a, **kw)
+
+    monkeypatch.setattr(readiness, "compute_preflight", _counting)
+    with Session(cache_engine) as session:
+        result = readiness.get_readiness_and_preflight(session, engine=cache_engine, config=config)
+
+    assert calls["n"] == 1  # exactly one synchronous fallback tick fired -- the stale entry was never served
+    assert result["stale_for_s"] == 0.0
+    # the fallback also re-published a FRESH cache entry (mirrors the cold-start path) -- a later reader
+    # within the bound serves this fresh entry, not the stale one that triggered the fallback.
+    assert readiness._READINESS_CACHE["computed_at"] > stale["computed_at"]
+
+
+def test_readiness_cache_staleness_bound_never_raises_when_the_fallback_tick_also_fails(
+    cache_engine, config, monkeypatch, tmp_path
+):
+    """A stale entry past the bound whose fallback compute ALSO fails degrades to the SAME honest
+    unavailable/NO-GO shape the cold-start path already produces -- never raises, never serves the
+    stale entry as a fallback of last resort (the whole point of the bound is to never do that)."""
+    monkeypatch.setenv(readiness.VERDICT_HISTORY_PATH_ENV, str(tmp_path / "history.jsonl"))
+    with Session(cache_engine) as session:
+        readiness._tick_and_cache(session, config, engine=cache_engine)
+
+    threshold = config.readiness.max_stale_intervals * config.readiness.refresh_interval_seconds
+    stale = dict(readiness._READINESS_CACHE)
+    stale["computed_at"] -= (threshold + 10.0)
+    readiness._READINESS_CACHE = stale
+
+    def _boom(session, engine=None, config=None):
+        raise RuntimeError("simulated fallback compute failure")
+
+    monkeypatch.setattr(readiness, "compute_readiness", _boom)
+    with Session(cache_engine) as session:
+        result = readiness.get_readiness_and_preflight(session, engine=cache_engine, config=config)
+
+    assert result["readiness"]["state"] == "unavailable"
+    assert result["preflight"]["verdict"] == "NO-GO"
+    assert result["stale_for_s"] == 0.0
 
 
 # ==================================================================================================

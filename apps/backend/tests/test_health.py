@@ -1,8 +1,10 @@
 """GET /api/health via FastAPI TestClient against the loaded temp DB."""
 from __future__ import annotations
 
-from datetime import date
+import time
+from datetime import date, datetime
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import event, func, select as sa_select
 from sqlmodel import Session, select
@@ -213,6 +215,49 @@ def test_health_background_compute_degrades_honestly_when_readiness_fails(loaded
     assert body["background_compute"] == {"active": [], "recent_outcomes": []}
 
 
+@pytest.fixture
+def tiny_engine(tmp_path):
+    """A tiny, fast, dedicated DB (one bar + one run) for tests that call `health(session)` DIRECTLY --
+    not through `TestClient(main.app)`'s lifespan, so no process-engine registration is needed. Keeps the
+    readiness-cache-focused tests below independent of the committed-seed `loaded_engine` fixture (~1h to
+    build) — they only exercise the cache read/fallback path, not real seed data."""
+    engine = make_engine(f"sqlite:///{tmp_path / 'tiny_health.db'}")
+    create_db_and_tables(engine)
+    d = date(2024, 3, 4)
+    with Session(engine) as session:
+        session.add(DailyPrice(symbol="SPY", date=d, open=1.0, high=1.0, low=1.0, close=1.0, volume=1.0))
+        session.add(ScannerRun(
+            asof_date=d, created_at=datetime(2024, 3, 4), provider="seed", benchmark="SPY",
+            regime_score=50.0, regime_label="Choppy", regime_components_json="[]",
+            new_high_low_json="{}", candidate_counts_json="{}",
+        ))
+        session.commit()
+    return engine
+
+
+def test_health_preflight_fallback_assigns_cached_none_explicitly_no_name_error(tiny_engine, monkeypatch):
+    """ops-hardening iter-71 (TC-3, reviewer/audit MINOR from iter-70): when the readiness-cache read
+    itself fails, `health.py`'s except block assigns `cached = None` explicitly (not implicitly-unbound)
+    before the preflight-fallback branch reads `cached` next. This exact branch never raises `NameError`
+    (or anything else), and the response's `preflight` field equals the documented NO-GO fallback shape."""
+    import app.api.health as health_module
+
+    def _boom(session, engine=None, config=None):
+        raise RuntimeError("simulated readiness-cache read failure")
+
+    monkeypatch.setattr(health_module, "get_readiness_and_preflight", _boom)
+    with Session(tiny_engine) as session:
+        body = health(session)  # must not raise NameError -- exercises the preflight-fallback branch
+    assert body["preflight"] == {
+        "verdict": "NO-GO",
+        "reasons": ["The preflight check itself failed to run."],
+        "components": {},
+        "as_of": None,
+        "reference": None,
+    }
+    assert body["stale_for_s"] == 0.0
+
+
 # ==================================================================================================
 # iter-24 fast-platform item G — cheap readiness probe (memoized cadence dates + one grouped query)
 # ==================================================================================================
@@ -397,3 +442,73 @@ def test_health_repeated_calls_serve_cache_not_recompute(loaded_engine, tmp_path
             health(session)
 
     assert calls == {"readiness": 0, "preflight": 0}
+
+
+# ==================================================================================================
+# ops-hardening iter-71 (J-07 closure) -- `GET /api/health` gains the additive `stale_for_s: float>=0`
+# diagnostic field, and a wedged/dead tick thread falls back to a synchronous compute past the bound.
+# ==================================================================================================
+def test_health_carries_additive_stale_for_s_field(loaded_engine, tmp_path, monkeypatch):
+    """`stale_for_s` is ADDITIVE -- every existing key stays present -- and is a real non-negative float,
+    0 immediately after a cold-start synchronous compute (this call's own fresh tick)."""
+    monkeypatch.setenv(readiness.VERDICT_HISTORY_PATH_ENV, str(tmp_path / "history.jsonl"))
+    readiness.reset_readiness_refresh_cache()
+    with TestClient(main.app) as client:
+        body = client.get("/api/health").json()
+    existing_keys = {
+        "status", "db_ok", "provider", "last_run_date", "seed_latest_date", "symbol_count",
+        "readiness", "readiness_detail", "warmup", "background_compute", "poll_interval_seconds",
+        "poll_idle_interval_seconds", "preflight",
+    }
+    assert existing_keys <= set(body)
+    assert isinstance(body["stale_for_s"], (int, float))
+    assert body["stale_for_s"] >= 0.0
+
+
+def test_health_stale_for_s_reflects_cache_age_within_the_bound(tiny_engine, tmp_path, monkeypatch):
+    """A repeated call against an already-warm (fresh) cache reports a real, small `stale_for_s` -- not
+    always 0 -- proving the value is measured against the cache entry's actual age, not hard-coded."""
+    monkeypatch.setenv(readiness.VERDICT_HISTORY_PATH_ENV, str(tmp_path / "history.jsonl"))
+    readiness.reset_readiness_refresh_cache()
+    with Session(tiny_engine) as session:
+        health(session)  # warms the cache via the cold-start path
+        time.sleep(0.05)
+        body = health(session)
+    cfg = load_config()
+    threshold = cfg.readiness.max_stale_intervals * cfg.readiness.refresh_interval_seconds
+    assert 0.0 < body["stale_for_s"] < threshold
+
+
+def test_health_falls_back_to_synchronous_compute_past_the_staleness_bound(tiny_engine, tmp_path, monkeypatch):
+    """TC-1 at the handler level: a cache entry backdated past `max_stale_intervals x
+    refresh_interval_seconds` (simulating a wedged/dead tick thread) is never served -- `GET /api/health`
+    falls back to a synchronous compute instead, and the response's `stale_for_s` is 0."""
+    monkeypatch.setenv(readiness.VERDICT_HISTORY_PATH_ENV, str(tmp_path / "history.jsonl"))
+    readiness.reset_readiness_refresh_cache()
+    with Session(tiny_engine) as session:
+        health(session)  # warms the cache via the cold-start path
+    assert readiness._READINESS_CACHE is not None
+
+    cfg = load_config()
+    threshold = cfg.readiness.max_stale_intervals * cfg.readiness.refresh_interval_seconds
+    stale = dict(readiness._READINESS_CACHE)
+    stale["computed_at"] -= (threshold + 10.0)
+    readiness._READINESS_CACHE = stale
+
+    # Counts `compute_preflight` (invoked exactly once per tick) rather than `compute_readiness` --
+    # `compute_preflight` itself calls `compute_readiness` a second time internally for servability, so
+    # counting `compute_readiness` directly would over-count by 2x per tick (see test_readiness.py's
+    # sibling test for the same note).
+    calls = {"n": 0}
+    real_compute_preflight = readiness.compute_preflight
+
+    def _counting(*a, **kw):
+        calls["n"] += 1
+        return real_compute_preflight(*a, **kw)
+
+    monkeypatch.setattr(readiness, "compute_preflight", _counting)
+    with Session(tiny_engine) as session:
+        body = health(session)
+
+    assert calls["n"] == 1  # exactly one synchronous fallback tick fired -- the stale entry was never served
+    assert body["stale_for_s"] == 0.0

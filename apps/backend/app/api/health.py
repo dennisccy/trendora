@@ -57,6 +57,17 @@ functions, the SAME one endpoint, no second implementation. Under the new cached
 `preflight_s` (above) time a cache-dict read, not a compute call — near-zero in steady state (TC-7), which
 is what keeps this endpoint answering promptly during a heavy background aggregate warm (J-07 step 2). The
 three DB reads below are unaffected (out of scope — iter-69's attribution never implicated them).
+
+ops-hardening iter-71 (J-07 closure) additively extends this SAME endpoint with `stale_for_s: float>=0` —
+seconds since the served readiness/preflight payload was computed (0 when computed synchronously for this
+request). `app.engine.readiness.get_readiness_and_preflight` now stamps every cached tick and falls back to
+a synchronous compute once a cache entry's age would exceed `readiness.max_stale_intervals ×
+readiness.refresh_interval_seconds` — the never-serve-arbitrarily-stale-data bound that closes iter-70's
+own named gap (a wedged/dead background-refresh tick thread could otherwise serve a frozen "ready" state
+forever). Also assigns `cached = None` explicitly in the readiness-fetch except block below (reviewer/audit
+MINOR from iter-70) so the preflight-fallback branch's later `cached["preflight"]` read is never an
+implicitly-unbound local — same degrade-on-error behavior, just no longer relying on an incidental
+`UnboundLocalError` being swallowed by that branch's own broad `except`.
 """
 from __future__ import annotations
 
@@ -163,6 +174,10 @@ def health(session: Session = Depends(get_session), request: Request = None) -> 
         cached = get_readiness_and_preflight(session, engine=get_engine(), config=cfg)
         readiness = cached["readiness"]
     except Exception:  # pragma: no cover - never let a readiness error blank the health probe
+        # ops-hardening iter-71 (reviewer/audit MINOR from iter-70): explicit, not implicitly-unbound --
+        # the preflight-fallback branch below reads `cached` next, and leaving it undefined here relied on
+        # an UnboundLocalError being silently caught by that branch's own broad `except Exception`.
+        cached = None
         readiness = {
             "state": "unavailable",
             "detail": None,
@@ -188,6 +203,11 @@ def health(session: Session = Depends(get_session), request: Request = None) -> 
             "reference": None,
         }
     preflight_s = (time.monotonic() - _t_preflight_start) if watchdog_active else None
+
+    # ops-hardening iter-71 (J-07 closure): the staleness-bound diagnostic -- a bare dict-key read off the
+    # SAME `cached` payload fetched above (no second call). `cached` is `None` only on the readiness-fetch
+    # failure path above, where nothing was computed for THIS request either -- 0.0 is the honest value.
+    stale_for_s = cached.get("stale_for_s", 0.0) if cached is not None else 0.0
 
     # ops-hardening iter-68 (J-07): the third sample, handler_compute_s -- t_handler_start (above) to
     # HERE, immediately before the response is constructed/returned, after every readiness/preflight
@@ -236,4 +256,7 @@ def health(session: Session = Depends(get_session), request: Request = None) -> 
         # iter-33 (J-20): the single daily preflight verdict (additive) -- the layout-level
         # PreflightBanner's ONLY read path (see app.engine.readiness.compute_preflight).
         "preflight": preflight,
+        # ops-hardening iter-71 (J-07 closure): seconds since this payload was computed (0 when computed
+        # synchronously for THIS request) -- see app.engine.readiness.get_readiness_and_preflight.
+        "stale_for_s": stale_for_s,
     }

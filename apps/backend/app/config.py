@@ -589,16 +589,24 @@ class ReadinessCfg(BaseModel):
         config fixture predating this field still loads unchanged — the established `extra="allow"`/
         back-compat-default convention this class already uses, mirroring `StartupCfg`'s own
         `background_compute_history_size` default).
+      - `max_stale_intervals` (ops-hardening iter-71, J-07 closure) — the staleness bound on the SAME
+        cache: `app.engine.readiness.get_readiness_and_preflight` falls back to a synchronous
+        `compute_readiness`/`compute_preflight` call whenever the cached entry's age would exceed
+        `max_stale_intervals × refresh_interval_seconds` — the never-serve-arbitrarily-stale-data guard
+        for a wedged/dead background-refresh tick thread (iter-70's own named gap: "before this round the
+        endpoint could be slow but never wrong; it can now be fast and wrong"). MUST be `> 0`. Defaults to
+        `3` (same back-compat-default convention as `refresh_interval_seconds` above).
 
     Boot-validated: `severity` must name exactly `{servability, freshness, integrity, drift}` with every
-    value one of `"degraded"`/`"no-go"`, covering both, and `refresh_interval_seconds` must be `> 0`. An
-    invalid block raises `ConfigError`, never a silent default."""
+    value one of `"degraded"`/`"no-go"`, covering both, and `refresh_interval_seconds`/`max_stale_intervals`
+    must both be `> 0`. An invalid block raises `ConfigError`, never a silent default."""
 
     model_config = ConfigDict(extra="allow")
     freshness_max_age_days: int
     severity: dict[str, str]
     verdict_history_path: str
     refresh_interval_seconds: float = 0.5
+    max_stale_intervals: int = 3
 
     @model_validator(mode="after")
     def _validate(self) -> "ReadinessCfg":
@@ -617,6 +625,8 @@ class ReadinessCfg(BaseModel):
             )
         if self.refresh_interval_seconds <= 0:
             raise ValueError("readiness.refresh_interval_seconds must be > 0")
+        if self.max_stale_intervals <= 0:
+            raise ValueError("readiness.max_stale_intervals must be > 0")
         return self
 
 

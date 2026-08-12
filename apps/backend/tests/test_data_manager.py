@@ -1463,6 +1463,94 @@ def test_finalize_hook_triggers_immediate_readiness_refresh(finalize_hook_engine
         assert calls[0] is session  # the SAME session -- sees this job's just-persisted rows immediately
 
 
+@pytest.fixture
+def state_flip_engine(tmp_path):
+    """A DB shaped to force a REAL `readiness.state` transition when a finalize hook lands a new run for a
+    benchmark bar that had already outrun the prior run -- the SAME B3-fix condition `compute_readiness`
+    checks (`readiness.py`'s `awaiting_snapshot` derivation): `d0` has both a bar and a persisted run
+    (servable); `d1`'s SPY bar already exists but NO run exists for it yet -- exactly the
+    `awaiting_snapshot` condition, computed honestly with no finalize hook having run at all."""
+    engine = make_engine(f"sqlite:///{tmp_path / 'state_flip.db'}")
+    create_db_and_tables(engine)
+    d0 = date(2024, 3, 4)
+    d1 = date(2024, 3, 5)
+    with Session(engine) as session:
+        session.add(DailyPrice(symbol="SPY", date=d0, open=1.0, high=1.0, low=1.0, close=1.0, volume=1.0))
+        run0 = ScannerRun(
+            asof_date=d0, created_at=datetime(2024, 3, 4), provider="seed", benchmark="SPY",
+            regime_score=50.0, regime_label="Choppy", regime_components_json="[]",
+            new_high_low_json="{}", candidate_counts_json="{}",
+        )
+        session.add(run0)
+        session.commit()
+        session.refresh(run0)
+        session.add(ScannerResult(
+            run_id=run0.id, ticker="AAA", name="AAA Corp", leadership_score=1.0, leadership_bucket="Leader",
+            entry_quality_score=1.0, entry_quality_bucket="Good", risk_score=1.0, risk_bucket="Low",
+            setup_status="Actionable", rank=1, record_json="{}",
+        ))
+        # d1: the benchmark's own bar has already landed, but no run exists for it yet.
+        session.add(DailyPrice(symbol="SPY", date=d1, open=1.0, high=1.0, low=1.0, close=1.0, volume=1.0))
+        session.commit()
+    return engine, d0, d1
+
+
+def test_finalize_hook_state_flip_served_by_health_within_one_tick(state_flip_engine, tmp_path, monkeypatch):
+    """ops-hardening iter-71 (audit T1) -- composes TC-4's two previously-separate halves into ONE real
+    integration path: the finalize hook's immediate-refresh trigger (test_finalize_hook_triggers_
+    immediate_readiness_refresh above, which only proves the trigger FIRES) actually publishes a REAL
+    `readiness.state` transition (`awaiting_snapshot` -> a servable state) to the cache, and `GET
+    /api/health` served right after reflects the NEW state -- not the stale pre-finalize one -- within
+    one tick (here, immediately: the trigger runs synchronously inside the finalize hook, before it
+    returns, so no wait is needed for the periodic tick to catch up)."""
+    import app.api.health as health_module
+    import app.engine.readiness as readiness_module
+
+    engine, d0, d1 = state_flip_engine
+    cfg = load_config()
+    monkeypatch.setenv(readiness_module.VERDICT_HISTORY_PATH_ENV, str(tmp_path / "history.jsonl"))
+    readiness_module.stop_readiness_refresh()
+    readiness_module.reset_readiness_refresh_cache()
+    try:
+        # Prime the cache with the PRE-finalize state -- `awaiting_snapshot`, since d1's benchmark bar has
+        # already landed but no run exists for it yet (no finalize hook has run at this point).
+        with Session(engine) as session:
+            before = readiness_module.get_readiness_and_preflight(session, engine=engine, config=cfg)
+        assert before["readiness"]["state"] == readiness_module.AWAITING_SNAPSHOT
+
+        # The ingest job creates the new run for d1 (what a real backfill does BEFORE calling the finalize
+        # hook), then the finalize hook runs -- firing the immediate-refresh trigger at its end (for real,
+        # unlike the mocked-trigger test above).
+        with Session(engine) as session:
+            run1 = ScannerRun(
+                asof_date=d1, created_at=datetime(2024, 3, 5), provider="seed", benchmark="SPY",
+                regime_score=50.0, regime_label="Choppy", regime_components_json="[]",
+                new_high_low_json="{}", candidate_counts_json="{}",
+            )
+            session.add(run1)
+            session.commit()
+            session.refresh(run1)
+            session.add(ScannerResult(
+                run_id=run1.id, ticker="AAA", name="AAA Corp", leadership_score=1.0, leadership_bucket="Leader",
+                entry_quality_score=1.0, entry_quality_bucket="Good", risk_score=1.0, risk_bucket="Low",
+                setup_status="Actionable", rank=1, record_json="{}",
+            ))
+            session.commit()
+            prog = JobProgress(job_id="state-flip-probe", kind="backfill", start=d1, end=d1)
+            prog.new_snapshot_dates = [d1]
+            data_manager._refresh_ingest_aggregates(session, cfg, prog)
+
+        # GET /api/health (direct handler call) reflects the NEW state immediately -- the finalize hook's
+        # trigger already published it; no periodic-tick wait needed.
+        with Session(engine) as session:
+            body = health_module.health(session)
+        assert body["readiness"] != readiness_module.AWAITING_SNAPSHOT
+        assert body["readiness"] in {readiness_module.READY, readiness_module.INITIALIZING}
+    finally:
+        readiness_module.stop_readiness_refresh()
+        readiness_module.reset_readiness_refresh_cache()
+
+
 def test_finalize_hook_index_series_memory_error_isolated_and_not_reported(
     finalize_hook_engine, monkeypatch
 ):

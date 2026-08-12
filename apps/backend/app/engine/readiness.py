@@ -37,6 +37,7 @@ import json
 import logging
 import os
 import threading
+import time
 from datetime import date as date_cls
 from pathlib import Path
 from typing import Optional
@@ -552,7 +553,12 @@ def _tick_and_cache(session: Session, cfg: Config, engine=None) -> Optional[dict
     interleave a compute or double-write a verdict transition (TC-5). Degrade-on-error (TC-6): a raising
     compute is caught, logged, and leaves the PRIOR cache (if any) completely untouched -- the caller keeps
     serving the last-known-good value, never a blank/partial one. Returns the fresh payload on success, or
-    `None` when the tick itself failed."""
+    `None` when the tick itself failed.
+
+    ops-hardening iter-71 (J-07 closure): the published payload carries `computed_at`, a `time.monotonic()`
+    stamp of THIS tick -- the staleness-bound input `get_readiness_and_preflight` below measures a cache
+    entry's age against. Monotonic (never wall-clock) so a system clock adjustment can never manufacture or
+    hide staleness."""
     global _READINESS_CACHE
     with _TICK_LOCK:
         try:
@@ -560,25 +566,16 @@ def _tick_and_cache(session: Session, cfg: Config, engine=None) -> Optional[dict
         except Exception:  # pragma: no cover - a tick failure must never crash the thread or blank the cache
             _log_tick_failure("readiness refresh tick failed (non-fatal) -- serving last-known-good cache")
             return None
+        payload = dict(payload, computed_at=time.monotonic())
         _READINESS_CACHE = payload
         return payload
 
 
-def get_readiness_and_preflight(session: Session, engine=None, config: Optional[Config] = None) -> dict:
-    """The SINGLE read accessor `GET /api/health` calls: serves `{"readiness": ..., "preflight": ...}`
-    from the shared cache. Cold-start fallback (TC-1): before the background thread's first tick
-    completes (boot, or a direct `health(session)` call with no thread running), computes once
-    synchronously here -- byte-identical to the pre-cache per-request behavior, so boot-time and
-    unit-test call shapes are unaffected. Never raises: even a first-ever tick failure (e.g. DB
-    unreachable at boot) degrades to the SAME honest fallback shape `compute_readiness`/`compute_preflight`
-    already produce on their own internal errors -- `GET /api/health` never serves an undefined value."""
-    cache = _READINESS_CACHE
-    if cache is not None:
-        return cache
-    cfg = config or get_config()
-    ticked = _tick_and_cache(session, cfg, engine=engine)
-    if ticked is not None:
-        return ticked
+def _unavailable_fallback() -> dict:
+    """The honest failure-fallback shape `get_readiness_and_preflight` serves when NEITHER a cache entry
+    NOR a synchronous tick is available (e.g. the very first call in a process whose first tick itself
+    failed). A FRESH dict every call (never a shared/reused reference) -- `stale_for_s: 0.0` (honestly
+    "just computed," never a stale reading, since no real payload exists to measure an age against)."""
     return {
         "readiness": {
             "state": UNAVAILABLE,
@@ -593,7 +590,40 @@ def get_readiness_and_preflight(session: Session, engine=None, config: Optional[
             "as_of": None,
             "reference": None,
         },
+        "stale_for_s": 0.0,
     }
+
+
+def get_readiness_and_preflight(session: Session, engine=None, config: Optional[Config] = None) -> dict:
+    """The SINGLE read accessor `GET /api/health` calls: serves `{"readiness": ..., "preflight": ...,
+    "stale_for_s": ...}` from the shared cache. Cold-start fallback (TC-1): before the background thread's
+    first tick completes (boot, or a direct `health(session)` call with no thread running), computes once
+    synchronously here -- byte-identical to the pre-cache per-request behavior, so boot-time and
+    unit-test call shapes are unaffected. Never raises: even a first-ever tick failure (e.g. DB
+    unreachable at boot) degrades to the SAME honest fallback shape `compute_readiness`/`compute_preflight`
+    already produce on their own internal errors -- `GET /api/health` never serves an undefined value.
+
+    ops-hardening iter-71 (J-07 closure) -- staleness bound: a wedged/dead background-refresh tick thread
+    must never let this accessor go on serving an ever-more-frozen "ready" state forever (iter-70's own
+    named gap: "before this round the endpoint could be slow but never wrong; it can now be fast and
+    wrong"). `stale_for_s` -- seconds since the served payload was computed (0 when computed synchronously
+    for THIS call) -- is always in the returned dict. When the cached entry's age would exceed
+    `readiness.max_stale_intervals x readiness.refresh_interval_seconds`, this falls back to the SAME
+    synchronous compute the cold-start path already uses, instead of serving the stale entry -- mirrors
+    the existing cold-start fallback exactly; no second implementation."""
+    cfg = config or get_config()
+    cache = _READINESS_CACHE
+    if cache is not None:
+        stale_for_s = time.monotonic() - cache["computed_at"]
+        max_stale_s = cfg.readiness.max_stale_intervals * cfg.readiness.refresh_interval_seconds
+        if stale_for_s <= max_stale_s:
+            return dict(cache, stale_for_s=stale_for_s)
+        # Falls through to the synchronous-fallback path below -- the cache entry EXISTS but has aged past
+        # the bound (e.g. the background thread has stopped ticking), so it is never served as-is.
+    ticked = _tick_and_cache(session, cfg, engine=engine)
+    if ticked is not None:
+        return dict(ticked, stale_for_s=0.0)
+    return _unavailable_fallback()
 
 
 def trigger_readiness_refresh(session: Session, config: Optional[Config] = None, engine=None) -> None:

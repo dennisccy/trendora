@@ -11,5 +11,8 @@
     {"n": 5, "journey": "J-03", "action": {"type": "expect", "text": "283/283 dates"}, "expect": {"text": "283/283 dates"}},
     {"n": 6, "journey": "J-03", "action": {"type": "expect", "target": {"testid": "stage-timings"}}, "expect": {"target": {"testid": "stage-timings"}}},
     {"n": 7, "journey": "J-03", "action": {"type": "expect", "text": "412 calendar days · 283 already snapshotted · 129 non-trading"}, "expect": {"text": "412 calendar days · 283 already snapshotted · 129 non-trading"}}
+  ],
+  "_notes": [
+    "ops-hardening iter-71 (browser-qa-agent, pending-infra make-up re-verification after iter-70's mid-round infra death produced zero evidence for all 8 journeys): re-verified live via Chrome MCP. The >370-calendar-day request (2025-06-01 -> 2026-07-17, 412 calendar days) was accepted with NO 'date range too large' rejection anywhere in the response DOM (checked before waiting for completion), then executed to '283/283 dates' / '412 calendar days · 283 already snapshotted · 129 non-trading' (zero-work — this range has been fully backfilled by many prior iterations' testing, consistent with this golden's own recorded expectation). `stage-timings` panel present. Persisted at 17:45:55 UTC in the Run history table on reload. iter-71's own diff is backend-only (readiness.py/health.py staleness bound) and does not touch config.yaml's max_range_days removal or the data-jobs path — confirmed no drift. Journey verdict: PASS. Steps/selectors unchanged; lint clean."
   ]
 }

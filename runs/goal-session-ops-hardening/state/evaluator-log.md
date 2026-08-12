@@ -7815,3 +7815,186 @@ to fix the one-line ordering bug in `scripts/automation/browser-qa-phase.sh`, an
 round ran a real 17-minute data job plus a 1-hour test run and finished about 5x over its time budget. One
 thing needs no decision from you: the test backend shut itself down mid-round, so nothing was checked in the
 browser; the next round re-checks everything.
+
+
+## Iteration 71 — goal-ops-hardening-iter-71
+
+**Date:** 2026-08-12T18:35:00Z
+**Verdict:** ESCALATE
+**Depth dispatched:** lean (`iter-71/depth-dispatched` = `lean`, matching the spec's `**Depth:** lean` and
+iter-70's binding lean recommendation — plan and dispatch agreed)
+
+**Journey deltas:**
+- **Newly passing: J-01, J-03, J-04, J-06, J-08, J-09** (six, all from `partial`/`pending_infra`).
+  **Newly failing: J-07.** **Regressed: none** — J-07's prior recorded status was `partial`
+  (iter-70 tested nothing), not `passing`, so C.1's regression clause cannot fire. J-05 stays
+  `partial`, now for a MEASURED reason rather than an untested one. Shape moves 8 partial →
+  6 passing + 1 partial + 1 failing. `pending_infra` CLEARED on all eight — every one was
+  actually checked this round.
+- **Two lanes, and I kept them separate.** Deterministic replay: 2/8 PASS, 6 FAIL, every failure
+  `net::ERR_CONNECTION_REFUSED at http://localhost:3255` (the QA frontend swept away mid-run; the
+  six `J-0X-verify.png` files are all identically 4,868 bytes — the same blank error frame). The
+  merged file is authoritative and its dated footer overturns J-04/J-05/J-06/J-08/J-09 as
+  golden-script false positives. **J-07's merged FAIL is NOT one of those** — it comes from the LLM
+  lane's own 900-poll drill, and I recomputed it from the raw CSV rather than inheriting the row.
+- Anti-goal violations: **THREE CLOSED** (iter-70/a the false replay claim — TC-7 was honored, no
+  "✓ verified via replay" survives anywhere in the merged file; /b zero journey evidence; /d the
+  unbounded readiness-cache staleness, which is exactly what this round shipped). **EIGHT NEW OPEN,
+  all minor** (iter-71/a dev-mode stack on journeys that forbid it; /b `dev.sh` missing prod's
+  server guards + persistent logfile; /c the 500 + 165 s outage; /d TC-5 missed a second round;
+  /e a QA citation to a file that does not contain the cited line; /f walkthroughs still
+  unrecorded; /g eleventh over-budget round; /h J-06 steps 2-3 not performed). Ledger: **238 total,
+  120 unresolved, 0 unresolved critical.** scan-report **CLEAN**; coherence **COHERENCE-PASS**
+  (0 blocking, 2 advisory); review **PASS**.
+
+**Reasoning:** I re-derived every load-bearing number myself — from the raw poll CSV, the round's
+actual backend log, the database, and the frames.
+(1) **The shipped change is correct and does what it was asked to do.** `readiness.py:165-194` now
+stamps each cache entry with `time.monotonic()` and falls through to the SAME synchronous
+`_tick_and_cache` the cold-start path already used once the entry ages past
+`max_stale_intervals × refresh_interval_seconds` (3 × 0.5 = 1.5 s, `config.yaml:1349`). `health.py:174`
+assigns `cached = None` explicitly. Reviewer PASS on direct test runs; coherence traced it as one
+additive field on one already-registered Data Contract row with no second producer. iter-70/d closes.
+(2) **THE ROUND'S HEADLINE IS A MEASURED OUTAGE, AND I RECOMPUTED IT FROM THE RAW FILE.**
+`runs/goal-ops-hardening-iter-71/browser-qa-drill/j07-health-poll.csv`: **900 polls, 842 answered, 58
+with NO answer at all (6.44 %), longest unbroken outage 33 consecutive polls = 165 s**
+(17:56:59.700 → 17:59:39.858 Z), 2 answered polls over the 2 s ceiling, worst answered **4.659 s**.
+Against iter-70's 0 of 1,030. Every figure matches the QA row to the digit.
+(3) **THE ROOT CAUSE IS NAMED, NOT GUESSED, AND NO LANE FOUND IT.** The round's real backend log is
+NOT `logs/backend.log` (last written 15:34 Z, ~2 h before the drill) — it is the harness temp file the
+`dev.sh` launch wrote to. In it, exactly one 500 in the whole round:
+`GET /api/data → sqlalchemy.exc.TimeoutError: QueuePool limit of size 10 overflow 20 reached,
+connection timed out, timeout 30.00`. The database connection pool was empty for 30+ seconds. The
+host was NOT busy: `load_avg_1m` stayed between 0.55 and 2.10 on 16 CPUs for the entire drill. This
+is starvation, not saturation.
+(4) **PHASE ATTRIBUTION, TIMEZONE-CONVERTED BY ME — THE FIFTH ROUND POINTING AT THE SAME PHASE.**
+`factor_lab_all_warm` ran 17:51:58.6 → 18:02:05.9 Z (607.36 s) and holds **57 of the 58 non-answers**;
+`forward_aggregates_warm` (109.11 s) holds **0**; `drawdown_expectations_warm` holds **1**. The first
+answered poll after the long outage is 18:02:01.7 — four seconds before that phase ends.
+(5) **THE SECOND INGREDIENT IS J-09'S OWN MECHANISM, AND IT WAS STARVED TOO.** The browser lane
+deliberately started an on-demand background compute (as-of 2026-07-31) during the ingest. From the
+DB: its horizon-1 row committed **17:56:26**, horizon-5 not until **18:02:53** — a 6.5-minute gap that
+brackets the outage exactly. Two heavy computes at once is precisely the case J-09's own acceptance
+defers to owner card **B-1107** ("bounding concurrency stays out of scope"). The deferred card is the
+one that bit.
+(6) **THE CONFOUND I FOUND MYSELF AND PUT FIRST RATHER THAN LAST.** The entire pass ran on
+`scripts/dev.sh`. Proof: the launched subshell echoed in the log ends
+`exec ... uvicorn main:app --reload --host 0.0.0.0 --port $BACKEND_PORT` — **no `--limit-concurrency`**,
+which `scripts/start-backend.sh:107` applies from `config.yaml:1362` (64). `config.yaml:1355-1362`
+states that cap's purpose verbatim: "the concurrency cap … mean N parallel /api/data probes cost ~one
+heavy compute (never N connection-holding resolves that exhaust the pool)". The exact failure the
+guard exists to prevent happened on the launcher that omits it. **J-04 step 1 and J-06 step 1 both say
+"never `dev.sh`" in the goal's own words.** No lane reported this.
+(7) **WHY J-07 IS `failing` AND NOT `partial` ANYWAY.** I weighed the confound honestly and still chose
+`failing`: (a) 165 consecutive seconds with zero answers is the journey's own named failure mode, not a
+budget overrun; (b) an actual **non-200** was served — iter-69's evaluator used "no non-200" as an
+explicit reason to hold at `partial`, and that reason is now gone; (c) prod's cap would have converted
+the overload into 503s, which step 2 ("every poll answers HTTP 200") also forbids — dev mode changes
+the shape of the breach, not whether there is one. Steps 3-4 carry on durability per the spec's own TC-9.
+(8) **J-05 IS `partial` FOR A REASON I HAD TO GO LOOKING FOR.** Its steps 1-2 passed outright and
+beautifully — a real 20-minute backfill of a genuinely unsnapshotted day, all 9 finalize categories
+listed, and I confirmed `scanner_runs` id 2974 = 2005-07-08 `created_at` **17:49:56.406** with 149
+result rows, i.e. the UI's "Scanned 2026-08-12 17:49:56" is a genuine fresh scan. But J-05 step 4 is
+*"While a heavy ingest job runs, poll `GET /api/health`; assert it stays responsive throughout"* — the
+same drill, the same job, and it failed. The QA lane scoped that failure to J-07 and passed J-05; I did
+not. `partial` is literally "only some assertion steps passed".
+(9) **I OPENED THE FRAMES RATHER THAN TRUSTING THE ROWS, AND ONE CROSS-CHECK CAME FREE.** The J-01
+frame shows `/data` with **SNAPSHOT DATES 2973 / BACKFILL GAPS 2423**; the J-09 frame, captured 30
+minutes later after the J-05 backfill, shows **2974 / 2422**. A self-consistent one-day progression
+across two independently captured frames corroborating that the backfill created exactly one snapshot.
+The J-08 frame renders `/backtest` "Viewing as-of 2026-08-03 (latest)" with a real scorecard; the J-06
+frame renders `/research/regime-lab` with its honest survivorship-bias disclosure; the J-04 frame
+renders the banner "GO — today's board is current." **The J-07 "fail" frame shows a healthy Dashboard
+and does NOT depict the failure** — the CSV and the log carry that row, and I say so rather than
+letting a frame imply otherwise.
+(10) **Anti-goals checked at row, file and command level.** AG-9: `data_provider_runs` ids **453-460**,
+every job this round, all `provider='seed'`, `status=ok`; today groups to `[('seed', 29)]`. AG-10:
+`git status --porcelain -- config.yaml project-extensions/ scripts/` shows ONLY `config.yaml`, whose
+entire diff is one added line; `memory_cap_mb: 8192` / `malloc_arena_max: 2` intact; `dev.sh` IS a
+launcher AG-10 names, and its echoed subshell applies `ulimit -v`, `MALLOC_ARENA_MAX` and the
+HOST-GUARD block — **no cap removed, weakened or bypassed**. AG-3: re-derived in the DB (591 symbols,
+1996-01-02 → 2026-08-03, 19 May runs, run 748 scanned 2026-07-20). AG-7: scan CLEAN. AG-8: no basis
+widening and no new query; the 500 is logged minor as iter-71/c with my reasoning stated.
+Rejected **REGRESSION (C.1)**: no journey moved `passing`/`already_passing` → `failing` — J-07 was
+`partial` entering this round and last `passing` at iter-34. No critical anti-goal is unresolved: scan
+CLEAN, ingest seed-only, caps untouched, no secret, no fabricated data. I weighed the 500 and the 165 s
+outage against AG-8's critical text explicitly and logged them minor because AG-8's antecedent is a
+WIDENED DATA BASIS and the basis is byte-identical to prior rounds; the defect is carried by J-07's
+`failing` status instead of being smuggled into an anti-goal row.
+Rejected **STALLED (C.2)**: C.2 needs EVERY unblock path to be human-owned. Re-running the drill under
+`scripts/start-backend.sh`, adding the post-lock recheck in `_tick_and_cache`, sizing the pool to the
+admitted concurrency, and mirroring prod's guards into `dev.sh` are all ordinary agent work in modules
+that already exist. Only B-1107's concurrency bound, the ceiling sentence, the `scripts/automation`
+sign-off and the cost sanction are genuinely the owner's. Also NOT an infra stall: no
+`browser-infra.json` exists, the lane RAN, and eight fresh frames landed — the two-strike rule iter-70
+armed does not fire.
+Rejected **GOAL_ACHIEVED (C.3)**: J-07 is `failing` and J-05 is `partial`.
+**Chose ESCALATE (C.4):** the first two clauses do not hold (J-07 has failed once, not twice; review
+was PASS with no fail-open), but the third does, emphatically. This lean round surfaced complexity
+that crosses five surfaces and three journeys at once: a multi-minute availability failure with a
+named root cause in the DB connection pool; a second ingredient that is J-09's own dispatch and whose
+fix is an owner-deferred card; a plausible self-inflicted contribution from THIS round's change
+(`_tick_and_cache` has no post-lock recheck, so once the cache ages past 1.5 s every request
+recomputes serially behind one lock); and a verification-validity problem that voids the measurement
+conditions two journeys name in writing. That needs the audit lane for independent root-cause, the
+ux-regression lane for what a person sees when `/api/data` 500s, and closure. Coherence is PASS, so no
+consolidation pass is mandated.
+**FIVE THINGS I STATE PLAINLY RATHER THAN ROUND AWAY:** (i) **The round that finally checked everything
+found the service down for 165 seconds** — after a round that proved 0 of 1,030, one that measured 58
+of 900 with no answer at all and one real 500. I did not let six newly-passing journeys bury that.
+(ii) **The whole check ran on the launcher two journeys forbid by name**, and the one guard that
+launcher omits is documented as the exact defence against the exact failure observed — that is a
+verification-validity finding, and no lane reported it. (iii) **The round's own change is a suspect and
+I say so** even though it also closed the gap it was written to close: a stale cache now sends every
+request into a synchronous compute behind a single lock, with no recheck after the lock. (iv) **The
+owner's set-aside card B-1107 is what bit** — two heavy computes at once — so "deferred" turned into
+"undiagnosed outage" in the first round that put both under load. (v) **A lean round ran 10,474 s
+against a 3,600 s budget (2.9x)** — the eleventh over-budget round; smaller than the last two, but
+eleven rounds without the owner being asked in writing to approve the bill.
+
+**Next-step recommendation:** FULL depth — binding, per this verdict. Order for the next round:
+(1) **Repeat J-07's measurement on the production launcher.** `scripts/start-backend.sh` +
+`scripts/start-frontend.sh`, never `dev.sh`; poller armed ≥ 2 s BEFORE the job start command (TC-5,
+missed twice now); same two concurrent loads (the ingest finalize warm plus a user-triggered
+background compute) so the failure is reproduced rather than avoided. Until that runs, the SIZE of the
+failure is not established — only that there is one.
+(2) **Fix the connection-pool exhaustion.** `config.yaml:119-122` sizes the pool at 10 + 20 = 30 while
+`server.limit_concurrency` admits 64 — the comment's claim that this "comfortably covers that" is
+arithmetically false and relies on the single-flight cache. Agent-owned options that do NOT need
+B-1107: give `GET /api/health` a dedicated connection or a no-DB fast path, or size the pool to the
+admitted concurrency. **Ask the owner about B-1107 itself** (bounding how many heavy computes run at
+once) rather than quietly re-deferring it a further round.
+(3) **Rule this round's own change in or out.** Add the post-lock recheck to `_tick_and_cache` (it
+recomputes unconditionally after acquiring `_TICK_LOCK`, so N queued requests each pay a full compute),
+or serve the aged value with `stale_for_s` set instead of blocking. Instrument it so the next drill can
+say which of the two mechanisms produced the stall.
+(4) **Mirror prod's server guards into `scripts/dev.sh`** — `--limit-concurrency`,
+`--timeout-keep-alive`, `--timeout-graceful-shutdown`, and the persistent `logs/backend.log` J-04 step 5
+depends on. goal.md already calls the dev.sh launcher gap in-scope launcher work; this round is the
+proof of why (iter-71/b, and iter-71/e exists only because the log was missing).
+(5) SMALL AND WRITTEN DOWN: capture what `/data` renders while `GET /api/data` 500s (the AG-8
+graceful-degradation question this round raised but never photographed); record J-06's page timings and
+update `reports/perf-budgets.md` (iter-71/h); the reviewer NOTE at `readiness.py:623` (document the
+honesty-over-availability choice when the synchronous fallback itself fails).
+(6) Rides along, never the goal: record the walkthroughs — J-05 (13th round unrecorded) and J-07's own
+`[NEW]` steps; `reports/demo/goal-ops-hardening-iter-70/` is EMPTY and the newest recording on disk is
+still iter-63's.
+(7) CARRIED, untouched: iter-29/b + the badge wording after a permanently failed warm-up (44th round
+unmade); iter-31/e; iter-32/f; iter-35/k; iter-36/n; iter-37/o; iter-37/q; iter-39/u; iter-46/az;
+iter-46/ba; iter-47/bd; iter-47/bf; iter-47/bi; iter-48/bj; iter-57/f; iter-57/l; iter-59/g; iter-59/h;
+iter-59/k; iter-62/e; iter-62/f; iter-63/a; iter-63/b; iter-63/d; iter-64/b; iter-64/e; iter-64/f;
+iter-65/b; iter-65/c; iter-65/d; iter-66/b; iter-66/e; iter-66/f; iter-66/g; iter-67/f; iter-67/g;
+iter-68/d; iter-68/e; iter-69/e; iter-70/c; iter-70/e; iter-70/f. Deferred a THIRTY-SEVENTH time:
+iter-33/g, the Regime Lab.
+(8) **OWNER — the same one sentence, 23rd round, and the news has turned back the other way.** The app
+must answer its health check within 2 seconds while a background job runs. Last round every one of
+1,030 checks was answered and the slowest took 1.23 seconds. This round, with a second heavy job
+running at the same time, **58 of 900 checks got no answer at all, including one unbroken stretch of
+165 seconds**, and the app returned one error page to the data screen. Two honest caveats: the check
+ran on the development launcher, which does not apply the production limit on simultaneous requests, so
+the next round must repeat it properly; and the second heavy job is the thing you set aside as card
+B-1107. Please decide two things: (a) keep the 2-second promise for long jobs, or apply it to short
+jobs only; and (b) whether we may now limit how many heavy computations run at the same time (B-1107).
+Still waiting on you as well: permission to fix the one-line ordering bug in
+`scripts/automation/browser-qa-phase.sh`, and a cost decision — this round ran about 2.9 times over its
+time budget, the eleventh in a row.
