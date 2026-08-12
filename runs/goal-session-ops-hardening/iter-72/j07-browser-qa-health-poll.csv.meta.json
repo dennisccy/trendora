@@ -1,0 +1,6 @@
+{
+  "url": "http://localhost:8255/api/health",
+  "rows": 1315,
+  "cpu_count": 16,
+  "health_ceiling_s": 2.0
+}

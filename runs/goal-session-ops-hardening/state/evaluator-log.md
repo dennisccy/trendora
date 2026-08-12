@@ -7998,3 +7998,168 @@ jobs only; and (b) whether we may now limit how many heavy computations run at t
 Still waiting on you as well: permission to fix the one-line ordering bug in
 `scripts/automation/browser-qa-phase.sh`, and a cost decision — this round ran about 2.9 times over its
 time budget, the eleventh in a row.
+
+## Iteration 72 — goal-ops-hardening-iter-72
+
+**Date:** 2026-08-12T23:38:45Z
+**Verdict:** CONTINUE
+**Depth dispatched:** full (`iter-72/depth-dispatched` = `full`, matching the spec's `**Depth:** full` and
+iter-71's binding ESCALATE — plan and dispatch agreed)
+
+**Journey deltas:**
+- **Newly passing: J-05** (from `partial`). **J-07 improves `failing` → `partial`.** **Newly failing:
+  none. Regressed: none** — no journey moved `passing`/`already_passing` → `failing`. Shape moves
+  6 passing + 1 partial + 1 failing → **7 passing + 1 partial**. `pending_infra` absent throughout
+  (no `browser-infra.json`; the browser lane ran and produced 8 fresh live frames).
+- **Two lanes, kept separate.** Deterministic replay **2/8 PASS**; J-01/J-05/J-06/J-07/J-08/J-09
+  FAILed and were all overturned in the merged file. The overturns are substantively right — I
+  re-derived five of the six from the database, the raw poll CSV and the backend log — but the
+  REASON recorded in two artifacts is false; see (9).
+- Anti-goal violations: **FOUR CLOSED** (iter-71/a the dev.sh measurement stack; /b dev.sh missing
+  prod guards + persistent logfile; /c the 500 + 165 s outage; /d TC-5's poller arming) — each
+  verified by me from primary evidence, not accepted on a claim. **SEVEN NEW OPEN, all minor**
+  (iter-72/a the unmeasured memory demand behind a 2.3x larger pool; /b TC-10 evidence never produced
+  yet recorded complete + an unguarded fault hook in a live handler; /c no trustworthy replay
+  baseline and a false explanation for its failures; /d walkthroughs unrecorded AND the demo lane
+  itself broken; /e 12th over-budget round; /f the staleness bound removed with no disclosure at the
+  glass; /g a 503 cliff above the tested load). Ledger: **245 total, 123 unresolved, 0 unresolved
+  critical.** scan-report **CLEAN**; coherence **COHERENCE-PASS** (0 blocking, 2 advisory); review
+  **PASS**; audit **PASS_WITH_GAPS**; QA **PASS**; closure **CLOSURE-PASS**; ux-regression
+  **SKIPPED** (budget trim).
+
+**Reasoning:** I re-derived every load-bearing number myself — from the raw poll CSVs, the round's own
+backend log, the database, and the frames.
+(1) **THE ROUND'S HEADLINE IS REAL AND I RECOMPUTED IT.** `iter-72/j07-browser-qa-health-poll.csv`:
+**1,315 polls, 22:35:14→22:57:10 UTC, ALL HTTP 200, zero non-answers, max elapsed 1.652 s, and zero
+inter-poll gaps over 2 s** — recomputed from the timestamps, not from the file's own breach column.
+Against iter-71's 58-of-900 and a 165 s silence.
+(2) **THE COMPARISON IS MATCHED, WHICH IS WHAT MAKES IT MEAN ANYTHING.** `factor_lab_all_warm` — the
+phase that held 57 of iter-71's 58 non-answers — ran **598.44 s** this round (22:40:50→22:50:48 UTC,
+`logs/backend.log`) versus **607.36 s** last round. Inside that phase: **596 polls covering 598
+seconds, no missing second, no breach, max 1.652 s.** Same phase, same duration, opposite result.
+(3) **THE LAUNCHER CLAIM IS VERIFIED, NOT INHERITED.** `logs/backend.log:301676-301678` carries
+`=== start-backend.sh: launching at 2026-08-12T21:39:18Z ===` with `port=8255 memory_cap_mb=8192
+malloc_arena_max=2` and `host-guard: cpu_list=0-15 blas_threads=8`; no `dev.sh` boot header exists
+after 21:45:56Z (those three are TC-5/TC-6's own test spawns). Server side, the drill window holds
+**1,605 access lines, all 200** — zero 503, zero `Exceeded concurrency limit`, zero QueuePool
+timeout, zero ERROR/Traceback/MemoryError.
+(4) **TC-5 CLOSED ON TWO INDEPENDENT SOURCES.** The CSV's first row is 22:35:14.543 UTC; job 474's DB
+`started_at` is 22:36:12.434915 UTC — **58 s of arming**, after two rounds of missing it.
+(5) **WHY J-07 IS `partial` AND NOT `passing`, AND NO LANE RAISED IT.** Step 3 requires VmPeak
+measured during the warm and asserted under `server.memory_cap_mb` with the margin recorded. No
+VmPeak was measured (Addendum 37 records none), and the durability carry that covered it in iters
+70-71 **no longer applies, because this round changed one of step 3's own inputs**: `config.yaml`'s
+pool went 10+20=30 → 24+44=68 while `pragmas.cache_size` stays `-262144` — **256 MB of page cache per
+pooled sqlite connection** — under an unchanged 8192 MB `ulimit -v`. Retained-connection worst case
+moves 2.5 GB → 6 GB against a warm whose last recorded VmPeak is 3.69 GB (iter-38). That is a
+plausible path back to the iter-42 MemoryError/health-500 class of outage which did not exist before
+this round. Mitigating fact, stated rather than buried: the 20-minute warm completed under the cap
+with zero MemoryError — but the drill only ever opened a handful of connections, so the NEW ceiling
+was never exercised. Reviewer, QA, auditor and coherence all read this diff; none named it.
+(6) **J-05 RETURNS TO `passing` ON EVIDENCE I CHECKED IN THE DATABASE.** A real backfill of a
+genuinely unsnapshotted day (2008-01-03), all 9 finalize categories; `data_provider_runs` 474
+seed/ok started 22:36:12.434915; `scanner_runs` id 2977 created 22:36:24.084611 — and the frame I
+opened reads "Scanned 2026-08-12 22:36:24". Step 4, the clause that dropped it last round, is the
+same drill as (1). Step 3 carries on durability and I verified the carry: the only `data_manager.py`
+change is one added member of `_FAULT_INJECT_SITES`; `main.py`/`warmup.py`/`compute_coverage` are
+untouched.
+(7) **THE FIX IS IN THE RIGHT PLACE AND I READ IT.** `readiness.py:643-649` returns the cached entry
+with a real, uncapped `stale_for_s` **before touching `_TICK_LOCK` at all** — the read path is now
+lock-free; the only synchronous compute left is the once-per-process cold start. `config.py:2778`
+turns the pool/concurrency arithmetic into a boot-time `ConfigError`, which is the durable half of
+the fix.
+(8) **AND THE SAME FIX RE-OPENS A HONESTY GAP, WHICH I NAME RATHER THAN BANK.** The
+never-serve-arbitrarily-stale bound iter-71 shipped is gone by design; `stale_for_s` is honest but
+lives only in the API — no page renders it, no watchdog restarts a wedged tick thread. A dead refresh
+thread now leaves the global badge frozen on "Ready" with nothing at the glass disclosing it. That
+sits directly against the goal's own sentence "the UI tells the truth about the backend's own state".
+Logged iter-72/f; it is the next round's second item and needs full depth because it is a UI change.
+(9) **I CORRECT THE RECORD ON THE REPLAY LANE.** Six goldens FAILed. The merged row and audit T2 both
+attribute this to "running concurrently with this session's own heavy drill". **That is not true**:
+the replay frames are timestamped 22:22-22:24 UTC, ~12 minutes BEFORE the drill began (22:35:14
+UTC), and `logs/backend.log` records no heavy phase in flight between 22:05 and 22:29 UTC. I opened
+`J-07-verify.png` and the actual cause is visible in it — **an unstyled, asset-less page stuck at
+"Checking backend… / Checking board status…"**, i.e. the QA FRONTEND was serving broken pages in that
+window. The overturns stand on live re-verification (which I corroborated for five of the six); the
+explanation did not survive contact with the artifact. This is iter-64's own lesson firing again.
+(10) **THE FRAMES ARE WEAKER THAN THE PROSE, AND I SAY SO.** I opened seven images. UT-J-05 (the
+2008-01-03 immutable snapshot), J-04-verify (badge "Ready" + persisted figures) and UT-J-08
+(/backtest as-of 2026-07-31) genuinely depict their acceptance states. **UT-J-07 and UT-J-09 are
+viewport crops of the top of /data and depict neither journey's acceptance state**; J-03-verify shows
+a scrolled /data page, not a >370-day span executing. J-07's row is carried by the CSV, the log and
+the DB — all of which I re-derived — and J-09's by DOM/API assertions I cross-checked against the DB
+(`r2977` = the snapshot created minutes earlier).
+(11) **Anti-goals checked at row, file and command level.** AG-9: every `data_provider_runs` row
+created today (432-474) is `provider='seed'`; the only non-seed rows since 2026-08-01 remain 297 and
+369, both pre-existing. AG-10: `git status --porcelain -- config.yaml project-extensions/ scripts/`
+shows ONLY `config.yaml`, whose whole diff is the two pool values plus two comments;
+`git diff HEAD -- config.yaml | grep -E "memory_cap_mb|malloc_arena_max|HOST-GUARD"` is **empty**;
+the QA backend's own boot header echoes 8192/2 and the host-guard mask. AG-3: re-derived in the DB
+(basis 1996-01-02 → 2026-08-03, 591 symbols — byte-identical to iter-71) plus three independent
+timestamp matches between frames and rows. AG-7: scan CLEAN.
+Rejected **REGRESSION (C.1)**: no journey moved `passing`/`already_passing` → `failing`; J-07 moved
+`failing` → `partial`, an improvement. No critical anti-goal is unresolved: scan CLEAN, ingest
+seed-only, caps intact AND enforced, basis unchanged, no secret, no fabricated data. I weighed
+iter-72/a (the memory question) against AG-10's critical text explicitly and logged it minor with my
+reasoning stated — AG-10 forbids removing, weakening or bypassing caps, and nothing here does; the
+defect is carried by J-07's `partial`, not smuggled into an anti-goal row.
+Rejected **STALLED (C.2)**: C.2 needs EVERY unblock path to be human-owned. Measuring VmPeak under
+the new pool, sizing `cache_size`/`pool_size`, rendering `stale_for_s`, repairing the QA frontend and
+re-running the goldens are all ordinary agent work in modules that already exist. Only B-1107, the
+ceiling-policy sentence, the `scripts/automation` sign-off and the cost sanction are the owner's. Not
+an infra stall either: no `browser-infra.json`, the lane RAN, eight fresh frames landed.
+Rejected **GOAL_ACHIEVED (C.3)**: J-07 is `partial`, and 123 ledger entries remain unresolved (all
+minor). Either alone blocks it.
+Rejected **ESCALATE (C.4)**: J-07 has not failed twice consecutively (it improved); the review lane
+did not fail open (PASS, and the pipeline ran to CLOSURE-PASS); and C.4's third clause is about a
+LEAN round surfacing cross-cutting complexity — this round was already full and delivered its change
+cleanly with COHERENCE-PASS.
+**Chose CONTINUE (C.5):** coherence is PASS, so no consolidation pass is mandated.
+**FIVE THINGS I STATE PLAINLY RATHER THAN ROUND AWAY:** (i) **The availability failure that drove the
+ESCALATE is genuinely fixed** — 1,315 of 1,315 answered, at matched phase and duration, on the
+correct launcher, with the poller finally armed in time. I say that as plainly as I have said the
+failures. (ii) **The same round doubled the process's connection ceiling and measured nothing about
+memory** — 68 connections at 256 MB of page cache each, under an 8 GB wall, on a host with a
+documented crash history; that is why J-07 is not `passing`, and four reviewing lanes missed it.
+(iii) **The round bought speed by re-opening the freshness question at the glass** — the badge can
+now be fast, frozen and silent about it. (iv) **Six of eight deterministic replays failed and the
+explanation on file is wrong**; the frame shows a broken frontend, not a busy backend, and the
+project currently has no trustworthy regression baseline. (v) **A full round ran ~4.5x its 3,600 s
+budget** — the twelfth over-budget round, and the trim ladder shed the UX-regression reviewer to pay
+for it. Twelve rounds without the owner being asked in writing to sanction that bill.
+
+**Next-step recommendation:** LEAN depth. No full trigger holds (this verdict is CONTINUE, not
+ESCALATE; coherence is PASS; the consecutive-lean count resets after this full round) and item (1)
+below is backend-only. Order for the next round: (1) **Measure peak memory under the new 68-connection
+pool** at realistic concurrency during a heavy warm, record the margin against `memory_cap_mb` in
+`reports/perf-budgets.md`, and lower `pragmas.cache_size` or `pool_size` if the margin is thin —
+this is the only thing between J-07 and `passing`, and the ceiling is a hardware constraint, not a
+budget. (2) **Render `stale_for_s`** on the badge/preflight banner (iter-72/f, audit B4) — a
+standalone **full**-depth round of its own, since it is this cycle's first user-visible UI change.
+(3) **Restore a trustworthy replay baseline** (iter-72/c): fix the QA frontend that served unstyled
+pages, re-run the goldens on a quiet host, and disclose every golden edit (J-01's lost two
+assertions its own note does not mention). (4) SMALL AND WRITTEN DOWN: file TC-10's `/data`
+honest-fallback screenshot or remove the now-unused unguarded fault hook at
+`apps/backend/app/api/data.py:119` (iter-72/b); J-06's page timings when a `Frontend Present: yes`
+round comes up (3rd round owed). (5) Rides along, never the goal: J-05's walkthrough (14th round
+unrecorded) and J-07's `[NEW]` steps — and note the demo recorder itself is now defective (5 of 8
+steps failed their own actions). (6) CARRIED, untouched: iter-29/b + the badge wording after a
+permanently failed warm-up (45th round unmade); iter-31/e; iter-32/f; iter-35/k; iter-36/n;
+iter-37/o; iter-37/q; iter-39/u; iter-46/az; iter-46/ba; iter-47/bd; iter-47/bf; iter-47/bi;
+iter-48/bj; iter-57/f; iter-57/l; iter-59/g; iter-59/h; iter-59/k; iter-62/e; iter-62/f; iter-63/a;
+iter-63/b; iter-63/d; iter-64/b; iter-64/e; iter-64/f; iter-65/b; iter-65/c; iter-65/d; iter-66/b;
+iter-66/e; iter-66/f; iter-66/g; iter-67/f; iter-67/g; iter-68/d; iter-68/e; iter-69/e; iter-70/c;
+iter-70/e; iter-70/f; iter-71/e; iter-71/f; iter-71/g; iter-71/h. Deferred a THIRTY-NINTH time:
+iter-33/g, the Regime Lab.
+(7) **OWNER — the same one sentence, 24th round, and the news is good.** The app must answer its
+health check within 2 seconds while a long background job runs. Last round 58 of 900 checks got no
+answer at all, including 165 seconds of silence. This round, on the correct launcher and with two
+heavy jobs running at once, **every one of 1,315 checks was answered and the slowest took 1.7
+seconds**. Please decide two things: (a) keep the 2-second promise for long jobs, or apply it to
+short jobs only; and (b) may we limit how many heavy computations run at the same time (B-1107)?
+Still waiting on you as well: permission to fix the one-line ordering bug in
+`scripts/automation/browser-qa-phase.sh`, and a cost decision — this round ran about 4.5 times over
+its time budget, the twelfth in a row, and the pipeline dropped one of its own reviewers to save
+time. One thing needs no decision from you: before we call this work finished, the next round must
+measure how much memory the app can now use, because this round allowed it to hold more than twice as
+many database connections at once and nobody checked what that costs.

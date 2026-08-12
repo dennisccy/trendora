@@ -3468,9 +3468,18 @@ _FAULT_INJECT_MEMORY_ERROR_ENV = "TRENDORA_FAULT_INJECT_MEMORY_ERROR"
 # release isolate-and-continue site (J-07; the confirmed iter-58 crash frame,
 # `_regime_lab_members_by_horizon` retaining every horizon's pool at once). Reaches this hook via the SAME
 # lazy `from app.engine import data_manager` import `compute_factor_lab_all` already uses.
+# ops-hardening iter-72: "data_overview_endpoint" added — a DIFFERENT KIND of site than every one above
+# (which each sit INSIDE an isolate-and-continue `except MemoryError` block, so the fault degrades a
+# category to honestly-omitted and never escapes). This one fires at the very TOP of `GET /api/data`'s
+# handler (`app.api.data.data_overview`), deliberately UNGUARDED — a plain request-path function with no
+# surrounding try/except — so the injected error propagates out to FastAPI's default exception handling
+# (an honest 500), proving the FRONTEND's own existing error-boundary fallback (never a blank crash
+# overlay) renders correctly when the API call itself fails (TC-10; mirrors this SAME hook's established
+# "arm at the exact site under test" convention, applied to a request-path failure instead of an ingest
+# isolation boundary).
 _FAULT_INJECT_SITES = frozenset({
     "forward_aggregates", "drawdown_expectations", "backfill_worker", "factor_lab_all",
-    "coverage_membership_timeline", "market_phase", "regime_lab",
+    "coverage_membership_timeline", "market_phase", "regime_lab", "data_overview_endpoint",
 })
 
 

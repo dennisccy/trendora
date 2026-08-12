@@ -46,15 +46,36 @@ echo "Starting backend on :$BACKEND_PORT ..."
   # MALLOC_ARENA_MAX enforcement (same app.config.get_config() values — computed once here, not a
   # second derivation) in this backend subshell ONLY. The frontend (`next dev`) subshell below is
   # untouched — it needs the address space.
-  read -r MEMORY_CAP_MB MALLOC_ARENA_MAX_VALUE <<< "$(
+  #
+  # ops-hardening iter-72: the SAME single read now also pulls `ServerOpsCfg`'s three uvicorn-facing
+  # values (`limit_concurrency` / `timeout_keep_alive_seconds` / `graceful_timeout_seconds`) --
+  # already enforced by scripts/start-backend.sh since iter-44, but never wired into THIS launcher
+  # until now. iter-71's own live concurrent-load drill ran on dev.sh and found neither these flags
+  # nor a persistent logfile present, violating J-04/J-06's own "never dev.sh for a measurement" intent
+  # by denying it the evidence to diagnose what it measured.
+  read -r MEMORY_CAP_MB MALLOC_ARENA_MAX_VALUE LIMIT_CONCURRENCY TIMEOUT_KEEP_ALIVE GRACEFUL_TIMEOUT <<< "$(
     .venv/bin/python -c '
 from app.config import get_config
 cfg = get_config()
-print(cfg.server.memory_cap_mb, cfg.server.malloc_arena_max)
+print(cfg.server.memory_cap_mb, cfg.server.malloc_arena_max, cfg.server.limit_concurrency, cfg.server.timeout_keep_alive_seconds, cfg.server.graceful_timeout_seconds)
 '
   )"
   ulimit -v $((MEMORY_CAP_MB * 1024))
   export MALLOC_ARENA_MAX="$MALLOC_ARENA_MAX_VALUE"
+
+  # ops-hardening iter-72: a PERSISTENT backend logfile, mirroring scripts/start-backend.sh's EXACT
+  # append-only pattern (same fixed repo-relative path, same header shape — never a second log path).
+  # A dev-mode boot/crash is now discoverable after the launching terminal closes, and a dev-mode drill
+  # has real evidence to diagnose from (iter-71's own outage was measured on this launcher with no
+  # logfile at all).
+  LOG_DIR="$ROOT_DIR/logs"
+  mkdir -p "$LOG_DIR"
+  LOG_FILE="$LOG_DIR/backend.log"
+  {
+    echo ""
+    echo "=== dev.sh: launching at $(date -u +%Y-%m-%dT%H:%M:%SZ) ==="
+    echo "    port=$BACKEND_PORT memory_cap_mb=$MEMORY_CAP_MB malloc_arena_max=$MALLOC_ARENA_MAX_VALUE"
+  } >> "$LOG_FILE"
 
   # ==== HOST-GUARD (goal.md AG-10) — backend subshell ONLY, DO NOT REMOVE OR WEAKEN ================
   # Same SMT-aware taskset CPU-affinity mask + BLAS/OMP/numexpr thread caps `scripts/start-backend.sh`
@@ -75,7 +96,11 @@ print(cfg.server.memory_cap_mb, cfg.server.malloc_arena_max)
   fi
   # ==== end HOST-GUARD ==============================================================================
 
-  exec "${HOST_GUARD_CMD_PREFIX[@]}" uvicorn main:app --reload --host 0.0.0.0 --port $BACKEND_PORT
+  exec "${HOST_GUARD_CMD_PREFIX[@]}" uvicorn main:app --reload --host 0.0.0.0 --port $BACKEND_PORT \
+    --limit-concurrency "$LIMIT_CONCURRENCY" \
+    --timeout-keep-alive "$TIMEOUT_KEEP_ALIVE" \
+    --timeout-graceful-shutdown "$GRACEFUL_TIMEOUT" \
+    >> "$LOG_FILE" 2>&1
 ) &
 BACKEND_PID=$!
 

@@ -69,6 +69,10 @@ _HEAVY_TEST_PORT = 18500 + _offset
 _DEV_SCRIPT = REPO_ROOT / "scripts" / "dev.sh"
 _DEVSCRIPT_BACKEND_PORT = 18700 + _offset
 _DEVSCRIPT_FRONTEND_PORT = 19700 + _offset
+# ops-hardening iter-72: a further-distinct pair (never `+ 1`, already used by the host-guard-disabled
+# dev.sh test below) for the server-ops-flags + persistent-logfile dev.sh test (TC-5/TC-6).
+_DEVSCRIPT_OPS_FLAGS_BACKEND_PORT = _DEVSCRIPT_BACKEND_PORT + 2
+_DEVSCRIPT_OPS_FLAGS_FRONTEND_PORT = _DEVSCRIPT_FRONTEND_PORT + 2
 # A FIFTH port for the "caps absent/disabled" launcher test (TC-9) below.
 _NOCAP_TEST_PORT = 18800 + _offset
 # A SIXTH port for the ops-hardening iter-44 ServerOpsCfg-flags fast-shutdown test below.
@@ -1504,6 +1508,95 @@ def test_dev_script_applies_host_guard_caps_to_backend_only(request):
         f"dev.sh frontend subshell's CPU affinity {sorted(frontend_cpus)} differs from this test "
         f"process's own unmodified affinity {sorted(own_cpus)} — dev.sh must not taskset the frontend"
     )
+
+
+# ==================================================================================================
+# ops-hardening iter-72 (TC-5/TC-6) — `scripts/dev.sh`'s backend subshell now mirrors
+# `scripts/start-backend.sh`'s `ServerOpsCfg`-flags wiring (iter-44, `test_start_backend_wires_server_
+# ops_cfg_flags_into_uvicorn_cmdline` above) AND writes to the SAME persistent `logs/backend.log`, closing
+# the gap iter-71's live drill found (a concurrent-load measurement run on dev.sh had neither the uvicorn
+# concurrency/timeout flags nor a durable logfile). Independent of host-guard.env's presence — unlike
+# TC-8/TC-9 above, this test always runs when dev.sh + frontend node_modules are available.
+# ==================================================================================================
+def test_dev_script_wires_server_ops_flags_and_persistent_logfile(request):
+    """TC-5 — `scripts/dev.sh`'s launched uvicorn cmdline carries `--limit-concurrency` /
+    `--timeout-keep-alive` / `--timeout-graceful-shutdown` matching `get_config().server` (config-derived,
+    no magic numbers), and `logs/backend.log` receives a `"dev.sh: launching at"` boot line for THIS spawn.
+    TC-6 — the SAME spawn's frontend (`next dev`) subshell cmdline carries NONE of the three backend-only
+    flags."""
+    if not _DEV_SCRIPT.exists():
+        pytest.skip(f"{_DEV_SCRIPT} not found")
+    if not (REPO_ROOT / "apps" / "frontend" / "node_modules").exists():
+        pytest.skip("apps/frontend/node_modules not installed — cannot start the frontend for this check")
+
+    from app.config import get_config
+
+    cfg = get_config()
+    log_offset_before = LOG_FILE.stat().st_size if LOG_FILE.exists() else 0
+
+    env = dict(os.environ)
+    env["CHAIN_BACKEND_PORT"] = str(_DEVSCRIPT_OPS_FLAGS_BACKEND_PORT)
+    env["CHAIN_FRONTEND_PORT"] = str(_DEVSCRIPT_OPS_FLAGS_FRONTEND_PORT)
+    proc = subprocess.Popen(
+        ["bash", str(_DEV_SCRIPT)], cwd=str(REPO_ROOT), env=env,
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        preexec_fn=os.setsid,  # own process group -> teardown kills the WHOLE tree, not just this PID
+    )
+
+    def _cleanup():
+        try:
+            pgid = os.getpgid(proc.pid)
+        except ProcessLookupError:
+            return
+        for sig in (signal.SIGTERM, signal.SIGKILL):
+            try:
+                os.killpg(pgid, sig)
+            except ProcessLookupError:
+                return
+            deadline = time.monotonic() + 10.0
+            while time.monotonic() < deadline:
+                try:
+                    os.killpg(pgid, 0)
+                except ProcessLookupError:
+                    return
+                time.sleep(0.2)
+        try:
+            proc.wait(timeout=10)
+        except (ChildProcessError, subprocess.TimeoutExpired):
+            pass
+
+    request.addfinalizer(_cleanup)
+
+    _wait_for_health(_DEVSCRIPT_OPS_FLAGS_BACKEND_PORT, timeout=60.0)
+    backend_pid = _owning_pid(_DEVSCRIPT_OPS_FLAGS_BACKEND_PORT)
+
+    # TC-5: the launched uvicorn cmdline carries the 3 config-derived flags.
+    backend_cmdline = _read_proc_cmdline(backend_pid)
+
+    def _flag_value(flag: str) -> str:
+        assert flag in backend_cmdline, f"expected {flag!r} in dev.sh backend cmdline: {backend_cmdline}"
+        return backend_cmdline[backend_cmdline.index(flag) + 1]
+
+    assert _flag_value("--limit-concurrency") == str(cfg.server.limit_concurrency)
+    assert _flag_value("--timeout-keep-alive") == str(cfg.server.timeout_keep_alive_seconds)
+    assert _flag_value("--timeout-graceful-shutdown") == str(cfg.server.graceful_timeout_seconds)
+
+    # TC-5: logs/backend.log received THIS spawn's own dev.sh boot line (sliced from the pre-spawn offset
+    # — the file is persistent/append-mode by design and may already carry earlier boots' content).
+    assert LOG_FILE.exists(), f"expected a persistent logfile at {LOG_FILE}"
+    content = LOG_FILE.read_bytes()[log_offset_before:].decode(errors="replace")
+    assert "dev.sh: launching at" in content
+    assert "Uvicorn running" in content or "Application startup complete" in content
+
+    # TC-6: the SAME spawn's frontend subshell cmdline carries NONE of the 3 backend-only flags.
+    _wait_for_port_answering(_DEVSCRIPT_OPS_FLAGS_FRONTEND_PORT, timeout=90.0)
+    frontend_pid = _owning_pid(_DEVSCRIPT_OPS_FLAGS_FRONTEND_PORT)
+    frontend_cmdline = _read_proc_cmdline(frontend_pid)
+    for flag in ("--limit-concurrency", "--timeout-keep-alive", "--timeout-graceful-shutdown"):
+        assert flag not in frontend_cmdline, (
+            f"dev.sh frontend subshell must never receive {flag!r} — that flag is backend-only uvicorn "
+            f"wiring; got cmdline {frontend_cmdline}"
+        )
 
 
 def test_start_backend_host_guard_absent_starts_cleanly_with_no_caps(tmp_path):

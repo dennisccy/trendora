@@ -1027,15 +1027,20 @@ def test_readiness_cache_serves_fresh_entry_with_stale_for_s_below_threshold(cac
     assert 0.0 <= result["stale_for_s"] < threshold
 
 
-def test_readiness_cache_falls_back_to_synchronous_compute_past_the_staleness_bound(
+def test_readiness_cache_serves_stale_entry_as_is_past_the_staleness_bound_no_fallback_compute(
     cache_engine, config, monkeypatch, tmp_path
 ):
-    """TC-1: given the readiness background-refresh tick thread effectively stopped (a test hook backdates
-    the cache entry's `computed_at`, simulating a wedged/dead tick thread with no live thread required),
-    when the entry's age exceeds `max_stale_intervals x refresh_interval_seconds` and a client calls
-    `GET /api/health`'s read path, then the response is produced by a SYNCHRONOUS `compute_readiness` call
-    (proven by call-count instrumentation, not the stale cache) and `stale_for_s` equals 0 -- never served
-    indefinitely stale."""
+    """TC-3 (ops-hardening iter-72 rewrite) -- given a cache entry whose age exceeds
+    `max_stale_intervals x refresh_interval_seconds` (a test hook backdates `computed_at`, simulating a
+    wedged/dead tick thread with no live thread required), `get_readiness_and_preflight` returns the
+    cached payload IMMEDIATELY with its real, UNCAPPED `stale_for_s` -- proven by call-count
+    instrumentation that NEITHER `compute_readiness` NOR `compute_preflight` fires synchronously for this
+    call. This REPLACES the iter-71 test of the same scenario (which pinned a synchronous-fallback call
+    past this bound); iter-72 REMOVED that fallback -- a real concurrent-load drill showed it was itself
+    slow under the SAME DB-pool starvation that ages the cache, serializing every caller behind
+    `_TICK_LOCK` and self-amplifying a live 165s/58-of-900-non-answer outage. A stale-but-existing cache
+    entry is now ALWAYS served as-is, never traded for a blocking recompute -- see
+    `get_readiness_and_preflight`'s own NOTE for the full rationale."""
     monkeypatch.setenv(readiness.VERDICT_HISTORY_PATH_ENV, str(tmp_path / "history.jsonl"))
     with Session(cache_engine) as session:
         readiness._tick_and_cache(session, config, engine=cache_engine)
@@ -1043,56 +1048,160 @@ def test_readiness_cache_falls_back_to_synchronous_compute_past_the_staleness_bo
 
     threshold = config.readiness.max_stale_intervals * config.readiness.refresh_interval_seconds
     stale = dict(readiness._READINESS_CACHE)
-    stale["computed_at"] -= (threshold + 10.0)  # well past the bound
+    stale["computed_at"] -= (threshold + 10.0)  # well past the old bound -- no longer special-cased at all
     readiness._READINESS_CACHE = stale
 
-    # Counts `compute_preflight`, not `compute_readiness` -- `compute_preflight` itself calls
-    # `compute_readiness` a second time internally (servability reuses it verbatim), so counting
-    # `compute_readiness` directly would over-count by 2x per tick. `compute_preflight` is invoked
-    # exactly once per tick, making it the clean "did exactly one synchronous tick fire" signal.
-    calls = {"n": 0}
+    calls = {"readiness": 0, "preflight": 0}
+    real_compute_readiness = readiness.compute_readiness
     real_compute_preflight = readiness.compute_preflight
 
-    def _counting(*a, **kw):
-        calls["n"] += 1
+    def _counting_readiness(*a, **kw):
+        calls["readiness"] += 1
+        return real_compute_readiness(*a, **kw)
+
+    def _counting_preflight(*a, **kw):
+        calls["preflight"] += 1
         return real_compute_preflight(*a, **kw)
 
-    monkeypatch.setattr(readiness, "compute_preflight", _counting)
+    monkeypatch.setattr(readiness, "compute_readiness", _counting_readiness)
+    monkeypatch.setattr(readiness, "compute_preflight", _counting_preflight)
+
     with Session(cache_engine) as session:
         result = readiness.get_readiness_and_preflight(session, engine=cache_engine, config=config)
 
-    assert calls["n"] == 1  # exactly one synchronous fallback tick fired -- the stale entry was never served
-    assert result["stale_for_s"] == 0.0
-    # the fallback also re-published a FRESH cache entry (mirrors the cold-start path) -- a later reader
-    # within the bound serves this fresh entry, not the stale one that triggered the fallback.
-    assert readiness._READINESS_CACHE["computed_at"] > stale["computed_at"]
+    assert calls == {"readiness": 0, "preflight": 0}  # no synchronous compute fired -- served straight from cache
+    assert result["readiness"] == stale["readiness"]
+    assert result["preflight"] == stale["preflight"]
+    # the real, UNCAPPED elapsed age -- strictly greater than the old bound, never clamped/reset to 0
+    assert result["stale_for_s"] >= threshold + 10.0
+    # the cache entry itself is left untouched -- no fallback tick silently republished a fresh one over it
+    assert readiness._READINESS_CACHE["computed_at"] == stale["computed_at"]
 
 
-def test_readiness_cache_staleness_bound_never_raises_when_the_fallback_tick_also_fails(
+# ==================================================================================================
+# ops-hardening iter-72 (J-07 self-inflicted-stall fix) -- TC-4: `_tick_and_cache`'s post-lock recheck.
+# Two callers racing `_tick_and_cache` (the periodic thread's own scheduled tick vs. an ingest finalize
+# hook's `trigger_readiness_refresh`, or two concurrent cold-start callers before any tick has ever
+# published) must not both pay a full compute: the SECOND to acquire `_TICK_LOCK`, finding an entry the
+# FIRST just published fresh enough to reuse (within one `refresh_interval_seconds`), returns that entry
+# instead of recomputing redundantly.
+# ==================================================================================================
+def test_tick_and_cache_post_lock_recheck_skips_redundant_compute(cache_engine, config, monkeypatch, tmp_path):
+    """A deterministic (non-racy) two-caller contention harness: the FIRST caller is made to block mid-
+    compute (holding `_TICK_LOCK` the whole time) until the test explicitly releases it; the SECOND caller
+    is started only once the first has PROVABLY entered its compute (so its own non-blocking `acquire`
+    attempt is guaranteed to fail -- genuine contention, never a timing guess) and is given a moment to
+    reach its own blocking `acquire()` before the first is released. The second caller must then reuse the
+    entry the first just published, rather than paying its own redundant compute -- proven by call-count
+    instrumentation (exactly ONE underlying tick for two racing callers), not just output equality. Blocks
+    on/counts `compute_preflight`, not `compute_readiness` -- `_compute_tick` calls `compute_readiness`
+    directly AND `compute_preflight` internally reuses it a second time (servability), so
+    `compute_preflight` is the clean "exactly once per tick" signal (mirrors the convention the staleness
+    test above already established)."""
+    monkeypatch.setenv(readiness.VERDICT_HISTORY_PATH_ENV, str(tmp_path / "history.jsonl"))
+    real_compute_preflight = readiness.compute_preflight
+    calls = {"n": 0}
+    first_call_started = threading.Event()
+    release_first_call = threading.Event()
+
+    def _first_blocks_then_real(*a, **kw):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            first_call_started.set()
+            assert release_first_call.wait(timeout=5.0), "test never released the first blocked call"
+        return real_compute_preflight(*a, **kw)
+
+    monkeypatch.setattr(readiness, "compute_preflight", _first_blocks_then_real)
+
+    results = [None, None]
+
+    def _first():
+        with Session(cache_engine) as session:
+            results[0] = readiness._tick_and_cache(session, config, engine=cache_engine)
+
+    t1 = threading.Thread(target=_first)
+    t1.start()
+    assert first_call_started.wait(timeout=5.0), "the first tick never entered its compute"
+    # t1 now holds _TICK_LOCK, blocked inside its own compute -- t2's non-blocking acquire below is
+    # GUARANTEED to fail (genuine contention, not a race).
+
+    def _second():
+        with Session(cache_engine) as session:
+            results[1] = readiness._tick_and_cache(session, config, engine=cache_engine)
+
+    t2 = threading.Thread(target=_second)
+    t2.start()
+    time.sleep(0.1)  # give t2 time to make its own (failing) non-blocking acquire and start queueing
+    release_first_call.set()
+    t1.join(timeout=5.0)
+    t2.join(timeout=5.0)
+
+    assert calls["n"] == 1, (
+        f"expected exactly ONE tick to actually run across both racing callers (the second should reuse "
+        f"the first's fresh publish via the post-lock recheck), got {calls['n']}"
+    )
+    assert results[0] is not None and results[1] is not None
+    assert results[0] == results[1]  # both callers observed the SAME published entry
+
+
+def test_tick_and_cache_post_lock_recheck_does_not_reuse_a_too_old_entry(
     cache_engine, config, monkeypatch, tmp_path
 ):
-    """A stale entry past the bound whose fallback compute ALSO fails degrades to the SAME honest
-    unavailable/NO-GO shape the cold-start path already produces -- never raises, never serves the
-    stale entry as a fallback of last resort (the whole point of the bound is to never do that)."""
+    """The post-lock recheck only reuses an entry fresher than `refresh_interval_seconds`. Deterministic
+    harness: a pre-existing cache entry is already older than the interval; the FIRST caller queues holding
+    the lock but its OWN tick FAILS (never republishing anything), so once the SECOND, genuinely-contended
+    caller finally acquires the lock, the entry it rechecks is STILL that same too-old one -- it must NOT
+    be reused; the second caller computes its own fresh entry instead. Same `compute_preflight` counting
+    convention as the test above."""
     monkeypatch.setenv(readiness.VERDICT_HISTORY_PATH_ENV, str(tmp_path / "history.jsonl"))
     with Session(cache_engine) as session:
         readiness._tick_and_cache(session, config, engine=cache_engine)
+    assert readiness._READINESS_CACHE is not None
+    old = dict(readiness._READINESS_CACHE)
+    old["computed_at"] -= (config.readiness.refresh_interval_seconds + 1.0)  # older than one tick interval
+    readiness._READINESS_CACHE = old
 
-    threshold = config.readiness.max_stale_intervals * config.readiness.refresh_interval_seconds
-    stale = dict(readiness._READINESS_CACHE)
-    stale["computed_at"] -= (threshold + 10.0)
-    readiness._READINESS_CACHE = stale
+    real_compute_preflight = readiness.compute_preflight
+    calls = {"n": 0}
+    first_call_started = threading.Event()
+    release_first_call = threading.Event()
 
-    def _boom(session, engine=None, config=None):
-        raise RuntimeError("simulated fallback compute failure")
+    def _first_fails_then_real(*a, **kw):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            first_call_started.set()
+            assert release_first_call.wait(timeout=5.0), "test never released the first blocked call"
+            raise RuntimeError("simulated failure -- the cache is never republished by this tick")
+        return real_compute_preflight(*a, **kw)
 
-    monkeypatch.setattr(readiness, "compute_readiness", _boom)
-    with Session(cache_engine) as session:
-        result = readiness.get_readiness_and_preflight(session, engine=cache_engine, config=config)
+    monkeypatch.setattr(readiness, "compute_preflight", _first_fails_then_real)
 
-    assert result["readiness"]["state"] == "unavailable"
-    assert result["preflight"]["verdict"] == "NO-GO"
-    assert result["stale_for_s"] == 0.0
+    results = [None, None]
+
+    def _first():
+        with Session(cache_engine) as session:
+            results[0] = readiness._tick_and_cache(session, config, engine=cache_engine)
+
+    t1 = threading.Thread(target=_first)
+    t1.start()
+    assert first_call_started.wait(timeout=5.0), "the first tick never entered its compute"
+
+    def _second():
+        with Session(cache_engine) as session:
+            results[1] = readiness._tick_and_cache(session, config, engine=cache_engine)
+
+    t2 = threading.Thread(target=_second)
+    t2.start()
+    time.sleep(0.1)
+    release_first_call.set()
+    t1.join(timeout=5.0)
+    t2.join(timeout=5.0)
+
+    assert results[0] is None  # the first tick's own compute failed -- degrades to None, per TC-6
+    assert calls["n"] == 2  # the second caller did NOT reuse the too-old entry -- it ran its own tick too
+    assert results[1] is not None
+    assert results[1]["computed_at"] > old["computed_at"]  # a genuinely NEW tick ran, not the too-old entry
+    assert readiness._READINESS_CACHE == results[1]
 
 
 # ==================================================================================================

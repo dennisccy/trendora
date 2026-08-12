@@ -874,3 +874,33 @@ bound staleness, prefer serving the aged value WITH its age disclosed over block
 recompute, and always double-check the cache after acquiring the lock.
 **Applies to:** any change adding a cache-staleness bound or a synchronous fallback on a
 request path; any future work on `app.engine.readiness` / `_TICK_LOCK` / `GET /api/health`.
+
+## iter-72 — 2026-08-12T23:38:45Z
+
+**Verdict:** CONTINUE
+**Lesson:** A connection-pool resize is a MEMORY change, not just a concurrency change, and it
+silently voids any evidence-durability carry for a memory assertion. `config.yaml` raised
+`pool_size`+`max_overflow` 30 → 68 to fix an availability bug, while `pragmas.cache_size: -262144`
+gives each pooled sqlite connection a 256 MB page cache under an unchanged 8192 MB `ulimit -v` —
+retained-connection worst case 2.5 GB → 6 GB against a warm whose last recorded VmPeak was 3.69 GB.
+Reviewer, QA, auditor and coherence all read the diff and none named it; the availability drill only
+ever opened a handful of connections, so the new ceiling was never exercised. Whenever a diff changes
+pool size, worker count, or a per-connection/per-thread cache, re-measure peak memory before carrying
+any prior memory evidence forward.
+**Applies to:** any iteration touching `config.yaml`'s `database.pool_size`/`max_overflow`/`pragmas`,
+`server.limit_concurrency`, thread/worker counts, or any per-connection cache — and any evaluator
+deciding whether A.6 evidence durability covers a memory/VmPeak step.
+
+## iter-72 (2 of 2) — 2026-08-12T23:38:45Z
+
+**Verdict:** CONTINUE
+**Lesson:** When a lane labels its own failures "transient / concurrent load", check the timestamps
+and open the frame — the label is a hypothesis, not evidence. This round six replay goldens FAILed
+and two artifacts (the merged results row and audit T2) blamed "running concurrently with this
+session's own heavy drill". The replay frames are timestamped 22:22-22:24 UTC, ~12 minutes BEFORE the
+drill started (22:35:14 UTC), and `logs/backend.log` shows no heavy phase in flight 22:05-22:29 UTC.
+`J-07-verify.png` shows the real cause outright: an unstyled, asset-less page stuck at "Checking
+backend…" — the QA FRONTEND was serving broken pages. The overturns were still correct; the
+diagnosis was not, and a wrong diagnosis means the next round repairs the wrong thing.
+**Applies to:** any round reconciling deterministic-replay FAILs against an LLM lane, and any agent
+writing a "false positive / host contention" note — cite a timestamp bracket and the frame's contents.

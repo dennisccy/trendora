@@ -1,28 +1,40 @@
 # Iteration State — ops-hardening
 
-**After iteration:** 71 · **Date:** 2026-08-12 · **Verdict:** ESCALATE
+**After iteration:** 72 · **Date:** 2026-08-12 · **Verdict:** CONTINUE
 
 ## Journeys
 
-6 passing (J-01 J-03 J-04 J-06 J-08 J-09) · 1 partial (J-05) · 1 failing (J-07) — 8 total. All 8 checked live this round; `pending_infra` cleared on every one.
+7 passing (J-01 J-03 J-04 J-05 J-06 J-08 J-09) · 1 partial (J-07) · 0 failing — 8 total
 
 ## Active blockers
 
-- **J-07 + J-05 step 4 — the app stopped answering `/api/health` 58 of 900 times during a heavy job (longest gap 165 s) and served one 500.** Owner: dev. Cause found in the round's real log: `QueuePool limit of size 10 overflow 20 reached` (`config.yaml:119-122` pool 30 vs `server.limit_concurrency` 64).
-- **The measurement is not conforming.** It ran on `scripts/dev.sh`, which omits `--limit-concurrency` (`scripts/dev.sh:85-88` vs `scripts/start-backend.sh:107`). J-04/J-06 say "never dev.sh". Owner: dev — re-measure on `scripts/start-backend.sh` FIRST.
-- **Suspect in this round's own change:** `readiness.py` `_tick_and_cache` recomputes with no post-lock recheck, so past 1.5 s staleness every request computes serially behind `_TICK_LOCK`. Owner: dev.
-- **Owner-owned, 23rd round:** (a) keep the 2 s health promise for long jobs or apply it to short jobs only; (b) may we bound how many heavy computes run at once (card B-1107 — it is what bit); (c) sign-off on `scripts/automation/browser-qa-phase.sh`; (d) cost sanction (11th over-budget round, 2.9x).
+- **J-07 step 3 — peak memory never measured under the new pool (dev).** `pool_size`+`max_overflow` went
+  30 → 68 while `pragmas.cache_size: -262144` gives EACH pooled sqlite connection a 256 MB page cache under an
+  unchanged 8192 MB `ulimit -v`: retained worst case 2.5 → 6 GB vs a warm last measured at 3.69 GB (iter-38).
+  Measure at real concurrency, record the margin in `reports/perf-budgets.md`, lower `cache_size`/`pool_size`
+  if thin. Only thing between J-07 and `passing`.
+- **No trustworthy replay baseline (dev).** 6 of 8 goldens FAILed at 22:22-22:24 UTC because the QA frontend
+  served unstyled pages stuck at "Checking backend…" (`…-evidence/J-07-verify.png`), all six overturned by
+  live re-verification; `runs/…/journey-scripts/J-01.json` also lost two undisclosed assertions.
+- **Owner-owned, 24th round:** the 2 s health ceiling (long vs short jobs); B-1107; `browser-qa-phase.sh` fix; a cost sanction (12th over-budget round).
 
 ## Last 2 verdicts
 
-- iter 71: ESCALATE — six journeys newly passing, but the first measured multi-minute outage of the session, with a root cause spanning the DB pool, the ingest warm, J-09's dispatch and the launcher.
-- iter 70: CONTINUE — the readiness cache fixed the breaches (0 of 1,030), but the QA backend died mid-round so nothing was journey-checked.
+- iter 72: CONTINUE — availability fixed and re-derived by the evaluator (1,315/1,315 polls answered, max
+  1.652 s, inside a 598 s `factor_lab_all_warm` matching iter-71's 607 s); J-05 back to `passing`, J-07
+  `failing` → `partial` on the unmeasured memory demand behind the pool resize.
+- iter 71: ESCALATE — a lean round measured a real 165 s outage (58/900 non-answers, one 500) rooted in
+  DB-pool exhaustion plus iter-71's own blocking readiness fallback, on the forbidden `dev.sh` stack.
 
 ## Do not redo
 
-- **Readiness/preflight background-refresh cache + staleness bound: DONE.** `readiness.py:127,165-194`, `config.yaml:1348-1349` (`refresh_interval_seconds` 0.5, `max_stale_intervals` 3), `health.py:174,208` (`cached = None`, `stale_for_s`). Reviewer PASS, coherence PASS, iter-70/d closed. Do not re-instrument `readiness_s`/`preflight_s` — proven near-zero.
-- **Rendering `stale_for_s` in the UI: deliberately deferred**, not forgotten — it would be this cycle's first user-visible UI change (goal.md Loop Mechanics ties that to full depth). Next round IS full, so it may ship if scoped.
-- **J-07 steps 3 (VmPeak) and 4 (memory-pressure abort): carry forward on evidence durability** — warm-path code byte-unchanged; do not re-run those drills.
-- **AG-10 envelope (`config.yaml` caps, `project-extensions/host-guard/`, HOST-GUARD script blocks): untouched, owner-set.** Verified clean this round. Do not edit.
-- **`scripts/automation/*` stays owner-gated** — the `browser-qa-phase.sh` ordering bug is still awaiting sign-off; do not edit it unprompted.
-- **The Regime Lab (iter-33/g) is deferred** — 37th round; not scope.
+- **DB pool sizing + boot invariant — DONE.** 24+44=68 ≥ `limit_concurrency` 64, drift guarded at
+  `config.py:2778`; only lower if the memory measurement above demands it.
+- **Readiness serve-stale + post-lock recheck — DONE.** `readiness.py:643-649` serves the cached entry with
+  uncapped `stale_for_s` without touching `_TICK_LOCK`; never reinstate a blocking synchronous fallback.
+- **`scripts/dev.sh` launcher parity — DONE.** Backend subshell carries the three uvicorn flags and appends to
+  `logs/backend.log`; frontend subshell byte-unchanged.
+- **Rendering `stale_for_s` is NOT done and needs its own FULL-depth round** (audit B4 / iter-72/f).
+- **Walkthroughs ride along, never a goal** (J-05 14 rounds unrecorded; J-07's `[NEW]` steps) — and the demo
+  recorder itself is broken: 5 of 8 steps failed their own fills/clicks.
+- **iter-33/g the Regime Lab — deferred 39 times; do not schedule without owner direction.**

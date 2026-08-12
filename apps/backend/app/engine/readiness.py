@@ -558,9 +558,35 @@ def _tick_and_cache(session: Session, cfg: Config, engine=None) -> Optional[dict
     ops-hardening iter-71 (J-07 closure): the published payload carries `computed_at`, a `time.monotonic()`
     stamp of THIS tick -- the staleness-bound input `get_readiness_and_preflight` below measures a cache
     entry's age against. Monotonic (never wall-clock) so a system clock adjustment can never manufacture or
-    hide staleness."""
+    hide staleness.
+
+    ops-hardening iter-72 (TC-4, post-lock recheck): a caller that had to genuinely QUEUE behind another
+    thread's in-flight tick (the periodic thread's own tick racing an ingest finalize hook's
+    `trigger_readiness_refresh`, the exact scenario TC-5 above already serializes -- or two concurrent
+    cold-start callers before any tick has ever published) may find, once it finally acquires the lock,
+    that the entry it was queued behind has JUST been published fresh enough to reuse -- reusing it skips a
+    fully redundant second compute. Contention is detected explicitly (a non-blocking `acquire` first; only
+    a caller whose non-blocking attempt FAILED -- i.e. someone else already held the lock -- takes the
+    recheck branch below) rather than merely comparing timestamps, so an ordinary UNCONTENDED call (the
+    common case: no other thread mid-tick) always computes its own fresh entry exactly as before, even if
+    an earlier successful tick happens to still be recent -- this keeps the existing degrade-on-error
+    contract intact (TC-6: a solo re-tick after a prior success must still actually attempt its OWN compute,
+    so a now-broken producer is truly exercised, not silently skipped). `cfg` supplies the SAME
+    `readiness.refresh_interval_seconds` a fresh periodic tick would itself be scheduled against -- a
+    just-published entry younger than one interval is, by construction, not stale enough to be worth a
+    second caller recomputing again right now. Same producers, same lock, no interface/return-shape
+    change."""
     global _READINESS_CACHE
-    with _TICK_LOCK:
+    contended = not _TICK_LOCK.acquire(blocking=False)
+    if contended:
+        _TICK_LOCK.acquire()
+    try:
+        if contended:
+            recheck = _READINESS_CACHE
+            if recheck is not None:
+                age_s = time.monotonic() - recheck["computed_at"]
+                if age_s <= cfg.readiness.refresh_interval_seconds:
+                    return recheck
         try:
             payload = _compute_tick(session, cfg, engine=engine)
         except Exception:  # pragma: no cover - a tick failure must never crash the thread or blank the cache
@@ -569,6 +595,8 @@ def _tick_and_cache(session: Session, cfg: Config, engine=None) -> Optional[dict
         payload = dict(payload, computed_at=time.monotonic())
         _READINESS_CACHE = payload
         return payload
+    finally:
+        _TICK_LOCK.release()
 
 
 def _unavailable_fallback() -> dict:
@@ -603,23 +631,35 @@ def get_readiness_and_preflight(session: Session, engine=None, config: Optional[
     unreachable at boot) degrades to the SAME honest fallback shape `compute_readiness`/`compute_preflight`
     already produce on their own internal errors -- `GET /api/health` never serves an undefined value.
 
-    ops-hardening iter-71 (J-07 closure) -- staleness bound: a wedged/dead background-refresh tick thread
-    must never let this accessor go on serving an ever-more-frozen "ready" state forever (iter-70's own
-    named gap: "before this round the endpoint could be slow but never wrong; it can now be fast and
-    wrong"). `stale_for_s` -- seconds since the served payload was computed (0 when computed synchronously
-    for THIS call) -- is always in the returned dict. When the cached entry's age would exceed
-    `readiness.max_stale_intervals x readiness.refresh_interval_seconds`, this falls back to the SAME
-    synchronous compute the cold-start path already uses, instead of serving the stale entry -- mirrors
-    the existing cold-start fallback exactly; no second implementation."""
+    ops-hardening iter-71 (J-07 closure) introduced `stale_for_s` -- seconds since the served payload was
+    computed (0 when computed synchronously for THIS call) -- always present in the returned dict.
+
+    ops-hardening iter-72 (J-07 self-inflicted-stall fix) -- REMOVES the synchronous-fallback branch iter-71
+    added for a cache entry aged past `readiness.max_stale_intervals x readiness.refresh_interval_seconds`:
+    once a cache entry exists, it is now ALWAYS served as-is, with its real (uncapped) `stale_for_s` --
+    never capped/reset to 0.0 and never traded for a blocking recompute, no matter how old. See the NOTE at
+    the `_tick_and_cache` call site below for why. The cold-start path (`cache is None` -- no tick has EVER
+    published in this process) is UNCHANGED: still a synchronous compute here, still `stale_for_s: 0.0`."""
     cfg = config or get_config()
     cache = _READINESS_CACHE
     if cache is not None:
+        # Disclosed-stale-serve, unconditionally: the cache entry's true elapsed age, however large, is
+        # returned as-is -- never traded for a synchronous recompute past some bound. See the NOTE below.
         stale_for_s = time.monotonic() - cache["computed_at"]
-        max_stale_s = cfg.readiness.max_stale_intervals * cfg.readiness.refresh_interval_seconds
-        if stale_for_s <= max_stale_s:
-            return dict(cache, stale_for_s=stale_for_s)
-        # Falls through to the synchronous-fallback path below -- the cache entry EXISTS but has aged past
-        # the bound (e.g. the background thread has stopped ticking), so it is never served as-is.
+        return dict(cache, stale_for_s=stale_for_s)
+    # NOTE (ops-hardening iter-72, honesty-over-availability): iter-71's OWN synchronous fallback past the
+    # staleness bound was the self-inflicted half of that round's live 165s/58-of-900-non-answer outage --
+    # under the SAME DB-pool starvation that ages the cache in the first place, a synchronous
+    # compute_readiness/compute_preflight call is itself slow (it does real DB reads), so EVERY caller that
+    # found the cache stale queued behind `_TICK_LOCK` waiting for that slow recompute, serializing what
+    # should have been independent fast reads and self-amplifying the very stall the bound was meant to
+    # guard against. Disclosed-stale-serve (above) never takes that lock at all on the read path -- a
+    # reader always gets an immediate answer, honestly labeled with its real age via `stale_for_s`, which is
+    # a truer trade than either (a) blocking availability for a "fresher" number under exactly the load
+    # that made it stale, or (b) silently capping `stale_for_s` to hide how old the value really is. The
+    # ONLY synchronous compute left in this function is the cold-start path immediately below, which runs
+    # at most once per process (before the background thread's first tick has ever published anything to
+    # be stale) -- never on the hot, already-cached read path a heavy background job's load lands on.
     ticked = _tick_and_cache(session, cfg, engine=engine)
     if ticked is not None:
         return dict(ticked, stale_for_s=0.0)

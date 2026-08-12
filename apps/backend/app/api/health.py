@@ -60,14 +60,21 @@ three DB reads below are unaffected (out of scope — iter-69's attribution neve
 
 ops-hardening iter-71 (J-07 closure) additively extends this SAME endpoint with `stale_for_s: float>=0` —
 seconds since the served readiness/preflight payload was computed (0 when computed synchronously for this
-request). `app.engine.readiness.get_readiness_and_preflight` now stamps every cached tick and falls back to
-a synchronous compute once a cache entry's age would exceed `readiness.max_stale_intervals ×
-readiness.refresh_interval_seconds` — the never-serve-arbitrarily-stale-data bound that closes iter-70's
-own named gap (a wedged/dead background-refresh tick thread could otherwise serve a frozen "ready" state
-forever). Also assigns `cached = None` explicitly in the readiness-fetch except block below (reviewer/audit
-MINOR from iter-70) so the preflight-fallback branch's later `cached["preflight"]` read is never an
-implicitly-unbound local — same degrade-on-error behavior, just no longer relying on an incidental
-`UnboundLocalError` being swallowed by that branch's own broad `except`.
+request). `app.engine.readiness.get_readiness_and_preflight` stamps every cached tick. Also assigns
+`cached = None` explicitly in the readiness-fetch except block below (reviewer/audit MINOR from iter-70) so
+the preflight-fallback branch's later `cached["preflight"]` read is never an implicitly-unbound local —
+same degrade-on-error behavior, just no longer relying on an incidental `UnboundLocalError` being swallowed
+by that branch's own broad `except`.
+
+ops-hardening iter-72 (J-07 self-inflicted-stall fix) REMOVES the synchronous-compute fallback iter-71 added
+for a cache entry aged past `readiness.max_stale_intervals × readiness.refresh_interval_seconds`: a real
+concurrent-load drill showed that fallback was itself slow under the SAME DB-pool starvation that ages the
+cache, so every caller queued behind `_TICK_LOCK` waiting on it, self-amplifying a 165s/58-of-900-non-answer
+outage. Once a cache entry exists it is now ALWAYS served as-is, with its real (uncapped) `stale_for_s` —
+disclosed-stale-serve, never a blocking recompute — mirroring iter-71's own lesson. The cold-start path
+(no tick has ever published in this process) is unchanged: still a synchronous compute, still
+`stale_for_s: 0.0`. See `app.engine.readiness.get_readiness_and_preflight`'s own NOTE for the full
+honesty-over-availability rationale.
 """
 from __future__ import annotations
 

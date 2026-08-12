@@ -956,3 +956,49 @@ def test_registry_config_omitted_inside_a_present_evidence_block(tmp_path):
     cfg = load_config(_write(tmp_path, data))
     assert cfg.evidence.registry.enforce is False
     assert cfg.evidence.registry.path.endswith("pre-registrations.jsonl")
+
+
+# ==================================================================================================
+# ops-hardening iter-72 (TC-1) — `database.pool_size + database.max_overflow` must cover
+# `server.limit_concurrency`. iter-71's real concurrent-load drill reproduced the live consequence of a
+# too-small pool: `sqlalchemy.exc.TimeoutError: QueuePool limit ... overflow ... timeout ...` plus a 165s
+# `GET /api/health` outage. This boot check turns that arithmetic mismatch into a loud `ConfigError`
+# instead of a live failure discovered under load.
+# ==================================================================================================
+def test_real_config_db_pool_covers_server_concurrency():
+    """The real committed `config.yaml` satisfies the invariant with real headroom (not a razor edge)."""
+    cfg = load_config()
+    pool_total = cfg.database.pool_size + cfg.database.max_overflow
+    assert pool_total >= cfg.server.limit_concurrency
+    assert pool_total - cfg.server.limit_concurrency >= 4  # real margin, not merely "just enough"
+
+
+def test_minimal_config_defaults_satisfy_pool_invariant(tmp_path):
+    """A config/fixture that omits `database.pool_size`/`max_overflow` AND `server.limit_concurrency`
+    entirely (relying on both sections' class defaults — the MINIMAL_VALID shape most inline test fixtures
+    across the suite use) still loads: the class defaults themselves satisfy the invariant, so this cross-
+    field check never breaks a fixture that predates it."""
+    cfg = load_config(_write(tmp_path, MINIMAL_VALID))
+    assert cfg.database.pool_size + cfg.database.max_overflow >= cfg.server.limit_concurrency
+
+
+def test_db_pool_below_server_concurrency_raises(tmp_path):
+    """An explicit pool sum smaller than `server.limit_concurrency` fails the boot loudly — the exact
+    arithmetic mismatch iter-71 found in the real config.yaml, reproduced here as a targeted fixture."""
+    data = copy.deepcopy(MINIMAL_VALID)
+    data["database"]["pool_size"] = 10
+    data["database"]["max_overflow"] = 20
+    data["server"] = {"limit_concurrency": 64}
+    with pytest.raises(ConfigError, match="database.pool_size \\+ database.max_overflow"):
+        load_config(_write(tmp_path, data))
+
+
+def test_db_pool_exactly_covering_server_concurrency_is_valid(tmp_path):
+    """The boundary case — the pool sum EXACTLY equal to `limit_concurrency` — is valid (the invariant is
+    `>=`, not a strict `>`)."""
+    data = copy.deepcopy(MINIMAL_VALID)
+    data["database"]["pool_size"] = 40
+    data["database"]["max_overflow"] = 24
+    data["server"] = {"limit_concurrency": 64}
+    cfg = load_config(_write(tmp_path, data))
+    assert cfg.database.pool_size + cfg.database.max_overflow == cfg.server.limit_concurrency

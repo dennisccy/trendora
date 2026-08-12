@@ -180,6 +180,42 @@ def test_get_data_overview_coverage_from_storage_empty_db_still_graceful(tmp_pat
     assert payload["coverage"]["price_start"] is None
 
 
+# ==================================================================================================
+# ops-hardening iter-72 (TC-10) — a test-only fault-injection probe makes `GET /api/data` itself fail
+# (never mocked away, unlike the other tests above), mirroring J-07's own `TRENDORA_FAULT_INJECT_MEMORY_
+# ERROR` convention — see `data_manager._fault_inject_memory_error` / `_FAULT_INJECT_SITES`. Unlike every
+# other site that hook arms (each isolate-and-continue guarded, so the injected error never escapes), this
+# site is deliberately UNGUARDED at the top of `data_overview` — the injected error propagates out exactly
+# like a real failure would, so FastAPI would answer with a 500 for a real `GET /api/data` request. The
+# frontend's OWN existing honest-fallback rendering on that 500 ("Dataset coverage could not load from the
+# API. No figures are shown rather than fabricated", `apps/frontend/app/data/page.tsx`) is captured as
+# LIVE browser evidence by QA armed with this SAME env var — this test proves the backend half of that
+# mechanism: the endpoint genuinely raises when armed, and is unaffected (byte-identical) when disarmed.
+# ==================================================================================================
+def test_get_data_overview_fault_injection_probe_makes_the_endpoint_raise(data_api_engine, monkeypatch):
+    """Armed (`TRENDORA_FAULT_INJECT_MEMORY_ERROR=data_overview_endpoint`): `data_overview` raises
+    `MemoryError` before doing any other work — the exact failure `GET /api/data` would surface to the
+    frontend as a 500. Disarmed: the SAME call serves its normal payload, unaffected."""
+    monkeypatch.setenv("TRENDORA_FAULT_INJECT_MEMORY_ERROR", "data_overview_endpoint")
+    with Session(data_api_engine) as session:
+        with pytest.raises(MemoryError):
+            data_overview(session=session)
+
+    monkeypatch.delenv("TRENDORA_FAULT_INJECT_MEMORY_ERROR", raising=False)
+    with Session(data_api_engine) as session:
+        payload = data_overview(session=session)  # disarmed — serves normally, never a leftover raise
+    assert "coverage" in payload
+
+
+def test_get_data_overview_fault_injection_probe_is_a_noop_for_an_unrelated_site(data_api_engine, monkeypatch):
+    """Arming a DIFFERENT site (e.g. `factor_lab_all`) never affects `GET /api/data` — the probe is
+    site-scoped, not a blanket kill-switch."""
+    monkeypatch.setenv("TRENDORA_FAULT_INJECT_MEMORY_ERROR", "factor_lab_all")
+    with Session(data_api_engine) as session:
+        payload = data_overview(session=session)  # unaffected — a different site was armed
+    assert "coverage" in payload
+
+
 def test_get_data_overview_carries_capacity_snapshot(data_api_engine):
     """Item K (iter-24 fast-platform pass): GET /api/data carries an additive `capacity` key — the DB
     storage-footprint snapshot (file size + row counts for the three largest tables), exact on the tiny

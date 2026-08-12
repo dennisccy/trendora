@@ -1285,3 +1285,36 @@ endpoint identity. The two fixes' individual contributions can still be teased a
 signature is the absence of any `QueuePool ... timeout` line in `logs/backend.log`; the readiness fix's
 signature is the health-watchdog's `readiness_s` sub-span staying near-zero (a cache-dict read) rather than
 spiking to a full compute duration once the staleness bound is crossed.
+
+## iter-72 — goal-evaluator
+
+**Ambiguity:** J-07 step 3 says *"Record the process's peak memory (VmPeak) during step 1; assert it
+stays under the declared `server.memory_cap_mb`, with the margin recorded in
+`reports/perf-budgets.md`"*. iters 70 and 71 both carried steps 3-4 on evidence durability (A.6) on
+the grounds that the warm-path code was byte-identical, and this round's spec likewise scheduled no
+VmPeak measurement. But THIS round changed one of step 3's own inputs — `config.yaml`'s DB pool
+10+20=30 → 24+44=68, with `pragmas.cache_size: -262144` (256 MB page cache per pooled sqlite
+connection) under an unchanged 8192 MB `ulimit -v`. Nothing states whether a config change that alters
+a memory assertion's INPUT, without touching the code the assertion is about, breaks the durability
+carry.
+**We chose:** it breaks the carry — J-07 scored `partial` (steps 1, 2, 4 satisfied; step 2 with the
+strongest evidence in this session's history), with the memory question named first in the journey's
+gap, in the eval summary and as item 1 of the next-step order. Grounds: (1) A.6's own test is whether
+the journey's SURFACES are unchanged in `iter-diff.md`, and `config.yaml`'s pool sizing is in this
+round's diff and is a direct input to the process's peak memory; (2) the arithmetic is not
+hypothetical — retained-connection worst case moves 2.5 GB → 6 GB against a warm whose last recorded
+VmPeak is 3.69 GB (iter-38), i.e. a plausible route back to the iter-42 MemoryError/health-500 outage
+that did not exist before this round; (3) the drill that proves step 2 only ever opened a handful of
+connections, so the new ceiling was never exercised — the evidence is silent about step 3 rather than
+supportive of it.
+**Cost recorded honestly:** a reader who holds that "the warm completed under the cap with zero
+MemoryError" satisfies step 3 in substance would score J-07 `passing`, and this round would read as
+the round J-07 was finally closed after 38 rounds. **Under the decision tree this changes no verdict**
+— GOAL_ACHIEVED is independently blocked by 123 unresolved (minor) ledger entries, so the verdict is
+CONTINUE either way — but it changes the ledger's story from "closed" to "one step short". I put the
+win in the first sentence of the summary and of the owner paragraph so the status is not the only
+thing carrying the news.
+**Reversible:** yes — the next round's memory measurement either shows a comfortable margin (J-07
+returns to `passing` in that same round, no other step needing re-work) or shows a thin one (the fix
+is a `cache_size`/`pool_size` adjustment). Both the raw poll CSV and the pool/page-cache arithmetic
+are preserved in this round's `eval.md`, the J-07 gap field and ledger entry iter-72/a.

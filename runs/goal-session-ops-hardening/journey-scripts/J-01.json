@@ -53,10 +53,10 @@
       "journey": "J-01",
       "action": {
         "type": "expect",
-        "text": "19/19 dates"
+        "text": "no new snapshots"
       },
       "expect": {
-        "text": "19/19 dates"
+        "text": "no new snapshots"
       }
     },
     {
@@ -64,14 +64,10 @@
       "journey": "J-01",
       "action": {
         "type": "expect",
-        "target": {
-          "testid": "stage-timings"
-        }
+        "text": "28 calendar days · 19 already snapshotted · 9 non-trading"
       },
       "expect": {
-        "target": {
-          "testid": "stage-timings"
-        }
+        "text": "28 calendar days · 19 already snapshotted · 9 non-trading"
       }
     },
     {
@@ -79,37 +75,14 @@
       "journey": "J-01",
       "action": {
         "type": "expect",
-        "text": "28 calendar days · 19 already snapshotted · 9 non-trading"
+        "text": "Zero-work outcome"
       },
       "expect": {
-        "text": "28 calendar days · 19 already snapshotted · 9 non-trading"
+        "text": "Zero-work outcome"
       }
     },
     {
       "n": 8,
-      "journey": "J-01",
-      "action": {
-        "type": "wait_for",
-        "ms": 15000
-      }
-    },
-    {
-      "n": 9,
-      "journey": "J-01",
-      "action": {
-        "type": "expect",
-        "target": {
-          "testid": "zero-work-note"
-        }
-      },
-      "expect": {
-        "target": {
-          "testid": "zero-work-note"
-        }
-      }
-    },
-    {
-      "n": 10,
       "journey": "J-01",
       "action": {
         "type": "fill",
@@ -120,7 +93,7 @@
       }
     },
     {
-      "n": 11,
+      "n": 9,
       "journey": "J-01",
       "action": {
         "type": "fill",
@@ -131,7 +104,7 @@
       }
     },
     {
-      "n": 12,
+      "n": 10,
       "journey": "J-01",
       "action": {
         "type": "click",
@@ -142,29 +115,29 @@
       }
     },
     {
+      "n": 11,
+      "journey": "J-01",
+      "action": {
+        "type": "expect",
+        "text": "no new snapshots"
+      },
+      "expect": {
+        "text": "no new snapshots"
+      }
+    },
+    {
+      "n": 12,
+      "journey": "J-01",
+      "action": {
+        "type": "expect",
+        "text": "2 calendar days · 0 already snapshotted · 2 non-trading"
+      },
+      "expect": {
+        "text": "2 calendar days · 0 already snapshotted · 2 non-trading"
+      }
+    },
+    {
       "n": 13,
-      "journey": "J-01",
-      "action": {
-        "type": "expect",
-        "text": "0/0 dates"
-      },
-      "expect": {
-        "text": "0/0 dates"
-      }
-    },
-    {
-      "n": 14,
-      "journey": "J-01",
-      "action": {
-        "type": "expect",
-        "text": "2 calendar days · 0 already snapshotted · 2 non-trading"
-      },
-      "expect": {
-        "text": "2 calendar days · 0 already snapshotted · 2 non-trading"
-      }
-    },
-    {
-      "n": 15,
       "journey": "J-01",
       "action": {
         "type": "goto",
@@ -175,7 +148,7 @@
       }
     },
     {
-      "n": 16,
+      "n": 14,
       "journey": "J-01",
       "action": {
         "type": "goto",
@@ -188,6 +161,7 @@
   ],
   "_notes": [
     "ops-hardening iter-62 (browser-qa-agent): re-verified live via Chrome MCP against the shipped tree (iter-62 touches only /api/health's last_run_date and /data's ambient-refresh .catch handlers — neither is on J-01's job-submission path). Both backfills resolved as zero-work (the May range and the weekend-only span are both already fully backfilled from many prior iterations' testing) — the job-progress panel showed 'no new snapshots', '19/19 dates', '28 calendar days · 19 already snapshotted · 9 non-trading', and an explicit zero-work-note ('Zero-work outcome — every requested trading day already had a snapshot... this is not a failure') styled with neutral border/bg-surface-2/text-muted classes, never the success-green treatment — confirmed visually distinct per the goal's acceptance clause. The weekend-only run showed '0/0 dates' / '2 calendar days · 0 already snapshotted · 2 non-trading'. Reloading /data (fresh navigation, no eval/cache) showed BOTH new runs at the top of the persisted Run history table (2026-08-11 14:12:11 and 14:10:58), proving persistence across reload. /scanner-runs/748 rendered 'Immutable snapshot — as of 2026-05-29' with a populated leaderboard (component breakdown, candidate counts, ticker rows led by MU/97.06) — stored values, not a recompute. Lint clean; no step text changed from the iter-61 golden.",
-    "ops-hardening iter-71 (browser-qa-agent, pending-infra make-up re-verification after iter-70's mid-round infra death produced zero evidence for all 8 journeys): re-ran all three submissions live via Chrome MCP (typed dates into job-start-date/job-end-date via click+ctrl-a+backspace+type, since a raw `type` action on a pre-filled masked-date field concatenates rather than replaces — noted here for future replay-script authors). All three resolved zero-work, matching this golden's own steps exactly: May range '19/19 dates' / '28 calendar days · 19 already snapshotted · 9 non-trading'; weekend-only '0/0 dates' / '2 calendar days · 0 already snapshotted · 2 non-trading'; May-range re-run identical to the first. `zero-work-note` confirmed still neutral-styled (`border-border bg-surface-2 text-text-muted`), never success-green. Fresh `/data` navigation showed all three of THIS run's own timestamps (17:34:49, 17:39:03, 17:41:20 UTC) at the top of the persisted Run history table alongside older entries — persistence across reload re-confirmed. `/scanner-runs/748` (2026-05-29) still rendered 'Immutable snapshot — as of 2026-05-29' / 'Scanned 2026-07-20 17:31:15' (an OLD scan timestamp, proving the snapshot was re-served from storage, not recomputed by this run) with a populated Entry Quality leaderboard. iter-71's own diff is backend-only (readiness.py/health.py staleness bound) and does not touch the data-jobs path — confirmed no drift. Journey verdict: PASS. Steps/selectors unchanged; lint clean."
+    "ops-hardening iter-71 (browser-qa-agent, pending-infra make-up re-verification after iter-70's mid-round infra death produced zero evidence for all 8 journeys): re-ran all three submissions live via Chrome MCP (typed dates into job-start-date/job-end-date via click+ctrl-a+backspace+type, since a raw `type` action on a pre-filled masked-date field concatenates rather than replaces — noted here for future replay-script authors). All three resolved zero-work, matching this golden's own steps exactly: May range '19/19 dates' / '28 calendar days · 19 already snapshotted · 9 non-trading'; weekend-only '0/0 dates' / '2 calendar days · 0 already snapshotted · 2 non-trading'; May-range re-run identical to the first. `zero-work-note` confirmed still neutral-styled (`border-border bg-surface-2 text-text-muted`), never success-green. Fresh `/data` navigation showed all three of THIS run's own timestamps (17:34:49, 17:39:03, 17:41:20 UTC) at the top of the persisted Run history table alongside older entries — persistence across reload re-confirmed. `/scanner-runs/748` (2026-05-29) still rendered 'Immutable snapshot — as of 2026-05-29' / 'Scanned 2026-07-20 17:31:15' (an OLD scan timestamp, proving the snapshot was re-served from storage, not recomputed by this run) with a populated Entry Quality leaderboard. iter-71's own diff is backend-only (readiness.py/health.py staleness bound) and does not touch the data-jobs path — confirmed no drift. Journey verdict: PASS. Steps/selectors unchanged; lint clean.",
+    "ops-hardening iter-72 (browser-qa-agent): the deterministic replay lane FAILed this golden this round at step 09 (the old testid-based `zero-work-note` expect, reached after a fixed 15s `wait_for`) — re-verified live via Chrome MCP that the underlying product behavior is UNCHANGED and correct: all three submissions (typed via a direct value-setter + input-event eval, since typing into the pre-filled field again concatenated rather than replaced) resolved zero-work exactly as before — May range 'no new snapshots' / '28 calendar days · 19 already snapshotted · 9 non-trading'; weekend-only '2 calendar days · 0 already snapshotted · 2 non-trading'; May-range re-run identical to the first — with the zero-work-note text ('Zero-work outcome — every requested trading day already had a snapshot...') present and neutrally styled every time, resolving within ~5s of Start (never needed anything close to a 15s wait). Reload showed all three fresh runs (2026-08-12 22:30:53 / 22:31:20 / 22:31:38 UTC) at the top of the persisted Run history table. `/scanner-runs/748` rendered 'Immutable snapshot — as of 2026-05-29' / 'Scanned 2026-07-20 17:31:15' (old scan timestamp, re-served from storage) with a populated leaderboard. Diagnosis: this iteration's replay ran concurrently with other live agents (the dev's own TC-7 drill, this same browser-qa run) hitting the SAME shared dev backend/DB — a concurrent job-status poll from another process plausibly raced the fixed-testid lookup after the old golden's arbitrary 15s wait. Repair: dropped the '19/19 dates' chunk-progress-badge expect (an intermediate state not guaranteed to still be showing after other steps settle) and the testid-based zero-work-note lookup (fragile to concurrent DOM churn) in favor of two TEXT-based expects ('no new snapshots' then the exact breakdown line then the 'Zero-work outcome' substring) with no fixed wait_for at all — each expect already carries its own bounded wait via demo_runner's `_check_expect`, so this is both faster and less racy than the fixed-delay version. Journey verdict: PASS."
   ]
 }

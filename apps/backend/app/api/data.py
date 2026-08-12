@@ -109,7 +109,14 @@ def data_overview(
     J-93/J-94: `?as_of=` is the SINGLE GLOBAL as-of (the same control every date-scoped page reads — NOT a
     second date state). The coverage block's dynamic `universe_count` + per-date `universe_diagnostic` are
     resolved at this date. An absent/invalid `as_of` gracefully falls back to the latest stored run date
-    (coverage still serves — never a 4xx for a bad as-of here, since this is descriptive metadata)."""
+    (coverage still serves — never a 4xx for a bad as-of here, since this is descriptive metadata).
+
+    ops-hardening iter-72 (TC-10): a test-only fault-injection probe (`TRENDORA_FAULT_INJECT_MEMORY_ERROR=
+    data_overview_endpoint`, a no-op in every real deployment — see `data_manager._fault_inject_memory_
+    error`) fires first, deliberately UNGUARDED here (no surrounding try/except, unlike every other call
+    site this SAME hook arms), so an armed test drill makes this endpoint genuinely fail (FastAPI's default
+    500) — the mechanism this iteration's `/data` honest-fallback-message evidence is captured against."""
+    data_manager._fault_inject_memory_error("data_overview_endpoint")
     cfg = get_config()
     jp = cfg.data_manager.job_progress
     resolved_asof: Optional[date_cls] = None

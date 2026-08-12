@@ -589,13 +589,15 @@ class ReadinessCfg(BaseModel):
         config fixture predating this field still loads unchanged — the established `extra="allow"`/
         back-compat-default convention this class already uses, mirroring `StartupCfg`'s own
         `background_compute_history_size` default).
-      - `max_stale_intervals` (ops-hardening iter-71, J-07 closure) — the staleness bound on the SAME
-        cache: `app.engine.readiness.get_readiness_and_preflight` falls back to a synchronous
+      - `max_stale_intervals` (ops-hardening iter-71, J-07 closure) — introduced as the staleness bound on
+        the SAME cache: `app.engine.readiness.get_readiness_and_preflight` fell back to a synchronous
         `compute_readiness`/`compute_preflight` call whenever the cached entry's age would exceed
-        `max_stale_intervals × refresh_interval_seconds` — the never-serve-arbitrarily-stale-data guard
-        for a wedged/dead background-refresh tick thread (iter-70's own named gap: "before this round the
-        endpoint could be slow but never wrong; it can now be fast and wrong"). MUST be `> 0`. Defaults to
-        `3` (same back-compat-default convention as `refresh_interval_seconds` above).
+        `max_stale_intervals × refresh_interval_seconds`. ops-hardening iter-72 REMOVED that synchronous
+        fallback (a real concurrent-load drill showed it self-amplified a live outage — see
+        `get_readiness_and_preflight`'s own NOTE) — a cache entry is now ALWAYS served as-is, however old,
+        so this field is currently unconsumed by that read path. Left typed/validated (never deleted) since
+        no journey retires the tunable itself; a future consumer may reintroduce a bound using it. MUST be
+        `> 0`. Defaults to `3` (same back-compat-default convention as `refresh_interval_seconds` above).
 
     Boot-validated: `severity` must name exactly `{servability, freshness, integrity, drift}` with every
     value one of `"degraded"`/`"no-go"`, covering both, and `refresh_interval_seconds`/`max_stale_intervals`
@@ -1991,13 +1993,20 @@ class DatabaseCfg(BaseModel):
     """iter-24 fast-platform item B — `pragmas` (sqlite-only connection tuning) + the pool sizing
     `app.db.make_engine` applies (`pool_size`/`max_overflow`, config-keyed — no inline literal). Both
     default-populated so a config/fixture predating them still loads and serves today's SQLAlchemy
-    defaults would otherwise leave implicit (`QueuePool` sizes to 5/10 by default; here made explicit)."""
+    defaults would otherwise leave implicit (`QueuePool` sizes to 5/10 by default; here made explicit).
+
+    ops-hardening iter-72: the defaults were 10/20 (sum 30) — SMALLER than `ServerOpsCfg.limit_concurrency`'s
+    own default (64), so a fixture/config predating this pair (and relying on these defaults) would starve
+    the DB pool under uvicorn's admitted concurrency exactly like the real `config.yaml` did before this
+    iteration's fix (see `Config._db_pool_covers_server_concurrency`). Raised to 24/44 (sum 68) to mirror
+    the real `config.yaml` value and keep every predating fixture passing that cross-field invariant by
+    construction, not by accident."""
 
     model_config = ConfigDict(extra="allow")
     url: str = Field(min_length=1)
     pragmas: DatabasePragmasCfg = Field(default_factory=DatabasePragmasCfg)
-    pool_size: int = 10
-    max_overflow: int = 20
+    pool_size: int = 24
+    max_overflow: int = 44
 
     @model_validator(mode="after")
     def _validate(self) -> "DatabaseCfg":
@@ -2763,6 +2772,26 @@ class Config(BaseModel):
                         unresolved.append(threshold.ref)
         if unresolved:
             raise ValueError(f"methodology threshold refs are unresolvable: {sorted(set(unresolved))}")
+        return self
+
+    @model_validator(mode="after")
+    def _db_pool_covers_server_concurrency(self) -> "Config":
+        """ops-hardening iter-72 (TC-1) — `database.pool_size + database.max_overflow` (the SQLAlchemy
+        `QueuePool`'s total connection ceiling, `app.db.make_engine`) must cover
+        `server.limit_concurrency` (uvicorn's own max simultaneous in-flight connections). A smaller pool
+        starves the (limit_concurrency - pool_total) extra concurrent requests: each blocks up to
+        `pool_timeout` and then raises `sqlalchemy.exc.TimeoutError: QueuePool limit ... overflow ...
+        timeout ...` — the exact live failure this boot check now prevents by construction (iter-71's real
+        drill: `config.yaml`'s prior 10+20=30 sum against a 64 limit_concurrency produced that error plus a
+        165s `GET /api/health` outage). Cross-checked here (not on `DatabaseCfg`) because a sub-model
+        cannot see `server` — same reason as the pattern/invalidation `ma_period` checks above."""
+        pool_total = self.database.pool_size + self.database.max_overflow
+        if pool_total < self.server.limit_concurrency:
+            raise ValueError(
+                f"database.pool_size + database.max_overflow ({pool_total}) must be >= "
+                f"server.limit_concurrency ({self.server.limit_concurrency}) — a smaller pool starves "
+                "concurrent requests under uvicorn's own admitted concurrency (QueuePool timeout)"
+            )
         return self
 
 

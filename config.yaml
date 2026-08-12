@@ -116,10 +116,14 @@ database:
                                  # above (demand-resident, not a virtual reservation) keeps reads fast.
     temp_store: "MEMORY"
   # Pool sized to the uvicorn worker/concurrency shape (the server: block further below allows up to
-  # server.limit_concurrency=64 simultaneous connections; pool_size + max_overflow comfortably covers
-  # that without over-provisioning idle sqlite connections).
-  pool_size: 10
-  max_overflow: 20
+  # server.limit_concurrency=64 simultaneous connections). ops-hardening iter-72: the prior 10+20=30 sum
+  # was SMALLER than limit_concurrency (64) -- the "comfortably covers" claim above was arithmetically
+  # false. A real concurrent-load drill on scripts/dev.sh (iter-71) reproduced the consequence live:
+  # sqlalchemy.exc.TimeoutError: QueuePool limit of size 10 overflow 20 reached, timeout 30.00, plus a
+  # 165s health-poll outage as pool-starved requests queued behind the readiness cache's own lock. 24+44=68
+  # now clears 64 with real headroom (not a razor edge) without over-provisioning idle sqlite connections.
+  pool_size: 24
+  max_overflow: 44
 
 # ----------------------------------------------------------------------------------------
 # Stock universe: ~120 liquid US common stocks spanning the example themes. The filter
@@ -1346,7 +1350,7 @@ readiness:
     drift: degraded
   verdict_history_path: runs/goal-session-mcp-loop/state/preflight-verdict-history.jsonl
   refresh_interval_seconds: 0.5    # ops-hardening iter-70 (J-07): background-refresh cache tick cadence -- well under startup.health_poll_interval_seconds (2.0s)
-  max_stale_intervals: 3    # ops-hardening iter-71 (J-07 closure): synchronous-fallback threshold -- a cache entry older than max_stale_intervals x refresh_interval_seconds (1.5s) is never served; GET /api/health falls back to a synchronous compute instead
+  max_stale_intervals: 3    # ops-hardening iter-71 introduced this as a synchronous-fallback threshold; ops-hardening iter-72 REMOVED that fallback (it self-amplified the live 165s/58-of-900-non-answer outage -- see app.engine.readiness.get_readiness_and_preflight's own NOTE), so this value is CURRENTLY UNCONSUMED by the readiness read path: an existing cache entry is now ALWAYS served as-is with its real, uncapped stale_for_s, never traded for a blocking recompute, however old. Kept typed/validated (never deleted) for a future consumer -- see ReadinessCfg's docstring in apps/backend/app/config.py. [iter-72 AUDIT FIX: this comment still described the removed fallback as live -- the same false-config-comment defect the pool-sizing lines above were corrected for in this SAME iteration]
 
 # ----------------------------------------------------------------------------------------
 # iter-42 (J-100) CONSUMED — bounded-resource SERVER ops guards. The SINGLE source of the uvicorn
