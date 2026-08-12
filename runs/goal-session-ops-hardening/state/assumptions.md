@@ -1254,3 +1254,34 @@ otherwise have earned outright, and it is the strongest J-05 evidence in many ro
 the journey note rather than letting the status carry only the bad half.
 **Reversible:** yes — if the prod-launcher re-measurement shows the app stays responsive, J-05 step 4
 passes and the journey returns to `passing` in that same round, with no other step needing re-work.
+
+## iter-72 — goal-decomposer
+
+**Ambiguity:** iter-71's next-step item (3) offers two alternative fixes for the readiness cache's
+post-staleness-threshold behavior — "Add the post-lock recheck to `_tick_and_cache`... or serve the aged
+value with `stale_for_s` set instead of blocking. Instrument it so the next drill can say which of the two
+mechanisms produced the stall" — without choosing between them, framing the choice as something to be
+determined empirically by A/B instrumentation across two separate rounds rather than decided up front.
+
+**We chose:** ship "serve the aged value with disclosed `stale_for_s`, never block past the threshold" as the
+DEFINITIVE fix, not an instrumented A/B — plus add the post-lock recheck to `_tick_and_cache` as a separate,
+complementary hardening (it costs nothing and closes a real redundant-compute race under lock contention) —
+and bundle the connection-pool sizing fix in the SAME iteration rather than isolating one change to attribute
+causation to a single mechanism. Grounds: (1) iter-71's own second lessons.md entry already states the
+general principle plainly — "prefer serving the aged value WITH its age disclosed over blocking on a
+recompute" — this is not really an open empirical question, it is a documented conclusion from the SAME round
+that discovered the bug; (2) the pool-exhaustion root cause and the readiness-fallback amplification are two
+ends of the SAME failure chain (pool exhaustion made DB reads/ticks slow -> cache aged -> synchronous fallback
+fired -> requests queued behind one lock -> more connections held longer -> more exhaustion), so fixing only
+one and measuring in isolation would still leave a known-bad mechanism live in production for at least one
+more round; (3) full depth's audit + ux-regression lanes give this round the review capacity a two-part bundle
+would otherwise lack, and both changes are additive/behavior-only to already-registered rows — no second
+producer or endpoint either way.
+
+**Reversible:** yes — if a future drill under the corrected pool sizing still shows a correctness gap (e.g. a
+genuinely dead background-refresh thread that never recovers, as opposed to one merely slowed by pool
+contention), a later iteration can add a bounded watchdog/restart without touching this change's producer/
+endpoint identity. The two fixes' individual contributions can still be teased apart post hoc: the pool fix's
+signature is the absence of any `QueuePool ... timeout` line in `logs/backend.log`; the readiness fix's
+signature is the health-watchdog's `readiness_s` sub-span staying near-zero (a cache-dict read) rather than
+spiking to a full compute duration once the staleness bound is crossed.
