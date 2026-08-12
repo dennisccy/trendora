@@ -1173,3 +1173,31 @@ log rather than from the counter alone. I wrote that trigger explicitly into bot
 **Reversible:** yes — a later evaluator can re-score any of these journeys the moment a fresh frame lands
 (pass or fail clears `pending_infra` either way), and can rule that a service death outside the browser
 stack should have been `unknown` instead.
+
+## iter-71 — goal-decomposer
+
+**Ambiguity:** iter-70's next-step item (2) orders "stamp each payload with a monotonic timestamp
+and fall back to a synchronous compute past N × `refresh_interval_seconds`" for the readiness
+cache's staleness bound (iter-70/d), without naming the field name, the exact multiplier N, or
+whether the new staleness value should be surfaced in the UI (badge/preflight banner) given the
+goal's own "the UI tells the truth about the backend's own state" sentence that motivated the
+finding in the first place.
+
+**We chose:** (1) field name `stale_for_s: float>=0`, additive to the existing `GET /api/health`
+payload, computed by the SAME `app.engine.readiness.compute_readiness`/`compute_preflight`
+producers and served by the SAME endpoint — no second producer, no second endpoint; (2) a new
+bounded config knob `readiness.max_stale_intervals` (default 3) governs the synchronous-fallback
+threshold, keeping the number in config rather than a literal, matching this session's own
+"no magic numbers in scripts" convention; (3) `stale_for_s` is NOT rendered in the UI this
+round — kept as a backend/diagnostic field only. Grounds for (3): goal.md's own Loop Mechanics
+line ties "full when an iteration first lands user-visible UI changes" to depth, and this
+iteration's depth is BINDING lean (no full trigger holds); rendering the field would be this
+cycle's first user-visible UI change and would need full-depth review it is not scoped for.
+The staleness BOUND itself (the behavioral fix — never serve arbitrarily-stale data) ships
+this round regardless of whether the number is ever shown to a user; the disclosure question
+is separable and deferred.
+
+**Reversible:** yes — a later iteration can surface `stale_for_s` on the badge/preflight banner
+(at full depth, per goal.md's own UI-change rule) without touching the field's producer or
+endpoint; the config knob's default (3) can be re-tuned with one round's evidence if the
+synchronous-fallback threshold proves too loose or too tight.
