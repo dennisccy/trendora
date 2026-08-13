@@ -1672,3 +1672,33 @@ the arbiter to treat a failed closure gate as a full trigger. I escalated that t
 rather than repeating the workaround silently.
 **Reversible:** yes — one owner sentence settles it, and a later evaluator can return to CONTINUE/lean
 the moment the shortcut is disabled; the engine line numbers and this round's telemetry are recorded.
+
+## iter-78 — goal-decomposer
+
+**Ambiguity:** iter-77/c's next-step names two alternative remedies for the recurring defect where a
+leftover test-residue file (`apps/frontend/__tc3_intentionally_broken.ts`) makes the live frontend
+unbuildable — "never dispatch [`test_start_frontend_script.py`] under a short-timeout tool" (a
+dispatch-discipline change) or "teach the launcher's staleness check to ignore `__tc3_*`" (a
+staleness-check change). Neither, read literally, actually stops the failure: `next build`
+typechecks the WHOLE `apps/frontend` tree regardless of what the staleness comparison decides, so a
+stray, deliberately-invalid `__tc3_intentionally_broken.ts` would still fail the real build even if
+the staleness check is taught to "ignore" it when deciding whether a rebuild is needed.
+
+**We chose:** direct the developer to have `scripts/start-frontend.sh` actively PURGE the two known
+test-residue artifacts (the exact filename `__tc3_intentionally_broken.ts` and the `.next-test-*`
+scratch-dir glob, both already reserved constants inside `test_start_frontend_script.py`'s own
+self-heal) before the staleness check / build step runs, rather than merely exempting them from the
+staleness comparison. Grounds: (1) this is the only reading of the evaluator's second remedy that
+actually prevents the build failure, since "ignoring" the file for staleness purposes still leaves
+it in the tree for `next build`'s typecheck; (2) it mirrors a mechanism already proven in this exact
+test module (`_purge_test_residue()`, autouse setup+teardown, reserved for the SAME filename/glob),
+giving the LAUNCHER the same self-heal capability independent of whether/when the test module itself
+is next invoked; (3) the pattern is narrow (two exact, already-reserved names) so it can never delete
+real product source. The dispatch-discipline remedy is retained as a secondary, non-code note in the
+iteration spec (dispatch this test module with a generous timeout, never a short-timeout tool) since
+it directly prevents the SIGKILL-mid-test root trigger at zero cost, but it is not load-bearing for
+this iteration's Definition of Done — the launcher-side purge is.
+
+**Reversible:** yes — if a future round finds the purge step too broad or the wrong architectural
+layer, it can be narrowed or removed and the fix re-targeted at dispatch discipline alone; nothing
+else in this iteration depends on this specific mechanism being correct.
