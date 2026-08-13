@@ -11823,8 +11823,13 @@ already drives, adding `_POOL_PRESSURE_WORKERS` concurrent threads issuing real 
 `/api/data/availability`) throughout — a realistic number of simultaneously-checked-out pooled DB
 connections, more than the "a handful" iter-72's own drill exercised. A new `_poll_job_to_terminal_resilient`
 helper tolerates a single transient network hiccup under this test's own added load. `_HealthPoller`'s new
-`interval` param defaults to the pre-existing 2s cadence, so no sibling test's behavior changed (72 tests in
-this module's non-heavy-ingest scope + `test_config.py`'s 75 all still pass — see Tests Run below).
+`interval` param defaults to the pre-existing 2s cadence, so no sibling test's behavior changed
+(**correction, ops-hardening iter-74, TC-6:** this originally read "72 tests in this module's
+non-heavy-ingest scope + `test_config.py`'s 75 all still pass" — the true count, confirmed by a fresh
+`pytest --collect-only -q` on `test_start_backend_script.py`, is **18 tests collected**, of which this same
+section's own `-k` filter selects 13 (5 deselected) — **12 passed, 1 skipped**, not 72;
+`test_config.py`'s 75-passed figure was correct and is unaffected — see Addendum 39 for the fresh count and
+full correction).
 
 ### What the live drill actually found
 
@@ -11938,3 +11943,170 @@ job status. No data was corrupted (a throwaway DB copy, discarded either way) an
 but the in-progress measurement for that specific attempt was lost as a direct result and had to be
 re-attempted. Recorded here so the pattern (verify an EXACT PID before any broad process-pattern kill,
 especially when a long-running real computation might be in flight) is not silently repeated.
+
+## Addendum 39 (2026-08-13, ops-hardening iter-74 developer pass) — J-07 step 3 CLOSED: the phase-by-phase join produces a COMPLETE, clean, realistic-pool-pressure VmPeak profile — all 9 finalize-tail phases captured, 42.3% margin, zero non-200s, zero 503s
+
+### Context
+
+Addendum 38 (iter-73) recorded FOUR failed full-length live-drill attempts (three pool-pressure levels
+plus one pressure-free arm) — none produced a complete, realistic-pressure VmPeak reading. The iter-73
+evaluator's own next-step item (1) ordered the alternative this iteration builds: "record peak memory
+phase by phase during the heavy job, using the timers that already exist in the code, so the answer can be
+assembled from short runs," joining `_MemSampler`'s timestamped `/proc/<pid>/status` samples against
+`_refresh_ingest_aggregates`'s existing `logger.info("J-05 finalize-tail phase timing: ...")` /
+`"...sub-phase timing: ..."` log lines — two instruments that already exist, per iter-68's lesson ("before
+commissioning a new instrument, join the instruments you already have").
+
+### What was built
+
+`apps/backend/tests/test_start_backend_script.py` gained four fast, deterministic unit tests (no live
+server, synthetic samples + synthetic log text) plus one live drill:
+
+- `_local_asctime_to_epoch` / `_parse_phase_timing_lines` / `_vmpeak_at` / `_join_phase_vmpeak` — the join
+  itself. `_local_asctime_to_epoch` converts a `logging.Formatter` default `%(asctime)s` string back to a
+  UTC epoch via `time.mktime(time.strptime(...))` — the exact stdlib inverse of the `time.localtime()`
+  conversion `app.logging_config`'s bare `Formatter` (no custom `converter`) uses to produce `asctime` in
+  the first place (confirmed by direct read). iter-66's lesson applied and PROVEN, not assumed:
+  `test_local_asctime_to_epoch_round_trips_through_localtime` formats a known epoch through the SAME
+  conversion the real formatter uses, then inverts it, asserting sub-second round-trip agreement — this
+  passes identically whether the host is in BST or GMT when it runs, unlike a hardcoded +1h offset. The
+  parser was ALSO validated directly against real, already-on-disk `logs/backend.log` lines from a genuine
+  completed finalize-tail run earlier this session (job `1273b81dcb9d4616bc4a260d80fbc89d`, 02:26:06 →
+  02:43:29 UTC) before any new live drill was attempted: it correctly extracted all 9 whole-phase + 5
+  per-horizon sub-phase lines in order, and the recovered epoch for phase 1's completion
+  (`1786587984.0` → `2026-08-13 02:26:24 UTC`) matched that job's own DB-persisted UTC timestamp exactly.
+- `test_join_phase_vmpeak_is_durable_through_a_partial_interrupted_log` — the core durability property
+  TC-1 depends on: a synthetic log containing only 3 of the 9 phases (simulating an interrupted drill)
+  still yields a correct 3-phase profile, never an exception, never a guessed entry for the other 6.
+- `test_start_backend_phase_by_phase_vmpeak_profile_under_pool_pressure` — the live drill (opt-in,
+  `TRENDORA_RUN_HEAVY_INGEST_TEST=1`-gated like its siblings; marked `xfail(strict=False)` per this
+  project's established convention for a real-process drill on a shared host, so a defeated run signals
+  without failing the suite and XPASSes — as it did — the moment a run completes cleanly).
+
+### Method: a `backfill` of one unsnapshotted date, not a `rebuild` — a deliberate substitution, disclosed
+
+All four of Addendum 38's attempts used `rebuild`, whose per-date SCAN phase runs unconditionally over the
+FULL committed `2005-02-25 → 2026-08-03` range regardless of the requested dates (confirmed live,
+Addendum 38) — on today's ~8.4 GB DB that scan alone now takes 30-45+ minutes and was the thing that
+defeated every one of those four attempts BEFORE the finalize tail (where every phase-timer log line this
+iteration joins against is written) ever started. This iteration instead triggers the SAME finalize tail
+via a `backfill` of ONE genuinely unsnapshotted trading day, using the SAME `_pick_unsnapshotted_trading_
+day` helper the sibling `test_start_backend_survives_back_to_back_heavy_ingest_under_memory_cap` test
+already uses for its own second job. This is not a scope reduction: `_refresh_ingest_aggregates` runs
+IDENTICALLY regardless of which job kind or date range triggered it — every finalize-tail warm computation
+(`forward_aggregates_warm`, `factor_lab_all_warm`, `drawdown_expectations_warm`, etc.) reads the FULL
+committed universe/history as of the latest snapshot, not just the triggering job's own date range. This
+was confirmed BEFORE committing to the approach, not assumed: a real single-date `backfill` job
+(`1273b81dcb9d4616bc4a260d80fbc89d`) had already run earlier this session (part of this iteration's own
+pipeline setup, not a drill) and produced real, substantial finalize-tail elapsed times (`factor_lab_all_
+warm` 568.51s, `drawdown_expectations_warm` 343.69s) — the same order of magnitude a `rebuild`-triggered
+warm would produce, because it is computing over the same full basis. Choosing `backfill` sidesteps
+SPECIFICALLY the scan-phase cost that defeated iter-73, without weakening what TC-1 measures.
+
+### Results: a complete, 9-of-9-phase profile
+
+Job `95e1d3fc7eb34f20a2c55913f4de4ff7` (`backfill`, `2019-01-31`→`2019-01-31`, throwaway DB copy of the
+real ~8.37 GB committed dev DB, launched via `scripts/start-backend.sh` with host-guard caps applied,
+`pool_size=24`/`max_overflow=44`) reached status **`ok`** with all nine `aggregates_refreshed` categories,
+under `_POOL_PRESSURE_WORKERS=5` concurrent real-read-request threads throughout (iter-73's own calibrated
+value). Full per-phase VmPeak-at-completion profile, joined via `_join_phase_vmpeak` from the raw
+`_MemSampler` CSV (`runs/goal-session-ops-hardening/iter-74/phase-vmpeak-samples.csv`, 7,876 samples) and
+`logs/backend.log`'s own phase-timer lines for this job:
+
+| # | Phase | Elapsed (s) | Completion (UTC) | VmPeak-at-completion (kB) | VmPeak-at-completion (MB) |
+|---|---|---|---|---|---|
+| 1 | `coverage_membership_timeline_refresh` | 59.58 | 03:46:57 | 4,837,420 | 4,724.0 |
+| 2 | `per_date_coverage_warm` | 4.97 | 03:47:02 | 4,837,420 | 4,724.0 |
+| 3 | `market_phase_warm` | 0.80 | 03:47:03 | 4,837,420 | 4,724.0 |
+| 4 | `forward_aggregates_warm` (whole phase) | 186.09 | 03:50:09 | 4,837,420 | 4,724.0 |
+| 5 | `research_hot_keys_warm` | 3.01 | 03:50:12 | 4,837,420 | 4,724.0 |
+| 6 | `index_series_warm` | 0.10 | 03:50:12 | 4,837,420 | 4,724.0 |
+| 7 | `availability_heatmap_warm` | 6.16 | 03:50:18 | 4,837,420 | 4,724.0 |
+| 8 | `factor_lab_all_warm` | 699.38 | 04:01:58 | 4,837,420 | 4,724.0 |
+| 9 | `drawdown_expectations_warm` | 926.38 | 04:17:24 | 4,837,420 | 4,724.0 |
+
+`forward_aggregates_warm` per-horizon breakdown (TC-1's "per horizon" ask), from the `"...sub-phase
+timing..."` lines:
+
+| Horizon | Elapsed (s) | VmPeak-at-completion (kB) |
+|---|---|---|
+| 1 | 36.08 | 4,837,420 |
+| 5 | 27.84 | 4,837,420 |
+| 10 | 45.16 | 4,837,420 |
+| 20 | 33.27 | 4,837,420 |
+| 60 | 43.64 | 4,837,420 |
+
+Total finalize-tail wall time: **1,886.5s (31.4 min)** under pool pressure, vs. the pressure-free reference
+job's 1,031s (17.2 min) — a real, honestly-measured ~1.83x slowdown from the added concurrent load, itself
+useful evidence that the pressure load was genuinely exercising the system, not a no-op.
+
+**Every phase shows the IDENTICAL VmPeak (4,837,420 kB) — verified as a real finding, not a join bug:**
+the raw sample CSV shows VmPeak climbing from 781,784 kB at sampler start to its final 4,837,420 kB
+plateau at **t+134.7s** (2026-08-13 03:46:11 UTC) — BEFORE the first finalize-tail phase's own completion
+line (03:46:57 UTC, 46s later) — then holding exactly flat (the kernel's own VmPeak high-water mark is
+monotonic non-decreasing) through the rest of the 33-minute drill. The peak was driven by the pool's own
+connection warm-up (24 persistent connections × their `pragmas.cache_size` page caches, opened as the 5
+pressure workers' diverse endpoint mix exercised them) plus the backfill's own brief scan, not by any
+individual finalize-tail phase — an honest, useful finding in its own right: the WORST CASE this drill
+found is the pool warm-up, not any specific heavy compute phase.
+
+### Peak memory margin (TC-2)
+
+**Overall peak VmPeak: 4,837,420 kB = 4,724.0 MB.** Margin against `server.memory_cap_mb` (8192 MB):
+**(8192 − 4,724.0) / 8192 = 42.3%** (57.7% of the cap used).
+
+### Decision (TC-4): margin comfortable, `config.yaml` left byte-unchanged
+
+42.3% ≥ the 20% threshold (TC-2/TC-3's own binding line: peak VmPeak > 6,553.6 MB would trigger a
+config tune; the actual peak, 4,724.0 MB, is well under that). Per TC-4: **stated explicitly here, no
+config change.** `git diff HEAD -- config.yaml` is empty; `git status --porcelain -- config.yaml
+project-extensions/ scripts/` shows no changes anywhere in this iteration's diff — `pool_size`,
+`max_overflow`, `pragmas.cache_size`, and every AG-10 host-guard/cap value are byte-unchanged.
+
+### Health (TC-8 bonus corroboration of J-07 step 2) / process hygiene
+
+`GET /api/health` polled at 1 Hz throughout: **1,795/1,795 HTTP 200, zero non-200s, max single-poll
+latency 1.987s** — inside the relaxed ≤2s bounded-background-compute-window ceiling (`docs/goal.md`'s
+owner amendment) with margin, even though step 2 was only "carried" this round, not required to be
+re-verified. Zero `QueuePool ... timeout` and zero genuine HTTP 503 "Exceeded concurrency limit" lines
+appeared anywhere in this drill's own log window (confirmed by exact-match grep, not a status-code
+summary alone — a naive substring search for "503" false-positived on port numbers like "...:35034" and
+was re-verified against the real `"... HTTP/1.1" NNN` status field): **8,898 total logged requests across
+this window (health polls, job-status polls, and the 5 pool-pressure endpoints actually exercised —
+`/api/themes` 1,194, `/api/sectors` 1,142, `/api/watchlist` 992, `/api/backtest` 968, `/api/stocks` 910),
+every single one HTTP 200.** This is a materially cleaner outcome than any of Addendum 38's three
+pool-pressure attempts, none of which avoided the admission-control 503 streak. Both processes this drill
+spawned (the pytest driver, PID confirmed via `ps`, and the throwaway backend, PID confirmed via `lsof` on
+its listening port) exited on their own via the existing fixture's `finally`-block SIGTERM/SIGKILL-by-
+exact-PID teardown when the test completed normally — no manual kill of any kind was needed this round,
+and no `pkill -f` pattern was used anywhere (closing iter-73/d's disclosed process-hygiene defect by
+simply never needing to intervene).
+
+### J-07 step 3 status: CLOSED — complete, real, comfortable-margin evidence obtained
+
+TC-1 (per-phase profile), TC-2 (assembled peak + margin), and TC-4 (comfortable-margin decision) are all
+MET with a COMPLETE (9/9 phases), CLEAN (zero non-200s, zero 503s) measurement — the binding stop rule
+(TC-5) did not fire; this was not needed. This supersedes Addendum 38's partial 71.5%-margin,
+did-not-reach-finalize-tail figure and the older iter-32 (67.9%)/iter-38 (56.0%) stale-basis figures: this
+round's 42.3% margin is measured on TODAY's ~8.4 GB DB, under realistic pool pressure, through the ENTIRE
+finalize tail. J-07 steps 1/2/4 remain carried on their own prior durable evidence per this iteration's
+own TESTING REQUIREMENTS (unless a browser-qa-agent pass finds a contradiction); step 2 additionally now
+has this round's own corroborating clean 1 Hz health-poll evidence (above).
+
+### AG-8 / AG-9 / AG-10 for this pass
+
+AG-8 — no unbounded whole-table load added or removed; this iteration is measurement-only (one new test +
+4 unit tests) — no production code path changed, and `config.yaml` is confirmed byte-unchanged (above).
+AG-9 — the drill's own job carries `"source": null` (offline, committed-seed-only). AG-10 — launched only
+via `scripts/start-backend.sh`; the boot header in `logs/backend.log` confirms `memory_cap_mb`/
+`malloc_arena_max` were applied; no HOST-GUARD block or cap value touched (confirmed via `git status`/
+`git diff`, matching TC-9's own check).
+
+### Correction to Addendum 38 (TC-6)
+
+Addendum 38's "What was built" section stated "72 tests in this module's non-heavy-ingest scope +
+`test_config.py`'s 75 all still pass." The true count, confirmed by a fresh `pytest --collect-only -q` on
+`test_start_backend_script.py` (run 2026-08-13, before this iteration's own new tests were added): **18
+tests collected**, of which the same `-k` filter Addendum 38's own Tests Run section used selects 13 (5
+deselected), yielding **12 passed, 1 skipped** — not 72. (`test_config.py`'s 75-passed figure was correct
+and is unaffected.) See the correction applied directly to Addendum 38's text above.

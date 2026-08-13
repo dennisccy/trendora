@@ -1,0 +1,20 @@
+{
+  "phase": "goal-ops-hardening-iter-74",
+  "status": "in_progress",
+  "current_step": "dev_complete",
+  "updated_at": "2026-08-13T04:24:15Z",
+  "started_at": "2026-08-13T03:44:00Z",
+  "cli": "claude",
+  "blockers": [],
+  "changed_files": [
+    "apps/backend/tests/test_start_backend_script.py",
+    "reports/perf-budgets.md",
+    "docs/goal.md",
+    "docs/handoffs/goal-ops-hardening-iter-74-dev.md"
+  ],
+  "tests_run": true,
+  "tests_passed": true,
+  "browser_checks_run": false,
+  "known_gaps": "None blocking. The live phase-by-phase drill succeeded on its first attempt: all 9 finalize-tail phases (+5 forward_aggregates_warm horizons) captured, job status ok, peak VmPeak 4,837,420 kB (4,724.0 MB), margin 42.3% against the 8192 MB cap (>= the 20% threshold, so config.yaml is left byte-unchanged per TC-4). 1,795/1,795 health polls HTTP 200 (max 1.987s), zero real HTTP 503s / QueuePool timeouts across 8,898 logged requests -- cleaner than any of iter-73's three pressure attempts. Method: triggered via a `backfill` of one unsnapshotted date (not `rebuild`) to sidestep the 30-45+ minute full-basis scan that defeated all four of iter-73's attempts before the finalize tail even started -- `_refresh_ingest_aggregates` runs identically regardless of job kind/range, confirmed against a real completed finalize-tail run already on disk before committing to the approach. The binding TC-5 stop rule did not fire, so there is no owner two-way choice needed for J-07 step 3 this round. Two disclosed documentation corrections applied (Addendum 38's test-count claim; docs/goal.md's Ground Truth DB-size + rebuild-range facts, restricted to exactly that named block, journeys/anti-goals untouched -- verified via git diff). Required-still-passing journeys (J-01,J-03,J-04,J-05,J-06,J-08,J-09) not re-verified by this developer pass (QA-lane work); no application code path changed this round (test instrumentation + report/doc only), so no plausible regression mechanism exists.",
+  "next_action": "review"
+}

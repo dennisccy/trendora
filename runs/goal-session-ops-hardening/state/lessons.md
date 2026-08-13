@@ -922,3 +922,32 @@ backend boot header in `logs/backend.log` (here the live server booted 02:13:14Z
 ~60-180 s later), because a just-restarted frontend is the cheapest explanation to test first.
 **Applies to:** any iteration whose deterministic replay reports 3+ simultaneous FAILs; any evaluator
 reading a `VOIDED`/`overturned` footer; anyone about to act on `state/goldens-regen-pending`.
+
+## iter-74 — 2026-08-13T06:20:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** When a measurement keeps failing, change the TRIGGER, not the thing measured. Four
+attempts across iters 72-73 could not get a VmPeak reading because `rebuild` unconditionally rescans
+the full 2005-2026 basis (30-45+ min on today's 8.4 GB DB) before the finalize tail even starts; this
+round got a complete 9-of-9-phase profile on the first try by firing the identical
+`_refresh_ingest_aggregates` tail from a single-date `backfill` instead — same computation, same
+pool pressure, same launcher, minus the irrelevant scan. Second half of the lesson: the resulting
+"per-phase profile" turned out degenerate (VmPeak plateaued at t+134.7 s, before the tail, so all 14
+rows carry one identical number). Do not read a per-phase table as per-phase measurement without
+checking the underlying series for monotonic plateau first — VmPeak is a high-water mark, so joining
+it to phase boundaries can only ever produce a step function.
+**Applies to:** any iteration that must measure a cost inside `_refresh_ingest_aggregates` /
+`data_manager.py`'s finalize tail, or that joins `_MemSampler` (or any `/proc` high-water metric)
+against phase-timer log lines.
+
+## iter-74 — 2026-08-13T06:20:01Z
+
+**Verdict:** CONTINUE
+**Lesson:** A capture defect and a product defect can hide in the same voided batch. Of this round's
+five mass-voided replay FAILs, four frames were unstyled asset-less shells (harness), but J-05's was
+the styled app showing its own contained error boundary on Scanner Runs — a real render failure that
+the blanket "selector/environment drift" footer would have buried. Open EVERY frame in a voided batch,
+not a sample: the batch reason is written once and applied to all, so a single genuine failure inside
+it is invisible by construction.
+**Applies to:** any iteration whose `regression-replay-results.md` carries a SPEED-22 mass-void footer,
+and to any future change to that breaker.

@@ -1397,3 +1397,62 @@ outside journey/anti-goal content (`chore(goal): apply goal-lint fixes` in this 
 the owner disagrees with treating this block as developer-correctable, a future round can revert
 the wording with no other consequence, and the underlying re-derived facts (DB size, `rebuild`
 range behavior) remain valid either way.
+
+## iter-74 — goal-evaluator (1 of 2)
+
+**Ambiguity:** J-07 has four numbered steps. Steps 1, 2 and 3 have fresh evidence from this round's own
+drill. Step 4 ("induce memory pressure during a warm; assert the warm aborts honestly while the SAME
+process keeps serving `/api/health` and cached reads") was not re-exercised this round, and nothing
+states whether a journey may be scored `passing` — for the first time in 40 rounds, and while it is the
+last non-passing Must-have — with one of its four steps carried on durability rather than measured fresh.
+**We chose:** `passing`, with step 4 carried on the dated **2026-07-31** live induced-pressure drill run
+against this SAME `memory_cap_mb: 8192` cap (`reports/perf-budgets.md`, "J-07 step 4 — induced-pressure
+drill, LIVE re-run": the sanctioned `TRENDORA_FAULT_INJECT_MEMORY_ERROR=forward_aggregates` injector, job
+finished `ok` with `forward_aggregates` honestly absent and later categories completed, 0/31 health
+non-200s, 5,386 concurrent cached reads with 0 non-200s, PID unchanged, port freed cleanly). Grounds:
+(1) A.6's own test is whether the journey's surfaces changed since the evidence was captured — this
+round's product diff is one test file plus a documentation block, with every `apps/` runtime file,
+`config.yaml`, `scripts/` and `project-extensions/` byte-unchanged, and the only change to the abort path
+since 2026-07-31 is iter-72 ADDING a new member to `_FAULT_INJECT_SITES` (the `forward_aggregates` site
+itself untouched); (2) the one doubt that could have invalidated a memory-related carry — iter-72's pool
+resize to 68 connections at 256 MB page cache each — is exactly what this round measured, and it resolved
+in the direction of safety (4,724 MB peak, 42.3% margin), so the input change that broke step 3's carry
+strengthens rather than weakens step 4's; (3) the walkthrough clause that also remains open is a
+capture task on working behaviour (A.7), which the rules forbid scoring as blocking.
+**Cost recorded honestly:** a reader who requires all four steps fresh in a single round would hold J-07
+at `partial` this iteration. **Under the decision tree that changes no verdict** — GOAL_ACHIEVED is
+independently blocked by 131 unresolved (minor) ledger entries and by J-08/J-09 having no evidence of
+their own for two consecutive rounds, so it is CONTINUE either way — but it changes the ledger's story
+from "one step short for a 41st round" to "closed". I put the carry in the first line of J-07's gap
+field, in the eval table's evidence cell and in the evaluator log rather than letting the status carry
+only the good half.
+**Reversible:** yes — a future round that re-runs the fault-injection drill either reproduces the clean
+abort (the carry is retired on fresh evidence) or does not (J-07 returns to `partial`/`failing` in that
+same round with no other step needing re-work); the 2026-07-31 drill's own record and this round's raw
+telemetry are both preserved.
+
+## iter-74 — goal-evaluator (2 of 2)
+
+**Ambiguity:** J-08 and J-09 are **Required-still-passing** journeys that got no valid evidence for a
+SECOND consecutive round (their goldens FAILed into the mass-void and both frames are unstyled,
+asset-less shells — I opened them). iter-73 faced this once and chose durability; nothing states whether
+a durability carry may be renewed indefinitely, and the stakes have changed: with every other journey now
+`passing`, these two carries are what a GOAL_ACHIEVED claim would rest on.
+**We chose:** hold both at `passing` on durability (A.6), keep `evidence_makeup: true`, keep
+`last_verified_iter` frozen at `goal-ops-hardening-iter-72` — AND treat the pair as an explicit,
+named blocker on GOAL_ACHIEVED rather than letting the durability carry quietly satisfy the gate.
+Grounds: (1) the product diff for both rounds combined is two test files and one documentation block,
+with no `apps/` runtime file touched, so neither journey's code can have moved; (2) `unknown` would
+record the same ignorance while discarding evidence that is still valid, and would also mechanically
+force a status change with no product cause; (3) making the carry a stated verdict blocker preserves the
+honesty that `unknown` was reaching for, without the false signal.
+**Cost recorded honestly:** a reader who holds that a required journey must have its own fresh row every
+round would score both `unknown` this iteration. That would change the journey table but not the verdict
+(CONTINUE either way). The distinction still matters most for J-09: unlike J-08 — corroborated live this
+round by the J-07 lane reading `/backtest` served from storage with 2,919 contributing snapshots and no
+"Refreshing" banner — J-09 has had NO observation of its own acceptance since iter-72, which is why it is
+named as the FIRST journey to re-verify once the QA frontend is repaired.
+**Reversible:** yes — the moment a fresh capture lands for either journey (pass or fail) the flag clears
+and the status is re-scored on that evidence; this round's broken frames and the void footer are
+preserved in `reports/qa/goal-ops-hardening-iter-74-evidence/` and
+`reports/phase-goal-ops-hardening-iter-74-regression-replay-results.md`.
