@@ -1582,3 +1582,28 @@ misreads them.
 their behaviour was verified strongly this round and only an optional walkthrough is missing. That
 would change the make-up list but no status and no verdict.
 **Reversible:** yes — any fresh capture, pass or fail, clears the flag for that journey.
+
+## iter-77 — goal-decomposer
+
+**Ambiguity:** The evaluator's carried item (iter-72/c) says the intermittent asset-less-frontend
+defect is "un-root-caused" and its own speculative theory ("`next build`-into-a-live-`.next`") was
+never confirmed or denied — nothing states which specific mechanism this iteration must chase, and a
+wrong guess would burn this session's first restored code-lane round on the wrong fix.
+
+**We chose:** direct the developer at the concurrent-invocation race (two `start-frontend.sh` runs
+writing to / serving the SAME live `.next` directory) as the leading hypothesis to confirm or rule
+out first, rather than leaving the cause open-ended. Grounds: (1) reading
+`scripts/start-frontend.sh` shows it already isolates *verification* builds via `NEXT_DIST_DIR`
+("a verification build can target a scratch directory instead of clobbering a live `.next`") — the
+comment names the exact failure mode this iteration suspects, implying the author already knew the
+live-serving path was NOT similarly isolated; (2) the script's own build-if-stale → build → start
+sequence is single-process-safe (build always completes before `next start` execs) but has no lock
+against a SECOND concurrent invocation of the same script, which is the only way a partial-build
+`.next` could ever be served; (3) the spec explicitly allows the developer to name and fix a
+DIFFERENT cause if instrumentation disproves this one, with the same regression-test bar — the
+hypothesis directs the first investigation, it does not foreclose the outcome.
+
+**Reversible:** yes — if this round's instrumentation rules out the concurrent-invocation race, the
+developer fixes and documents whatever cause instrumentation does find (same DoD checkbox, same
+regression-test requirement); nothing else in this iteration depends on this specific mechanism being
+correct.
