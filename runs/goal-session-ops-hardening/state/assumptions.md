@@ -1371,3 +1371,29 @@ and the status is re-scored on that evidence; a later evaluator may also rule th
 journey should have been `unknown`, and both this round's broken frames and the void footer are preserved
 in `reports/qa/goal-ops-hardening-iter-73-evidence/` and
 `reports/phase-goal-ops-hardening-iter-73-regression-replay-results.md`.
+
+## iter-74 — goal-decomposer
+
+**Ambiguity:** the iter-73 evaluator's next-step item (4) asks this round to correct
+`docs/goal.md`'s "Ground truth (measured 2026-07-18)" block (stale DB-size figure; missing
+`rebuild`-ignores-requested-dates fact). `docs/goal.md`'s Must-have journeys and Anti-goals
+sections are human-authored/owner-gated (per this session's own "goal.md-only" convention and
+`git log`'s pattern of goal.md edits being owner/chore commits), but nothing states whether that
+same protection extends to the "Improvement direction (engineering)" appendix's purely
+descriptive, non-journey, non-anti-goal "Ground truth" facts block.
+
+**We chose:** treat the Ground Truth block as ordinary engineering documentation the developer
+may correct in this iteration, distinct from the journeys/anti-goals the owner alone edits.
+Grounds: (1) the evaluator explicitly asked for this exact correction, having independently
+re-derived both facts (the live DB's ~8.4 GB size confirmed in this iteration's own drill
+context; `rebuild`'s full-range behavior confirmed by the test harness posting a 1-day
+`rebuild` request that still runs the whole 2005-2026 basis); (2) the block carries a factual,
+dated "(measured 2026-07-18)" caveat — it is presented as a point-in-time measurement snapshot,
+not a scope/requirement statement, so correcting it changes no journey's acceptance criteria and
+introduces no new capability; (3) precedent exists for non-owner commits touching `docs/goal.md`
+outside journey/anti-goal content (`chore(goal): apply goal-lint fixes` in this repo's history).
+
+**Reversible:** yes — the correction is a two-fact text edit with no code or schema impact; if
+the owner disagrees with treating this block as developer-correctable, a future round can revert
+the wording with no other consequence, and the underlying re-derived facts (DB size, `rebuild`
+range behavior) remain valid either way.
