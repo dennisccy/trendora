@@ -1,6 +1,7 @@
 "use client";
 
 import { useReadiness } from "@/components/readiness-provider";
+import { formatStaleAnnotation } from "@/lib/staleness-annotation";
 import { cn } from "@/lib/utils";
 
 /**
@@ -17,7 +18,11 @@ import { cn } from "@/lib/utils";
  * buy/sell-order language (anti-goals #1/#2 — this gates trust, not orders).
  */
 export function PreflightBanner() {
-  const { preflight, loading } = useReadiness();
+  const { preflight, loading, staleForS } = useReadiness();
+  // ops-hardening iter-77 (J-04/J-07): the SAME "as of Ns ago" annotation the readiness badge renders,
+  // reading the SAME single `useReadiness()` poll (no second fetch) -- honest by construction: null
+  // (no annotation) for a fresh synchronous compute, a failed poll, or before the first poll resolves.
+  const staleAnnotation = formatStaleAnnotation(staleForS);
 
   if (loading) {
     // Mirrors HealthBadge's `loading` state: a neutral placeholder, never a fabricated GO.
@@ -35,10 +40,14 @@ export function PreflightBanner() {
 
   if (preflight === null) {
     // The health poll itself failed (backend unreachable) — an honest NO-GO, never a blank crash.
+    // No staleness annotation here either: `staleForS` is already null on a failed poll (the SAME
+    // honest-failure convention every sibling readiness field follows), so `staleAnnotation` above is
+    // already null too — nothing to pass.
     return (
       <LoudBanner
         verdict="NO-GO"
         reasons={["Backend is unavailable — the preflight check could not run."]}
+        staleAnnotation={null}
       />
     );
   }
@@ -53,14 +62,27 @@ export function PreflightBanner() {
       >
         <span className="h-1.5 w-1.5 rounded-full bg-pos" aria-hidden />
         GO — today&apos;s board is current.
+        {staleAnnotation ? (
+          <span className="text-pos/70" data-testid="preflight-staleness">
+            ({staleAnnotation})
+          </span>
+        ) : null}
       </div>
     );
   }
 
-  return <LoudBanner verdict={preflight.verdict} reasons={preflight.reasons} />;
+  return <LoudBanner verdict={preflight.verdict} reasons={preflight.reasons} staleAnnotation={staleAnnotation} />;
 }
 
-function LoudBanner({ verdict, reasons }: { verdict: "DEGRADED" | "NO-GO"; reasons: string[] }) {
+function LoudBanner({
+  verdict,
+  reasons,
+  staleAnnotation,
+}: {
+  verdict: "DEGRADED" | "NO-GO";
+  reasons: string[];
+  staleAnnotation: string | null;
+}) {
   const isNoGo = verdict === "NO-GO";
   return (
     <div
@@ -76,6 +98,11 @@ function LoudBanner({ verdict, reasons }: { verdict: "DEGRADED" | "NO-GO"; reaso
         {isNoGo
           ? "NO-GO — do not rely on today's board."
           : "DEGRADED — treat today's board with caution."}
+        {staleAnnotation ? (
+          <span className="ml-1.5 font-normal opacity-70" data-testid="preflight-staleness">
+            ({staleAnnotation})
+          </span>
+        ) : null}
       </p>
       {reasons.length > 0 ? (
         <ul className="mt-1 list-disc space-y-0.5 pl-5">

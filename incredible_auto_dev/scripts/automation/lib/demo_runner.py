@@ -1004,6 +1004,127 @@ class _FakePage:
         self._spy.setdefault("screenshots", []).append(path)
 
 
+class _FakeSettlingLocator:
+    """Duck-typed Locator whose visibility depends on the page's own simulated phase — the minimum
+    surface `_settle_for_capture`'s `exp`-aware wait (`_check_expect` -> `get_by_text(...).wait_for`)
+    needs. See `_FakeSettlingPage` for the model this exercises."""
+
+    def __init__(self, page: "_FakeSettlingPage", text: str):
+        self._page = page
+        self._text = text
+
+    @property
+    def first(self):
+        return self
+
+    def wait_for(self, state: str = "visible", timeout: float = 0):
+        page = self._page
+        if self._text == page.before_text:
+            if page.phase != "before":
+                raise TimeoutError(f"fake: {self._text!r} not visible in phase {page.phase!r}")
+            return
+        if self._text == page.gate_text:
+            n = page.attempts.get(self._text, 0) + 1
+            page.attempts[self._text] = n
+            if n >= page.ready_after:
+                page.phase = "after"
+                return
+            raise TimeoutError(f"fake: {self._text!r} not visible yet (poll {n}/{page.ready_after})")
+        raise TimeoutError(f"fake: unexpected text {self._text!r}")
+
+
+class _FakeAlwaysReadyLocator:
+    """Always-visible, always-clickable no-op locator for a step's MUTATING control target (e.g. a
+    'Start' button) in `_FakeSettlingPage` — always found and clicked; the state change it triggers is
+    observed later via the page's gate-text poll count (see `_FakeSettlingLocator`), not synchronously
+    at click time, mirroring how a real backfill's effect surfaces through a LATER read."""
+
+    @property
+    def first(self):
+        return self
+
+    def wait_for(self, state: str = "visible", timeout: float = 0):
+        return
+
+    def click(self, timeout: float = 0):
+        return
+
+
+class _FakeSettlingPage:
+    """Models a step whose real (backend-driven) content becomes visible only after >= `ready_after`
+    polls for its OWN expect text — an eventually-consistent read, the same shape a real async
+    re-render/poll-tick produces. `before_text` is trivially visible while `phase == "before"`;
+    `gate_text` only becomes visible (and flips `phase` to `"after"`) once it has been polled
+    `ready_after` times — enough to distinguish a settle that actively re-polls the step's own `exp`
+    from one that does not (ops-hardening iter-77 / iter-76/d: the byte-identical before/after
+    walkthrough-frame defect). `screenshot()` records the phase AT CAPTURE TIME, so a test can assert
+    the two captured frames reflect genuinely different states, not the same one twice."""
+
+    def __init__(self, before_text: str, gate_text: str, ready_after: int = 2):
+        self.phase = "before"
+        self.before_text = before_text
+        self.gate_text = gate_text
+        self.ready_after = ready_after
+        self.attempts: dict[str, int] = {}
+        self.screenshots: list[tuple[str, str]] = []
+
+    def get_by_text(self, text: str) -> _FakeSettlingLocator:
+        return _FakeSettlingLocator(self, text)
+
+    def get_by_role(self, role: str, name: str = "") -> _FakeAlwaysReadyLocator:
+        return _FakeAlwaysReadyLocator()
+
+    def goto(self, url: str, wait_until: "str | None" = None, timeout: float = 0):
+        pass
+
+    def wait_for_timeout(self, ms: int):
+        pass
+
+    def screenshot(self, path: "str | None" = None):
+        self.screenshots.append((path, self.phase))
+
+
+def _t_settle_for_capture_before_after_frames_differ_when_state_changes() -> None:
+    """TC-9 (ops-hardening iter-77, iter-76/d): a state-changing step's 'after' capture must reflect
+    the ACTUAL post-change content, never a stale pre-change frame identical to the 'before' capture —
+    the exact defect observed in iter-76's recorded gallery (`reports/demo/goal-ops-hardening-iter-76/`
+    step-05.png and step-06.png, and step-04.png/step-07.png, came back pairwise byte-identical).
+
+    `_FakeSettlingPage`'s gate text only becomes visible on its SECOND poll. The record loop's own
+    upstream `_check_expect` call (unrelated to this fix, unchanged) always performs poll #1 and always
+    finds it not-yet-visible on this fixture (a soft note is expected and asserted below). Only
+    `_settle_for_capture`'s NEW `exp`-aware re-poll (this iteration's fix) performs poll #2, which is
+    the one that actually observes the change — so this test FAILS against the pre-fix
+    `_settle_for_capture(page, budget_ms)` (no `exp` parameter at all, so the gate text is never polled
+    a second time and the 'after' step's screenshot is captured before the change lands), and PASSES
+    only once the fix threads `exp` through into an active re-poll."""
+    import tempfile
+    page = _FakeSettlingPage(before_text="No jobs yet", gate_text="Completed", ready_after=2)
+    steps = [
+        {"n": 1, "journey": "J-05", "title": "Before: job history is empty",
+         "action": {"type": "goto", "url": "/data"}, "expect": {"text": "No jobs yet"}},
+        {"n": 2, "journey": "J-05", "title": "After: the backfill has completed",
+         "action": {"type": "click", "target": {"role": "button", "name": "Start"}},
+         "expect": {"text": "Completed"}},
+    ]
+    with tempfile.TemporaryDirectory() as tmp:
+        _captured, soft_notes, _script_steps = _record_steps(
+            page, steps, "http://localhost:3000", 4000, Path(tmp), None)
+
+    assert len(page.screenshots) == 2, page.screenshots
+    before_phase = page.screenshots[0][1]
+    after_phase = page.screenshots[1][1]
+    assert before_phase == "before", page.screenshots
+    assert after_phase == "after", (
+        "the after-step capture must reflect the real post-change state, not a stale frame "
+        f"identical to the before capture: {page.screenshots}"
+    )
+    assert before_phase != after_phase, "before/after frames must not capture the same state"
+    # The record loop's OWN first poll (before this fix's re-poll ever runs) genuinely misses on this
+    # fixture, so a soft note for step 2 is the expected, honest behavior — not silently swallowed.
+    assert any("02" in note and "did not appear" in note for note in soft_notes), soft_notes
+
+
 def _t_run_record_never_clicks_after_failed_precondition() -> None:
     # TC-4: given a fake page/script fixture where step N's `fill` raises and step N+1 is a
     # `click` on `role: button`, when the record loop executes that script, then step N+1's
@@ -1207,6 +1328,7 @@ _SELF_TEST_CHECKS = [
     _t_launch_chromium_retries,
     _t_run_record_never_clicks_after_failed_precondition,
     _t_run_record_click_still_fires_without_a_prior_failure,
+    _t_settle_for_capture_before_after_frames_differ_when_state_changes,
     _t_derive_happy,
     _t_derive_rejects_untagged_journey,
     _t_derive_rejects_no_expect,
@@ -1429,16 +1551,40 @@ _LOADING_SELECTOR = (
 )
 
 
-def _settle_for_capture(page, budget_ms: int) -> None:
-    """Best-effort wait for the page to finish loading before a screenshot, so the
-    gallery never captures a spinner / empty skeleton. NEVER raises — the demo is a
-    showcase, not a gate.
+def _settle_for_capture(page, budget_ms: int, exp: "dict | None" = None) -> None:
+    """Best-effort wait for the page to finish loading — and, when `exp` is given, for the
+    SPECIFIC post-action content the step names — before a screenshot, so the gallery never
+    captures a spinner / empty skeleton, and (iter-77 fix) never captures the PREVIOUS state
+    relabeled as the new one. NEVER raises — the demo is a showcase, not a gate.
 
-    Three guards, each bounded by the budget: (1) network goes idle so client-side
-    fetches land; (2) any visible loading indicator disappears; (3) web fonts are
-    ready, plus a short paint settle. An SPA that long-polls may never reach idle,
-    which is exactly why every step is best-effort and falls through on timeout."""
-    budget_ms = max(1000, min(int(budget_ms), 12000))
+    ops-hardening iter-77 (iter-76/d): the recorded gallery was producing byte-identical
+    'before'/'after' frame pairs for state-changing steps (e.g. a background-compute window's
+    active-vs-completed /data view). Root cause: this function only ran GENERIC settle
+    heuristics (network idle / loading-indicator-hidden / fonts-ready / a flat paint pause)
+    that are blind to WHICH content a given step actually cares about — all four can resolve
+    instantly while the page is still showing the PRE-action state (a re-render that has not
+    landed yet, a poll that has not ticked). It also silently RE-CAPPED whatever budget the
+    caller passed down to a flat 12s, even when a step's own `timeout_ms` (honored everywhere
+    else in this file, up to 20s — see `_default_timeout`/`_record_steps`) asked for more.
+
+    The fix: when the caller passes the step's own `exp`(ect) — the same `{"text": ...}` /
+    `{"target": ...}` shape `_check_expect` already uses to grade the step — that becomes the
+    PRIMARY settle signal, actively (re-)polled for up to the caller's own budget (no longer
+    silently truncated) before the generic heuristics run. `exp=None` (steps with no expect,
+    e.g. `full_tour` framing shots) falls back to the prior generic-only behavior, budget cap
+    included, unchanged.
+
+    Four guards, each bounded by the budget: (0, new) the step's own expect condition becomes
+    visible; (1) network goes idle so client-side fetches land; (2) any visible loading
+    indicator disappears; (3) web fonts are ready, plus a short paint settle. An expect that
+    never resolves within the budget is not an error here (the caller's own soft-note bookkeeping
+    already covers that) — every guard, including the new one, falls through on timeout."""
+    if exp:
+        try:
+            _check_expect(page, exp, max(1000, int(budget_ms)))
+        except Exception:
+            pass  # best-effort — the generic heuristics below still run regardless
+    budget_ms = max(1000, min(int(budget_ms), 20000))
     try:
         page.wait_for_load_state("networkidle", timeout=budget_ms)
     except Exception:
@@ -1667,8 +1813,10 @@ def _record_steps(page, steps: list[dict], base_url: str, default_tmo: int,
         shot_rel = ""
         if section != "full_tour":
             # Settle (network idle + loading indicators gone + paint) so the
-            # gallery never captures a spinner / empty skeleton.
-            _settle_for_capture(page, tmo)
+            # gallery never captures a spinner / empty skeleton. iter-77: pass this
+            # step's own `exp` so a state-changing step's capture actively waits for
+            # ITS content, never a stale pre-action frame (iter-76/d fix).
+            _settle_for_capture(page, tmo, exp)
             shot_abs = out_dir / f"step-{n:02d}.png"
             try:
                 page.screenshot(path=str(shot_abs))
@@ -1779,7 +1927,9 @@ def run_live(script: dict, opts, base_url: str) -> int:
                 pass
             try:
                 _do_action(page, action, base_url, tmo)
-                _settle_for_capture(page, tmo)  # let content load before the human looks
+                # let content load before the human looks; iter-77: pass this step's own
+                # `exp` too, same iter-76/d fix as the record path.
+                _settle_for_capture(page, tmo, step.get("expect"))
                 if step.get("point_out"):
                     print(f"   ↳ Notice: {step['point_out']}")
             except Exception as exc:  # noqa: BLE001
@@ -1897,6 +2047,7 @@ def run_verify(opts, base_url: str) -> int:
                 context = browser.new_context(viewport={"width": 1280, "height": 800})
                 page = context.new_page()
                 verdict, actual = "PASS", "journey replayed end-to-end; all expects held"
+                exp = None  # last step's expect, if any -- passed to the final evidence capture below
                 for step in steps:
                     n = int(step.get("n", 0))
                     tmo = max(1000, min(int(step.get("timeout_ms", default_tmo)), 20000))
@@ -1914,7 +2065,10 @@ def run_verify(opts, base_url: str) -> int:
                         break
                 shot_rel = "none"
                 if evidence_dir:
-                    _settle_for_capture(page, default_tmo)
+                    # iter-77: pass the last-executed step's own `exp` too (same iter-76/d fix as the
+                    # record/live paths) so the evidence screenshot reflects the journey's real end
+                    # state rather than a frame settled purely on generic network/paint heuristics.
+                    _settle_for_capture(page, default_tmo, exp)
                     shot_abs = evidence_dir / f"{jid}-verify.png"
                     try:
                         page.screenshot(path=str(shot_abs))

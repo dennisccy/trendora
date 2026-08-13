@@ -35,11 +35,20 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             <div className="flex min-h-screen">
               <Sidebar />
               <div className="flex min-w-0 flex-1 flex-col">
-                <header className="sticky top-0 z-10 flex h-14 items-center justify-between gap-4 border-b border-border bg-surface px-6">
+                {/* ops-hardening iter-77 (iter-76/e fix): `min-h-14` (was a fixed `h-14`) + `flex-wrap`
+                    on the badge row below — at 1280x800 the combined AsOfSwitcher + HealthBadge content
+                    (readiness pill + staleness annotation + background-compute chip + provider/seed/
+                    symbol badges) can exceed the row's available width; without a wrap allowance the
+                    row simply overflowed the header's right edge instead of wrapping, pushing the
+                    "Ready" pill off-screen. `min-h-14` keeps the header at its normal 56px height on
+                    every page/width where content already fits on one line (unchanged), and only grows
+                    to a second line when the row actually wraps — HealthBadge's own inner `flex-wrap`
+                    (unchanged) can now take effect because the outer row no longer blocks it. */}
+                <header className="sticky top-0 z-10 flex min-h-14 items-center justify-between gap-4 border-b border-border bg-surface px-6 py-2">
                   <span className="hidden text-sm text-text-muted lg:inline">
                     Research-only · decision support · no orders
                   </span>
-                  <div className="flex flex-1 items-center justify-end gap-3">
+                  <div className="flex flex-1 flex-wrap items-center justify-end gap-3">
                     <AsOfSwitcher />
                     <HealthBadge />
                   </div>

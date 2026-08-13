@@ -616,7 +616,11 @@ function ScorecardSection({ data }: { data: BacktestResponse }) {
               const qqq = controlCohort(row, "qqq");
               const sectorEtf = controlCohort(row, "sector_etf");
               return (
-                <tr key={row.horizon} className="border-b border-border last:border-b-0">
+                <tr
+                  key={row.horizon}
+                  data-testid={`scorecard-row-${row.horizon}d`}
+                  className="border-b border-border last:border-b-0"
+                >
                   <td className="num px-5 py-2 font-semibold text-text">{row.horizon}d</td>
                   <td className="bg-surface-2 px-3 py-2 text-right">
                     <Return value={row.cohort.mean_return} n={row.cohort.n} min={min} />

@@ -90,6 +90,19 @@ _offset = int(__import__("hashlib").sha1(str(REPO_ROOT).encode()).hexdigest()[:4
 _TC1_PORT = 21000 + _offset
 _TC2_PORT = 21100 + _offset
 _TC3_PORT = 21200 + _offset
+# ops-hardening iter-77: distinct port ranges for the goal-spec's OWN "TC-1"/"TC-2" (the intermittent
+# asset-less-frontend defect, iter-72/c) -- not to be confused with this module's pre-existing
+# iter-33-era TC-1 ("test_missing_build_triggers_build_then_next_start")/TC-2
+# ("test_current_build_skips_rebuild") above, which are about a DIFFERENT thing (the build/skip-rebuild
+# branch taken by a single invocation). 21400/21500 are clear of every range already claimed above.
+_TC1_77_PORT = 21400 + _offset
+_TC2_77_PORT = 21500 + _offset
+# ops-hardening iter-77 AUDIT: the out-of-band-build regression test's own range (21600), clear of
+# every range claimed above.
+_TC3_77_PORT = 21600 + _offset
+# ops-hardening iter-77 AUDIT FIX ROUND 2: the build-guard (21700) and backend-retarget (21800) tests.
+_TC4_77_PORT = 21700 + _offset
+_TC5_77_PORT = 21800 + _offset
 
 # A cold scratch-dir `next build` (a distDir name Next has never seen -> no webpack cache to reuse) on
 # this host-guard-CPU-masked host measured ~1 minute with the box idle, but blew past 300 s while the live
@@ -238,6 +251,26 @@ def _wait_for_port_answering(
         f"If the build simply needs longer on this host, raise TRENDORA_FRONTEND_BUILD_TIMEOUT_S. "
         f"Launcher log tail:\n{tail}"
     )
+
+
+_ASSET_HREF_RE = re.compile(r'(?:href|src)="(/_next/static/[^"]+)"')
+
+
+def _assert_page_fully_styled(port: int, timeout: float = 30.0) -> None:
+    """Fetch `/` and at least one of its OWN referenced `/_next/static/...` build assets, asserting BOTH
+    return HTTP 200 with a non-empty body. The concrete 'asset-less' failure this closes (iter-72/c) would
+    serve the HTML shell fine (200) while a stylesheet/script chunk 404s or comes back truncated -- a torn
+    build served mid-write by a racing `next build`. Mirrors this iteration's own TC-1 wording ('CSS/asset
+    requests return 200; no bare "Checking backend..." shell')."""
+    resp = httpx.get(f"http://127.0.0.1:{port}/", timeout=timeout)
+    assert resp.status_code == 200, f"GET / -> HTTP {resp.status_code}"
+    html = resp.text
+    assets = _ASSET_HREF_RE.findall(html)
+    assert assets, f"expected >=1 /_next/static/... asset reference in the served HTML; got:\n{html[:2000]}"
+    for asset_path in assets[:3]:  # a handful is enough to catch a torn/partial build
+        aresp = httpx.get(f"http://127.0.0.1:{port}{asset_path}", timeout=timeout)
+        assert aresp.status_code == 200, f"GET {asset_path} -> HTTP {aresp.status_code} (asset-less page)"
+        assert len(aresp.content) > 0, f"GET {asset_path} returned an empty body (asset-less page)"
 
 
 def _parent_pid(pid: int) -> "int | None":
@@ -468,7 +501,17 @@ def test_current_build_skips_rebuild(launcher):
 
     mtime_before = build_id.stat().st_mtime_ns
 
-    second = launcher(dist_rel, _TC2_PORT + 1, _TC2_PORT + 1001, "tc2-second.log")
+    # The second invocation runs on a different FRONTEND port (the first server is stopped, but a fresh
+    # port keeps the two launches trivially independent) and the SAME BACKEND port. The backend port has
+    # to match for this scenario to be the one TC-2 describes -- "an existing, current build ... sources
+    # unchanged": Next inlines NEXT_PUBLIC_API_URL into the bundle at BUILD time, so pointing the second
+    # launch at a DIFFERENT backend makes the build on disk genuinely out of date for that launch, and
+    # `start-frontend.sh` now (ops-hardening iter-77 audit fix round 2) rebuilds instead of serving an app
+    # that cannot reach its configured backend -- covered by
+    # `test_launcher_rebuilds_a_bundle_built_for_a_different_backend`. Before that check existed, this test
+    # passed while silently exercising exactly the "served build points at the wrong backend" state that
+    # broke iter-77.
+    second = launcher(dist_rel, _TC2_PORT + 1, _TC2_PORT + 1000, "tc2-second.log")
     _wait_for_port_answering(  # no build needed on this path -> a short ceiling is the point of TC-2
         _TC2_PORT + 1, timeout=_START_TIMEOUT_S, proc=second.proc, log_path=second.log_path
     )
@@ -707,3 +750,339 @@ def test_host_guard_marker_files_lists_start_frontend():
     # the marker check itself is a plain substring grep — confirm the block is genuinely present, not
     # merely declared in the list above.
     assert "HOST-GUARD" in SCRIPT.read_text()
+
+
+# ==================================================================================================
+# ops-hardening iter-77 -- the goal-spec's OWN TC-1/TC-2: the intermittent asset-less-frontend defect
+# (iter-72/c, un-root-caused and un-fixed for 4 rounds). Root-caused via direct code reading (this
+# script had no lock against a second concurrent invocation racing `next build` against the SAME live
+# dist dir -- see the "BUILD LOCK" block start-frontend.sh now carries) and closed with a `flock`
+# serializing the staleness-check -> build decision per dist-dir. These two tests are the goal-spec's
+# own scenarios -- NOT a duplicate of this module's pre-existing iter-33 TC-1/TC-2 above, which assert a
+# DIFFERENT thing (which branch — build vs. skip-rebuild — a single invocation takes).
+# ==================================================================================================
+
+
+def test_five_consecutive_fresh_launches_serve_fully_styled_page(launcher):
+    """iter-77 TC-1 -- 5 consecutive, NON-concurrent `start-frontend.sh` launches against the same dist
+    dir must each serve a fully-styled page (the HTML plus its own referenced build assets, all HTTP 200
+    with real content), zero asset-less occurrences. Builds the scratch dist dir once for real (like
+    every other real-build test in this module — a `next build` per launch would be prohibitively slow)
+    then stops/relaunches the SAME launcher four more times against that now-current build, proving the
+    iter-77 build-lock addition does not regress the ordinary sequential-restart path (the ONLY path
+    most real launches ever take)."""
+    if not (FRONTEND_DIR / "node_modules").exists():
+        pytest.skip("apps/frontend/node_modules not installed -- cannot build/start the frontend")
+    dist_rel = _scratch_dist_name("tc1-77")
+    port = _TC1_77_PORT
+    for i in range(5):
+        launched = launcher(dist_rel, port, port + 1000, f"tc1-77-{i}.log")
+        timeout = _BUILD_TIMEOUT_S if i == 0 else _START_TIMEOUT_S
+        _wait_for_port_answering(port, timeout=timeout, proc=launched.proc, log_path=launched.log_path)
+        _assert_page_fully_styled(port)
+        launched.stop()
+
+
+def test_concurrent_invocations_never_serve_partial_build(launcher):
+    """iter-77 TC-2 -- two invocations of `start-frontend.sh` launched CONCURRENTLY against the SAME
+    brand-new (never-built) `NEXT_DIST_DIR`, on two different ports. Before the iter-77 build-lock fix,
+    both would see the build as stale and run `next build` concurrently against the SAME output
+    directory with no coordination -- the real race this iteration's spec requires a test to directly
+    exercise (per its own note: 'quiet for N rounds' is not proof of a fix). This asserts (1) the lock's
+    OWN log line proves the second invocation genuinely BLOCKED on the first's build rather than racing
+    it — the concrete mechanism, not just a passing outcome that could happen to get lucky on timing —
+    and (2) once both invocations are up and serving, EACH renders a fully-styled page — never a
+    partial/mid-build payload — proving the shared dist dir was never served in a torn state."""
+    if not (FRONTEND_DIR / "node_modules").exists():
+        pytest.skip("apps/frontend/node_modules not installed -- cannot build/start the frontend")
+    dist_rel = _scratch_dist_name("tc2-77")
+    assert not (FRONTEND_DIR / dist_rel).exists(), "the scratch dist dir must not exist before launching"
+    port_a, port_b = _TC2_77_PORT, _TC2_77_PORT + 1
+
+    launched_a = launcher(dist_rel, port_a, port_a + 1000, "tc2-77-a.log")
+    launched_b = launcher(dist_rel, port_b, port_b + 1000, "tc2-77-b.log")
+
+    _wait_for_port_answering(
+        port_a, timeout=_BUILD_TIMEOUT_S, proc=launched_a.proc, log_path=launched_a.log_path
+    )
+    _wait_for_port_answering(
+        port_b, timeout=_BUILD_TIMEOUT_S, proc=launched_b.proc, log_path=launched_b.log_path
+    )
+
+    log_a, log_b = launched_a.log_text(), launched_b.log_text()
+    assert ("waiting for its build lock" in log_a) or ("waiting for its build lock" in log_b), (
+        "expected ONE of the two concurrent invocations to observe the OTHER already holding the build "
+        f"lock (proves the race was genuinely exercised, not just luck) -- got:\nA:\n{log_a[-2000:]}"
+        f"\nB:\n{log_b[-2000:]}"
+    )
+    assert "acquired build lock" in log_a and "acquired build lock" in log_b, (
+        f"both invocations must eventually acquire the lock and proceed (never deadlock) -- got:\n"
+        f"A:\n{log_a[-2000:]}\nB:\n{log_b[-2000:]}"
+    )
+
+    _assert_page_fully_styled(port_a)
+    _assert_page_fully_styled(port_b)
+
+
+def test_out_of_band_build_is_treated_as_stale_and_rebuilt(launcher):
+    """ops-hardening iter-77 AUDIT -- a build the LAUNCHER did not produce must never be served as
+    "current".
+
+    The concrete defect this closes (reproduced live during the iter-77 audit, not hypothesised): a bare
+    `npx next build` run inside `apps/frontend` as a verification step -- the exact command both this
+    iteration's dev handoff and its QA report record themselves running -- rewrites the LIVE `.next` with
+    a bundle built WITHOUT the `NEXT_PUBLIC_API_URL`/`NEXT_PUBLIC_API_PORT` exports `start-frontend.sh`
+    sets, so Next bakes its own `http://localhost:8000` fallback into the client bundle. The staleness
+    check compares SOURCE mtimes against BUILD_ID and therefore sees nothing wrong: the launcher logged
+    "build is current ... skipping rebuild" and served a frontend that rendered the global "Backend
+    unavailable" state on every page while the backend was healthy on its real port.
+
+    Simulating (rather than really running) the out-of-band build keeps this test to two real builds: a
+    bare `next build` always mints a FRESH `BUILD_ID` into the dist dir, which is exactly what step 2
+    below reproduces -- the launcher must then rebuild rather than trust the foreign output."""
+    if not (FRONTEND_DIR / "node_modules").exists():
+        pytest.skip("apps/frontend/node_modules not installed -- cannot build/start the frontend")
+    dist_rel = _scratch_dist_name("tc3-77")
+    port, backend_port = _TC3_77_PORT, _TC3_77_PORT + 1000
+    marker = FRONTEND_DIR / dist_rel / ".trendora-launch-build"
+    build_id = FRONTEND_DIR / dist_rel / "BUILD_ID"
+
+    # 1. A normal launcher build: the marker is written and names the backend this launch configured.
+    first = launcher(dist_rel, port, backend_port, "tc3-77-first.log")
+    _wait_for_port_answering(port, timeout=_BUILD_TIMEOUT_S, proc=first.proc, log_path=first.log_path)
+    assert marker.exists(), f"expected the launcher to record its own build marker at {marker}"
+    marker_text = marker.read_text()
+    assert f"build_id={build_id.read_text().strip()}" in marker_text, marker_text
+    assert f"api_url=http://localhost:{backend_port}" in marker_text, marker_text
+    first.stop()
+
+    # 2. Simulate an out-of-band `npx next build`: same dist dir, a fresh BUILD_ID, no launcher
+    #    involvement (the marker is left in place on purpose -- the id comparison, not merely the file's
+    #    presence, must be what catches this).
+    build_id.write_text("out-of-band-build-id\n")
+
+    # 3. The next launch must NOT trust it.
+    second = launcher(dist_rel, port, backend_port, "tc3-77-second.log")
+    _wait_for_port_answering(port, timeout=_BUILD_TIMEOUT_S, proc=second.proc, log_path=second.log_path)
+    log = second.log_text()
+    assert "was not built by this launcher" in log, (
+        f"expected the foreign build to be detected and rebuilt, got:\n{log[-2000:]}"
+    )
+    assert "running 'next build'" in log, (
+        f"expected the foreign build to trigger an actual rebuild, got:\n{log[-2000:]}"
+    )
+    _assert_page_fully_styled(port)
+    assert f"build_id={build_id.read_text().strip()}" in marker.read_text(), (
+        "the rebuild must refresh the marker so the NEXT launch skips correctly"
+    )
+
+
+# ==================================================================================================
+# ops-hardening iter-77 AUDIT FIX ROUND 2 -- findings B2 ("an out-of-band `next build` can still tear /
+# poison the LIVE dist dir; code cannot stop it") and B3 ("the shipped root cause was never
+# instrumented").
+#
+# The audit's first fix taught the LAUNCHER to distrust a foreign build after the fact. These tests
+# cover the two additions that stop it happening at all, and the one that detects it at launch:
+#   * `apps/frontend/next.config.mjs` -- the ONE file every `next build` must load, whoever invokes it:
+#     it now REFUSES a production build that would (a) write into the live `.next` without
+#     NEXT_PUBLIC_API_URL (the bare `npx next build` that poisoned this round -> a bundle pointing at
+#     http://localhost:8000, which nothing binds) or (b) write into ANY dist dir a live server is
+#     currently serving (the half B2 called un-fixable in code).
+#   * `scripts/start-frontend.sh` -- writes the `.trendora-serving` claim the guard reads, and now
+#     verifies at launch that the build on disk actually references the backend this launch configured.
+# ==================================================================================================
+
+_GUARD_PROBE_JS = (
+    "import('./next.config.mjs')"
+    ".then((m) => m.default('phase-production-build'))"
+    ".then(() => console.log('ALLOWED'),"
+    " (e) => { console.log('REFUSED: ' + e.message); process.exitCode = 3; })"
+)
+
+
+def _guard_verdict(dist_rel: str | None, api_url: str | None) -> tuple[bool, str]:
+    """Ask `next.config.mjs` DIRECTLY whether it would allow a production build into `dist_rel` (None =
+    the live `.next`) -- the same call Next itself makes (`normalizeConfig(phase, config)` invokes the
+    exported function with the phase). Seconds, not a real build, so the guard's PRECISION (it must
+    allow every legitimate build) can be asserted broadly without paying for a webpack compile each
+    time. Returns (allowed, output)."""
+    env = dict(os.environ)
+    env.pop("NEXT_DIST_DIR", None)
+    env.pop("NEXT_PUBLIC_API_URL", None)
+    env.pop("TRENDORA_LAUNCH_BUILD", None)
+    if dist_rel is not None:
+        env["NEXT_DIST_DIR"] = dist_rel
+    if api_url is not None:
+        env["NEXT_PUBLIC_API_URL"] = api_url
+    proc = subprocess.run(
+        ["node", "-e", _GUARD_PROBE_JS],
+        cwd=str(FRONTEND_DIR),
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    out = (proc.stdout + proc.stderr).strip()
+    return ("ALLOWED" in proc.stdout), out
+
+
+def test_build_guard_refuses_the_unconfigured_live_dist_build_and_leaves_it_untouched():
+    """The EXACT command that broke iter-77 -- a bare `npx next build` inside `apps/frontend` -- must now
+    fail instead of rewriting the live `.next`.
+
+    Runs the real command (not a simulation): the guard lives in `next.config.mjs`, which Next loads
+    before it touches the dist dir, so the refusal costs seconds and the live build's BUILD_ID must come
+    back byte-identical. Both guard rules protect the same invariant here (the live dir may also be
+    claimed by a running server), so the assertion accepts either refusal reason but requires the live
+    build to be untouched -- that is the property that failed this round.
+
+    If this test ever FAILS because the guard stopped working, the timeout below caps the damage at a
+    partial build the launcher's provenance marker (`test_out_of_band_build_is_treated_as_stale_and_
+    rebuilt`) will rebuild on the next launch."""
+    if not (FRONTEND_DIR / "node_modules").exists():
+        pytest.skip("apps/frontend/node_modules not installed -- cannot run `next build`")
+    live_build_id = FRONTEND_DIR / ".next" / "BUILD_ID"
+    before = live_build_id.read_text() if live_build_id.exists() else None
+
+    env = dict(os.environ)
+    for var in ("NEXT_PUBLIC_API_URL", "NEXT_PUBLIC_API_PORT", "NEXT_DIST_DIR", "TRENDORA_LAUNCH_BUILD"):
+        env.pop(var, None)
+    proc = subprocess.run(
+        ["npx", "next", "build"],
+        cwd=str(FRONTEND_DIR),
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=180,
+    )
+    out = proc.stdout + proc.stderr
+    assert proc.returncode != 0, f"the bare `npx next build` must be REFUSED, not run:\n{out[-2000:]}"
+    assert "TRENDORA BUILD GUARD" in out, f"expected the guard's own refusal, got:\n{out[-2000:]}"
+    assert ("without" in out and "NEXT_PUBLIC_API_URL" in out) or "being SERVED right now" in out, (
+        f"expected one of the two guard reasons, got:\n{out[-2000:]}"
+    )
+    # The message must be actionable -- the whole point is that the next caller knows what to do.
+    assert "NEXT_DIST_DIR=.next-verify" in out, f"expected an actionable remedy, got:\n{out[-2000:]}"
+
+    after = live_build_id.read_text() if live_build_id.exists() else None
+    assert after == before, (
+        "the refused build must not have touched the live `.next` -- "
+        f"BUILD_ID went {before!r} -> {after!r}"
+    )
+
+
+def test_build_guard_allows_every_legitimate_build():
+    """Precision, asserted directly against `next.config.mjs` (seconds, no webpack): the guard must NOT
+    become a blanket block. A verification build into a throwaway dist dir -- the remedy its own message
+    recommends -- is allowed with or without NEXT_PUBLIC_API_URL, and a configured build into the live
+    dir is allowed as long as nothing is serving it."""
+    allowed, out = _guard_verdict(".next-verify", None)
+    assert allowed, f"a verification build into a throwaway dist dir must be allowed, got:\n{out}"
+    allowed, out = _guard_verdict(".next-verify", "http://localhost:8255")
+    assert allowed, f"a configured throwaway build must be allowed, got:\n{out}"
+    # A never-served scratch dir with the backend configured: the shape `start-frontend.sh` itself uses.
+    scratch = _scratch_dist_name("guard-precision")
+    allowed, out = _guard_verdict(scratch, "http://localhost:8255")
+    assert allowed, f"a configured build into an unserved scratch dist dir must be allowed, got:\n{out}"
+
+
+def test_build_guard_refuses_building_into_a_dist_dir_a_live_server_is_serving(launcher):
+    """finding B2's remaining half, closed in code: while `start-frontend.sh` is SERVING a dist dir, no
+    other `next build` may rewrite it -- however it is invoked, and even when correctly configured.
+
+    This is the mechanism that produced iter-77's five byte-identical full-page-crash demo frames: a
+    verification build rewrote the assets out from under the running server. One real build pays for all
+    three assertions:
+      1. the launcher records its serving claim (`.trendora-serving`) with the pid that is actually
+         serving -- the guard's input;
+      2. a real, fully-configured `npx next build` into that same dist dir is REFUSED, the dist dir's
+         BUILD_ID is unchanged, and the live server is still serving a fully-styled page afterwards;
+      3. once that server stops, the SAME target is allowed again -- the claim expires with the process,
+         so a hard-killed server can never wedge future builds."""
+    if not (FRONTEND_DIR / "node_modules").exists():
+        pytest.skip("apps/frontend/node_modules not installed -- cannot build/start the frontend")
+    dist_rel = _scratch_dist_name("tc4-77")
+    port, backend_port = _TC4_77_PORT, _TC4_77_PORT + 1000
+    api_url = f"http://localhost:{backend_port}"
+
+    launched = launcher(dist_rel, port, backend_port, "tc4-77.log")
+    _wait_for_port_answering(port, timeout=_BUILD_TIMEOUT_S, proc=launched.proc, log_path=launched.log_path)
+
+    # 1. the serving claim
+    serving_marker = FRONTEND_DIR / dist_rel / ".trendora-serving"
+    assert serving_marker.exists(), f"expected the launcher to claim its dist dir at {serving_marker}"
+    marker_text = serving_marker.read_text()
+    assert f"port={port}" in marker_text, marker_text
+    claimed_pid = int(re.search(r"^pid=(\d+)$", marker_text, re.M).group(1))
+    os.kill(claimed_pid, 0)  # raises if the claimed pid is not actually alive
+    assert re.search(r"\b(next|npx|node)\b", _cmdline(claimed_pid)), (
+        f"the claimed pid must be the serving process itself, got cmdline: {_cmdline(claimed_pid)!r}"
+    )
+
+    # 2. a correctly-configured foreign build into the SERVED dir is refused, and serving is unharmed
+    build_id = FRONTEND_DIR / dist_rel / "BUILD_ID"
+    before = build_id.read_text()
+    env = dict(os.environ)
+    env["NEXT_DIST_DIR"] = dist_rel
+    env["NEXT_PUBLIC_API_URL"] = api_url
+    env.pop("TRENDORA_LAUNCH_BUILD", None)
+    proc = subprocess.run(
+        ["npx", "next", "build"], cwd=str(FRONTEND_DIR), env=env, capture_output=True, text=True, timeout=180
+    )
+    out = proc.stdout + proc.stderr
+    assert proc.returncode != 0, f"a build into a SERVED dist dir must be refused:\n{out[-2000:]}"
+    assert "being SERVED right now" in out, f"expected the serving-claim refusal, got:\n{out[-2000:]}"
+    assert str(claimed_pid) in out, f"the refusal must name the serving process, got:\n{out[-2000:]}"
+    assert build_id.read_text() == before, "the refused build must not have rewritten the served dist dir"
+    _assert_page_fully_styled(port)  # the live server was never torn
+
+    # 3. the claim expires with the process (no wedged dist dirs after a hard kill)
+    launched.stop()
+    allowed, verdict_out = _guard_verdict(dist_rel, api_url)
+    assert allowed, (
+        "once the serving process is gone its claim must expire -- a stale marker must never block a "
+        f"later build:\n{verdict_out}"
+    )
+
+
+def test_launcher_rebuilds_a_bundle_built_for_a_different_backend(launcher):
+    """finding B3 ("the shipped root cause was never instrumented"): the launcher now CHECKS, on every
+    launch, that the build it is about to serve actually references the backend this launch configured
+    -- the same `grep -rl "localhost:<port>" .next` the audit had to run by hand to diagnose B1.
+
+    Exercised end-to-end: build+serve against backend A, stop, relaunch pointing at backend B. Nothing
+    else changed -- sources are untouched and the provenance marker still matches -- so the ONLY thing
+    that can catch the mismatch is the new bundle check. Before it, the launcher logged "build is current
+    ... skipping rebuild" and served a frontend that could not reach its backend, which is precisely how
+    this iteration shipped a broken app past every green gate."""
+    if not (FRONTEND_DIR / "node_modules").exists():
+        pytest.skip("apps/frontend/node_modules not installed -- cannot build/start the frontend")
+    dist_rel = _scratch_dist_name("tc5-77")
+    port = _TC5_77_PORT
+    backend_a, backend_b = port + 1000, port + 1001
+
+    first = launcher(dist_rel, port, backend_a, "tc5-77-a.log")
+    _wait_for_port_answering(port, timeout=_BUILD_TIMEOUT_S, proc=first.proc, log_path=first.log_path)
+    chunks = list((FRONTEND_DIR / dist_rel / "static").rglob("*.js"))
+    assert any(f"http://localhost:{backend_a}" in c.read_text(errors="replace") for c in chunks), (
+        "sanity: the built client bundle must inline the backend URL this launch configured "
+        "(the fact the check below relies on)"
+    )
+    first.stop()
+
+    second = launcher(dist_rel, port, backend_b, "tc5-77-b.log")
+    _wait_for_port_answering(port, timeout=_BUILD_TIMEOUT_S, proc=second.proc, log_path=second.log_path)
+    log = second.log_text()
+    assert "was built for a different backend" in log, (
+        f"expected the launcher to DETECT the backend mismatch, got:\n{log[-2000:]}"
+    )
+    assert "running 'next build'" in log, (
+        f"expected the mismatch to force a rebuild rather than serve an unreachable app, got:\n{log[-2000:]}"
+    )
+    assert "skipping rebuild" not in log, f"the stale bundle must never be served as current:\n{log[-2000:]}"
+    _assert_page_fully_styled(port)
+    chunks = list((FRONTEND_DIR / dist_rel / "static").rglob("*.js"))
+    assert any(f"http://localhost:{backend_b}" in c.read_text(errors="replace") for c in chunks), (
+        "the rebuilt bundle must reference the backend the SECOND launch configured"
+    )

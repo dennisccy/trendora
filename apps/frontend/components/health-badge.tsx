@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { useReadiness } from "@/components/readiness-provider";
 import { fetchHealth, type HealthStatus } from "@/lib/api";
+import { formatStaleAnnotation } from "@/lib/staleness-annotation";
 
 type Detail =
   | { kind: "loading" }
@@ -20,7 +21,7 @@ type Detail =
  *  re-renders for, without a second polling loop. Re-checks of `state`/`warmup` themselves happen via the
  *  readiness provider's own config-derived poll. */
 export function HealthBadge() {
-  const { state, warmup, backgroundCompute, loading } = useReadiness();
+  const { state, warmup, backgroundCompute, loading, staleForS } = useReadiness();
   const [detail, setDetail] = useState<Detail>({ kind: "loading" });
 
   // The context detail (provider / seed date / symbol count / the `awaiting_snapshot` recovery-pointer
@@ -100,9 +101,22 @@ export function HealthBadge() {
   // (`useReadiness()`) -- no second fetch.
   const activeComputeCount = backgroundCompute?.active.length ?? 0;
 
+  // ops-hardening iter-77 (J-04/J-07): the FIRST UI consumer of GET /api/health's `stale_for_s` --
+  // a calm, factual "as of Ns ago" annotation naming how old the payload the badge/chip above are
+  // built from is. Shown only when genuinely stale (`stale_for_s > 0`); never shown for a fresh
+  // synchronous compute or when the health poll itself failed (formatStaleAnnotation's own honesty
+  // contract -- see lib/staleness-annotation.ts). Plain inline text next to the existing pill, not a
+  // new component type (this project's DESIGN SYSTEM convention for a small factual annotation).
+  const staleAnnotation = formatStaleAnnotation(staleForS);
+
   return (
     <div className="flex flex-wrap items-center gap-2">
       {pill}
+      {staleAnnotation ? (
+        <span className="num text-xs text-text-faint" data-testid="readiness-staleness">
+          {staleAnnotation}
+        </span>
+      ) : null}
       {activeComputeCount > 0 ? (
         <Badge variant="accent" className="num gap-1.5" data-testid="background-compute-indicator">
           <span className="h-2 w-2 animate-pulse rounded-full bg-accent" aria-hidden />

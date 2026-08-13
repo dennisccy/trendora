@@ -1,0 +1,132 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-ops-hardening-iter-77",
+  "base_url": "http://localhost:3255",
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Open the app's home page",
+      "narration": "Let's start by opening the dashboard and checking the app's status.",
+      "point_out": "The green Ready pill in the top-right corner indicates the app is connected to the backend.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "goto",
+        "url": "/"
+      },
+      "expect": {
+        "text": "Ready"
+      }
+    },
+    {
+      "n": 2,
+      "title": "Check the freshness indicator on the badge",
+      "narration": "Next to the Ready pill, there's a small gray text showing how fresh this status reading is. This is new.",
+      "point_out": "Look for the 'as of Ns ago' text right next to the Ready badge. It tells you how many seconds old this status information is.",
+      "journey": "J-04",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "click",
+        "target": {
+          "role": "button",
+          "name": "Ready"
+        }
+      },
+      "expect": {
+        "text": "as of"
+      }
+    },
+    {
+      "n": 3,
+      "title": "See the freshness note on the confirmation strip",
+      "narration": "Below the top bar is a green strip confirming the board is current. It also shows the same freshness note.",
+      "point_out": "The preflight banner reads 'GO — today's board is current. (as of Ns ago)' — the staleness note is now on this strip too.",
+      "journey": "J-04",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "goto",
+        "url": "/"
+      },
+      "expect": {
+        "text": "GO — today's board is current"
+      }
+    },
+    {
+      "n": 4,
+      "title": "Refresh the page to see the status update live",
+      "narration": "Reload the page. You'll see the Ready pill and staleness text reappear instantly, showing it's a live reading each time.",
+      "point_out": "The badge and staleness text don't freeze — they refresh on every page load.",
+      "journey": "J-04",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "goto",
+        "url": "/"
+      },
+      "expect": {
+        "text": "Ready"
+      }
+    },
+    {
+      "n": 5,
+      "title": "Navigate to the backtest page",
+      "narration": "Let's go to the backtest section to see the scorecard table. Click the Backtest link in the sidebar.",
+      "point_out": "The sidebar has a link to Backtest. This page shows forward-looking return metrics in a scorecard.",
+      "journey": "J-08",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "goto",
+        "url": "/backtest"
+      },
+      "expect": {
+        "text": "Forward-test scorecard"
+      }
+    },
+    {
+      "n": 6,
+      "title": "View the scorecard table with return horizons",
+      "narration": "The scorecard shows forward returns for different time horizons: 1-day, 5-day, 10-day, 20-day, and 60-day.",
+      "point_out": "Each row in the table represents one horizon. The numbers show the median return (or '—' if the horizon hasn't elapsed yet).",
+      "journey": "J-08",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "goto",
+        "url": "/backtest"
+      },
+      "expect": {
+        "text": "Horizon"
+      }
+    },
+    {
+      "n": 7,
+      "title": "Navigate to a historical date to see background compute",
+      "narration": "Click the left arrow next to the date selector to step back to a previous historical date. This may trigger background computation.",
+      "point_out": "When a compute window is active, a chip appears in the top bar saying 'background compute running (N)'. With this update, the Ready badge stays visible alongside it, even at narrow window widths.",
+      "journey": "J-09",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "click",
+        "target": {
+          "testid": "asof-step-prev"
+        }
+      },
+      "expect": {
+        "text": "Viewing as-of"
+      }
+    }
+  ]
+}

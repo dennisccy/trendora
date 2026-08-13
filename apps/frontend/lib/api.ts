@@ -205,6 +205,11 @@ export interface HealthStatus {
   preflight: PreflightStatus;
   // ops-hardening iter-24 (J-09): the historical background-compute dispatch disclosure (additive).
   background_compute: BackgroundComputeStatus;
+  // ops-hardening iter-71 (J-07 closure): seconds since THIS payload was computed (0.0 when computed
+  // synchronously for this request) -- see app.engine.readiness.get_readiness_and_preflight. iter-77 is
+  // this field's FIRST UI consumer (the readiness badge / preflight banner "as of {N}s ago" annotation);
+  // the backend has served it since iter-71 but nothing rendered it until now.
+  stale_for_s: number;
 }
 
 /** Fetch backend health + readiness. Throws on network error or non-200 so callers can render an

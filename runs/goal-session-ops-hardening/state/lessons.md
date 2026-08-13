@@ -1006,3 +1006,31 @@ that FAIL as selector drift, a frontend fault, or "transient load".
 **Applies to:** any golden or QA step that submits an ingest job and waits for its outcome; any
 round diagnosing a replay FAIL — check `data_provider_runs` start/finish times against the frame
 mtime before accepting any other explanation.
+
+## iter-77 — 2026-08-13T15:35:00Z
+
+**Verdict:** ESCALATE
+**Lesson:** A test that writes a deliberately-broken source file into the LIVE app tree
+(`test_start_frontend_script.py:533` → `apps/frontend/__tc3_intentionally_broken.ts`) and cleans it
+up only in its own fixture will, on any interrupted run, leave the whole frontend unbuildable — and
+the ONLY symptom is `start-frontend.sh` exiting 1. It happened this round because an 11-minute test
+module was dispatched into a 2-minute-limited tool; every browser lane afterwards would have found no
+frontend at all. Sabotage-style fixtures must write outside the served tree, or the launcher must be
+taught to ignore their filenames.
+**Applies to:** any iter touching `apps/backend/tests/test_start_frontend_script.py`, any test that
+plants files under `apps/frontend/`, and any lane that dispatches a long pytest module under a
+short-timeout tool.
+
+## iter-77 — 2026-08-13T15:36:00Z
+
+**Verdict:** ESCALATE
+**Lesson:** "Every lane passed" and "the round is closeable" are different claims. This round had
+review PASS_WITH_NOTES, audit PASS_WITH_GAPS and QA PASS, yet the deterministic closure gate FAILED —
+because the fix pass wrote its winning replay results to a side file
+(`…-evidence/devfix-replay/replay-fast-results.md`) instead of re-merging them into
+`…-ui-test-results.md`, leaving the artifact of record reporting three target journeys as never
+tested. Whenever a fix pass re-runs a verification lane, it must write back into the artifact of
+record, not beside it. Corollary found the same way: `closure_gate.py:72`'s backend-only guard is a
+bare substring match and false-positives on a sentence that DENIES a backend-only gap.
+**Applies to:** any fix-mode pass that re-runs browser-qa or the replay lane; any iter reading a
+closure verdict; anyone editing `scripts/automation/lib/closure_gate.py`.
