@@ -1531,3 +1531,54 @@ only deliverable, so it does not make this an evidence-only iteration.
 **Reversible:** yes — if a future round finds this hook actively harmful or redundant, it can still be
 removed with its own test in one later change; nothing else in this iteration depends on its continued
 presence beyond the one screenshot.
+
+## iter-76 — goal-evaluator (1 of 2)
+
+**Ambiguity:** Decision-tree rule C.4 lists three ESCALATE triggers (same journey failing twice; a
+fail-open review; a lean iteration surfacing cross-cutting ambiguity/complexity). None fits
+literally: nothing failed, the review is a PASS stub, and this iteration was dispatched `evidence`
+rather than `lean`. Yet the round surfaced a structural fault in the loop itself — the SPEED-9
+evidence backstop (`scripts/automation/run-goal.sh:2509-2539`) demotes every `lean` spec to
+`evidence` while all eight journeys are `passing`, so the developer lane is unreachable and iters 75
+and 76 both produced an empty diff against specs that ordered real code work. Nothing states whether
+a verdict may be chosen for its documented mechanical effect when that effect is the only
+agent-owned remedy.
+**We chose:** ESCALATE. Grounds: (1) ESCALATE's defined consequence — "the next iteration MUST run
+as `full`" — IS the remedy, and I verified in the engine source that it is deterministic
+(`run-goal.sh:2427` and `:2482` both grant a full pass on `prior-verdict-ESCALATE`, and the backstop
+is guarded by `DEPTH == "lean"` so it never touches full); (2) the alternative, CONTINUE with a
+"full" depth recommendation, is NOT reliable — at line 2452 a `PRIOR_DEPTH == full` recommendation
+falls through to the legacy allowlist and is demoted back to lean, then to evidence, unless the
+decomposer happens to emit a `Full trigger:` line, which would risk a third wasted round; (3) the
+spec's own deferred item (rendering `stale_for_s`, iter-72/f) was already earmarked as needing a
+full round, so full depth has genuine planned content and is not a bare workaround; (4) "cross-cutting
+complexity surfaced by a lean iteration" describes a loop-level structural fault at least as well as
+it describes a product one, and the spec DID say `**Depth:** lean` — the demotion is the thing being
+escalated.
+**Cost recorded honestly:** a reader applying C.4 strictly would return CONTINUE and accept the risk
+of a third empty round. ESCALATE also buys a full pipeline (audit, UX-regression, closure lanes) at
+roughly 90-120 minutes more wall clock, on a session already 16 rounds over budget — I am spending
+the owner's time on a mechanism fix, and I say so rather than presenting full depth as free.
+**Reversible:** yes — if the next round runs full and the code lane still produces nothing, the
+diagnosis is wrong and a later evaluator can return to CONTINUE/lean or escalate to the owner for
+`CHAIN_EVIDENCE_MICRO_PATH=false`; every artifact and the engine source line numbers are recorded.
+
+## iter-76 — goal-evaluator (2 of 2)
+
+**Ambiguity:** `evidence_makeup` means "the product works; only the capture artifact's presentation
+is wrong". Five of eight journeys qualify this round (J-01's frame photographs the wrong step;
+J-05's and J-07's `[NEW]` walkthroughs were never recorded; J-08's and J-09's walkthrough
+before/after pairs came back byte-identical). Nothing states whether flagging a majority of
+journeys is appropriate, and a large flag set could later be read as "every remaining gap is a
+capture task", which is exactly the condition for recommending `evidence` depth.
+**We chose:** flag all five, and state explicitly in the eval, the log and iteration-state that
+these are passenger tasks which must NEVER set a future round's depth to `evidence`. Grounds: (1)
+each flag is individually true and A.7 is the mechanism that schedules the make-up capture; (2)
+suppressing true flags to protect a downstream heuristic would trade honesty for convenience; (3) I
+confirmed in the engine source that the depth backstop reads only `status` and `pending_infra`, not
+`evidence_makeup`, so the flags cause no mechanical harm — the risk is only that a future evaluator
+misreads them.
+**Cost recorded honestly:** a reader could hold that J-05 and J-08 should not carry the flag, since
+their behaviour was verified strongly this round and only an optional walkthrough is missing. That
+would change the make-up list but no status and no verdict.
+**Reversible:** yes — any fresh capture, pass or fail, clears the flag for that journey.

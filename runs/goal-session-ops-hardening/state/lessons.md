@@ -975,3 +975,34 @@ per-journey strength of a "PASS" varies enormously (J-01's golden asserts the ex
 partition; J-07's asserts two words).
 **Applies to:** any evaluator scoring from `ui-test-results.md`; any iteration that adds or
 regenerates a golden; the queued work to strengthen J-07's and J-09' goldens.
+
+## iter-76 — 2026-08-13T09:40:00Z
+
+**Verdict:** ESCALATE
+**Lesson:** Once every Must-have journey is recorded `passing`, the SPEED-9 evidence backstop at
+`scripts/automation/run-goal.sh:2509-2539` silently demotes EVERY `lean` spec to `evidence` — the
+guard only checks that each Target journey is `passing`/`already_passing` with no `pending_infra`,
+so no lean iteration can ever staff a developer again, no matter what the spec's Definition of Done
+says. Iters 75 and 76 both produced an empty diff for exactly this reason while their specs ordered
+real code work. The backstop's own guard is `DEPTH == "lean"`, and `run-goal.sh:2427` / `:2482`
+grant a full pass on `prior-verdict-ESCALATE`, so **ESCALATE is the deterministic escape and a
+CONTINUE + "full" recommendation is not** (line 2452 falls through to the legacy allowlist and is
+demoted straight back unless the spec happens to carry a `Full trigger:` line).
+**Applies to:** any goal-mode session where all Must-have journeys are passing but harness,
+hygiene, or non-journey-advancing work remains — i.e. every late-stage session. Check
+`iter-<N>/depth-dispatched` against the spec's `**Depth:**` line before believing an iteration ran
+its code lane.
+
+## iter-76 — 2026-08-13T09:41:00Z
+
+**Verdict:** ESCALATE
+**Lesson:** A backfill submitted against a freshly booted backend can stay `running` for ~18 minutes
+even when it is pure zero-work: `data_provider_runs` 493 ran 08:19:35 -> 08:38:11 because the first
+ingest after boot opens a full finalize-tail heavy warm (`forward_aggregates_warm` 495.9 s,
+`factor_lab_all_warm` 596.8 s). `demo_runner.py` hard-caps every step at 20 s, so any golden that
+waits for a job's completion text will FAIL on the first post-boot run and PASS later — the same
+golden that passed in iter-75 finished in 0.2 s because the caches were already warm. Do not read
+that FAIL as selector drift, a frontend fault, or "transient load".
+**Applies to:** any golden or QA step that submits an ingest job and waits for its outcome; any
+round diagnosing a replay FAIL — check `data_provider_runs` start/finish times against the frame
+mtime before accepting any other explanation.

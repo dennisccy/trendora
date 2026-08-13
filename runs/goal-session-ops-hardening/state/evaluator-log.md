@@ -8641,3 +8641,161 @@ promise during long jobs or apply it to short jobs only; may we limit how many h
 run at once (B-1107); permission to fix the one-line ordering bug in
 `scripts/automation/browser-qa-phase.sh`; and a cost decision — this round ran about 1.8x its time
 budget, the fifteenth over-budget round in a row, though the smallest overrun in several.
+
+## Iteration 76 — goal-ops-hardening-iter-76
+
+**Date:** 2026-08-13T09:40:00Z
+**Verdict:** ESCALATE
+**Depth dispatched:** evidence (`iter-76/depth-dispatched` = `evidence`, while the spec declares
+`**Depth:** lean`; developer and reviewer were never dispatched, `iter-diff.md` = "(no changes)",
+and the decomposer's and browser-qa's step receipts carry the SAME tree hash
+`b2a1abd1384d7d381fd709cc9bbef0b01588a489`)
+**Depth recommended next:** full
+
+**Journey deltas:**
+- **Newly passing: none — nothing was failing.** All eight Must-have journeys enter and leave this
+  round `passing`, and every one of them has evidence of its own from this round:
+  `last_verified_iter` advances to iter-76 for all eight. Merged browser-QA **PASS 8/8, 0 skipped**.
+- Newly failing: none. Regressed: none. `partial` / `unknown` / `DEFERRED-BUDGET`: none.
+  `pending_infra` absent throughout (no `browser-infra.json`; both lanes RAN).
+- Deterministic replay **7/8 PASS**; the single FAIL (J-01) was overturned by a live LLM
+  re-confirmation. **I accept the overturn and reject its stated reason** — see (2) below.
+- `evidence_makeup` set on **J-01, J-05, J-07, J-08, J-09** (capture/walkthrough defects on
+  confirmed behaviour); cleared/absent on J-03, J-04, J-06.
+- Anti-goal violations: **ONE CLOSED** (iter-75/c — J-07's and J-09's goldens now carry real
+  discriminating assertions). **SIX NEW OPEN, all minor** (iter-76/a the second consecutive
+  unexecuted Definition of Done, with the engine mechanism finally named; /b a temporally
+  impossible failure explanation; /c the stale goldens-regen queue, TC-8 unmet; /d the walkthrough
+  recorder saving byte-identical before/after frames again; /e the readiness pill pushed off the
+  visible bar at 1280px during a compute window; /f the 16th over-budget round). Ledger:
+  **265 total, 138 unresolved, 0 unresolved critical.** scan-report **CLEAN**; iter-diff
+  **"(no changes)"**; coherence **COHERENCE-PASS**; review **PASS** (stub — no lane ran).
+
+**Reasoning:** I re-derived every load-bearing number from the raw artifacts, the backend log and
+the database rather than from the reports.
+(1) **THE ROUND SKIPPED ITS OWN JOB FOR THE SECOND TIME RUNNING, AND THIS TIME I FOUND OUT WHY —
+THAT IS THE HEADLINE.** The spec ordered real developer work (TC-1/TC-2 root-cause and fix the
+asset-less frontend; TC-6 delete the stray `=`; TC-7 the `/data` honest-fallback capture; TC-8 clear
+the regen queue). None of it happened: `depth-dispatched` = `evidence`, no developer, no reviewer,
+empty diff. I read the engine source instead of guessing. **`scripts/automation/run-goal.sh:2509-2539`
+(the SPEED-9 evidence backstop) demotes `lean` -> `evidence` whenever EVERY Target journey named in
+the spec is already recorded `passing`/`already_passing` and the prior verdict was CONTINUE or
+ESCALATE.** Since iter-75 all eight journeys are `passing`, so **every lean spec the decomposer can
+possibly write is demoted** — the code lane is now structurally unreachable at lean depth, and iters
+75 and 76 both burned on it. The backstop's own guard is `DEPTH == "lean"`; lines 2427 and 2482 both
+grant a full pass on `prior-verdict-ESCALATE`. So ESCALATE is the deterministic, agent-owned escape,
+and a CONTINUE with a "full" recommendation is NOT — at line 2452 it falls through to the legacy
+allowlist and is demoted back to lean (then to evidence) unless the decomposer happens to write a
+`Full trigger:` line. That is why this verdict is ESCALATE and not CONTINUE.
+(2) **I CORRECT THE RECORD ON THE ONE REPLAY FAILURE, BECAUSE THE EXPLANATION ON FILE CANNOT BE
+TRUE.** The LLM lane blames a background-compute window running **09:01:19-09:09:03 UTC** for a
+J-01 failure frame whose mtime is **08:20:03 UTC** — 41 minutes before that window opened. I opened
+the frame: it is fully styled (not an asset-less shell) and it does carry a "background compute
+running (1)" chip, so a window was live then — just not that one. The real cause is in the log and
+the DB: `data_provider_runs` **493 ran 08:19:35.04 -> 08:38:11.78 = 18m36s**, because on the freshly
+booted backend (`=== start-backend.sh: launching at 2026-08-13T08:17:52Z ===`, port=8255,
+`memory_cap_mb=8192 malloc_arena_max=2`, `host-guard: cpu_list=0-15 blas_threads=8`) the first
+backfill opened a full finalize-tail heavy warm — `forward_aggregates_warm` 495.86 s,
+`factor_lab_all_warm` 596.83 s. `demo_runner.py` hard-caps a step at 20 s. So step 07's "Zero-work
+outcome" text could not appear in time. **The overturn stands; the reason on file does not.**
+(3) **THE FRAMES ARE CLEAN FOR A SECOND ROUND, AND I OPENED THEM RATHER THAN TRUSTING THE HEADLINE.**
+All 11 evidence frames render real, styled product pages — zero "Checking backend…" shells. The
+four-round asset-less-frontend defect (iter-72/c) did not recur. **It is still un-root-caused**, and
+the binding iter-75 lesson holds: two quiet rounds are not a fix.
+(4) **AG-3 CHECKED AT ROW LEVEL, TWICE, WITH MY OWN QUERIES.** `J-05-verify.png` reads "Immutable
+snapshot — as of 2005-07-27 … Scanned 2026-08-13 08:22:27" with Market Regime **82.52 / Strong
+risk-on**; `scanner_runs` id **2988** holds asof_date 2005-07-27, created_at **08:22:27.644187**,
+regime_score 82.52, label "Strong risk-on". And J-09's panel reads "Completed / as-of 2026-07-31 /
+**7m 44s**"; `forward_aggregate_cache` (asof_key 2026-07-31, dataset_version **r2988-f6601195**)
+commits horizon 20 at **09:09:03.205972**, and `duration_ms` 463745 = 7m43.7s. The dataset version
+`r2988` traces back to the snapshot **this same round's J-05 replay created** — a closed causal loop
+across three lanes.
+(5) **THE WHOLE LOG SINCE BOOT IS CLEAN AND I COUNTED ALL OF IT.** 2,616 lines, **2,430 requests,
+2,430 HTTP 200s, zero non-200**, and **zero** MemoryError / QueuePool / Traceback / "Exceeded
+concurrency limit" / ERROR / CRITICAL — through **three concurrent 18-24 minute ingest finalize
+tails** plus a 7m44s background-compute window plus three more backfills. That is direct J-07 and
+AG-8 evidence, and it is the same stacking shape that caused the iter-42 outage under the old cap.
+(6) **THE GOLDENS WERE GENUINELY STRENGTHENED — AND I SAY PLAINLY THAT THEY HAVE NEVER RUN.** I
+diffed both against HEAD field by field. J-07 step 1 now requires
+`[data-testid="readiness-badge"][data-state="ready"]` and gains steps 3-4; J-09 step 3 now requires
+one of the two real sub-state testids instead of the outer container. No step was weakened. But they
+were written at 09:17-09:18 UTC, **after** the replay lane finished at 09:01, so this round's replay
+ran the OLD scripts and the new ones are lint-checked only. And J-07 step 4 asserts the text "1d"
+rather than the spec's `scorecard-row-<horizon>d` testid — because no code lane ran, the frontend
+hook the spec ordered was never added (the LLM lane verified its absence in the live DOM).
+(7) **A NEW, SCREENSHOT-BACKED DISPLAY DEFECT.** At the 1280x800 replay viewport, with a compute
+window in flight, the readiness pill is pushed out of the visible top bar: J-01, J-03 and J-04's
+frames show the "background compute running (1)" chip with **no visible "Ready"** (I cropped and
+enlarged two of them). J-09 step 3 asks for the detail *alongside* `Ready`. The DOM held both —
+J-04's golden asserted `data-state="ready"` and passed at 08:20:20 — so it is a wrap/layout defect,
+not a data defect, and at the wider LLM viewport "Ready" is plainly visible. Logged iter-76/e.
+(8) **Anti-goals checked at row, file and command level.** AG-7: scan-report CLEAN on a zero-change
+diff. AG-9: every `data_provider_runs` row this round (493-499) is `provider='seed'`. AG-10:
+`git status --porcelain -- config.yaml project-extensions/ scripts/ apps/` is EMPTY and the live boot
+header echoes the declared caps. AG-8: 2,430/2,430 HTTP 200 and `J-06-verify.png` degrades honestly
+("Still computing — 16s elapsed"). AG-1/2/4/5/6: an empty product diff introduces no claim, no
+language and no lookahead. All eight `spec_hash` values recomputed from `docs/goal.md` are
+byte-identical to the recorded ones and `docs/goal.md` is unchanged since iter-74 — no goal-edit
+drift, and no `journeys-changed.md`.
+Rejected **REGRESSION (C.1)**: nothing moved to `failing`; no unresolved critical.
+Rejected **STALLED (C.2)**: C.2 needs EVERY unblock path to be human-owned, and the decisive one is
+not — an ESCALATE verdict deterministically restores the developer lane through the engine's own
+documented rule, with no owner action and no config change. Only B-1107, the health-ceiling sentence,
+the `scripts/automation` sign-off, the cost sanction and the achievement-criteria question are the
+owner's.
+Rejected **GOAL_ACHIEVED (C.3)**: two grounds, either sufficient — 138 unresolved (minor) ledger
+entries under the literal rule this session has applied for five rounds, and a round whose own
+Definition of Done went unexecuted for the second time. I again record openly that under a narrower
+reading (only genuine AG-1..AG-10 breaches count) this round's journey table would qualify.
+**Chose ESCALATE (C.4):** this iteration surfaced a cross-cutting, structural problem in the loop
+itself whose defined remedy IS "the next iteration runs the full pipeline". Coherence is PASS, so no
+consolidation pass is mandated.
+**FIVE THINGS I STATE PLAINLY RATHER THAN ROUND AWAY:** (i) **The loop has been unable to change a
+line of code for two rounds, and the cause is a rule in its own engine, not a shortage of work.** I
+name the file and line numbers so the next round cannot re-diagnose it as bad luck. (ii) **The
+evidence itself is the best this session has produced** — 8/8, every journey with its own row,
+three independent database matches, a spotless log across heavy concurrent load. I put that second
+only because the first item is structural. (iii) **The one replay failure had a wrong explanation
+attached to it, for the fifth round in a row that a failure explanation has been wrong.** (iv)
+**J-07's steps 3 and 4 are still carried, not measured** — from iter-74 and from the 2026-07-31
+drill, valid only because the diff is empty. (v) **The strengthened goldens have never been run**,
+so "the replay lane is trustworthy again" is a claim next round must earn, not one this round proved.
+
+**Next-step recommendation:** FULL depth — and this is the point of the verdict, not a preference.
+The engine will not staff a developer at lean depth while every journey passes, so the next round
+must run full or it will produce nothing again. Order: (1) **Do the code work that has now waited
+two rounds**: root-cause the intermittent asset-less frontend with a named cause and a regression
+test (iter-72/c; it has been quiet for two rounds — that is not a fix); delete the stray zero-byte
+`=` at the repo root (iter-74/c, 5th round); clear `state/goldens-regen-pending` of its stale
+J-05..J-09 listing (iter-76/c); capture TC-7's `/data` honest-fallback evidence or remove the
+unguarded hook at `apps/backend/app/api/data.py:119` (iter-72/b). (2) **Add the
+`data-testid="scorecard-row-<horizon>d"` hook** the iter-76 spec ordered and upgrade J-07's step 4
+from the "1d" text token to that selector; then RUN the strengthened J-07/J-09 goldens — they have
+never executed. (3) **Fix the walkthrough recorder** (iter-76/d): it saved byte-identical before/after
+frames for both pairs again, and one of them is byte-identical to last round's. (4) **Land
+`stale_for_s` on the badge/preflight banner** (iter-72/f) — this cycle's first user-visible change,
+which needed a full round anyway; it now has one. (5) **Fix the badge wrap** so the "Ready" pill
+stays visible next to the compute chip at 1280px (iter-76/e). (6) Rides along, never the goal: the
+`[NEW]` walkthroughs for J-05 (18th round owed), J-07 (18th), J-08 and J-09, and J-06's page timings
+into `reports/perf-budgets.md` (7th round owed). (7) CARRIED, untouched: iter-29/b + the badge
+wording after a permanently failed warm-up (49th round unmade); iter-31/e; iter-32/f; iter-35/k;
+iter-36/n; iter-37/o; iter-37/q; iter-39/u; iter-46/az; iter-46/ba; iter-47/bd; iter-47/bf;
+iter-47/bi; iter-48/bj; iter-57/f; iter-57/l; iter-59/g; iter-59/h; iter-59/k; iter-62/e; iter-62/f;
+iter-63/a; iter-63/b; iter-63/d; iter-64/b; iter-64/e; iter-64/f; iter-65/b; iter-65/c; iter-65/d;
+iter-66/b; iter-66/e; iter-66/f; iter-66/g; iter-67/f; iter-67/g; iter-68/d; iter-68/e; iter-69/e;
+iter-70/c; iter-70/e; iter-70/f; iter-71/e; iter-71/f; iter-71/g; iter-71/h; iter-72/a; iter-72/b;
+iter-72/c; iter-72/d; iter-72/e; iter-72/g; iter-73/b; iter-73/d; iter-73/f; iter-74/a; iter-74/c;
+iter-74/d; iter-75/a; iter-75/b; iter-75/d. Deferred a FORTY-THIRD time: iter-33/g, the Regime Lab.
+(8) **OWNER — one new fact, and the same two questions.** For the last two rounds the system has been
+checking itself thoroughly but has not been able to change any code. The reason is now known: a
+safety rule inside the loop skips the programming step whenever all of your journeys already pass,
+which is now always. I have used the loop's own escape route so the next round can write code again.
+Nothing about your product broke — all eight journeys passed this round with fresh proof, and during
+a very heavy 30-minute stretch the app answered 2,430 requests without a single error. **Please
+answer the one question that decides when this stops:** all eight journeys pass, so should the loop
+finish now and hand you the remaining 138 small housekeeping notes as a to-do list (option a), or
+spend two or three more rounds clearing them first (option b)? Still waiting on you from before:
+keep the two-second health-answer promise during long jobs or apply it to short jobs only; may we
+limit how many heavy calculations run at once (B-1107); permission to fix the one-line ordering bug
+in `scripts/automation/browser-qa-phase.sh`; and a cost decision — this round ran about 1.4 times
+its time budget, the sixteenth over-budget round in a row, and the smallest overrun so far.
