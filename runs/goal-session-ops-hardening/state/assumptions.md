@@ -1509,3 +1509,25 @@ true, and is why I put it in the gap, the eval table and the log rather than let
 carry it alone.
 **Reversible:** yes — a next round that gives J-07's golden real assertions re-scores it on that
 evidence, and any fresh non-defective capture for J-01 or J-07 clears the flag immediately.
+
+## iter-76 — goal-decomposer
+
+**Ambiguity:** iter-72/b's carried item names two mutually exclusive remedies for the unguarded
+`TRENDORA_FAULT_INJECT_MEMORY_ERROR=data_overview_endpoint` hook at `apps/backend/app/api/data.py:119`
+— capture its live browser evidence (TC-10) or remove the hook with its own test — and neither
+goal.md nor the carried item states which one closes the carry.
+
+**We chose:** capture the live evidence rather than remove the hook. Grounds: (1)
+`apps/backend/tests/test_api_data.py::test_get_data_overview_fault_injection_probe_makes_the_endpoint_raise`
+already proves the backend half of the mechanism (armed → raises before any other work; disarmed →
+byte-identical normal payload) and `apps/frontend/app/data/page.tsx` already renders the honest-fallback
+copy ("Dataset coverage could not load from the API. No figures are shown rather than fabricated") this
+hook exists to exercise — removing it would delete a working AG-8 resilience proof-of-concept with no
+defect to fix; (2) the only missing piece across four carried rounds is the LIVE capture itself, which
+this iteration's browser-qa pass can produce as one small addition riding alongside real dev work
+elsewhere in the same round (the frontend-harness fix, the golden strengthening) — never the round's
+only deliverable, so it does not make this an evidence-only iteration.
+
+**Reversible:** yes — if a future round finds this hook actively harmful or redundant, it can still be
+removed with its own test in one later change; nothing else in this iteration depends on its continued
+presence beyond the one screenshot.
