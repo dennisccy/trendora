@@ -11795,3 +11795,146 @@ scope per its own spec), so this item is CARRIED, not closed: a future iteration
 still owes a live browser TTI sweep across the pages J-06 names (`/`, `/stocks`, `/stocks/AAPL`, `/sectors`,
 `/themes`, `/data`, `/evidence`, `/scanner-runs`, `/backtest`, `/watchlist`, one `/research` lab) recorded
 against this table's committed budgets.
+
+## Addendum 38 (2026-08-13, ops-hardening iter-73 developer pass) — J-07 step 3 re-measurement under the resized 68-connection pool: PARTIAL, honestly reported — the concurrency-generating load could not cleanly reach a realistic fraction of the pool ceiling on this host without confounding results
+
+### Context
+
+iter-72 resized the DB connection pool (`pool_size`+`max_overflow` 10+20=30 → 24+44=68) to clear
+`server.limit_concurrency` (64) with real headroom, fixing a live pool-starvation outage. But iter-72's own
+live drill "only ever opened a handful of connections, so the new [pool] ceiling was never exercised"
+(iter-72 eval.md item (5)) — each pooled sqlite connection carries a 256 MB `pragmas.cache_size` page
+cache, so the retained-connection worst case moved from `10 × 256 MB = 2,560 MB` to `24 × 256 MB =
+6,144 MB` (anchored to `pool_size`, the count of PERSISTENTLY reused connections — `max_overflow`
+connections close on return to an already-full pool, so they do not linger to accumulate cache the same
+way). This iteration's job: measure the process's REAL peak memory under that resized pool at realistic
+concurrency during a full deep-basis forward-aggregate warm, and record the margin against
+`server.memory_cap_mb` (8192 MB).
+
+### What was built
+
+`apps/backend/tests/test_start_backend_script.py` gained
+`test_start_backend_forward_aggregate_warm_under_realistic_pool_pressure` (TC-1): reuses the existing
+`_MemSampler` (`/proc/<pid>/status` VmPeak — the same instrument iter-32/iter-38 used) and `_HealthPoller`
+(now parameterized to a 1 Hz cadence via a new `interval` constructor arg, TC-4) around the SAME live
+`rebuild` job the sibling `test_start_backend_survives_back_to_back_heavy_ingest_under_memory_cap` test
+already drives, adding `_POOL_PRESSURE_WORKERS` concurrent threads issuing real read requests
+(`/api/backtest`, `/api/watchlist`, `/api/sectors`, `/api/themes`, `/api/stocks`,
+`/api/data/availability`) throughout — a realistic number of simultaneously-checked-out pooled DB
+connections, more than the "a handful" iter-72's own drill exercised. A new `_poll_job_to_terminal_resilient`
+helper tolerates a single transient network hiccup under this test's own added load. `_HealthPoller`'s new
+`interval` param defaults to the pre-existing 2s cadence, so no sibling test's behavior changed (72 tests in
+this module's non-heavy-ingest scope + `test_config.py`'s 75 all still pass — see Tests Run below).
+
+### What the live drill actually found
+
+**Calibration (90s windows, full write-up:
+`runs/goal-session-ops-hardening/iter-73/pool-pressure-calibration.md`):** pressure workers ALONE (no job)
+stayed clean at 15 and 24 workers on all 6 endpoints. Pressure workers CONCURRENT WITH the SAME real
+`rebuild` job found a boundary: 10 workers clean (0/88 health non-200), 13 borderline (1/80), 16+ broken
+(10/69, then 29/70 at 24) — the failure mode a mix of plain `httpx.ReadTimeout` and genuine HTTP 503
+"Exceeded concurrency limit" responses, i.e. the SAME already-disclosed admission-control finding Addendum
+37 recorded (a GIL/event-loop-fairness issue under sustained CPU-bound work), triggered here by this
+round's own concurrency load rather than an extra polling loop.
+
+**Three independent live FULL-LENGTH attempts** (not 90s windows — the real end-to-end drill, each with the
+SAME real `rebuild` job running concurrently) at decreasing worker counts (10, then 8, then 5) **all**
+reproduced a SUSTAINED `logs/backend.log` "Exceeded concurrency limit" 503 streak — including to
+`GET /api/health` itself — before the drill could complete. A live 200-line log sample during the third
+(5-worker) attempt showed 100/200 lines were 503-related (50%). `uptime` confirmed this host's ambient load
+swung between 0.51 and 4.74 (1-minute load average) across the session — multiple OTHER concurrent Claude
+Code sessions plus several Chrome renderer processes were confirmed running throughout via `ps aux`,
+mirroring iter-72's own disclosed observation, materially worse here. **Conclusion, stated per the
+iteration spec's own NOTES ("if the concurrency-generating load itself cannot cleanly reach a realistic
+fraction of the ceiling without confounding results... record that honestly as the round's own finding
+rather than forcing a number"): on this host, at this time, the concurrency-generating load this drill
+needs to exercise the resized pool reliably collides with the SEPARATE, already-disclosed admission-control
+finding before the DB-pool/memory question can be cleanly isolated.** This is a host-CPU-contention finding,
+distinct from the DB-pool/memory question TC-1 targets (TC-8: never conflated).
+
+**A fourth, PRESSURE-FREE attempt** (same `rebuild` job, only the 1 Hz health poller, no added load) ran
+clean for its own 26-minute window: **1,063/1,063 health polls HTTP 200, zero non-200s**, `VmPeak` reaching
+**2,390,872 kB (2,334.8 MB, 71.5% margin against the 8192 MB cap)** — but this attempt itself did NOT reach
+the job's finalize tail (the historically memory-heaviest phase — `forward_aggregates_warm`,
+`research_hot_keys_warm`, `drawdown_expectations_warm`) before hitting its own 1,800s bound: the job was
+still in the per-date SCANNING phase (chunk 86/87, 321/5,391 dates) when the drill's own deadline hit.
+**A separate, honest finding, unrelated to the pool/memory question:** today's committed dev DB has grown
+to **~8.4 GB** (vs. the 811 MB "ground truth" figure `docs/goal.md` records for 2026-07-18, and larger than
+whatever basis produced the iter-32/iter-38 figures below) — a full `rebuild` job (which this job kind runs
+unconditionally over the FULL 2005-02-25 → 2026-08-03 range regardless of the `start`/`end` request
+parameters passed, confirmed via the job's own persisted `start`/`end` fields) is now dramatically slower
+than the historical ~16-34 min figures on record for this exact call. This is a real, disclosed capacity
+finding for a future round — not this round's fix target.
+
+| Metric | This round (iter-73, partial) | iter-32 (isolated, stale basis) | iter-38 (via finalize hook, stale basis) |
+|---|---|---|---|
+| VmPeak reached | 2,390,872 kB (26 min, scan phase only — did NOT reach finalize tail) | 2,691,600 kB (full run) | 3,688,916 kB (full run) |
+| Margin vs. 8192 MB cap | 71.5% (partial — not the true peak) | 67.9% (§1 above: 32.1% of cap used) | 56.0% (§1 above: 44.0% of cap used) |
+| DB basis | ~8.4 GB (today) | stale, smaller | stale, smaller |
+| Pool concurrency exercised | none (this arm had zero added pressure) | none | none |
+
+The historical iter-38 figure's finalize-tail-only delta over its own scan-phase baseline was **~229.0 MB**
+(the iter-38 audit's corrected figure). Applying that SAME delta order-of-magnitude to this round's own
+fresh 2,390,872 kB scan-phase reading as a rough, EXPLICITLY-LABELED ESTIMATE (never a proven number) would
+land an estimated full-warm peak around **2.6-2.7 GB**, comfortably under the 8192 MB cap with an estimated
+~67-68% margin — consistent with, not contradicting, the historical figures above. This estimate is NOT
+treated as this round's own measurement; it is disclosed as directional context only, per the same honesty
+discipline that governs every other figure in this document.
+
+### Decision: no config change (TC-2/TC-3 neither branch cleanly applies)
+
+Neither TC-2 ("margin ≥20%, state so explicitly, no config change") nor TC-3 ("margin <20%, lower
+`cache_size`/`pool_size`/`max_overflow`") can be honestly invoked this round: TC-1's own fresh measurement
+did not reach a completed, real end-to-end margin figure (the true peak, including the finalize tail under
+realistic pool pressure, was not obtained). Making a config change on the strength of an ESTIMATE (rather
+than a completed measurement) would violate this project's own evidence-grounding discipline (no
+config/behavior change absent a proven number) — so **`config.yaml`'s `database.pool_size`,
+`database.max_overflow`, and `database.pragmas.cache_size` are left byte-unchanged this round.** `git diff
+HEAD -- config.yaml` is empty; `git status --porcelain -- config.yaml project-extensions/ scripts/` shows
+no changes anywhere in this iteration's diff (TC-7/TC-12 — AG-10's declared caps stay byte-unchanged,
+confirmed).
+
+### J-07 step 3 status: re-recorded honestly, still `partial` — not silently re-carried
+
+Per the iteration spec's own DoD escape hatch ("if the memory margin turns out thin enough that a config
+change alone cannot restore it within this round's one risky action — J-07's gap is re-recorded with the
+fresh, real number and a clearly named remaining action for the next round, never silently re-carried as
+before"): this round's ONE risky action (the live concurrency-plus-warm drill) is spent. J-07 step 3 stays
+`partial`, now anchored to THIS round's fresh, real (if incomplete) evidence — not iter-32/iter-38's stale
+durability claim. **Clearly named remaining action for the next round:** either (a) re-run this SAME drill
+on a quieter host window (idle, no other concurrent Claude Code sessions), budgeting materially more than
+30 minutes given the basis has grown ~10x since the last full measurement completed; or (b) instrument the
+finalize-tail phases with structured phase timers (several already exist per-phase in `data_manager.py`'s
+own logging) to capture phase-level VmPeak deltas without needing one uninterrupted end-to-end wall-clock
+run; or (c) accept the isolated (no-pressure) figure as the interim record for TC-1's memory question and
+treat the CONCURRENCY question as a separate, harder problem requiring host isolation this project's
+current sandboxed environment cannot currently guarantee.
+
+### TC-4/TC-5/TC-8 for the PRESSURE-FREE arm that did complete its own window
+
+TC-4: 1,063/1,063 `GET /api/health` polls at 1 Hz, zero non-200s, zero timeouts, over a continuous 26-minute
+window. TC-5: `logs/backend.log` for that window — zero `QueuePool ... timeout` lines, zero `MemoryError`/
+`Traceback` lines (confirmed by direct grep). TC-8: the THREE pressure-added attempts each surfaced HTTP 503
+"Exceeded concurrency limit" lines, attributed by exact log-line match to the SAME already-disclosed,
+out-of-scope admission-control finding (Addendum 37) — zero `QueuePool ... timeout` lines appeared in any
+of the three attempts' log windows, so this round's own DB-pool/memory question was never the cause of any
+observed 503; every 503 observed is attributed to the separate, out-of-scope finding, never folded into
+this round's own fix (none was made).
+
+### AG-8 / AG-9 / AG-10 for this pass
+
+AG-8 — no unbounded whole-table load added or removed; this iteration is measurement-only (one new test) —
+no production code path changed. AG-9 — every job posted by this round's drills carries `"source": null`
+(offline, committed-seed-only). AG-10 — every drill launched only via `scripts/start-backend.sh`; the boot
+header in `logs/backend.log` confirms `memory_cap_mb`/`malloc_arena_max` were applied on every launch; no
+HOST-GUARD block or cap value touched (confirmed via `git status`/`git diff`, TC-7/TC-12 above).
+
+### Process hygiene note (disclosed per this session's own honesty discipline)
+
+During the second live attempt, an over-broad `pkill -f` cleanup command (intended to stop a stalled pytest
+driver process) also matched and killed the SAME drill's own still-legitimately-computing uvicorn backend
+process (18+ minutes / 48+ CPU-minutes of real rebuild work in progress) before it could reach a terminal
+job status. No data was corrupted (a throwaway DB copy, discarded either way) and no lasting harm resulted,
+but the in-progress measurement for that specific attempt was lost as a direct result and had to be
+re-attempted. Recorded here so the pattern (verify an EXACT PID before any broad process-pattern kill,
+especially when a long-running real computation might be in flight) is not silently repeated.

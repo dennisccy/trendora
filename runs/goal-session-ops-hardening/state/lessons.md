@@ -904,3 +904,21 @@ backend…" — the QA FRONTEND was serving broken pages. The overturns were sti
 diagnosis was not, and a wrong diagnosis means the next round repairs the wrong thing.
 **Applies to:** any round reconciling deterministic-replay FAILs against an LLM lane, and any agent
 writing a "false positive / host contention" note — cite a timestamp bracket and the frame's contents.
+
+## iter-73 — 2026-08-13T03:06:22Z
+
+**Verdict:** CONTINUE
+**Lesson:** A deterministic-replay lane runs its journeys SEQUENTIALLY, so an environment break
+part-way through masquerades as a per-journey golden defect. This round J-01/J-03/J-04 (frames
+timestamped 03:14 BST) PASSed on fully styled, real pages and J-05/J-06/J-07/J-08/J-09 (03:15-03:16)
+all FAILed on the identical unstyled, asset-less "Checking backend…" shell — the split is by CLOCK,
+not by journey. The SPEED-22 mass-false-FAIL breaker guessed "suspected golden-script/selector drift"
+and queued exactly the wrong remedy (`state/goldens-regen-pending` lists J-05..J-09 for regeneration;
+regenerating a script cannot fix a frontend serving pages without their assets). Always sort the
+FAILed frames by capture time and open two of them before accepting any lane's automatic explanation —
+a contiguous time block of identical broken frames means the environment moved, and the fix belongs in
+the harness, not in the goldens. Corollary for scoring: check whether the broken window straddles the
+backend boot header in `logs/backend.log` (here the live server booted 02:13:14Z and the frames landed
+~60-180 s later), because a just-restarted frontend is the cheapest explanation to test first.
+**Applies to:** any iteration whose deterministic replay reports 3+ simultaneous FAILs; any evaluator
+reading a `VOIDED`/`overturned` footer; anyone about to act on `state/goldens-regen-pending`.

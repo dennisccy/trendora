@@ -1,40 +1,40 @@
 # Iteration State — ops-hardening
 
-**After iteration:** 72 · **Date:** 2026-08-12 · **Verdict:** CONTINUE
+**After iteration:** 73 · **Date:** 2026-08-13 · **Verdict:** CONTINUE
 
 ## Journeys
 
-7 passing (J-01 J-03 J-04 J-05 J-06 J-08 J-09) · 1 partial (J-07) · 0 failing — 8 total
+7 passing (J-01 J-03 J-04 J-05 J-06 J-08 J-09) · 1 partial (J-07) — 8 total. NOTE: J-08 and J-09 are
+carried on evidence durability, NOT verified this round (their replay frames are broken shells).
 
 ## Active blockers
 
-- **J-07 step 3 — peak memory never measured under the new pool (dev).** `pool_size`+`max_overflow` went
-  30 → 68 while `pragmas.cache_size: -262144` gives EACH pooled sqlite connection a 256 MB page cache under an
-  unchanged 8192 MB `ulimit -v`: retained worst case 2.5 → 6 GB vs a warm last measured at 3.69 GB (iter-38).
-  Measure at real concurrency, record the margin in `reports/perf-budgets.md`, lower `cache_size`/`pool_size`
-  if thin. Only thing between J-07 and `passing`.
-- **No trustworthy replay baseline (dev).** 6 of 8 goldens FAILed at 22:22-22:24 UTC because the QA frontend
-  served unstyled pages stuck at "Checking backend…" (`…-evidence/J-07-verify.png`), all six overturned by
-  live re-verification; `runs/…/journey-scripts/J-01.json` also lost two undisclosed assertions.
-- **Owner-owned, 24th round:** the 2 s health ceiling (long vs short jobs); B-1107; `browser-qa-phase.sh` fix; a cost sanction (12th over-budget round).
+- **J-07 step 3 (dev):** no VmPeak measurement under the 68-connection pool — 3 pressure attempts
+  (10/8/5 workers) hit the admission-control 503 cliff, the clean arm timed out (`reports/perf-budgets.md`
+  Addendum 38). NEXT PATH: per-phase VmPeak deltas via `data_manager.py`'s existing phase timers — do NOT
+  retry one uninterrupted end-to-end run on this shared host. Stop rule: if that fails too, ask the owner.
+- **Replay lane broken (dev):** 5 of 8 goldens FAILed; frames are unstyled, asset-less "Checking backend…"
+  pages (iter-72/c uncured). The recorded reason "selector drift" is WRONG and `state/goldens-regen-pending`
+  queues the wrong remedy — fix the QA frontend, then re-verify J-09 first, J-08 second.
+- **Ledger (dev):** 251 entries, 129 unresolved, 0 unresolved critical. New this round: iter-73/a..f.
+- **Owner:** (a) 2 s health promise for long jobs or short only; (b) B-1107 concurrent-compute bound;
+  (c) one quiet host hour, or accept 2,334.8 MB / 71.5% as the answer; (d) `browser-qa-phase.sh` fix
+  permission; (e) cost — 13 consecutive over-budget rounds, this one 3.3x.
 
 ## Last 2 verdicts
 
-- iter 72: CONTINUE — availability fixed and re-derived by the evaluator (1,315/1,315 polls answered, max
-  1.652 s, inside a 598 s `factor_lab_all_warm` matching iter-71's 607 s); J-05 back to `passing`, J-07
-  `failing` → `partial` on the unmeasured memory demand behind the pool resize.
-- iter 71: ESCALATE — a lean round measured a real 165 s outage (58/900 non-answers, one 500) rooted in
-  DB-pool exhaustion plus iter-71's own blocking readiness fallback, on the forbidden `dev.sh` stack.
+- iter 73: CONTINUE — memory measurement not obtained (host contention, ~8.4 GB basis); no journey moved;
+  nothing regressed; coherence PASS; product diff is one test file.
+- iter 72: CONTINUE — availability fixed (1,315/1,315 polls) but the pool resize doubled the connection
+  ceiling with no memory measurement, holding J-07 at partial.
 
 ## Do not redo
 
-- **DB pool sizing + boot invariant — DONE.** 24+44=68 ≥ `limit_concurrency` 64, drift guarded at
-  `config.py:2778`; only lower if the memory measurement above demands it.
-- **Readiness serve-stale + post-lock recheck — DONE.** `readiness.py:643-649` serves the cached entry with
-  uncapped `stale_for_s` without touching `_TICK_LOCK`; never reinstate a blocking synchronous fallback.
-- **`scripts/dev.sh` launcher parity — DONE.** Backend subshell carries the three uvicorn flags and appends to
-  `logs/backend.log`; frontend subshell byte-unchanged.
-- **Rendering `stale_for_s` is NOT done and needs its own FULL-depth round** (audit B4 / iter-72/f).
-- **Walkthroughs ride along, never a goal** (J-05 14 rounds unrecorded; J-07's `[NEW]` steps) — and the demo
-  recorder itself is broken: 5 of 8 steps failed their own fills/clicks.
-- **iter-33/g the Regime Lab — deferred 39 times; do not schedule without owner direction.**
+- `config.yaml` pool sizing (24+44=68) + the boot-time `pool_size + max_overflow >= limit_concurrency`
+  invariant at `config.py:2778` — settled iter-72; never weaken or remove.
+- The readiness serve-stale + post-lock-recheck mechanism (`readiness.py:643-649`) — DONE iter-72.
+- Measuring VmPeak by one uninterrupted full-`rebuild` run on this host — defeated 4x in iter-73.
+- Regenerating the J-05..J-09 goldens as the fix for the replay FAILs — wrong remedy; the cause is the
+  asset-less QA frontend, proven by the frames themselves.
+- Rendering `stale_for_s` at the glass (iter-72/f) — queued, needs its OWN full-depth round; not next.
+- iter-33/g, the Regime Lab — deferred a 40th time; do not schedule without owner direction.

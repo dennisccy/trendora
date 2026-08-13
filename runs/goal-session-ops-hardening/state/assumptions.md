@@ -1334,3 +1334,40 @@ binary, mechanically-checkable criterion (D6) instead of a judgment call re-liti
 
 **Reversible:** yes — a later round can tighten or loosen the 20% floor with one round's own evidence
 that it is too strict or too loose.
+
+## iter-73 — goal-evaluator
+
+**Ambiguity:** Two **required-still-passing** journeys, J-08 and J-09, got no valid evidence this round:
+their goldens FAILed and were mass-voided, and the frames on file are unstyled, asset-less shells that
+depict no product state (I opened both). The rules point two ways for exactly this case. The literal
+fallback says "if you cannot find evidence for a journey (e.g. browser-qa skipped it), set its status to
+`unknown`". Evidence durability (A.6) says the opposite: evidence expires with CHANGE, not with time or
+with a failed re-capture — and this round's ENTIRE product diff is one test file
+(`apps/backend/tests/test_start_backend_script.py`), with `config.yaml`, `scripts/`,
+`project-extensions/` and every `apps/` runtime file byte-unchanged, so neither journey's code can have
+moved since iter-72 verified both with fresh frames. The `pending_infra` carve-out does not apply (no
+`browser-infra.json`, and the browser stack itself did not fail — the app was served without its assets).
+**We chose:** hold both at `passing` on durability, set `evidence_makeup: true` on each, and
+deliberately NOT advance their `last_verified_iter` past `goal-ops-hardening-iter-72`. Grounds: (1) A.6's
+own test is whether the journey's SURFACES appear in `iter-diff.md`, and neither does — I confirmed the
+product diff file-by-file rather than trusting the "non-empty" flag; (2) A.7's rail (a capture defect
+must not mask unmet BEHAVIOR) is satisfied — the same frontend on the same port rendered all 11 pages
+correctly 7-9 minutes later in the LLM lane, and the live backend's whole 3,016-line log since boot holds
+zero non-200 responses, so the app was serving correctly while the replay photographed a broken shell;
+(3) `evidence_makeup` is the mechanism that schedules the re-capture, whereas `unknown` would record the
+same ignorance while discarding it; (4) freezing `last_verified_iter` at iter-72 keeps the ignorance
+legible to the next reader instead of letting a durability carry masquerade as a fresh check.
+**Cost recorded honestly:** a reader who holds that a required journey must have its OWN fresh row every
+round would score both `unknown` this iteration. **Under the decision tree that changes no verdict**
+(GOAL_ACHIEVED is independently blocked by J-07's `partial` and by 129 unresolved ledger entries, so it
+is CONTINUE either way) — but it would change the ledger's story from "carried, unchecked" to "state
+unknown". The distinction is not cosmetic for J-09 specifically: unlike J-08 — whose acceptance was
+corroborated live this round by the J-07 lane's `/backtest` read ("Snapshots contributing (≤ 2026-08-03):
+2917 … " with no "Refreshing" banner) — J-09 has NO fresh corroboration of its own acceptance at all;
+nothing this round observed an in-flight background compute being disclosed. I put that in J-09's gap
+field and made it the FIRST journey to re-verify once the replay lane is repaired.
+**Reversible:** yes — the moment a fresh capture lands for either journey (pass or fail) the flag clears
+and the status is re-scored on that evidence; a later evaluator may also rule that a voided required
+journey should have been `unknown`, and both this round's broken frames and the void footer are preserved
+in `reports/qa/goal-ops-hardening-iter-73-evidence/` and
+`reports/phase-goal-ops-hardening-iter-73-regression-replay-results.md`.

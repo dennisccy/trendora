@@ -1,0 +1,20 @@
+{
+  "phase": "goal-ops-hardening-iter-73",
+  "status": "in_progress",
+  "current_step": "dev_complete",
+  "updated_at": "2026-08-13T02:10:51Z",
+  "started_at": "2026-08-13T00:35:00Z",
+  "cli": "claude",
+  "blockers": [],
+  "changed_files": [
+    "apps/backend/tests/test_start_backend_script.py",
+    "reports/perf-budgets.md",
+    "runs/goal-session-ops-hardening/iter-73/pool-pressure-calibration.md",
+    "docs/handoffs/goal-ops-hardening-iter-73-dev.md"
+  ],
+  "tests_run": true,
+  "tests_passed": true,
+  "browser_checks_run": false,
+  "known_gaps": "TC-1's own live drill could not obtain a complete, clean end-to-end VmPeak measurement under realistic concurrent pool pressure on this host: three independent full-length attempts (10, 8, 5 pressure workers, each with a REAL concurrent rebuild job) all reproduced the SAME already-disclosed, out-of-scope uvicorn --limit-concurrency admission-control 503 finding (Addendum 37) before completing -- correlated with this host's ambient load swinging 0.51-4.74 (1-min load average) across the session (other concurrent Claude Code sessions/Chrome processes). A pressure-free isolated arm ran clean for 26 minutes (1,063/1,063 health polls HTTP 200, VmPeak 2,390,872 kB / 71.5% margin) but did not itself reach the job's finalize tail before hitting its own time bound; today's committed dev DB has grown to ~8.4 GB (vs the 811 MB 2026-07-18 ground-truth figure), making a full rebuild dramatically slower than historical timings on record. No config.yaml change was made (TC-2/TC-3 neither branch is honestly supportable without a completed measurement). New test is marked xfail(strict=False) with full write-up in its own docstring and reports/perf-budgets.md Addendum 38. J-07 step 3 stays partial, re-recorded with this round's own fresh (if incomplete) evidence per the spec's own DoD escape hatch -- never silently re-carried. Full calibration study: runs/goal-session-ops-hardening/iter-73/pool-pressure-calibration.md. A process-hygiene incident (an over-broad pkill killed one attempt's own in-progress legitimate compute) is disclosed in Addendum 38's closing section.",
+  "next_action": "review"
+}
