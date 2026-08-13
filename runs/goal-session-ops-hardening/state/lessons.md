@@ -951,3 +951,27 @@ not a sample: the batch reason is written once and applied to all, so a single g
 it is invisible by construction.
 **Applies to:** any iteration whose `regression-replay-results.md` carries a SPEED-22 mass-void footer,
 and to any future change to that breaker.
+
+## iter-75 (1 of 2) — 2026-08-13T08:00:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** A clean replay round after three broken ones is NOT evidence the harness was repaired.
+This round's product diff is literally "(no changes)" — no developer ran — yet the intermittent
+asset-less-frontend defect (iter-72/c) that voided goldens in iters 72, 73 and 74 simply did not
+fire, and 8/8 passed. Treat "did not recur" and "fixed" as different states in the ledger: the
+former closes nothing, and a future clean round proves nothing until the mechanism is named.
+**Applies to:** any iteration tempted to close an intermittent harness/environment defect on a
+quiet round; any evaluator reading a first-clean-in-N replay result.
+
+## iter-75 (2 of 2) — 2026-08-13T08:00:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** "8/8 replay PASS" is a claim about the goldens, not about the product — parse them
+before quoting the headline. `runs/goal-session-ops-hardening/journey-scripts/J-07.json` has
+exactly two steps (goto `/` expect "Ready"; goto `/backtest` expect "Forward-test scorecard") and
+`J-09.json`'s strongest assertion is a panel's presence, so J-09's golden passes against an IDLE
+panel — which is why `J-09-verify.png` shows no in-flight window yet its row reads PASS. The
+per-journey strength of a "PASS" varies enormously (J-01's golden asserts the exact exclusion
+partition; J-07's asserts two words).
+**Applies to:** any evaluator scoring from `ui-test-results.md`; any iteration that adds or
+regenerates a golden; the queued work to strengthen J-07's and J-09' goldens.

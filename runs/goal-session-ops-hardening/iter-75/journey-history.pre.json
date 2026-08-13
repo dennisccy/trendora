@@ -4,99 +4,101 @@
       "id": "J-01",
       "name": "Backfill honors the requested range and explains zero-work",
       "status": "passing",
-      "last_verified_iter": "goal-ops-hardening-iter-75",
-      "last_passing_iter": "goal-ops-hardening-iter-75",
+      "last_verified_iter": "goal-ops-hardening-iter-74",
+      "last_passing_iter": "goal-ops-hardening-iter-74",
       "first_seen_iter": "goal-ops-hardening-iter-0",
-      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-75-evidence/J-01-verify.png",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-74-evidence/J-01-verify.png",
       "spec_hash": "06b26eaaf82dcdb532465e5c287f1177681a6c8697e4f96cfadddb4fc60b29ad",
-      "note": "Replay PASS; the golden machine-checks the exclusion partition, but the frame still does not photograph it.",
-      "gap": "Deterministic replay PASS (merged ui-test-results.md row UT-J-01) and I opened J-01-verify.png myself: a fully styled Scanner Run page - immutable snapshot as-of 2026-05-29, 'Scanned 2026-07-20 17:31:15', badge 'Ready', chip 'provider: seed', regime 75.20/100 Risk-on, breadth 68.85%/59.02%, candidate counts 0/54/1/0. The FRAME still does not depict J-01's own acceptance, but the GOLDEN does assert it: journey-scripts/J-01.json steps 04-11 require the verbatim strings '28 calendar days - 19 already snapshotted - 9 non-trading' and '2 calendar days - 0 already snapshotted - 2 non-trading', and both held. The database agrees and I checked it: data_provider_runs 485 (2026-05-02..2026-05-29, started 06:25:58.558, calendar_days 28, dates_total 19, non_trading_days 9, status ok) and 486 (2026-05-02..2026-05-03, started 06:26:00.665, calendar_days 2, dates_total 0, non_trading_days 2) - the exact partition J-01's acceptance names, run live 20 seconds before this frame was taken. evidence_makeup re-derived from THIS round's own capture: machine-checked, still not photographed.",
+      "note": "Deterministic replay PASS on a real, styled frame; the acceptance state itself is still not photographed.",
+      "gap": "Deterministic replay PASS (ui-test-results.md row UT-J-01) and I opened J-01-verify.png myself: a fully styled Scanner Run page - immutable snapshot as-of 2026-05-29, badge 'Ready', chip 'provider: seed', 'seed 2026-08-03', '591 symbols', regime 75.20/100 Risk-on, breadth 68.85%/59.02%, candidate counts 0/54/1/0. A real product state, captured at 04:27 UTC while the QA frontend was still healthy - NOT the unstyled shell that five later goldens hit at 05:08-05:09 UTC. What the frame still does NOT show is J-01's own acceptance (a backfill run summary with date counts and per-date exclusion reasons); the DB does: run 479 (2026-05-02..2026-05-29) recorded dates_total 19, calendar_days 28, non_trading_days 9, already_snapshotted 19, and run 480 (2026-05-02..2026-05-03) recorded 0 of 2 on the weekend span - the exact partition J-01's acceptance names. evidence_makeup kept true for that reason (capture-defect class, not a behaviour gap), together with the two assertions this golden lost in iter-72 and has never regained.",
       "evidence_makeup": true
     },
     "J-03": {
       "id": "J-03",
       "name": "No per-run range cap",
       "status": "passing",
-      "last_verified_iter": "goal-ops-hardening-iter-75",
-      "last_passing_iter": "goal-ops-hardening-iter-75",
+      "last_verified_iter": "goal-ops-hardening-iter-74",
+      "last_passing_iter": "goal-ops-hardening-iter-74",
       "first_seen_iter": "goal-ops-hardening-iter-0",
-      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-75-evidence/J-03-verify.png",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-74-evidence/J-03-verify.png",
       "spec_hash": "5457740bbb0cea982e9b1241f19ca50836ff584bbb960a5a088f7168d820c271",
-      "note": "Replay PASS; the 412-day span is visible in the frame and confirmed in the run record.",
-      "gap": "Replay PASS (row UT-J-03). I opened J-03-verify.png: a styled /data page, badge 'Ready', with the Job progress panel reading 'backfill job - 2025-06-01 -> 2026-07-17' - a 412-day span, i.e. J-03's own '>370 days is accepted'. The run record confirms acceptance AND execution: data_provider_runs 487, started 06:26:05.348, finished 06:26:05.695, status ok, calendar_days 412, dates_total 283, no max_range_days rejection. The chunked-execution half is still not photographed - the depiction is partial, the assertion is not."
+      "note": "Replay PASS; the frame again carries a >370-day span; chunked execution still not photographed.",
+      "gap": "Deterministic replay PASS (row UT-J-03). I opened J-03-verify.png: a styled /data page, badge 'Ready', chip 'provider: seed', with the Job progress panel reading 'backfill job - 2025-06-01 -> 2026-07-17' = a 412-day span accepted, i.e. J-03's own '>370 days is accepted' clause depicted directly. Corroborated in the database by me: data_provider_runs 481 and 477 both carry start 2025-06-01 / end 2026-07-17 with dates_total 283 over calendar_days 412, status ok - no max_range_days rejection anywhere. The chunked-execution half of the acceptance is still not photographed (a single frame cannot show it); unchanged from iter-73, not a new gap."
     },
     "J-04": {
       "id": "J-04",
       "name": "Non-blocking boot with visible status",
       "status": "passing",
-      "last_verified_iter": "goal-ops-hardening-iter-75",
-      "last_passing_iter": "goal-ops-hardening-iter-75",
+      "last_verified_iter": "goal-ops-hardening-iter-74",
+      "last_passing_iter": "goal-ops-hardening-iter-74",
       "first_seen_iter": "goal-ops-hardening-iter-0",
-      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-75-evidence/J-04-verify.png",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-74-evidence/J-04-verify.png",
       "spec_hash": "4074a9c952a9a143dc543efef3c8d3e0a1e33a848ab250ec90c7c2f568dbcff8",
-      "note": "Replay PASS; the frame's own counters predict the next frame's counters.",
-      "gap": "Replay PASS (row UT-J-04); this golden asserts the readiness badge's real data-state attribute plus a persisted data_provider_runs-backed field, never a bare heading match. I opened J-04-verify.png: a fully styled /data at 06:26 UTC - badge 'Ready', SNAPSHOT DATES 2980, BACKFILL GAPS 2416, 'Gap range: 2005-07-14 -> 2019-01-29'. Cross-check I ran myself rather than taking the row's word: 41 minutes later J-09-verify.png reads SNAPSHOT DATES 2981, BACKFILL GAPS 2415, 'Gap range: 2005-07-18 -> 2019-01-29' - exactly the effect of the J-05 replay's 2005-07-14 backfill that ran in between. A frame that predicts its own successor is stronger evidence than a frame that renders."
+      "note": "Replay PASS on a real-data-state golden; boot-sequence steps carried, no contradiction found.",
+      "gap": "Deterministic replay PASS (row UT-J-04): this golden asserts the readiness badge's REAL data-state attribute plus a persisted data_provider_runs-backed field, never a bare heading match. Not opened by me this round (methodology A.4 allows 2 stable spot-checks; I spent mine on J-01 and J-03, and additionally opened five more frames). Independently corroborated: every backend boot in this round's own drill window carries the start-backend.sh header with memory_cap_mb=8192 / malloc_arena_max=2 / host-guard cpu_list=0-15 (logs/backend.log:351993-351995), and the LLM lane measured the badge reaching data-state='ready' with domInteractive 52 ms. The cold-boot phase sequence itself was not re-executed (the QA role never restarts the live backend) - unchanged standing carry."
     },
     "J-05": {
       "id": "J-05",
       "name": "Aggregates are precomputed at ingest, never on the fly",
       "status": "passing",
-      "last_verified_iter": "goal-ops-hardening-iter-75",
-      "last_passing_iter": "goal-ops-hardening-iter-75",
+      "last_verified_iter": "goal-ops-hardening-iter-74",
+      "last_passing_iter": "goal-ops-hardening-iter-74",
       "first_seen_iter": "goal-ops-hardening-iter-0",
-      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-75-evidence/J-05-verify.png",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-74-evidence/J-05-verify-final.png",
       "spec_hash": "63dd5bf0983454e48338557d0f2b1e5ce9726d7aa247c20174ac9323f637564b",
-      "note": "Replay PASS on a live in-app backfill; frame timestamp matches the scanner_runs row to the second.",
-      "gap": "Replay PASS and the strongest correctness row of the round. The golden drove a live in-app backfill of one unsnapshotted historical trading day and waited out its real duration. I opened J-05-verify.png and matched it to the database to the second: the frame reads 'Immutable snapshot - as of 2005-07-14 ... Scanned 2026-08-13 06:26:31 - provider seed - benchmark SPY', and scanner_runs id 2981 is asof_date 2005-07-14, created_at 2026-08-13 06:26:31.386031, provider 'seed'. Its job is data_provider_runs 488, 06:26:20.206 -> 06:43:53.861 (17m34s), status ok, snapshots_created 1, forward_returns_inserted 805 - the aggregates were written by the ingest job, never by a request path. Still owed: J-05's [NEW] walkthrough clause, unrecorded for a 17th round (this round's demo lane produced duplicate frames, iter-75/b)."
+      "note": "Strongest row of the round; every number re-derived by me in the database.",
+      "gap": "The deterministic golden FAILed at step 13 and was mass-voided; the LLM lane then ran a COMPLETE independent live backfill and PASSed. I re-derived it in the database rather than accepting it: data_provider_runs 484, provider='seed', status='ok', 2026-08-13 05:20:15.747 -> 05:37:58.568 (1,062.8 s), snapshots_created 1, forward_returns_inserted 2295, all 9 aggregate categories; scanner_runs 2980 = 2019-01-31, created_at 05:20:31.202585 - and the frame I opened (J-05-verify-final.png) reads 'Immutable snapshot - as of 2019-01-31 ... Scanned 2026-08-13 05:20:31 - provider seed - benchmark SPY' with a Market Regime panel 59.30/100 'Narrow leadership'. Frame and row agree to the second. I ALSO opened the replay's own failing frame (J-05-verify.png): it is NOT the unstyled shell - it is the styled app showing its contained error boundary ('Something went wrong on this page ... Try again') on the Scanner Runs surface at ~05:08 UTC. That is the graceful-degradation shape AG-8 asks for rather than a blank application-error page, but it is a real render failure and the void footer's 'selector/environment drift' does not describe it. The cold-restart-then-coverage-from-storage step is again carried (the QA role never restarts the live backend); no application code changed this round."
     },
     "J-06": {
       "id": "J-06",
       "name": "Pages load only what they need",
       "status": "passing",
-      "last_verified_iter": "goal-ops-hardening-iter-75",
-      "last_passing_iter": "goal-ops-hardening-iter-75",
+      "last_verified_iter": "goal-ops-hardening-iter-74",
+      "last_passing_iter": "goal-ops-hardening-iter-74",
       "first_seen_iter": "goal-ops-hardening-iter-0",
-      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-75-evidence/J-06-verify.png",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-74-evidence/J-06-pages-load.png",
       "spec_hash": "a9654dc139add9c161b5d7e59a431f78bd94fdf0f26b15c4fe2c83a1007db045",
-      "note": "Replay PASS; the frame shows the honest 'still computing' state, which is correct but a weak depiction.",
-      "gap": "Replay PASS (row UT-J-06). I opened J-06-verify.png: a fully styled Research - Regime Lab page, but caught in its honest 'Still computing - 16s elapsed' state with skeleton placeholders and the explicit copy 'The table appears here automatically when it finishes - nothing is shown in the meantime rather than a partial or fabricated result'. That is correct, disclosed behaviour (and the deferred iter-33/g item), not a crash and not a blank frame - but it is a weak depiction of 'pages load only what they need'. J-06's page timings into reports/perf-budgets.md are owed for a 6th round."
+      "note": "LLM-lane PASS on all 11 pages; the committed page-timing numbers are owed for a 5th round.",
+      "gap": "The deterministic golden FAILed at step 02 and was mass-voided; I opened its frame (J-06-verify.png) and it is an UNSTYLED, ASSET-LESS Dashboard stuck at 'Checking backend... / Checking board status...' - the carried iter-72/c broken-QA-frontend defect, not selector drift. The LLM lane re-ran the journey ~5 minutes later on the SAME frontend port and all 11 nav pages rendered correctly with badge data-state='ready' (domInteractive 52 ms) and every budgeted endpoint inside its gate. Corroborated by me: from the drill boot onward logs/backend.log holds 8,932 requests with only two non-200s, both client-side path/method mistakes (404 /api/jobs, 405 /api/data/jobs), and zero ERROR/Traceback/MemoryError/QueuePool lines. STILL OWED for a 5th round: the per-page on-load timings committed into reports/perf-budgets.md as never-regress budgets."
     },
     "J-07": {
       "id": "J-07",
       "name": "Heavy aggregates never take the service down",
       "status": "passing",
-      "last_verified_iter": "goal-ops-hardening-iter-75",
-      "last_passing_iter": "goal-ops-hardening-iter-75",
+      "last_verified_iter": "goal-ops-hardening-iter-74",
+      "last_passing_iter": "goal-ops-hardening-iter-74",
       "first_seen_iter": "goal-ops-hardening-iter-14",
-      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-75-evidence/J-07-verify.png",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-74-evidence/J-07-backtest-live.png",
       "spec_hash": "1c7c67c3d6cd933820eeac29de54a7442c33e19d3ede0e6353fc044b929bf991",
-      "note": "Passing on iter-74's drill carried under an EMPTY product diff; this round's golden is a 2-step page-render smoke test, not a re-test.",
-      "gap": "SCORED PASSING, BUT THIS ROUND DID NOT RE-TEST IT AND I PUT THAT FIRST. journey-scripts/J-07.json contains exactly TWO steps - goto '/' expect 'Ready', goto '/backtest' expect 'Forward-test scorecard' - so its replay PASS is a page-render smoke test, not a re-verification of J-07's four acceptance steps; J-07-verify.png is the /backtest landing page and depicts none of them (it is visually the same frame as J-08-verify.png, same 135,003 bytes, different md5). Logged as iter-75/c. J-07's real evidence is carried unchanged from iter-74's drill - peak VmPeak 4,837,420 kB = 4,724.0 MB against memory_cap_mb 8192 MB = 42.33% margin; 1,795/1,795 health polls HTTP 200, max 1.987 s - plus the dated 2026-07-31 induced-pressure drill for step 4. That carry is valid under A.6 because this round's product diff is EMPTY (iter-diff.md: 'no changes'). Independent support from this round's own live server, counted by me: since the QA backend booted (logs/backend.log, '=== start-backend.sh: launching at 2026-08-13T06:25:07Z ===', port=8255 memory_cap_mb=8192 malloc_arena_max=2, host-guard cpu_list=0-15 blas_threads=8) its 2,579 lines carry 2,336 requests, ALL HTTP 200, and zero MemoryError / QueuePool / Traceback / 'Exceeded concurrency limit' - across two real ingest jobs and two background-compute windows. evidence_makeup stays true: the [NEW] walkthrough is owed a 17th round and the golden needs real assertions.",
+      "note": "Step 3 CLOSED on a complete drill I re-derived from the raw CSV; steps 1+2 fresh; step 4 carried on a dated live pass.",
+      "gap": "STEP 3 IS CLOSED, and I re-derived it from the raw artifacts rather than from the addendum. From runs/goal-session-ops-hardening/iter-74/phase-vmpeak-samples.csv (7,876 samples, 0.25 s cadence, max gap 0.27 s, monotonic with zero backward steps): peak VmPeak 4,837,420 kB = 4,724.0 MB against memory_cap_mb 8192 MB = 42.33% margin; peak VmRSS 4,056.7 MB. The job reached terminal status 'ok' with all 9 aggregate categories (...-phase-vmpeak.json, job 95e1d3fc...), all 9 finalize-tail phases plus all 5 forward_aggregates_warm horizons logged, factor_lab_all_warm 699.38 s and drawdown_expectations_warm 926.38 s. I checked the timezone join myself: the last phase's recovered epoch = 04:17:24 UTC against the job record's finished_at 04:17:24.921979 UTC. Launcher verified: logs/backend.log:351993-351995 'start-backend.sh: launching at 2026-08-13T03:44:34Z / port=18755 memory_cap_mb=8192 malloc_arena_max=2 / host-guard: cpu_list=0-15 blas_threads=8' - never dev.sh. STEP 2 has its own fresh evidence: 1,795/1,795 health polls HTTP 200, max 1.987 s (6 polls over 1 s, all inside the first ~2 minutes), zero non-200s - recomputed by me from ...-health.csv - plus a separate 150/150 steady-state sample, max 0.098 s. STEP 1 satisfied with one nuance stated rather than rounded away: the drill served /api/backtest continuously through the warm (968 requests, all 200) but WITHOUT a horizon parameter; the per-horizon serving (all 5 horizons, 0.05-0.13 s) was verified by the QA lane outside the warm window. STEP 4 was NOT re-exercised this round; it is carried on the dated 2026-07-31 live induced-pressure drill run against this same 8192 MB cap (reports/perf-budgets.md, 'J-07 step 4 - induced-pressure drill, LIVE re-run': all four acceptance clauses, 0/31 health non-200s, 5,386 cached reads with 0 non-200s, no wedge), and no application code has changed this round at all. WHAT REMAINS, and why evidence_makeup stays true: the acceptance's Walkthrough bullet - the crash-free warm plus healthy /api/health sequence as [NEW] steps in demo.sh - is unrecorded for a 16th round. Also stated plainly: the 'phase-by-phase' profile does not actually differentiate phases (the high-water mark was set at t+134.7 s, before the finalize tail, so all 14 rows carry the identical figure); it is one trustworthy whole-run peak, which is what step 3 asks for, and the developer disclosed this himself.",
       "evidence_makeup": true
     },
     "J-08": {
       "id": "J-08",
       "name": "Backtest evidence serves from storage only — never a cold recompute on request",
       "status": "passing",
-      "last_verified_iter": "goal-ops-hardening-iter-75",
-      "last_passing_iter": "goal-ops-hardening-iter-75",
+      "last_verified_iter": "goal-ops-hardening-iter-72",
+      "last_passing_iter": "goal-ops-hardening-iter-72",
       "first_seen_iter": "goal-ops-hardening-iter-16",
-      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-75-evidence/J-08-fresh-settled.png",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-72-evidence/UT-J-08-result.png",
       "spec_hash": "8a159d44a2eaf98e595f4e358a9db965b3e9e9d46ec8189768802bee577add21",
-      "note": "FRESH first-party evidence for the first time since iter-72; served payload matches the stored row byte for byte.",
-      "gap": "FRESH, FIRST-PARTY EVIDENCE FOR THE FIRST TIME SINCE iter-72, and I re-derived its numbers from the database rather than from the report. The LLM lane drove a real single-day backfill of a genuine gap (2005-07-18): data_provider_runs 491, started 07:20:38.068, finished 07:41:11.359 (20m33s), status ok, snapshots_created 1 - matching the report to the second; scanner_runs 2982 asof_date 2005-07-18 created 07:20:50.043. Mid-warm, J-08-refreshing-indicator.png shows /backtest at as-of 2026-07-31 serving a COMPLETE OLDER version: banner 'Refreshing - showing the last complete evidence ... evidence as of 2026-07-31, generated 2026-08-13 07:15:21', 'Snapshots contributing (<= 2026-07-31): 2979', every bucket populated with real n's - never a skeleton, never a partial mix. After the warm, J-08-fresh-settled.png shows the banner GONE and 2980 contributing. I checked the served payload against storage myself: forward_aggregate_cache asof_key 2026-07-31, dataset_version r2982-f6596450, horizon 1, created 07:25:06.087 carries n_runs 2980 and overall {mean_return 0.0007046800121982145, mean_max_drawdown -0.025303636926811413, n 1292431}; the frame reads 2980, +0.07%, -2.53% and n=1292431. Byte-level agreement (AG-3). And the per-bucket n deltas between the two frames (A +4, B +16, C +17, D +15, E +97) sum to exactly 149 - one snapshot's result rows. Steps 4 (call-count instrumentation) and 5 (never-warmed empty state) remain code/test-layer and were not browser-observed, per this golden's standing scope. One number in the report I could NOT re-derive: the '2920' baseline count for as-of 2026-08-03 (its version's rows were overwritten by r2982's at 07:21) - it is not load-bearing, the 2979 -> 2980 chain is. Its [NEW] walkthrough clause is still uncaptured: demo step-04 and step-07 are byte-identical (iter-75/b)."
+      "note": "Carried passing on durability for a 2nd consecutive round; this round's frame is again a broken unstyled shell.",
+      "gap": "NOT VERIFIED THIS ROUND BY ANY LANE - second consecutive round, and I say it first. The golden FAILed at step 02 and was mass-voided; I opened J-08-verify.png myself and it is an UNSTYLED, ASSET-LESS /backtest page stuck at 'Checking backend... / Checking board status...' - a broken capture, not a product state. Held at passing on evidence durability (A.6): I confirmed this round's product diff file by file - one test file (apps/backend/tests/test_start_backend_script.py) plus docs/goal.md's Ground-truth block - with every apps/ runtime file, config.yaml, scripts/ and project-extensions/ byte-unchanged, so J-08's code cannot have moved since iter-72 verified it with a real frame. last_verified_iter deliberately NOT advanced past iter-72. Live corroboration this round, though not a J-08 lane result: the QA pass read /backtest served from storage with 2,919 contributing snapshots and no 'Refreshing' banner, and all 5 horizons answered 200 in 0.05-0.13 s.",
+      "evidence_makeup": true
     },
     "J-09": {
       "id": "J-09",
       "name": "The backend discloses its own background-compute activity",
       "status": "passing",
-      "last_verified_iter": "goal-ops-hardening-iter-75",
-      "last_passing_iter": "goal-ops-hardening-iter-75",
+      "last_verified_iter": "goal-ops-hardening-iter-72",
+      "last_passing_iter": "goal-ops-hardening-iter-72",
       "first_seen_iter": "goal-ops-hardening-iter-24",
-      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-75-evidence/J-09-idle-last-outcome.png",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-72-evidence/UT-J-09-result.png",
       "spec_hash": "40d29150860c17a467851359d82af4524204a0cc874c7c3eb568255977363a61",
-      "note": "First observation of its OWN acceptance since iter-72: a full active->idle window, corroborated by frame mtimes and the cache rows.",
-      "gap": "THE ROUND'S BIGGEST CHANGE, and it closes the weakest row in the set. J-09-active-window.png shows the top bar carrying 'Ready' AND 'background compute running (1)' SIMULTANEOUSLY - step 3's 'never a bare Ready that hides it' - while /data's Background compute panel reads 'as-of 2026-07-31 - elapsed 4m 55s - horizons 2/5 - dataset r2981-f6595650' and the scope line 'Since the last backend restart - this history is process-lifetime only, never persisted.' (step 6). J-09-idle-last-outcome.png shows the same panel after the window closed: 'No background compute running.' + 'LAST OUTCOME  Completed  as-of 2026-07-31  8m 4s', badge back to a bare 'Ready' (step 5). Corroboration I ran myself rather than taking the row's word: the frames' own mtimes are 07:12 and 07:16 UTC against a window started 07:07:17 and completed 07:15:21 - 07:07:17 + 4m55s = 07:12:12, exactly the elapsed the active frame displays - and duration_ms 483875 = 8m 3.9s matches the panel's '8m 4s' with no rounding-up. A SECOND independent window is visible in storage: forward_aggregate_cache rows for asof_key 2026-07-31 at dataset_version r2982-f6596450 written 07:25:06.087 -> 07:35:43.991 = 732.5 s, the same figure the report gives. Caveat stated rather than buried: both frames were captured after client-side `display:none` on preceding siblings, a workaround the lane disclosed for a headless-Chrome screenshot-blanking quirk, so they show the panel without the rest of /data; the panel's content is the product's own. Its golden remains weak - 4 structural steps that pass against an IDLE panel (iter-75/c) - so this round's strength is the LLM lane's, not the replay lane's."
+      "note": "Weakest row again: no fresh corroboration of its own acceptance for a 2nd consecutive round.",
+      "gap": "NOT VERIFIED THIS ROUND BY ANY LANE - second consecutive round, and the weakest row in the set. The golden FAILed at step 02 (a 20 s click timeout) and was mass-voided; I opened J-09-verify.png and it is the SAME unstyled, asset-less 'Checking backend...' shell as J-08's, AND it is showing /backtest rather than the /data surface J-09 is about - so that replay never reached the journey at all. Held at passing on evidence durability (A.6) on the same file-by-file diff check as J-08; last_verified_iter deliberately NOT advanced past iter-72. Unlike J-08, nothing this round observed an in-flight background compute being disclosed, so J-09 has NO fresh corroboration of its own acceptance whatsoever. This is the FIRST journey to re-verify once the QA frontend is repaired.",
+      "evidence_makeup": true
     }
   },
   "anti_goal_violations": [
@@ -1888,11 +1890,9 @@
     {
       "iter": "goal-ops-hardening-iter-73",
       "severity": "minor",
-      "resolved": true,
+      "resolved": false,
       "anti_goal": "Evidence floor: every required-still-passing journey named in the iteration spec is re-verified with its own fresh evidence",
-      "evidence": "iter-73/c -- J-08 and J-09 got NO evidence this round; the merged results file's own 'Missing Required Journeys' section names both. 5 of 8 goldens FAILed and were mass-voided (SPEED-22 breaker). The recorded void reason is 'suspected golden-script/selector drift', and I opened both frames: they are UNSTYLED, ASSET-LESS pages stuck at 'Checking backend...', i.e. the carried iter-72/c broken-QA-frontend defect, NOT selector drift. That matters operationally: the queued remedy (state/goldens-regen-pending lists J-05..J-09 for regeneration) does not address the actual cause. Third consecutive round in which a replay failure carries a false explanation on file.",
-      "resolved_iter": "goal-ops-hardening-iter-75",
-      "resolution": "Closed by goal-ops-hardening-iter-75: J-08 and J-09 each obtained their own fresh, first-party evidence this round (reports/qa/goal-ops-hardening-iter-75-evidence/J-08-refreshing-indicator.png, J-08-fresh-settled.png, J-09-active-window.png, J-09-idle-last-outcome.png), and all 8 required journeys carry their own replay row and frame in reports/phase-goal-ops-hardening-iter-75-ui-test-results.md (8/8 PASS, 0 voided)."
+      "evidence": "iter-73/c -- J-08 and J-09 got NO evidence this round; the merged results file's own 'Missing Required Journeys' section names both. 5 of 8 goldens FAILed and were mass-voided (SPEED-22 breaker). The recorded void reason is 'suspected golden-script/selector drift', and I opened both frames: they are UNSTYLED, ASSET-LESS pages stuck at 'Checking backend...', i.e. the carried iter-72/c broken-QA-frontend defect, NOT selector drift. That matters operationally: the queued remedy (state/goldens-regen-pending lists J-05..J-09 for regeneration) does not address the actual cause. Third consecutive round in which a replay failure carries a false explanation on file."
     },
     {
       "iter": "goal-ops-hardening-iter-73",
@@ -1927,10 +1927,8 @@
       "iter": "goal-ops-hardening-iter-74",
       "anti_goal": "Every Required-still-passing journey named by the spec gets its own fresh evidence each round",
       "severity": "minor",
-      "resolved": true,
-      "evidence": "iter-74/b -- J-08 and J-09 shipped a SECOND consecutive round with no fresh evidence of their own (reports/phase-goal-ops-hardening-iter-74-ui-test-results.md 'Missing Required Journeys'). Both are held at passing on evidence durability because the product diff is one test file plus a documentation block, but J-09 in particular has had no observation of its own acceptance since iter-72. With every other journey now passing, these two are the main thing between this session and a defensible GOAL_ACHIEVED.",
-      "resolved_iter": "goal-ops-hardening-iter-75",
-      "resolution": "Closed by goal-ops-hardening-iter-75: J-08 and J-09 each obtained their own fresh, first-party evidence this round (reports/qa/goal-ops-hardening-iter-75-evidence/J-08-refreshing-indicator.png, J-08-fresh-settled.png, J-09-active-window.png, J-09-idle-last-outcome.png), and all 8 required journeys carry their own replay row and frame in reports/phase-goal-ops-hardening-iter-75-ui-test-results.md (8/8 PASS, 0 voided)."
+      "resolved": false,
+      "evidence": "iter-74/b -- J-08 and J-09 shipped a SECOND consecutive round with no fresh evidence of their own (reports/phase-goal-ops-hardening-iter-74-ui-test-results.md 'Missing Required Journeys'). Both are held at passing on evidence durability because the product diff is one test file plus a documentation block, but J-09 in particular has had no observation of its own acceptance since iter-72. With every other journey now passing, these two are the main thing between this session and a defensible GOAL_ACHIEVED."
     },
     {
       "iter": "goal-ops-hardening-iter-74",
@@ -1945,35 +1943,7 @@
       "severity": "minor",
       "resolved": false,
       "evidence": "iter-74/d -- 14th consecutive over-budget round. telemetry.jsonl iter_start 2026-08-13T03:13:20Z; the last pipeline event is 05:54:05Z and evaluation ran after it, i.e. >9,900 s against a 3,600 s lean budget (>2.7x). The owner has still not been asked in a form that requires an answer."
-    },
-    {
-      "iter": "goal-ops-hardening-iter-75",
-      "anti_goal": "Process: the dispatched depth must match the iteration spec's declared depth, and every Definition-of-Done item must have a lane able to execute it.",
-      "severity": "minor",
-      "evidence": "iter-75/a - NEW, open; recurrence of the iter-60/e class. docs/phases/goal-ops-hardening-iter-75.md declares '**Depth:** lean' and scopes code-level harness work (TC-1/TC-2 root-cause and fix the intermittent asset-less QA frontend; TC-6 the /data honest-fallback capture or hook removal; TC-7 delete the stray '=' file). runs/goal-session-ops-hardening/iter-75/depth-dispatched reads 'evidence', and telemetry.jsonl records event step_skipped for BOTH developer and reviewer at 2026-08-13T06:25:06Z (reason 'checkpoint'). runs/goal-session-ops-hardening/iter-75/iter-diff.md reads '(no changes)'. Consequence, verified by me: the frontend defect (iter-72/c) is still un-root-caused - it did not recur, which is not the same as fixed - `ls -la /home/dennis-chan/Git/trendora/=` still returns a 0-byte file dated Aug 13 04:24, and no TC-6 artifact exists in reports/qa/goal-ops-hardening-iter-75-evidence/.",
-      "resolved": false
-    },
-    {
-      "iter": "goal-ops-hardening-iter-75",
-      "anti_goal": "Each journey's Walkthrough acceptance clause: a [NEW]-flagged walkthrough viewable via demo.sh ops-hardening --session-live must record the frames it names.",
-      "severity": "minor",
-      "evidence": "iter-75/b - NEW, open; recurrence of iter-72/d and iter-57/i. The demo lane RAN (reports/phase-goal-ops-hardening-iter-75-demo-results.md, RECORDED_WITH_NOTES, 8 steps, [NEW] flags on J-08 and J-09) but I md5summed reports/demo/goal-ops-hardening-iter-75/: step-04.png and step-07.png are BYTE-IDENTICAL (219fa7eb2609940792b396b8a99b1628) and step-05.png and step-06.png are BYTE-IDENTICAL (7498108e5eb8132de2e8c9148712b59c). Those are exactly the two before/after pairs the walkthrough exists to show - J-08's refreshing -> fresh transition and J-09's active -> idle transition - so neither is depicted. The lane's own soft notes concede it: 'Step 04 - expected \"Refreshing\" did not appear; recorded anyway.' J-05's and J-07's [NEW] clauses remain unrecorded for a 17th round.",
-      "resolved": false
-    },
-    {
-      "iter": "goal-ops-hardening-iter-75",
-      "anti_goal": "Verification integrity: a golden must assert the journey's own acceptance, not merely that a page renders.",
-      "severity": "minor",
-      "evidence": "iter-75/c - NEW, open; same class as iter-52/cl and iter-57/f. I parsed the shipped goldens rather than reading the 8/8 headline. runs/goal-session-ops-hardening/journey-scripts/J-07.json contains exactly TWO steps: goto '/' expect text 'Ready', goto '/backtest' expect text 'Forward-test scorecard' - it cannot detect any J-07 regression (heavy job, health ceiling, VmPeak, induced-pressure abort). runs/goal-session-ops-hardening/journey-scripts/J-09.json contains four structural steps whose strongest assertion is the presence of testid 'background-compute-panel' and the text 'process-lifetime only, never persisted' - it passes against an IDLE panel, which is why J-09-verify.png shows no in-flight window yet the row reads PASS. The round's '8/8 replay PASS' is therefore strong for J-01/J-05 and weak for J-07/J-09; the real J-08/J-09 verification this round came from the LLM lane.",
-      "resolved": false
-    },
-    {
-      "iter": "goal-ops-hardening-iter-75",
-      "anti_goal": "Loop economy: an iteration must fit its own declared wall-clock budget.",
-      "severity": "minor",
-      "evidence": "iter-75/d - NEW, open; FIFTEENTH consecutive over-budget round, and still unsanctioned in writing. runs/goal-session-ops-hardening/telemetry.jsonl records iter_start 2026-08-13T06:10:50Z; the browser-qa step completed at 2026-08-13T07:45:55Z and this evaluation was still running at 07:59:39Z = 6,529 s against the 3,600 s budget (~1.8x). Stated fairly: this is the SMALLEST overrun in several rounds (iter-73 ran 3.3x, iter-74 ~2.7x), and most of it is two real ingest jobs plus two background-compute windows that the evidence itself required.",
-      "resolved": false
     }
   ],
-  "updated_at": "2026-08-13T08:00:00Z"
+  "updated_at": "2026-08-13T06:05:52Z"
 }
