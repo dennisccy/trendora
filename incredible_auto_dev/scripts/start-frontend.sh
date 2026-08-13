@@ -57,6 +57,87 @@ if [[ -f "$HOST_GUARD_ENV" ]]; then
 fi
 # ==== end HOST-GUARD =================================================================================
 
+# ==== TEST-RESIDUE PURGE (ops-hardening iter-78, closes iter-77/c) ==================================
+# A hard-killed run of apps/backend/tests/test_start_frontend_script.py (pytest SIGKILLed mid-build --
+# no `finally` block, no teardown at all) can leave `__tc3_intentionally_broken.ts` / `.next-test-*`
+# scratch dirs behind in the LIVE apps/frontend tree. That test module already self-heals its OWN next
+# run (its autouse `_pristine_frontend_tree` fixture purges on setup as well as teardown), but this real
+# launcher had no such defense — iter-77 hit exactly this: a stray broken `.ts` file made THIS script's
+# real `next build` fail (Next's prod build type-checks the whole project), taking the whole frontend
+# down, "fixed inside the round; NOT defended against recurrence." Purge unconditionally, before the
+# staleness check even runs, independent of whether/when that test module is next invoked.
+#
+# The two names below are kept in lockstep BY HAND with
+# apps/backend/tests/test_start_frontend_script.py's `_BROKEN_SOURCE_REL` / `_SCRATCH_DIST_GLOB` (a bash
+# script cannot import a Python constant) — deliberately the SAME two names that module already reserves
+# and cleans on its own setup/teardown, never a new name, so the two stay in lockstep. A purge failure
+# (e.g. a permission error on the stray file) must never be silently swallowed into "serve whatever
+# happens to build" — fail loud and non-zero instead, matching the `next build FAILED` refusal below.
+#
+# `_RESIDUE_OWN_DIST_DIR` excludes THIS invocation's own build target from the scratch-glob purge below.
+# `NEXT_DIST_DIR` (read again here — the real `DIST_DIR="${NEXT_DIST_DIR:-.next}"` assignment is further
+# down, after this block) also matches the `.next-test-*` convention whenever a caller points a launch at
+# a scratch dist dir (every real-process test in test_start_frontend_script.py does exactly this, often
+# invoking the launcher SEVERAL TIMES in a row against the SAME scratch dir on purpose — e.g. to prove a
+# second invocation skips the rebuild, or correctly detects an out-of-band/wrong-backend build already
+# there). That directory is this invocation's own current, legitimate target, never someone else's
+# abandoned leftover — purging it unconditionally wiped the very state (BUILD_ID, the launch-build/serving
+# markers) those scenarios depend on, forcing a needless rebuild every single launch and defeating the
+# out-of-band/backend-mismatch detection they exist to prove (caught by a real, non-mocked pytest run of
+# the existing module, not merely reasoned about).
+#
+# ops-hardening iter-78 AUDIT FIX (finding B1) — excluding only THIS invocation's own dist dir is not
+# enough: two launcher invocations pointed at DIFFERENT scratch dirs (two overlapping runs of
+# test_start_frontend_script.py on one host — exactly the contention this iteration's own dev handoff
+# records hitting) would each classify the OTHER's dir as abandoned leftover and `rm -rf` it out from
+# under a LIVE `next start`, tearing a running server's assets mid-flight. That is the very harm the
+# iter-77 `.trendora-serving` marker exists to prevent (`_dist_dir_has_live_server` below), and the
+# purge — which runs before that function is even defined, and outside the build lock — bypassed it.
+# A directory some live process is currently SERVING is by definition not "leftover", so consult the
+# same marker, with the same PID-reuse cmdline guard, before deleting anything.
+_residue_dir_has_live_server() {
+  local marker="$1/.trendora-serving" pid
+  [[ -f "$marker" ]] || return 1
+  pid="$(grep -m1 '^pid=' "$marker" 2>/dev/null | cut -d= -f2)"
+  [[ "$pid" =~ ^[0-9]+$ ]] || return 1
+  [[ "$pid" != "$$" ]] || return 1
+  kill -0 "$pid" 2>/dev/null || return 1
+  tr '\0' ' ' <"/proc/$pid/cmdline" 2>/dev/null | grep -qE '(^|[ /])(next|npx|node|taskset)( |$)'
+}
+_RESIDUE_BROKEN_SOURCE="__tc3_intentionally_broken.ts"
+_RESIDUE_SCRATCH_GLOB=".next-test-*"
+_RESIDUE_OWN_DIST_DIR="${NEXT_DIST_DIR:-.next}"
+if [[ -e "$_RESIDUE_BROKEN_SOURCE" ]]; then
+  if rm -f "$_RESIDUE_BROKEN_SOURCE"; then
+    echo "[start-frontend.sh] purged leftover test-residue file: $_RESIDUE_BROKEN_SOURCE" >&2
+  else
+    echo "[start-frontend.sh] FATAL: found leftover test-residue file '$_RESIDUE_BROKEN_SOURCE' but" \
+         "failed to remove it (permission error?) — refusing to build/serve a possibly-broken tree." >&2
+    exit 1
+  fi
+fi
+shopt -s nullglob
+_residue_scratch_dirs=($_RESIDUE_SCRATCH_GLOB)
+shopt -u nullglob
+for _residue_dir in "${_residue_scratch_dirs[@]}"; do
+  if [[ "$_residue_dir" == "$_RESIDUE_OWN_DIST_DIR" ]]; then
+    continue  # this invocation's own build target, not another process's leftover -- never purge it
+  fi
+  if _residue_dir_has_live_server "$_residue_dir"; then
+    echo "[start-frontend.sh] leaving scratch dist dir '$_residue_dir' in place — another live server is" \
+         "serving it right now (not abandoned residue)." >&2
+    continue
+  fi
+  if rm -rf "$_residue_dir"; then
+    echo "[start-frontend.sh] purged leftover test-residue scratch dir: $_residue_dir" >&2
+  else
+    echo "[start-frontend.sh] FATAL: found leftover test-residue scratch dir '$_residue_dir' but failed" \
+         "to remove it (permission error?) — refusing to build/serve a possibly-broken tree." >&2
+    exit 1
+  fi
+done
+# ==== end TEST-RESIDUE PURGE =========================================================================
+
 # ==== build-if-stale, then serve PRODUCTION mode (ops-hardening iter-33) ============================
 # Previously this script execed `npx next dev` unconditionally, despite every other doc calling it
 # "prod mode" (measure-perf.sh's own header, goal.md's J-06 step-1 text) — two consecutive evaluators

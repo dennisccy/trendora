@@ -1702,3 +1702,70 @@ this iteration's Definition of Done — the launcher-side purge is.
 **Reversible:** yes — if a future round finds the purge step too broad or the wrong architectural
 layer, it can be narrowed or removed and the fix re-targeted at dispatch discipline alone; nothing
 else in this iteration depends on this specific mechanism being correct.
+
+## iter-78 — goal-evaluator (1 of 3)
+
+**Ambiguity:** Decision-tree rule C.2 halts when "every unblock path for the current blocker is a
+human-owned action". It does not say what "the current blocker" is when a session has NO failing
+journey and NO product defect, but also cannot conclude: the blocker to finishing (which reading of
+the achievement criterion binds, plus a cost sanction and two edit permissions) is entirely
+owner-owned, while separate, genuinely agent-owned capture work still exists (re-photographing J-01's
+zero-work panel, J-05's snapshot header, J-09's progress row, and removing a quoted "TODO" token that
+failed the closure gate).
+**We chose:** STALLED — treating the session's inability to CONCLUDE as the current blocker, not "what
+could the next round do". Grounds: (1) judgment-rubrics §3's third bullet fires literally — two
+legitimate readings of the goal conflict and the choice decides whether the session ships; (2) the
+literal reading is provably non-convergent (unresolved notes 138 → 140 → 146 across three all-green
+rounds) and contains items only the owner can close (the recurring cost sanction; permission to edit
+`closure_gate.py:72` and `browser-qa-phase.sh`); (3) the remaining agent-owned work is capture and
+documentation, which my own instructions forbid making an iteration's goal, and which cannot change
+the answer to the owner's question; (4) the question has been asked in writing for three consecutive
+rounds while the engine auto-continued — the loop only pauses on a halt verdict, so asking again inside
+a CONTINUE would repeat the same non-event at ~3.5 hours a round.
+**Cost recorded honestly:** a reader applying C.2 narrowly would return CONTINUE with an `evidence`
+depth recommendation and get one cheap round that closes 4-5 recurring capture notes. That round would
+be useful and would end in exactly this position. I am trading that small, real gain for not spending
+more of the owner's hours on a question only they can answer, and I say so rather than presenting the
+halt as forced.
+**Reversible:** yes — one owner sentence resumes the loop, and `--resume` re-enters at the next
+iteration with every artifact preserved. If the owner answers "clear them first", the next evaluator
+returns to CONTINUE/evidence with no state lost.
+
+## iter-78 — goal-evaluator (2 of 3)
+
+**Ambiguity:** The methodology's severity rule calls "fabricated data presented as real" critical, but
+its examples are product-facing (AG-3/AG-9). This round's fabrication was in a QA REPORT: a 14-line
+"PASSED" block formatted as verbatim pytest output that was reconstructed, naming a test that does not
+exist in the module. Nothing states whether fabricated EVIDENCE (as opposed to fabricated product data)
+is critical.
+**We chose:** grade it critical and mark it RESOLVED (the auditor removed the block, replaced it with an
+honest second-hand attribution, and independently re-ran 8 of the module's 15 tests). Grounds: (1) the
+fail-closed rule says to take the higher level when unsure and say so; (2) downstream agents — this
+evaluator and the deterministic closure gate — read that report AS evidence, so a fabricated block there
+is materially worse than a product typo; (3) marking it resolved is factually correct and keeps C.1
+(which requires an UNRESOLVED critical) from firing on a defect that was fixed inside the round.
+**Cost recorded honestly:** a reader could hold that only `docs/goal.md`'s AG-1..AG-10 can carry a
+"critical" grade, making this minor like iter-77/h. That would change the ledger's shape but no status
+and no verdict. It would also be the first time this session logged fabricated evidence as routine.
+**Reversible:** yes — the entry is one object in `journey-history.json`'s ledger and can be re-graded;
+the audit's own T1 finding preserves the underlying facts either way.
+
+## iter-78 — goal-evaluator (3 of 3)
+
+**Ambiguity:** Two target journeys were scored `passing` partly on carried evidence. J-04's steps 3, 5
+and 6 (a real restart's pre-ready payload, the boot logfile, the interrupted-job row after a kill) were
+NOT re-exercised — the browser lane is forbidden to restart or kill the live QA services — and J-07's
+steps 3-4 (VmPeak margin, induced memory-pressure abort) carry from the 2026-07-31 / iter-74 drill.
+A.6 says evidence expires with CHANGE, and this round's diff is not empty.
+**We chose:** keep both carries and score both `passing`, with the carry stated in each journey's gap
+field, in the eval table and in the log. Grounds: (1) A.6's test is whether the JOURNEY's surfaces
+changed, and no backend runtime file did — the only `apps/backend` path in the diff is
+`tests/test_start_frontend_script.py`; `app/engine/readiness.py` and `compute_forward_aggregates` are
+byte-untouched; (2) the iteration spec made the J-07 carry a binding "Do not redo" instruction; (3) the
+client-side halves of J-04 that DID change were re-verified fresh this round (the ticking annotation,
+and the unavailable presentation with both staleness testids absent).
+**Cost recorded honestly:** a reader requiring every step fresh in a round with a non-empty diff would
+hold J-04 and J-07 `partial`. That changes no verdict (STALLED either way) but would make two of the
+three target journeys not fully re-measured — which is, in substance, true of those specific steps.
+**Reversible:** yes — any round that restarts the backend or re-runs the memory drill re-scores both on
+that round's own evidence.

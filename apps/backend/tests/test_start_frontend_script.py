@@ -103,6 +103,12 @@ _TC3_77_PORT = 21600 + _offset
 # ops-hardening iter-77 AUDIT FIX ROUND 2: the build-guard (21700) and backend-retarget (21800) tests.
 _TC4_77_PORT = 21700 + _offset
 _TC5_77_PORT = 21800 + _offset
+# ops-hardening iter-78: the launcher's own residue-purge regression test's range (21900), clear of
+# every range claimed above.
+_TC6_78_PORT = 21900 + _offset
+# ops-hardening iter-78 AUDIT FIX (finding B1): the live-server-aware purge test's range (22000),
+# clear of every range claimed above.
+_TC7_78_PORT = 22000 + _offset
 
 # A cold scratch-dir `next build` (a distDir name Next has never seen -> no webpack cache to reuse) on
 # this host-guard-CPU-masked host measured ~1 minute with the box idle, but blew past 300 s while the live
@@ -118,6 +124,14 @@ _START_TIMEOUT_S = float(os.environ.get("TRENDORA_FRONTEND_START_TIMEOUT_S", "12
 
 _BROKEN_SOURCE_REL = "__tc3_intentionally_broken.ts"
 _SCRATCH_DIST_GLOB = ".next-test-*"
+# ops-hardening iter-78: `_BROKEN_SOURCE_REL` above is now ALSO the exact name
+# `scripts/start-frontend.sh` reserves for its own residue purge (kept in lockstep by hand --
+# see that script's "TEST-RESIDUE PURGE" block) -- a real launcher invocation now unconditionally
+# DELETES that filename before building, so it can no longer be used to prove "a genuinely broken
+# source file makes `next build` fail" (the purge would silently remove it first). TC-3 below uses
+# this SEPARATE name instead -- still a throwaway `.ts` file cleaned by the same
+# `_purge_test_residue()` self-heal, but deliberately outside the launcher's own reserved/purged set.
+_BROKEN_BUILD_SOURCE_REL = "__tc3_broken_build_source.ts"
 
 
 def _scratch_dist_name(tag: str) -> str:
@@ -132,9 +146,10 @@ def _purge_test_residue() -> None:
     repo's pre-existing `.next-alt-qa`/`.next-verify` dirs. Called on fixture SETUP as well as teardown --
     see the module docstring: a SIGKILLed pytest runs no teardown, so the next run must self-heal rather
     than fail on residue it did not create."""
-    broken = FRONTEND_DIR / _BROKEN_SOURCE_REL
-    if broken.exists():
-        broken.unlink()
+    for name in (_BROKEN_SOURCE_REL, _BROKEN_BUILD_SOURCE_REL):
+        broken = FRONTEND_DIR / name
+        if broken.exists():
+            broken.unlink()
     for scratch in FRONTEND_DIR.glob(_SCRATCH_DIST_GLOB):
         shutil.rmtree(scratch, ignore_errors=True)
 
@@ -539,12 +554,18 @@ def test_broken_source_fails_build_and_leaves_no_stray_process(launcher):
     outcome -- including a failed assertion, an unexpected exception, or an interrupted run -- is a single
     unconditional delete, performed by the autouse `_pristine_frontend_tree` fixture's teardown (and again
     at the NEXT run's setup, since a SIGKILLed pytest runs no teardown at all -- exactly how a previous
-    run left this file behind and made this test fail on its own guard assertion)."""
+    run left this file behind and made this test fail on its own guard assertion).
+
+    ops-hardening iter-78: uses `_BROKEN_BUILD_SOURCE_REL`, NOT `_BROKEN_SOURCE_REL` -- the launcher now
+    unconditionally purges `_BROKEN_SOURCE_REL` as reserved test-residue (see
+    `test_launcher_purges_leftover_test_residue_from_a_different_process` below) before it ever runs
+    `next build`, so that name can no longer be used to prove a genuine build failure propagates; this
+    test needs a name the purge does NOT touch."""
     if not (FRONTEND_DIR / "node_modules").exists():
         pytest.skip("apps/frontend/node_modules not installed -- cannot build the frontend")
 
     dist_rel = _scratch_dist_name("tc3")
-    broken_file = FRONTEND_DIR / _BROKEN_SOURCE_REL
+    broken_file = FRONTEND_DIR / _BROKEN_BUILD_SOURCE_REL
     assert not broken_file.exists(), f"{broken_file} already exists -- refusing to overwrite"
     broken_file.write_text(
         "// Deliberately invalid TypeScript -- ops-hardening iter-33 TC-3 smoke test.\n"
@@ -567,6 +588,121 @@ def test_broken_source_fails_build_and_leaves_no_stray_process(launcher):
 
     with pytest.raises(AssertionError):
         _owning_pid(_TC3_PORT, timeout=3.0)
+
+
+def test_launcher_purges_leftover_test_residue_from_a_different_process(launcher):
+    """ops-hardening iter-78 -- closes iter-77/c ('fixed inside the round; NOT defended against
+    recurrence'): a hard-killed run of THIS test module leaves `__tc3_intentionally_broken.ts` /
+    `.next-test-*` scratch dirs behind in the live `apps/frontend` tree (module docstring); this
+    module's own autouse `_pristine_frontend_tree` fixture already self-heals its OWN next run, but the
+    REAL launcher previously had no such defense and took the whole frontend down the moment `next
+    build` type-checked the stray file (reproduced by TC-3 immediately above).
+
+    This test proves the LAUNCHER's own defense, not this module's self-heal: the residue is written
+    directly in the test BODY -- i.e. strictly AFTER the autouse fixture's own setup-purge already ran
+    -- simulating "a different process wrote it and this module is not the next thing invoked" (the
+    module was already clean when this test started; nothing here relies on the module's own leftover
+    cleanup). It then runs the REAL `scripts/start-frontend.sh` end-to-end (never a mock) and asserts a
+    clean build (rc reaching `next start`, never TC-3's failure path), a fully-styled served page, and
+    that the launcher's own log records the purge -- proving the fix is in the LAUNCH SCRIPT, not merely
+    this test module's pre-existing residue cleanup (which already ran before this file even existed)."""
+    if not (FRONTEND_DIR / "node_modules").exists():
+        pytest.skip("apps/frontend/node_modules not installed -- cannot build/start the frontend")
+
+    dist_rel = _scratch_dist_name("residue")
+    broken_file = FRONTEND_DIR / _BROKEN_SOURCE_REL
+    assert not broken_file.exists(), f"{broken_file} already exists -- refusing to overwrite"
+    # Written HERE, in the test body -- after the autouse `_pristine_frontend_tree` fixture's own
+    # setup-purge already ran -- so this residue is provably NOT something this module's own setup left
+    # behind; it stands in for a DIFFERENT process's interrupted run.
+    broken_file.write_text(
+        "// Deliberately invalid TypeScript -- simulates leftover residue from an interrupted\n"
+        "// test_start_frontend_script.py run (ops-hardening iter-78 residue-defense regression test).\n"
+        "// Removed by the LAUNCHER itself (this test's own subject), independent of this module's own\n"
+        "// autouse cleanup, which would also remove it at teardown regardless of this test's outcome.\n"
+        "const __trendora_test_residue_broken__: string = 12345;\n"
+    )
+    orphan_scratch = FRONTEND_DIR / _scratch_dist_name("orphan")
+    orphan_scratch.mkdir()
+    (orphan_scratch / "sentinel.txt").write_text("leftover scratch dist dir from a different process\n")
+
+    launched = launcher(dist_rel, _TC6_78_PORT, _TC6_78_PORT + 1000, "residue-defense.log")
+    _wait_for_port_answering(
+        _TC6_78_PORT, timeout=_BUILD_TIMEOUT_S, proc=launched.proc, log_path=launched.log_path
+    )
+    assert (launched.dist_abs / "BUILD_ID").exists(), (
+        "expected the launcher's own `next build` to succeed once the residue is purged"
+    )
+    _assert_page_fully_styled(_TC6_78_PORT)
+
+    log_text = launched.log_text()
+    assert "purged leftover test-residue" in log_text, (
+        f"expected the launcher's own purge log line; got:\n{log_text[-4000:]}"
+    )
+    assert "next build FAILED" not in log_text, (
+        f"the residue must never reach `next build` at all; got:\n{log_text[-4000:]}"
+    )
+    assert not broken_file.exists(), "the launcher must have deleted the residue file before building"
+    assert not orphan_scratch.exists(), "the launcher must have deleted the orphan scratch dist dir too"
+
+
+def test_residue_purge_spares_a_scratch_dist_dir_another_live_server_is_serving(launcher):
+    """ops-hardening iter-78 AUDIT FIX (finding B1). The residue purge above deletes every
+    `.next-test-*` dir EXCEPT this invocation's own `$NEXT_DIST_DIR`. That exclusion is not sufficient:
+    two launcher invocations pointed at DIFFERENT scratch dirs (two overlapping runs of this very module
+    on one host -- the contention iter-78's own dev handoff records hitting) would each classify the
+    OTHER's dir as abandoned leftover and `rm -rf` it out from under a LIVE `next start`, tearing a
+    running server's assets mid-flight. That is exactly the harm the iter-77 `.trendora-serving` marker
+    exists to prevent, and the purge ran before that guard was ever consulted.
+
+    Proven against the REAL script, with a real live process: a scratch dir carrying a serving marker
+    for a live, node-like pid must SURVIVE, while an unmarked sibling in the same glob is still purged
+    -- so the fix is a genuine narrowing (leftover residue still goes), never a blanket disable."""
+    if not (FRONTEND_DIR / "node_modules").exists():
+        pytest.skip("apps/frontend/node_modules not installed -- cannot build/start the frontend")
+
+    # Stand-in for ANOTHER launcher's live `next start`: a real long-lived process whose /proc cmdline
+    # satisfies the same node/next/npx/taskset PID-reuse guard the script applies.
+    live_server = subprocess.Popen(
+        ["node", "-e", "setTimeout(() => {}, 900000)"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    protected = FRONTEND_DIR / _scratch_dist_name("live-served")
+    orphan = FRONTEND_DIR / _scratch_dist_name("orphan-unserved")
+    try:
+        protected.mkdir()
+        (protected / "sentinel.txt").write_text("another live server's dist dir -- must never be purged\n")
+        (protected / ".trendora-serving").write_text(
+            f"pid={live_server.pid}\nport=1\ndist={protected.name}\nstarted_at=now\n"
+        )
+        orphan.mkdir()
+        (orphan / "sentinel.txt").write_text("abandoned leftover -- must still be purged\n")
+
+        dist_rel = _scratch_dist_name("live-guard")
+        launched = launcher(dist_rel, _TC7_78_PORT, _TC7_78_PORT + 1000, "residue-live-guard.log")
+        _wait_for_port_answering(
+            _TC7_78_PORT, timeout=_BUILD_TIMEOUT_S, proc=launched.proc, log_path=launched.log_path
+        )
+
+        log_text = launched.log_text()
+        assert (protected / "sentinel.txt").exists(), (
+            "the launcher must NOT purge a scratch dist dir another live server is serving; log:\n"
+            f"{log_text[-4000:]}"
+        )
+        assert "another live server is serving it" in log_text, (
+            f"expected the launcher to log why it spared that dir; got:\n{log_text[-4000:]}"
+        )
+        assert not orphan.exists(), (
+            "an unmarked leftover scratch dir must STILL be purged -- the guard narrows the purge, it "
+            f"does not disable it; log:\n{log_text[-4000:]}"
+        )
+        assert (launched.dist_abs / "BUILD_ID").exists(), "the launcher's own build must still succeed"
+    finally:
+        live_server.kill()
+        live_server.wait(timeout=10)
+        shutil.rmtree(protected, ignore_errors=True)
+        shutil.rmtree(orphan, ignore_errors=True)
 
 
 # ==================================================================================================

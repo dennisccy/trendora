@@ -952,6 +952,10 @@ class _FakeLocator:
         return self
 
     def wait_for(self, state: str = "visible", timeout: float = 0):
+        # ops-hardening iter-78: record the timeout each caller actually threaded through, so a
+        # test can assert a step's own `timeout_ms` reaches Playwright's `.wait_for()` unclamped
+        # (see `_t_record_steps_honors_an_explicit_per_step_timeout_above_the_default_ceiling`).
+        self._spy.setdefault("wait_for_timeouts", []).append(timeout)
         if self._fail:
             raise TimeoutError(f"fake: {self._name} did not become visible")
 
@@ -1123,6 +1127,54 @@ def _t_settle_for_capture_before_after_frames_differ_when_state_changes() -> Non
     # The record loop's OWN first poll (before this fix's re-poll ever runs) genuinely misses on this
     # fixture, so a soft note for step 2 is the expected, honest behavior — not silently swallowed.
     assert any("02" in note and "did not appear" in note for note in soft_notes), soft_notes
+
+
+def _t_record_steps_honors_an_explicit_per_step_timeout_above_the_default_ceiling() -> None:
+    """ops-hardening iter-78 (iter-77/e): a step MAY opt into a longer wait than the ordinary default
+    ceiling by setting its own `timeout_ms` — needed for content (e.g. the J-09 background-compute badge
+    chip) that only updates on the frontend's own NEXT readiness-badge poll, up to
+    `health_poll_idle_interval_seconds` (30s, config.yaml). Before this fix, `_record_steps` hard-capped
+    EVERY step's timeout at 20000ms regardless of what `timeout_ms` it named, so such a step could never
+    wait long enough for its own content to appear — the walkthrough captured whatever was on screen at
+    the 20s mark, not the real post-change state. Proven directly against the ACTUAL value threaded to
+    Playwright's own `.wait_for()` (via `_FakeLocator`'s new `wait_for_timeouts` spy), not just an
+    indirect pass/fail outcome."""
+    import tempfile
+    spy: dict = {}
+    page = _FakePage(spy)
+    steps = [
+        {"n": 1, "title": "Step back to a historical as-of date", "journey": "J-09",
+         "action": {"type": "click", "target": {"testid": "asof-step-prev"}},
+         "expect": {"target": {"testid": "background-compute-indicator"}},
+         "timeout_ms": 35000},
+    ]
+    with tempfile.TemporaryDirectory() as tmp:
+        _record_steps(page, steps, "http://localhost:3000", 8000, Path(tmp), None)
+    timeouts = spy.get("wait_for_timeouts", [])
+    assert 35000 in timeouts, (
+        f"expected the step's own timeout_ms=35000 to reach Playwright unclamped (not silently capped "
+        f"to 20000); recorded wait_for() timeouts: {timeouts}"
+    )
+
+
+def _t_record_steps_default_ceiling_unchanged_for_steps_without_explicit_timeout() -> None:
+    """Companion to the fix above: a step that does NOT set its own `timeout_ms` must still be bounded
+    by the ordinary (lower) default ceiling — this fix is additive (a step opts in explicitly), never a
+    blanket slow-down of every existing demo/replay step that has no reason to wait longer."""
+    import tempfile
+    spy: dict = {}
+    page = _FakePage(spy)
+    steps = [
+        {"n": 1, "title": "Open the home page", "action": {"type": "goto", "url": "/"},
+         "expect": {"text": "Ready"}},
+    ]
+    with tempfile.TemporaryDirectory() as tmp:
+        _record_steps(page, steps, "http://localhost:3000", 8000, Path(tmp), None)
+    timeouts = spy.get("wait_for_timeouts", [])
+    assert timeouts, "expected at least one wait_for() call to have been recorded"
+    assert all(t <= 8000 for t in timeouts), (
+        f"a step without its own timeout_ms must stay bounded by the script's default ceiling: {timeouts}"
+    )
 
 
 def _t_run_record_never_clicks_after_failed_precondition() -> None:
@@ -1329,6 +1381,8 @@ _SELF_TEST_CHECKS = [
     _t_run_record_never_clicks_after_failed_precondition,
     _t_run_record_click_still_fires_without_a_prior_failure,
     _t_settle_for_capture_before_after_frames_differ_when_state_changes,
+    _t_record_steps_honors_an_explicit_per_step_timeout_above_the_default_ceiling,
+    _t_record_steps_default_ceiling_unchanged_for_steps_without_explicit_timeout,
     _t_derive_happy,
     _t_derive_rejects_untagged_journey,
     _t_derive_rejects_no_expect,
@@ -1549,6 +1603,21 @@ _LOADING_SELECTOR = (
     '[aria-busy="true"], [role="progressbar"], [data-loading="true"], '
     '.loading, .spinner, .skeleton, [class*="skeleton"], [class*="Skeleton"]'
 )
+
+# ops-hardening iter-78 (iter-77/e — the J-09 "background compute in flight" walkthrough frame
+# captured an idle Ready-only state): most demo steps settle within a couple of seconds, so the
+# ORDINARY per-step ceiling stays the original 20000ms (`_default_timeout`'s own cap, applied to the
+# SCRIPT-WIDE `default_timeout_ms` fallback and to any step that omits its own `timeout_ms` — both
+# UNCHANGED below). But a step whose expected content only updates on the frontend's own NEXT
+# readiness-badge poll cannot be observed sooner than that poll lands: `health_poll_idle_interval_
+# seconds` (config.yaml) is 30s once the badge is in its steady "Ready" idle cadence, so a click
+# landing just after a poll waits up to a FULL cycle before the badge/panel reflects it — well past
+# the previous hard 20000ms ceiling, which capped EVERY step regardless of what `timeout_ms` it asked
+# for. A step now opts into this higher ceiling explicitly, by setting its own `timeout_ms` above the
+# ordinary default; a step that omits `timeout_ms` is completely unaffected (still bounded by
+# `_default_timeout`'s 20000ms ceiling), so this is additive, never a blanket slow-down of every
+# existing demo/replay script.
+_STEP_TIMEOUT_HARD_CEILING_MS = 45000
 
 
 def _settle_for_capture(page, budget_ms: int, exp: "dict | None" = None) -> None:
@@ -1782,7 +1851,7 @@ def _record_steps(page, steps: list[dict], base_url: str, default_tmo: int,
     for step in steps:
         n = int(step.get("n", 0))
         section = step.get("section", "highlights")
-        tmo = max(1000, min(int(step.get("timeout_ms", default_tmo)), 20000))
+        tmo = max(1000, min(int(step.get("timeout_ms", default_tmo)), _STEP_TIMEOUT_HARD_CEILING_MS))
         action = step["action"]
         is_mutating_click = (action.get("type") == "click"
                              and (action.get("target") or {}).get("role") == "button")
@@ -1909,7 +1978,7 @@ def run_live(script: dict, opts, base_url: str) -> int:
             print(f"\n── Step {i:02d}/{total:02d} ─ {title}{tag}")
             if step.get("narration"):
                 print(f"   {step['narration']}")
-            tmo = max(1000, min(int(step.get("timeout_ms", default_tmo)), 20000))
+            tmo = max(1000, min(int(step.get("timeout_ms", default_tmo)), _STEP_TIMEOUT_HARD_CEILING_MS))
             action = step["action"]
             loc = None
             target = action.get("target")
@@ -2050,7 +2119,7 @@ def run_verify(opts, base_url: str) -> int:
                 exp = None  # last step's expect, if any -- passed to the final evidence capture below
                 for step in steps:
                     n = int(step.get("n", 0))
-                    tmo = max(1000, min(int(step.get("timeout_ms", default_tmo)), 20000))
+                    tmo = max(1000, min(int(step.get("timeout_ms", default_tmo)), _STEP_TIMEOUT_HARD_CEILING_MS))
                     try:
                         _do_action(page, step["action"], base_url, tmo)
                     except Exception as exc:  # noqa: BLE001

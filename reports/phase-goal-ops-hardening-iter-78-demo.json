@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-ops-hardening-iter-78",
+  "base_url": "http://localhost:3255",
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Dashboard shows live freshness indicators",
+      "narration": "The dashboard loads with a green Ready badge in the top-right. A small gray label next to it updates every second to show data freshness — this is new behavior that continuously updates rather than freezing. The green GO banner below also has a live freshness label.",
+      "point_out": "The Ready badge with its freshness label ('as of Ns ago') in the top-right. The GO banner below the header with its own freshness label in parentheses.",
+      "journey": "J-04",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": {"type": "goto", "url": "/"},
+      "expect": {"text": "Ready"}
+    },
+    {
+      "n": 2,
+      "title": "Data page maintains freshness visibility",
+      "narration": "Navigate to the Data page. The Ready badge and freshness labels appear here too — they work consistently across every page of the app.",
+      "point_out": "The Ready badge and freshness label in the header, and the GO banner below. The SNAPSHOT dates count on this page.",
+      "journey": "J-06",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {"type": "click", "target": {"role": "link", "name": "Data"}},
+      "expect": {"text": "SNAPSHOT"}
+    },
+    {
+      "n": 3,
+      "title": "Backtest shows historical evidence scorecard",
+      "narration": "The Backtest page displays historical performance data across multiple time horizons. The ready badge remains visible in the header, confirming the data is current.",
+      "point_out": "The scorecard showing return and risk metrics (1d, 5d, 10d, etc.). Notice the Ready badge with freshness label in the header.",
+      "journey": "J-08",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {"type": "click", "target": {"role": "link", "name": "Backtest"}},
+      "expect": {"text": "Viewing as-of"}
+    },
+    {
+      "n": 4,
+      "title": "Background compute work is transparently disclosed",
+      "narration": "Request a historical date that needs fresh computation. When the app does heavy work, a 'background compute running' indicator appears in the header alongside the Ready badge, showing you when the system is actively computing.",
+      "point_out": "The 'background compute running (N)' chip in the header showing real-time work in progress.",
+      "journey": "J-09",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {"type": "goto", "url": "/backtest?asof=2026-07-30"},
+      "expect": {"target": {"testid": "background-compute-indicator"}},
+      "timeout_ms": 45000
+    },
+    {
+      "n": 5,
+      "title": "Data page shows live computation progress details",
+      "narration": "The Data page displays a live progress row whenever background compute is running. It shows the as-of date, elapsed time, and horizon completion counts so you can monitor active work in real time.",
+      "point_out": "The background compute progress row with elapsed time and horizon details (e.g., 'elapsed Xs/1m27s · horizons 0/5→3/5').",
+      "journey": "J-09",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {"type": "click", "target": {"role": "link", "name": "Data"}},
+      "expect": {"target": {"testid": "background-compute-active-row"}},
+      "timeout_ms": 45000
+    }
+  ]
+}

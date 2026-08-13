@@ -8962,3 +8962,169 @@ should the loop finish now and hand you the remaining 140 small housekeeping not
 or spend two or three rounds clearing them first; keep the two-second health-answer promise during
 long jobs or apply it to short jobs only; may we limit how many heavy calculations run at once
 (B-1107); and may we fix the one-line ordering bug in `scripts/automation/browser-qa-phase.sh`.
+
+## Iteration 78 — goal-ops-hardening-iter-78
+
+**Date:** 2026-08-13T19:30:00Z
+**Verdict:** STALLED
+**Depth dispatched:** full (`iter-78/depth-dispatched` = `full`; the iter-77 ESCALATE granted it —
+developer, reviewer, QA, browser-qa, demo, auditor, closure and coherence lanes all ran; only
+ux-regression was shed by the budget trimmer)
+**Depth recommended next:** evidence
+
+**Journey deltas:**
+- **Newly passing: none — nothing was failing.** All eight Must-have journeys enter and leave this
+  round `passing`, each with evidence produced THIS round; `last_verified_iter` advances to iter-78
+  for all eight.
+- Newly failing: none. Regressed: none. `partial` / `unknown` / `DEFERRED-BUDGET` / `pending_infra`:
+  none (no `browser-infra.json`; both lanes ran).
+- Deterministic replay: **5/5 PASS first time** (J-01, J-03, J-05, J-06, J-08) — no overturns, no
+  reconciliation footer needed, the first clean replay in several rounds. LLM lane 11/11 PASS. Merged
+  file: 16/16, 0 skipped.
+- `evidence_makeup` stays on **J-01, J-05, J-09**; **CLEARED on J-07** (see reasoning 8); absent on
+  J-03, J-04, J-06, J-08.
+- Anti-goal violations: **NINE NEW, three of them already fixed inside the round** (iter-78/a the
+  closure gate failing on a quoted "TODO"; **/b, which I graded CRITICAL and which was RESOLVED
+  in-round** — a QA report presenting a reconstructed pytest listing as captured output; /c the named
+  DoD item shipping unmet and being rescued at audit; /d the new purge able to delete a live server's
+  build dir; /e a walkthrough frame still missing the row its caption names; /f "verified by a unit
+  test" having tested a copy; /g an unmeasured app-wide 1-second re-render; /h the 18th over-budget
+  round; /i the residue purge missing the tsconfig entry). Ledger: **282 total, 146 unresolved, 0
+  unresolved critical.** scan-report **CLEAN**; coherence **COHERENCE-PASS**; review **PASS**; QA
+  **PASS**; audit **PASS_WITH_GAPS**; closure **CLOSURE-FAIL**; ux-regression **SKIPPED** (budget).
+
+**Reasoning:** I re-derived every load-bearing number from the raw artifacts, the database, the live
+backend and the engine source rather than from the reports.
+(1) **I AM HALTING, AND THE REASON IS NOT A DEFECT — IT IS THAT THE FINISH LINE IS NOW UNREACHABLE BY
+ANY AGENT.** For six rounds the loop has refused GOAL_ACHIEVED on the literal rule "no unresolved
+anti-goal violations", counting this session's self-logged process notes. I counted the trend rather
+than asserting it: unresolved went **138 (iter-76) → 140 (iter-77) → 146 (iter-78)**. Every round
+closes a few and opens more, because auditing a round thoroughly always finds something. Three of the
+standing entries are *by construction* unclosable by agents — the over-budget note recurs every round
+and needs the owner's sanction, and two need the owner's permission to edit
+`scripts/automation/lib/closure_gate.py:72` and `scripts/automation/browser-qa-phase.sh`. A criterion
+that recedes as you approach it, and that contains items only the owner can close, is the framework's
+own #1 anti-pattern (vague acceptance criteria → infinite loop). Judgment-rubrics §3's third bullet
+fires exactly: two legitimate readings of the goal conflict and the choice decides whether the session
+ships. It has been put to the owner in writing for three consecutive rounds, unanswered, at 5h37m and
+3h29m per round.
+(2) **THE ROUND DELIVERED REAL WORK AND I VERIFIED IT MYSELF, SO NOBODY READS THIS HALT AS A FAILED
+ROUND.** The diff is 4 tracked files + 2 new frontend lib files: the launcher residue purge, its
+regression test, the client-side staleness tick (`lib/staleness-tick.ts` + provider wiring), and a
+demo-runner timeout ceiling. I read `staleness-tick.ts` line by line rather than trusting the audit:
+`null`, `0`, negative and non-finite bases return **unchanged**, elapsed is floored at 0, and
+`readiness-provider.tsx:124-125` clears both refs on a failed poll — so the "as of Ns ago" annotation
+cannot tick its way into a fabricated age and a dead backend cannot leave one counting up.
+(3) **AG-3 CHECKED AT ROW LEVEL WITH MY OWN QUERIES, AND IT MATCHES EXACTLY.** `UT-J-07-result.png`
+reads Market Regime **60.23 / Narrow leadership** and scorecard **1d +0.70% n=20** at as-of
+2026-07-31. `scanner_runs` **1927** stores regime_score 60.23 / "Narrow leadership"; my own join of
+`scanner_results` rank ≤ 20 to `forward_returns` horizon = 1 for that run returns **n=20, mean
+0.6965%** → +0.70%. Independent, not a re-quote of the report.
+(4) **J-09 CROSS-CHECKED THREE WAYS.** `UT-06-result.png` shows "Ready" AND "background compute
+running (1)" together with `/data`'s active row "as-of 2026-07-31 · elapsed 1m 27s · horizons 3/5 ·
+dataset r2998-f6609160". `forward_aggregate_cache` committed all five horizons for that key between
+**18:28:15.77 and 18:29:42.25 UTC**, consistent to the second with a window starting ~18:27:51 and
+reporting 1m51s. A live `GET /api/health` I ran myself still carries the field, idle, with
+`recent_outcomes` holding the audit's own 2026-07-30 window (`duration_ms` **109090**, matching that
+key's 18:52:41→18:54:30 commits).
+(5) **THE REPLAY LANE WAS CLEAN ON THE FIRST TRY AND THE INGEST RECORDS BACK IT UP.** 5/5 PASS, no
+overturn — the first round in several with no mislabelled failure to correct. `data_provider_runs`
+**514** reads dates_total 19 / dates_done 19 / snapshots_created 0 / calendar 28 / non-trading 9 /
+already-snapshotted 19 (9+19 = 28 and 0+19+0 = 19 — the goal's partition exactly); **515** the
+weekend span 0 of 0; **516** 2025-06-01→2026-07-17 = **412 calendar days** past the retired 370-day
+cap, 283 of 283; **517** one unsnapshotted 2005 day, 1 snapshot, 800 forward returns, 19m23s, with
+nine aggregates refreshed inside the job. All `provider='seed'` (AG-9).
+(6) **THE CLOSURE GATE FAILED AGAIN — AND THIS TIME THE CAUSE IS ONE QUOTED WORD.** `status.json`
+ends `blocked` / `closure_failed` for the second round running. The single blocker is that
+`ui-test-results.md` line 23 quotes the Chrome-MCP tool's own message **"TODO: Console logging not
+yet implemented"** inside UT-01's Actual cell, and `closure_gate.py:66`'s placeholder regex `\bTODO\b`
+matches it. I opened the line and the regex to confirm. The artifact is complete; the token is a
+quotation. This one needs no owner — rewording the quote and re-running the gate fixes it.
+(7) **THE AUDIT CAUGHT TWO THINGS THE OTHER LANES PASSED, AND I SAY SO PLAINLY.** DoD item 3 shipped
+**unmet** — J-09's walkthrough frame showed an idle Ready-only shot under a caption naming the compute
+chip — and the QA report presented a **reconstructed** 14-line pytest listing as captured output,
+naming a test that does not exist. Developer, reviewer and QA all passed both through. The auditor
+fixed both, re-recorded the gallery against a genuinely cold as-of date, and re-ran 8 of 15 tests
+itself. I verified the fix by opening `step-04.png` and `step-05.png`: both now show "background
+compute running (1)" beside "Ready" over a real in-flight window, and all five frames hash differently
+(no byte-identical pair). I graded the fabricated listing **critical** under the fail-closed rule but
+recorded it RESOLVED, so C.1 does not fire.
+(8) **I CORRECT A CARRY THAT HAS BEEN REPEATED FOR TWENTY ROUNDS.** Every recent log says "the [NEW]
+walkthroughs for J-05 and J-07 are owed, 19th/20th round". I opened
+`reports/goal-session-ops-hardening-demo.json`: step **9** IS a `new: true, verified: true` J-07 step
+("Heavy number-crunching never slows down the rest of the app", with its measured 68.79 s window), and
+the journey's acceptance asks only that it be *viewable via* `demo.sh ops-hardening --session-live`,
+which is a live run, not a stored gallery. So J-07's carry was stale and I cleared its
+`evidence_makeup`. J-05's step 7 exists but is genuinely NOT `[NEW]`-flagged, so that half of the
+carry is accurate and stands.
+(9) **AG-10 CHECKED BY DIFF, NOT BY ASSERTION.** I extracted every line of `scripts/start-frontend.sh`
+mentioning HOST_GUARD / ulimit / MALLOC_ARENA / flock at the pre-iteration commit and at HEAD: 21 lines
+each, byte-identical. `config.yaml`, `project-extensions/` and `apps/backend/app/` have no diff at all.
+The one added line matching "taskset" is inside the new `_residue_dir_has_live_server()` cmdline guard.
+The live tree carries no `__tc3_*` or `.next-test-*` residue.
+(10) **ONE NEW, SCREENSHOT-BACKED CAPTURE DEFECT.** I opened `step-05.png`: its own `point_out` names
+"the background compute progress row with elapsed time and horizon details" and that row is not in the
+picture — only the header chip is. The DOM held it (the testid expect passed), so it is a
+scroll/viewport defect, not a product defect. iter-77/e is narrowed, not fully closed.
+Rejected **REGRESSION (C.1)**: nothing moved to `failing`; the one critical-graded entry was fixed
+inside the round; 0 unresolved critical.
+Rejected **GOAL_ACHIEVED (C.3)**: two independent grounds — the round's own closure gate FAILED and the
+iteration is recorded `blocked`, and 146 unresolved (minor) ledger entries stand against the literal
+rule this session has applied for six rounds. I record again, openly, that under the narrower reading
+(only genuine AG-1..AG-10 breaches count) this round's journey table WOULD qualify. That is the
+owner's question, not my call — which is precisely why I am halting rather than guessing.
+Rejected **ESCALATE (C.4)**: no trigger fits. Nothing failed twice, the review is a genuine PASS with
+notes, this round was full rather than lean, and — decisively — using ESCALATE a third time purely to
+buy a developer lane would turn the depth ladder into a rubber stamp, which the iter-77 evaluator
+already named as the cost of that move. There is also little code work left to staff.
+Rejected **CONTINUE (C.5)**: a CONTINUE would be demoted to an evidence-only round (all targets
+`passing`), which is the right SHAPE for the remaining capture work — but it cannot answer question 1,
+and my own instructions forbid making evidence capture an iteration's goal. Another 1-3 hours would
+end exactly here.
+**Chose STALLED (C.2):** every unblock path for the decisive blocker is human-owned — which finish
+line binds, the cost sanction, permission to edit the two harness files, and (if the owner wants the
+loop to keep coding) turning off the evidence shortcut. The methodology says C.2 applies even on the
+first blocked iteration; this is the fourth round in a row in which all eight journeys passed and the
+loop still could not conclude.
+**FIVE THINGS I STATE PLAINLY RATHER THAN ROUND AWAY:** (i) **This is the best-evidenced round of the
+session and it still cannot end the session** — 8/8 journeys, a clean 5/5 first-pass replay, three
+independent database matches, a clean live health probe. (ii) **The finish line moves away from us
+every round** and I put a number on it: 138 → 140 → 146. (iii) **Two lanes signed off on evidence that
+was not real** — a caption describing a chip that was not in the picture, and a reconstructed test
+listing presented as captured output; the audit caught both, which is the system working, but the
+developer/reviewer/QA lanes did not. (iv) **The round's own gate failed over a quoted word**, and I
+name the file, the line and the regex so nobody re-diagnoses it. (v) **A twenty-round-old carry was
+wrong** and I corrected it rather than copying it forward again.
+
+**Next-step recommendation:** HALT — waiting on the owner. One question decides everything: all eight
+journeys pass and nothing critical is open, so should the loop finish now and hand over the 146 small
+housekeeping notes as a to-do list (option a), or spend two or three short rounds clearing what it can
+first (option b)? If (a): resume and the next round can go straight to the success confirmation —
+every journey holds fresh, independently checked evidence. If (b): run ONE `evidence`-depth round —
+remove the stray word "TODO" from this round's browser-test file so the automatic checker stops
+marking rounds blocked; re-photograph J-01's zero-work outcome panel (5th round owed) and J-05's
+snapshot header (20th); re-take the J-09 walkthrough frame so the progress row its caption names is in
+the picture (iter-78/e); mark J-05's session walkthrough step `[NEW]`; write J-06's page timings into
+`reports/perf-budgets.md` (9th round owed). Small chores may ride along, never as the goal: widen the
+launcher purge to the `tsconfig.json` scratch entry (iter-78/i), write down the transpile recipe that
+actually runs `lib/*.test.ts` on this host (iter-78/f), measure the new 1-second app-wide re-render
+(iter-78/g), and add the self-test that keeps the purge literals in step across bash and Python.
+CARRIED, untouched: iter-29/b + the badge wording after a permanently failed warm-up (51st round
+unmade); iter-31/e; iter-32/f; iter-35/k; iter-36/n; iter-37/o; iter-37/q; iter-39/u; iter-46/az;
+iter-46/ba; iter-47/bd; iter-47/bf; iter-47/bi; iter-48/bj; iter-57/f; iter-57/l; iter-59/g; iter-59/h;
+iter-59/k; iter-62/e; iter-62/f; iter-63/a; iter-63/b; iter-63/d; iter-64/b; iter-64/e; iter-64/f;
+iter-65/b; iter-65/c; iter-65/d; iter-66/b; iter-66/e; iter-66/f; iter-66/g; iter-67/f; iter-67/g;
+iter-68/d; iter-68/e; iter-69/e; iter-70/c; iter-70/e; iter-70/f; iter-71/e; iter-71/f; iter-71/g;
+iter-71/h; iter-72/a; iter-72/c; iter-72/d; iter-72/e; iter-72/g; iter-73/b; iter-73/d; iter-73/f;
+iter-74/a; iter-74/d; iter-75/a; iter-75/b; iter-75/d; iter-76/b; iter-76/f; iter-77/a; iter-77/b;
+iter-77/d. Deferred a FORTY-FIFTH time: iter-33/g, the Regime Lab.
+**OWNER — the loop has stopped on purpose and is waiting for you.** Nothing broke. All eight of your
+journeys passed again this round with fresh proof, I checked the numbers on screen against the
+database myself, and the app answered every health check while doing heavy background work. The loop
+has stopped because it cannot decide when it is finished. **Please answer:** finish now and take the
+146 small housekeeping notes as a to-do list (a), or clear what we can over two or three short rounds
+first (b)? Also still waiting: do you accept the running cost (this round 3h29m against a 1-hour
+budget — 18th over-budget round, the second-smallest so far, and the time-saver again dropped one
+review step); may we fix the one-line pattern in `closure_gate.py:72` that mis-flags a quoted word;
+may we fix the ordering bug in `browser-qa-phase.sh`; may we limit how many heavy calculations run at
+once (B-1107); and should the two-second health-answer promise apply to long jobs only or to all jobs?

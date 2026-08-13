@@ -9,6 +9,7 @@ import {
   type ReadinessState,
   type WarmupProgress,
 } from "@/lib/api";
+import { deriveLiveStaleForS } from "@/lib/staleness-tick";
 
 /**
  * Global backend readiness state (iter-28, J-40). A single client context, mounted in the app shell, that
@@ -51,7 +52,13 @@ export interface ReadinessContextValue {
    *  served readiness/preflight/background-compute payload was computed; 0 for a fresh synchronous
    *  compute), first rendered by the readiness badge/preflight banner's "as of {N}s ago" annotation.
    *  Null before the first poll resolves / on a failed poll — readers must never render a stale or
-   *  fabricated number in that case (mirrors every sibling field's honesty convention). */
+   *  fabricated number in that case (mirrors every sibling field's honesty convention).
+   *
+   *  ops-hardening iter-78 — this value now TICKS between polls: a local 1-second interval re-derives
+   *  it (`lib/staleness-tick.ts`'s `deriveLiveStaleForS`, the last poll's own base + elapsed client
+   *  seconds since it was received) so it grows smoothly instead of freezing at the last-polled number
+   *  for up to the full poll-idle interval. Still the SAME single value, re-formatted only by the
+   *  existing `formatStaleAnnotation` — no second poll, no second endpoint, no second formatter. */
   staleForS: number | null;
 }
 
@@ -74,6 +81,13 @@ export function ReadinessProvider({ children }: { children: React.ReactNode }) {
   // freshest value without re-subscribing.
   const activeMs = useRef(BOOTSTRAP_ACTIVE_MS);
   const idleMs = useRef(BOOTSTRAP_ACTIVE_MS);
+  // ops-hardening iter-78 — the last poll's own `stale_for_s` base and the client wall-clock time (ms
+  // since epoch) it was RECEIVED at, so the 1-second tick below can re-derive a live value between
+  // polls without re-fetching or re-subscribing. Refs (not state): the tick interval reads the freshest
+  // pair on every fire, and writing them never itself needs to trigger a render (setStaleForS below does
+  // that instead).
+  const staleBaseRef = useRef<number | null>(null);
+  const staleReceivedAtMsRef = useRef<number | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -90,6 +104,10 @@ export function ReadinessProvider({ children }: { children: React.ReactNode }) {
         setBackgroundCompute(data.background_compute);
         setPollIdleIntervalSeconds(data.poll_idle_interval_seconds);
         setStaleForS(data.stale_for_s);
+        // record this poll's own base + receipt time for the 1-second tick effect below to derive
+        // from between now and the next poll landing.
+        staleBaseRef.current = data.stale_for_s;
+        staleReceivedAtMsRef.current = Date.now();
         // adopt the config-derived poll cadences (seconds → ms); never a client-side literal.
         activeMs.current = Math.max(250, Math.round(data.poll_interval_seconds * 1000));
         idleMs.current = Math.max(activeMs.current, Math.round(data.poll_idle_interval_seconds * 1000));
@@ -103,6 +121,8 @@ export function ReadinessProvider({ children }: { children: React.ReactNode }) {
         setBackgroundCompute(null); // honest — readers render their own empty/idle state, never fabricated
         setPollIdleIntervalSeconds(null); // honest — a caller's own idle-refresh loop must not schedule on this
         setStaleForS(null); // honest — never render a stale/fabricated "as of Ns ago" for a failed poll
+        staleBaseRef.current = null; // honest — the tick effect must not resume ticking a stale base
+        staleReceivedAtMsRef.current = null;
         nextDelay = activeMs.current; // keep retrying at the active cadence until the backend answers
       } finally {
         if (active) {
@@ -117,6 +137,19 @@ export function ReadinessProvider({ children }: { children: React.ReactNode }) {
       active = false;
       if (timer) clearTimeout(timer);
     };
+  }, []);
+
+  // ops-hardening iter-78 (iter-77/d) — a separate, independent 1-second interval that re-derives the
+  // LIVE staleness value from the last poll's own base + elapsed client time (`deriveLiveStaleForS`),
+  // so the badge/banner annotation grows smoothly between polls instead of freezing at the last-polled
+  // number for up to the full poll-idle interval. Deliberately its own effect (not folded into the poll
+  // loop above): the poll cadence is config-derived and can be tens of seconds; this tick is a fixed,
+  // purely client-side re-render cadence that never itself fetches or schedules a poll.
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setStaleForS(deriveLiveStaleForS(staleBaseRef.current, staleReceivedAtMsRef.current, Date.now()));
+    }, 1_000);
+    return () => clearInterval(interval);
   }, []);
 
   const value = useMemo<ReadinessContextValue>(

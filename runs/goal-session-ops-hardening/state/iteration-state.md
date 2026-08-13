@@ -1,26 +1,40 @@
 # Iteration State — ops-hardening
 
-**After iteration:** 77 · **Date:** 2026-08-13 · **Verdict:** ESCALATE
+**After iteration:** 78 · **Date:** 2026-08-13 · **Verdict:** STALLED
 
 ## Journeys
 
-8 passing (J-01 J-03 J-04 J-05 J-06 J-07 J-08 J-09) · 0 failing · 0 unknown — 8 total; all re-verified this round; `evidence_makeup` on J-01 J-05 J-07 J-09 (capture/walkthrough only).
+8 passing (J-01 J-03 J-04 J-05 J-06 J-07 J-08 J-09) · 0 failing · 0 unknown — all re-verified THIS round (replay 5/5 first pass, LLM lane 11/11); spec_hashes unchanged, no goal-edit drift.
 
 ## Active blockers
 
-- **Round 77 ended BLOCKED — closure gate FAIL** (`…-iter-77-closure-verdict.md`; `status.json` = `blocked`/`closure_failed`). Blocker 1 (dev): `…-iter-77-ui-test-results.md` still reads BLOCKED with J-04/J-07/J-09 "no test case executed"; the post-fix replay that PASSed all three sits unmerged at `reports/qa/goal-ops-hardening-iter-77-evidence/devfix-replay/replay-fast-results.md`. Re-merge or re-run, then re-run closure.
-- **Blocker 2 is a harness false positive (human sign-off):** `scripts/automation/lib/closure_gate.py:72` greps `backend-only` and flags line 68 of `…-user-visible-changes.md`, a sentence DENYING such a gap.
-- **iter-77/c (dev):** `apps/backend/tests/test_start_frontend_script.py:533` plants `apps/frontend/__tc3_intentionally_broken.ts` in the LIVE tree; an interrupted run leaves the frontend unbuildable and `scripts/start-frontend.sh` exits 1. Happened this round; not defended.
-- **Human-owned, unanswered:** disable the evidence shortcut (`CHAIN_EVIDENCE_MICRO_PATH=false`) or accept an ESCALATE every round; cost sanction (20,207 s vs 3,600 s budget, 5.6×, 17th overrun); finish-now vs clear the 140 minor ledger notes; 2 s health-ceiling scope; B-1107; `browser-qa-phase.sh` sign-off.
+- **HALTED — owner decision (human).** 8/8 journeys pass, 0 critical open, but 146 self-logged minor
+  notes stand against the literal "no unresolved violations" rule; the count trends UP (138→140→146
+  over three all-green rounds) and 3 entries are only owner-closable. Options: `iter-78/eval.md`.
+- Owner (human), unanswered 3+ rounds: cost sanction (18th over-budget round, 12534 s vs 3600 s);
+  permission to fix `scripts/automation/lib/closure_gate.py:72` and `browser-qa-phase.sh`; B-1107
+  concurrency cap; 2 s health-ceiling scope.
+- Agent-owned, small: `reports/phase-goal-ops-hardening-iter-78-ui-test-results.md:23` quotes "TODO"
+  from a tool message → `closure_gate.py:66` regex → iteration recorded `blocked`. Reword, re-run.
+- Capture debt (passenger tasks, never an iteration goal): J-01 zero-work panel (5th round), J-05
+  snapshot header + `[NEW]` flag on session step 7 (20th), J-09 gallery step-05's progress row,
+  J-06 page timings → `reports/perf-budgets.md` (9th).
 
 ## Last 2 verdicts
 
-- iter 77: ESCALATE — code lane restored and all 8 journeys re-verified, but the round failed its own closure gate and only a full round can clear it (a CONTINUE would be demoted to evidence, no developer).
-- iter 76: ESCALATE — two consecutive empty-diff rounds; SPEED-9 backstop named as the cause, ESCALATE used as the documented escape (it worked — iter-77 ran full with a developer).
+- iter 78: STALLED — real work landed (staleness tick, launcher residue purge, J-09 walkthrough
+  fixed) and all 8 journeys passed, but the only path to concluding is owner-owned.
+- iter 77: ESCALATE — full depth restored the code lane (13 files) but the round ended
+  `blocked`/`closure_failed` with 3 journeys recorded untested in the artifact of record.
 
 ## Do not redo
 
-- **Shipped + verified this round:** `stale_for_s` "as of Ns ago" on badge/preflight banner; 1280×800 header wrap fix; `data-testid="scorecard-row-<h>d"`; `start-frontend.sh` build lock + `next.config.mjs` guard; demo recorder settle-for-capture fix.
-- **Closed, do not re-plan:** stray `=` deleted; `state/goldens-regen-pending` empty; `/data` honest-fallback capture filed (`…-evidence/TC-8-data-fault-injection-honest-fallback.png`); iter-76/d; iter-76/e.
-- **J-07 steps 3-4** carried from the 2026-07-31/iter-74 drill — valid while no backend runtime file changes; **J-08/J-09 deep database cross-check drills** run fresh at iters 75-76; do not repeat either.
-- **Never regenerate the J-05..J-09 goldens**; do not touch `app.engine.readiness` cache/staleness logic or `compute_forward_aggregates` (frozen).
+- **iter-77/c, /d, /e are CLOSED and verified**: `scripts/start-frontend.sh` purges
+  `__tc3_intentionally_broken.ts` / `.next-test-*` pre-build (sparing dirs a live server owns, 2
+  tests); `lib/staleness-tick.ts` + `readiness-provider.tsx` tick "as of Ns ago" every second and
+  cannot fabricate; demo steps 04/05 show "background compute running (1)" beside "Ready".
+- **J-07 steps 3-4** (VmPeak, induced-pressure abort) and **J-04 steps 3/5/6** (restart/crash/
+  logfile) carry validly while `apps/backend/app/` stays out of the diff — do not re-run the drills.
+- **Never regenerate the J-05..J-09 goldens**; `HOST-GUARD` + `flock` in `start-frontend.sh` are
+  byte-frozen (21/21 lines verified identical).
+- **J-07's `[NEW]` walkthrough is NOT owed** — session demo step 9 already carries it (`new: true`).

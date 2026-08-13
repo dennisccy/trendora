@@ -1,0 +1,24 @@
+{
+  "phase": "goal-ops-hardening-iter-78",
+  "status": "blocked",
+  "current_step": "closure_failed",
+  "updated_at": "2026-08-13T19:08:52.627307Z",
+  "started_at": "2026-08-13T15:53:30.155726Z",
+  "cli": "claude",
+  "blockers": [],
+  "changed_files": [
+    "incredible_auto_dev/scripts/start-frontend.sh",
+    "apps/backend/tests/test_start_frontend_script.py",
+    "incredible_auto_dev/scripts/automation/lib/demo_runner.py",
+    "apps/frontend/components/readiness-provider.tsx",
+    "apps/frontend/lib/staleness-tick.ts",
+    "apps/frontend/lib/staleness-tick.test.ts",
+    "docs/handoffs/goal-ops-hardening-iter-78-dev.md",
+    "docs/handoffs/goal-ops-hardening-iter-78-frontend.md",
+    "reports/phase-goal-ops-hardening-iter-78-implementation-summary.md"
+  ],
+  "tests_run": true,
+  "browser_checks_run": true,
+  "qa_verdict": "PASS",
+  "next_action": "finalize"
+}

@@ -1034,3 +1034,38 @@ record, not beside it. Corollary found the same way: `closure_gate.py:72`'s back
 bare substring match and false-positives on a sentence that DENIES a backend-only gap.
 **Applies to:** any fix-mode pass that re-runs browser-qa or the replay lane; any iter reading a
 closure verdict; anyone editing `scripts/automation/lib/closure_gate.py`.
+
+## iter-78 — 2026-08-13T19:30:00Z
+
+**Verdict:** STALLED
+**Lesson:** A carried "still owed" item can be false and stay false for twenty rounds. Every recent
+log repeated "the `[NEW]` walkthroughs for J-05 and J-07 are owed"; opening
+`reports/goal-session-ops-hardening-demo.json` showed step 9 IS a `new: true, verified: true` J-07
+step, and the journey's acceptance only requires it be *viewable via* `demo.sh <sid> --session-live`
+(a live run), not recorded into a frame gallery. J-05's step 7 genuinely is not `[NEW]`-flagged, so
+half the carry was real and half was folklore.
+**Applies to:** any evaluator or decomposer about to copy a "carried, Nth round owed" list forward —
+re-open the artifact for at least the oldest items before restating them.
+
+## iter-78 — 2026-08-13T19:31:00Z
+
+**Verdict:** STALLED
+**Lesson:** `closure_gate.py:66`'s placeholder regex (`\bTODO\b|\bTBD\b|<fill|…`) matches the token
+anywhere in a UI-visibility artifact, including inside a QUOTED tool message. This round's browser-qa
+row honestly quoted Chrome-MCP's own file contents ("TODO: Console logging not yet implemented") and
+that single quotation failed the closure gate and left the whole iteration recorded
+`blocked`/`closure_failed` — a complete artifact rejected for a word it was reporting, not authoring.
+**Applies to:** browser-qa-agent, qa and any agent writing `reports/phase-*-{ui-test-results,
+implementation-summary,user-visible-changes,ui-surface-map,ui-test-plan,what-to-click}.md` — paraphrase
+tool messages containing TODO/TBD/XXX rather than quoting them verbatim.
+
+## iter-78 — 2026-08-13T19:32:00Z
+
+**Verdict:** STALLED
+**Lesson:** An acceptance criterion that a thorough audit keeps adding to cannot be driven to zero by
+working harder: this session's unresolved-note count went 138 → 140 → 146 across three rounds in which
+all eight journeys passed every time, because each round's own auditing opens more notes than the round
+closes. When the count trends UP across rounds with no failing journeys, the criterion — not the work —
+is the blocker, and that is an owner decision, not another iteration.
+**Applies to:** any goal-mode session whose journeys are all green while a self-maintained violation
+ledger keeps growing; check the trend across the last three rounds before recommending "one more round".
