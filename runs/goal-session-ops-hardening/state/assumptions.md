@@ -1318,3 +1318,19 @@ thing carrying the news.
 returns to `passing` in that same round, no other step needing re-work) or shows a thin one (the fix
 is a `cache_size`/`pool_size` adjustment). Both the raw poll CSV and the pool/page-cache arithmetic
 are preserved in this round's `eval.md`, the J-07 gap field and ledger entry iter-72/a.
+
+## iter-73 — goal-decomposer
+
+**Ambiguity:** J-07 step 3 requires recording the VmPeak margin against `server.memory_cap_mb` but
+does not state a numeric threshold for when a measured margin is "thin" enough to obligate lowering
+`pragmas.cache_size`/`pool_size`/`max_overflow`, versus acceptable as recorded.
+
+**We chose:** treat <20% headroom (peak VmPeak > 80% of `memory_cap_mb`) as thin, obligating a config
+reduction; ≥20% is left unchanged with the addendum stating so explicitly. Grounds: (1) the existing
+`config.yaml`/`config.py` calibration note for this SAME cap already anchors two comparable numbers —
+the isolated warm's ~45% margin and the ~27% clearance over the iter-42 concurrent-death point — 20%
+sits below both as a conservative floor, not an invented precision; (2) it gives the evaluator a
+binary, mechanically-checkable criterion (D6) instead of a judgment call re-litigated every round.
+
+**Reversible:** yes — a later round can tighten or loosen the 20% floor with one round's own evidence
+that it is too strict or too loose.
