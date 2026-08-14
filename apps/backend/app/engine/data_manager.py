@@ -2503,6 +2503,22 @@ class JobProgress:
     # heartbeat is stamped on every progress mutation via `_tick`.
     current_activity: str = ""
     last_progress_at: datetime = field(default_factory=_utcnow)
+    # The FINALIZE-TAIL disclosure pair. `current_activity` above describes the SCAN loop and is
+    # deliberately left frozen once that loop ends (`_refresh_ingest_aggregates` ticks the heartbeat
+    # WITHOUT an activity argument, so an in-flight "scanning ..." line is never overwritten mid-scan —
+    # the iter-4 F1 choice). That is honest during the scan and a lie after it: a backfill measured live
+    # (run 530, 2026-08-14) spent 15m22s in the finalize tail with the bar pinned at 8/8, the message
+    # reading "snapshots 8/8 dates", and `current_activity` still claiming "scanning 2026-08-12 (8/8)" —
+    # while the stale-heartbeat heuristic ALSO fired "possibly stalled" inside the single 511s
+    # `factor_lab_all_warm` call. The card simultaneously read "done" and "stuck" on a perfectly healthy
+    # job, which is why it looked like the backfill never finished.
+    #
+    # These two fields name the finalize phase actually executing and when it started, so the UI can
+    # render a moving, truthful "Finalizing: <phase> · <elapsed>" instead. Empty/None whenever no
+    # finalize phase is in flight (including for a job that never runs the hook), so absence is honest
+    # rather than a fabricated idle label. `current_activity` semantics are UNCHANGED.
+    finalize_phase: str = ""
+    finalize_phase_started_at: Optional[datetime] = None
     # J-59: the set of COMPLETED pipeline stages (fetch / screen / backfill), mirrored to the durable
     # checkpoint's `completed_stages_json` so a Resume can route straight to the backfill stage with ZERO
     # provider calls. Seeded from the checkpoint on a resume.
@@ -2560,6 +2576,25 @@ class JobProgress:
         self.last_progress_at = _utcnow()
         if activity is not None:
             self.current_activity = activity
+
+    def enter_finalize_phase(self, phase: str) -> None:
+        """Name the finalize-tail phase now executing and stamp when it started, so the UI can render a
+        truthful, moving "Finalizing: <phase> · <elapsed>" while the scan-loop fields sit complete.
+
+        Also stamps the heartbeat (a phase boundary IS real progress). It deliberately does NOT touch
+        `current_activity`: that line belongs to the scan loop, and the finalize disclosure is a separate,
+        additive signal — see the field declarations for why the frozen scan line was the defect.
+        `finalize_phase_started_at` is re-stamped on EVERY phase, so the elapsed the UI shows is always
+        time-in-THIS-phase, never time-since-the-tail-began."""
+        self.finalize_phase = phase
+        self.finalize_phase_started_at = _utcnow()
+        self.last_progress_at = self.finalize_phase_started_at
+
+    def clear_finalize_phase(self) -> None:
+        """Drop the finalize disclosure once no phase is executing — absence is the honest signal, never a
+        lingering label for work that already finished."""
+        self.finalize_phase = ""
+        self.finalize_phase_started_at = None
 
     def _recount_symbols(self) -> None:
         """Derive the distinct ok / failed counters from the dedup sets (J-66): a symbol that EVER
@@ -2666,6 +2701,12 @@ class JobProgress:
             # honest descriptive metadata — never fabricated.
             "current_activity": self.current_activity,
             "last_progress_at": self.last_progress_at.isoformat() if self.last_progress_at else None,
+            # The finalize-tail disclosure pair (see the field declarations). Both null/empty unless a
+            # finalize phase is executing right now — never a fabricated "idle" label.
+            "finalize_phase": self.finalize_phase,
+            "finalize_phase_started_at": (
+                self.finalize_phase_started_at.isoformat() if self.finalize_phase_started_at else None
+            ),
             # J-59: the completed pipeline stages (so the UI can render "failed at backfill — resumable
             # from the backfill stage" and the resume routes correctly).
             "completed_stages": list(self.completed_stages),
@@ -4216,12 +4257,77 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
     was actually measured)."""
     refreshed: list[str] = []
     prog.tick()  # F1 fix: heartbeat-only stamp at the start of the finalize tail — see docstring above.
+    # The scan loop is over, so its "<n>/<n> dates" message — rendered beside a bar that is now visually
+    # FULL — is the only thing the card says while this tail runs. Say what is actually happening instead;
+    # `_run_job`'s `finally` still overwrites this with `_final_summary` at completion, so the persisted
+    # run summary is unchanged.
+    if prog.dates_total:
+        prog.message = f"{prog.dates_done}/{prog.dates_total} dates · finalizing"
 
     if prog.new_snapshot_dates:
         # this run's own date-loop already created + committed these snapshots (scanner.persist_run_payload
         # / run_scan, inside `_do_backfill._persist`) before this hook runs — nothing further to compute
         # here; just acknowledge honestly that a fresh snapshot now exists.
         refreshed.append("latest_snapshot")
+
+    # ops-hardening iter-56 (J-06 closure): warm `AvailabilityCache`'s single dataset-version-keyed row
+    # for `GET /api/data/availability`'s per-trading-date heatmap (`compute_availability` — an unbounded,
+    # uncached full-history `GROUP BY daily_prices.date` scan on EVERY request, measured 15.1-21.2s live
+    # against the <=1.5s budget on the grown 8.37 GB dev DB, `reports/perf-budgets.md` Addendum 18/20).
+    # Unconditional (not gated on `prog.new_snapshot_dates`), because the `_membership_dataset_version`
+    # stamp is GLOBAL — ANY ingest that lands a bar or a snapshot, anywhere, must invalidate it, so a
+    # bars-only FETCH and a snapshots-only BACKFILL are both covered by this one call with no branching.
+    # A single-key warm (never a per-as-of sweep): `compute_availability` has no as-of parameter, so there
+    # is exactly one row to keep fresh, mirroring `MembershipTimelineCache`'s single-row convention.
+    # `availability_cached_with_status` lives in THIS SAME module (unlike
+    # `indexes.index_series_cached_with_status`), so no deferred import is needed to break a module-load
+    # cycle.
+    #
+    # POSITION IS LOAD-BEARING — this runs FIRST in the finalize tail, ahead of `cache_ctx` and every
+    # heavy phase below, for two independent reasons:
+    #
+    #   (1) Liveness. It is the CHEAPEST phase here (1.09s measured live) and it used to sit second-to-
+    #       last, behind `forward_aggregates_warm` alone at 95.57s and a tail running into minutes. A
+    #       backend restart or a crash anywhere in that window lost the refresh entirely while the job's
+    #       bars stayed committed — leaving `GET /api/data/availability` serving a calendar SHORT of dates
+    #       that `GET /api/data`'s coverage block already reported (observed live 2026-08-14: 5,391 vs
+    #       5,398 trading days, the 7 dates 2026-08-05..08-13, served with `stale: False` because no job
+    #       was still running). `AvailabilityCache`'s ONLY other writer is `warmup._warm_availability`
+    #       (the boot safety net), so nothing repaired it until the next completed ingest. Running first
+    #       means the heatmap is correct within ~1s of the job's writes committing, and every later phase
+    #       may now fail, hang, or be killed without stranding it.
+    #   (2) Correctness. `compute_availability` -> `_trading_days` -> `prices.bars_asof` PREFERS an
+    #       attached `_BarCache` when one is bound to this session id, and the `cache_ctx` below attaches
+    #       `_do_backfill`'s cache — which was prefilled at JOB START. Computing inside it could persist a
+    #       job-start calendar under the post-job `_membership_dataset_version` stamp: a stale payload
+    #       wearing a fresh stamp, which by construction never re-invalidates. Reading the DB directly
+    #       here removes that split-brain. The cost is one uncached `_trading_days` query, already
+    #       included in the 1.09s measurement above.
+    #
+    # iter-8 MemoryError-isolation convention: caught distinctly from the generic exception below, stops
+    # immediately (a single key, not a loop — nothing further to attempt) and calls
+    # `_release_process_memory()` before moving on to the next aggregate category.
+    # "availability_heatmap" is appended ONLY when this call actually persisted a new row this run
+    # (`persisted` is False on a cache HIT — an honest "was skipped" omission, never a fabricated refresh,
+    # mirroring every other category's honesty gate). `refreshed` is consumed as a SET of category names
+    # (`aggregates_refreshed`), never as an ordered sequence, so leading it here changes no contract.
+    prog.enter_finalize_phase("availability heatmap")
+    _phase_t0 = time.monotonic()
+    try:
+        _, availability_persisted = availability_cached_with_status(session, cfg)
+        if availability_persisted:
+            refreshed.append("availability_heatmap")
+    except MemoryError as exc:
+        _log_isolation_failure(
+            "ingest availability-heatmap warm aborted — memory pressure: %s", exc,
+        )
+        _release_process_memory()
+    except Exception as exc:  # noqa: BLE001 — non-fatal: log + continue to the next aggregate
+        _log_isolation_failure("ingest availability-heatmap warm failed (non-fatal): %s", exc)
+    logger.info(
+        "J-05 finalize-tail phase timing: job=%s phase=%s elapsed=%.2fs",
+        prog.job_id, "availability_heatmap_warm", time.monotonic() - _phase_t0,
+    )
 
     # ops-hardening iter-37 (J-07 closure): attach `_do_backfill`'s already-loaded shared `_BarCache` (if
     # any — stashed on `prog`, see `_do_backfill`'s own docstring) to THIS session for the WHOLE finalize
@@ -4272,6 +4378,7 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
             # what lets a live log answer "which step(s) actually dominate wall-clock time" for a SPECIFIC
             # job without guessing (the iter-47 dev handoff's own next-step ask). Each phase's `_phase_t0`
             # is set immediately before that phase's own `try:` and read immediately after its block ends.
+            prog.enter_finalize_phase("coverage & membership timeline")
             _phase_t0 = time.monotonic()
             try:
                 # ops-hardening iter-46 FIX PASS (QA blockers 1 + 4 — J-01/J-03): gate this refresh on the
@@ -4363,6 +4470,7 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
             # (no new one); own try/except (log + continue) so it never flips the job. Skips the current
             # stamp (persisted above) and is a no-op — no bar-cache load — for the common single-latest-
             # date backfill.
+            prog.enter_finalize_phase("per-date coverage")
             _phase_t0 = time.monotonic()
             try:
                 _persist_per_date_coverage_snapshots(session, cfg, prog.new_snapshot_dates, prog)
@@ -4373,6 +4481,7 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
                 prog.job_id, "per_date_coverage_warm", time.monotonic() - _phase_t0,
             )
 
+            prog.enter_finalize_phase("market phase")
             _phase_t0 = time.monotonic()
             market_phase_warmed = False
             for d in prog.new_snapshot_dates:
@@ -4416,6 +4525,7 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
             # operation instead of the intended fix. A user-navigated HISTORICAL as-of on `/backtest` still
             # computes-once-and-caches on first view (the same cold-miss contract EventStudyCache/
             # MarketPhaseCache already carry) — never pre-warmed here.
+            prog.enter_finalize_phase("forward aggregates")
             _phase_t0 = time.monotonic()
             try:
                 latest_run_date = scanner._latest_stored_run_date(session)
@@ -4432,7 +4542,12 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
                     # run, not merely "at least one did."
                     _forward_horizons_total = len(cfg.walk_forward.horizons)
                     _forward_horizons_completed = 0
-                    for h in cfg.walk_forward.horizons:
+                    for _h_i, h in enumerate(cfg.walk_forward.horizons, start=1):
+                        # Re-label per horizon so the disclosed phase MOVES inside this multi-minute block
+                        # (5 × ~19.7s measured) instead of sitting on one static "forward aggregates".
+                        prog.enter_finalize_phase(
+                            f"forward aggregates (horizon {h}, {_h_i}/{_forward_horizons_total})"
+                        )
                         prog.tick()  # F1-style heartbeat stamp before each horizon's compute (a cold-cache
                                      # compute here can take up to ~35s pre-warm; 5 sequential horizons could
                                      # otherwise freeze the heartbeat for minutes without a per-horizon tick).
@@ -4496,23 +4611,6 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
                 prog.job_id, "forward_aggregates_warm", time.monotonic() - _phase_t0,
             )
 
-            _phase_t0 = time.monotonic()
-            try:
-                subjects = subject_catalog(cfg)
-                if subjects:
-                    # the SAME default (first catalog subject, config default_horizon, episodes view,
-                    # all-history) a fresh `/research/event-study` page load with no query params would
-                    # request — the one hot key worth warming at ingest (goal.md: "warm default
-                    # (subject,horizon,all-history) keys").
-                    event_study_cached(session, subjects[0]["key"], cfg.walk_forward.default_horizon, cfg)
-                    refreshed.append("research_hot_keys")
-            except Exception as exc:  # noqa: BLE001 — non-fatal: log + continue
-                _log_isolation_failure("ingest research hot-key warm failed (non-fatal): %s", exc)
-            logger.info(
-                "J-05 finalize-tail phase timing: job=%s phase=%s elapsed=%.2fs",
-                prog.job_id, "research_hot_keys_warm", time.monotonic() - _phase_t0,
-            )
-
             # ops-hardening iter-13 (J-06, aggregation candidate #7): warm the SINGLE unparameterized default
             # hot key for `GET /api/indexes` (`range_key=cfg.index_chart.default_range`, `full=True` —
             # `PhaseCrossViewCard` on `/` and `IndexVendorPanel` on `/data` both request exactly this,
@@ -4532,6 +4630,7 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
             # appended ONLY when this call actually persisted a new row this run (`persisted` is False on a
             # cache HIT — an honest "was skipped" omission, never a fabricated refresh, mirroring every other
             # category's honesty gate above).
+            prog.enter_finalize_phase("index series")
             _phase_t0 = time.monotonic()
             try:
                 # ops-hardening iter-44 AUDIT (B2): the deferred import stays INSIDE this block's guards.
@@ -4560,241 +4659,6 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
                 prog.job_id, "index_series_warm", time.monotonic() - _phase_t0,
             )
 
-            # ops-hardening iter-56 (J-06 closure): warm `AvailabilityCache`'s single dataset-version-
-            # keyed row for `GET /api/data/availability`'s per-trading-date heatmap (`compute_availability`
-            # — an unbounded, uncached full-history `GROUP BY daily_prices.date` scan on EVERY request,
-            # measured 15.1-21.2s live against the <=1.5s budget on the grown 8.37 GB dev DB,
-            # `reports/perf-budgets.md` Addendum 18/20). Mirrors `index_series_warm` immediately above:
-            # unconditional (not gated on `prog.new_snapshot_dates`), because the `_membership_dataset_
-            # version` stamp is GLOBAL — ANY ingest that lands a bar or a snapshot, anywhere, must
-            # invalidate it. A single-key warm (never a per-as-of sweep): `compute_availability` has no
-            # as-of parameter, so there is exactly one row to keep fresh, mirroring `MembershipTimelineCache`'s
-            # single-row convention. `availability_cached_with_status` lives in THIS SAME module (unlike
-            # `indexes.index_series_cached_with_status`), so no deferred import is needed to break a
-            # module-load cycle.
-            #
-            # iter-8 MemoryError-isolation convention: caught distinctly from the generic exception below,
-            # stops immediately (a single key, not a loop — nothing further to attempt) and calls
-            # `_release_process_memory()` before moving on to the next aggregate category.
-            # "availability_heatmap" is appended ONLY when this call actually persisted a new row this run
-            # (`persisted` is False on a cache HIT — an honest "was skipped" omission, never a fabricated
-            # refresh, mirroring `index_series_warm`'s own honesty gate above).
-            _phase_t0 = time.monotonic()
-            try:
-                _, availability_persisted = availability_cached_with_status(session, cfg)
-                if availability_persisted:
-                    refreshed.append("availability_heatmap")
-            except MemoryError as exc:
-                _log_isolation_failure(
-                    "ingest availability-heatmap warm aborted — memory pressure: %s", exc,
-                )
-                _release_process_memory()
-            except Exception as exc:  # noqa: BLE001 — non-fatal: log + continue to the next aggregate
-                _log_isolation_failure("ingest availability-heatmap warm failed (non-fatal): %s", exc)
-            logger.info(
-                "J-05 finalize-tail phase timing: job=%s phase=%s elapsed=%.2fs",
-                prog.job_id, "availability_heatmap_warm", time.monotonic() - _phase_t0,
-            )
-
-            # ops-hardening iter-51 (J-05/J-06/J-07): warm the Factor Lab's default all-history hot key
-            # (`factor_lab_all_cached` -> `compute_factor_lab_all`, the SAME `EventStudyCache` sentinel
-            # namespace `research_hot_keys_warm` above uses for the event-study default key) so
-            # `GET /api/research/factor-lab?all=true`'s first post-ingest view is always a stored-row cache
-            # HIT — never the 578-875s live compute the iter-50 audit measured on the request path (its own
-            # verbatim recommendation: "serve /research/factor-lab from an ingest-time artifact instead of
-            # computing it on the request path"). Unconditional (not gated on `prog.new_snapshot_dates`),
-            # mirroring `forward_aggregates`/`index_series` above: the dataset-version stamp is GLOBAL, so
-            # ANY ingest anywhere can invalidate the one all-history key. A single default-key warm (never a
-            # per-as-of sweep), mirroring `research_hot_keys_warm`'s own "warm default keys only" philosophy.
-            #
-            # `prog.tick()` stamps the heartbeat immediately before this call — this single call can itself
-            # run for several minutes (measured 578-875s cold-MISS, `reports/perf-budgets.md` Addendum 8),
-            # so a tick right before it starts keeps `last_progress_at` from reading stale relative to the
-            # OTHER per-item loops in this tail, mirroring their own per-item tick convention.
-            #
-            # Honesty gate: `factor_lab_all_cached` never lets a MemoryError from `compute_factor_lab_all`
-            # escape — it catches it INTERNALLY and returns an honest degraded payload (`factors_status:
-            # "unavailable"`, or a per-(factor,horizon) `by_horizon[].status: "unavailable"`) WITHOUT
-            # persisting to `EventStudyCache` (see that function's own "never cached" degrade contract). So
-            # "the call didn't raise" is NOT sufficient proof a fresh row was written — this phase inspects
-            # the SAME degrade signals `factor_lab_all_cached` uses internally before claiming the category,
-            # mirroring `index_series_warm`'s "persisted this run" honesty gate just above (never a
-            # fabricated refresh for a degraded response). The outer `except MemoryError`/`except Exception`
-            # below still guard the rarer case of a MemoryError escaping BEFORE that internal catch (e.g.
-            # the dataset-version stamp read) — mirroring every other phase's per-item isolation convention.
-            _phase_t0 = time.monotonic()
-            try:
-                prog.tick()
-                factor_lab_all_payload = factor_lab_all_cached(session, cfg, as_of=None)
-                _factor_lab_all_degraded = (
-                    factor_lab_all_payload.get("factors_status") == "unavailable"
-                    or any(
-                        bh.get("status") == "unavailable"
-                        for entry in factor_lab_all_payload.get("factors_table", [])
-                        for bh in entry.get("by_horizon", [])
-                    )
-                )
-                if not _factor_lab_all_degraded:
-                    refreshed.append("factor_lab_all")
-            except MemoryError as exc:
-                _log_isolation_failure(
-                    "ingest factor-lab-all warm aborted — memory pressure: %s", exc,
-                )
-                _release_process_memory()
-            except Exception as exc:  # noqa: BLE001 — non-fatal: log + continue to the next aggregate
-                _log_isolation_failure("ingest factor-lab-all warm failed (non-fatal): %s", exc)
-            logger.info(
-                "J-05 finalize-tail phase timing: job=%s phase=%s elapsed=%.2fs",
-                prog.job_id, "factor_lab_all_warm", time.monotonic() - _phase_t0,
-            )
-
-            # ops-hardening iter-7 (J-06 closeout, audit B1): warm the per-claim `drawdown_expectations`
-            # EventStudyCache view slot — the SAME cache slot `build_evidence_payload` looks up lazily via
-            # `forward_testing.compute_drawdown_expectations_cached` on a live `/api/evidence` request.
-            # Without this warm, the FIRST `/evidence` view after any ingest pays a per-claim cold-miss
-            # compute (measured ~73s on the grown live dev DB, reports/perf-budgets.md iter-6 CORRECTION).
-            # Mirrors the `research_hot_keys` block just above: its own top-level try/except (a missing/
-            # corrupt ledger file degrades to zero warm calls — an honest omission, never an exception that
-            # aborts the rest of this finalize hook), the SAME `type == FORWARD_WALK_TYPE` filter `build_
-            # evidence_payload` already applies (a forward-walk record re-scores an existing claim — it is
-            # not itself a claim to warm a panel for), and the SAME `entry.get("claim")` extraction `evidence.
-            # _claim_row` uses (so the cache subject hash matches exactly what `/api/evidence` looks up). A
-            # `prog.tick()` heartbeat stamps before each claim's warm call (mirrors the `forward_aggregates`
-            # per-horizon tick above), and each claim's own try/except (log + continue) means one
-            # unresolvable/erroring claim never blocks another or fails the ingest job.
-            try:
-                ledger_entries = read_entries(evidence.resolve_ledger_path())
-            except Exception as exc:  # noqa: BLE001 — non-fatal: a missing/corrupt ledger degrades to zero
-                                       # warm calls
-                _log_isolation_failure("ingest drawdown-expectations ledger read failed (non-fatal): %s", exc)
-                ledger_entries = []
-
-            _phase_t0 = time.monotonic()
-            drawdown_warmed = False
-            _dd_phases_memory_abort = False
-            # ops-hardening iter-50 (J-07): the shared warm-in-progress guard — this phase and
-            # `warmup._warm_drawdown_expectations` (the boot/re-warm path) must never run their heavy
-            # per-claim loops concurrently in the same process (the second proven-concurrent crash
-            # contributor from iter-49's own traceback read). A loss here is NON-FATAL: `drawdown_warmed`
-            # stays False, so "drawdown_expectations" is honestly omitted from `refreshed` rather than
-            # claimed for work that never ran — this job's OWN next ingest naturally retries.
-            _drawdown_warm_won = _try_acquire_drawdown_warm("ingest_finalize")
-            if _drawdown_warm_won:
-                try:
-                    # ops-hardening iter-49 (J-05, drawdown_expectations_warm bound): `phase_context_by_date`'s
-                    # all-history causal timeline is invariant across every claim in this loop (`as_of=None`
-                    # always, `cfg` unchanged mid-loop) — computed ONCE here and threaded through
-                    # `compute_drawdown_expectations_cached`'s new `phases` parameter, instead of once per claim (7x
-                    # on the live ledger). Own try/except: a NON-MEMORY failure here degrades to every claim
-                    # self-computing its own timeline below (`phases=None` falls back to the SAME per-claim
-                    # behavior `compute_drawdown_expectations` always had) — never a reason to abort the whole warm.
-                    #
-                    # ops-hardening iter-50 (TC-6): skip this precompute ENTIRELY when NO ledger claim
-                    # actually needs (re)computation (every claim is already a cache HIT for the current
-                    # dataset version) — closes the ~23.6-23.9s measured MID health-poll-stall cluster
-                    # (`reports/perf-budgets.md` Item R Addendum 6) for the common case where an ingest's
-                    # own new data never touched any drawdown-expectations claim's cohort. The per-claim
-                    # loop below still runs unconditionally over `ledger_entries` either way (a HIT claim's
-                    # own cached-read cost is unaffected by `phases`) — only this precompute is gated.
-                    if _drawdown_expectations_ledger_needs_recompute(session, ledger_entries, cfg):
-                        try:
-                            _dd_phases = market_phase.phase_context_by_date(session, as_of=None, config=cfg)
-                        # ops-hardening iter-49 AUDIT (finding B3 fix): a `MemoryError` here STOPS this phase — it does
-                        # NOT fall through to the per-claim loop. Falling through set `phases=None`, which makes every
-                        # one of the ledger's claims self-compute its own all-history timeline: degrading under memory
-                        # pressure into the MORE allocating path, i.e. exactly the "hammering the next claim's
-                        # allocation under pressure" the iter-8 convention (see the per-claim handler below) exists to
-                        # prevent. Now this handler matches that convention in full — stop, release memory back to the
-                        # OS, and report honestly: `drawdown_warmed` stays False, so `drawdown_expectations` is omitted
-                        # from `aggregates_refreshed` rather than claimed for work that never ran.
-                        except MemoryError as exc:
-                            _log_isolation_failure(
-                                "ingest drawdown-expectations phase-context warm aborted — memory pressure, stopping "
-                                "the drawdown-expectations warm without attempting any claim: %s", exc,
-                            )
-                            _release_process_memory()
-                            _dd_phases = None
-                            _dd_phases_memory_abort = True
-                        except Exception as exc:  # noqa: BLE001 — non-fatal: fall back to per-claim self-compute
-                            _log_isolation_failure(
-                                "ingest drawdown-expectations phase-context warm failed (non-fatal, falling back to "
-                                "per-claim self-compute): %s", exc,
-                            )
-                            _dd_phases = None
-                    else:
-                        _dd_phases = None
-                        logger.info(
-                            "J-05 finalize-tail drawdown_expectations_warm: phase_context_by_date skipped -- "
-                            "every ledger claim already cache-HIT for the current dataset version (TC-6)"
-                        )
-                    # `()` (never `ledger_entries`) after a memory-pressure abort above — the loop is skipped
-                    # entirely, per the iter-8 stop convention. Every other outcome (success, a skipped
-                    # precompute, or a non-memory precompute failure that degraded to `phases=None`)
-                    # iterates the ledger exactly as before.
-                    for entry in (() if _dd_phases_memory_abort else ledger_entries):
-                        if not isinstance(entry, dict) or entry.get("type") == FORWARD_WALK_TYPE:
-                            continue
-                        claim = entry.get("claim") if isinstance(entry.get("claim"), dict) else {}
-                        prog.tick()  # heartbeat stamp before each claim's warm call — see docstring above.
-                        # ops-hardening iter-49 (J-05/J-07 TC-2): a stable, honest per-claim identity for the
-                        # sub-phase timing log below — kind + the claim's own discriminating selector (factor /
-                        # event-study subject / combination cohort) + horizon, NEVER a raw loop index (an index is
-                        # not diagnostic across runs whose ledger order can change).
-                        _claim_id = "{}:{}:h{}".format(
-                            claim.get("kind", "?"),
-                            claim.get("factor") or claim.get("subject") or claim.get("cohort")
-                            or claim.get("signal") or "?",
-                            claim.get("horizon", "?"),
-                        )
-                        _claim_t0 = time.monotonic()
-                        try:
-                            try:
-                                # iter-39 (audit B3 / J-07 step 4): test-only injection point — see
-                                # `_fault_inject_memory_error` (a no-op unless this process names this site in the
-                                # env).
-                                _fault_inject_memory_error("drawdown_expectations")
-                                result = forward_testing.compute_drawdown_expectations_cached(
-                                    session, claim, cfg, phases=_dd_phases,
-                                )
-                                # gate on an ACTUAL non-None payload (never just "the call didn't raise") — an
-                                # out-of-scope horizon or an unresolvable cohort returns None honestly and must NOT
-                                # be reported as refreshed (mirrors the `market_phase`/`research_hot_keys` "actually
-                                # did something" convention above).
-                                if result is not None:
-                                    drawdown_warmed = True
-                            # ops-hardening iter-8 (J-05 REGRESSION fix): distinct from the generic per-claim
-                            # isolate-and-continue below — a `MemoryError` stops THIS loop immediately (no further
-                            # claims attempted) and forces memory back to the OS, instead of hammering the next
-                            # claim's allocation under pressure. `drawdown_warmed` already honestly reflects any
-                            # claim that succeeded before the abort.
-                            except MemoryError as exc:
-                                _log_isolation_failure(
-                                    "ingest drawdown-expectations warm aborted — memory pressure, stopping "
-                                    "remaining claims in this loop: %s", exc,
-                                )
-                                _release_process_memory()
-                                break
-                            except Exception as exc:  # noqa: BLE001 — non-fatal: log + continue to the next claim
-                                _log_isolation_failure(
-                                    "ingest drawdown-expectations warm failed for one claim (non-fatal): %s", exc
-                                )
-                        finally:
-                            # per-claim sub-phase timing (TC-2), additive to the whole-phase log line below (byte-
-                            # for-byte unchanged) — logged in a `finally` so it fires on success, MemoryError
-                            # (before the `break` takes effect), or any other isolated per-claim failure.
-                            logger.info(
-                                "J-05 finalize-tail sub-phase timing: job=%s phase=%s claim=%s elapsed=%.2fs",
-                                prog.job_id, "drawdown_expectations_warm", _claim_id,
-                                time.monotonic() - _claim_t0,
-                            )
-                finally:
-                    _release_drawdown_warm()
-            if drawdown_warmed:
-                refreshed.append("drawdown_expectations")
-            logger.info(
-                "J-05 finalize-tail phase timing: job=%s phase=%s elapsed=%.2fs",
-                prog.job_id, "drawdown_expectations_warm", time.monotonic() - _phase_t0,
-            )
     finally:
         # ops-hardening iter-37 (J-07 closure): `_do_backfill` deferred releasing its shared whole-table
         # `_BarCache` (~1.13 GB) until THIS point — every warm call in the `with cache_ctx:` block above is
@@ -4829,6 +4693,10 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
         # bar cache is released — so the boot re-warm never resumes into a process that is still holding
         # this job's peak footprint.
         _exit_ingest_heavy_warm(prog.job_id)
+        # No essential phase is executing any more. `_refresh_deferred_hot_keys` sets its own labels next
+        # (and clears them in its own `finally`), so between the two halves the disclosure is honestly
+        # absent rather than stuck on the last phase that ran.
+        prog.clear_finalize_phase()
 
     # ops-hardening iter-70 (J-07): immediate-refresh trigger for the readiness/preflight background-
     # refresh cache -- the SAME finalize hook every other ingest-time aggregate above already refreshes
@@ -4844,6 +4712,274 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
     readiness_module.trigger_readiness_refresh(session, config=cfg)
 
     return refreshed
+
+
+def _refresh_deferred_hot_keys(session: Session, cfg: Config, prog: JobProgress) -> list[str]:
+    """The ingest finalize tail's DEFERRED half — the UI hot-key caches, warmed AFTER the job has already
+    reported its terminal status. Same per-phase isolation contract as `_refresh_ingest_aggregates` (each
+    category in its own try/except: log + continue; this function itself never raises) and the same honest
+    return value: only the categories ACTUALLY warmed, appended by the caller to the SAME
+    `prog.aggregates_refreshed` list, so the persisted run record still names every category that ran.
+
+    WHY THESE THREE ARE DEFERRED (measured live, run 530 on 2026-08-14 — an 8-date backfill):
+
+        essential set (stays in `_refresh_ingest_aggregates`)   124.6s
+          availability 1.11s · coverage+membership 6.18s · per-date coverage 12.01s
+          · market phase 6.00s · forward aggregates 98.16s · index series 1.16s
+        deferred set (this function)                            796.8s
+          research hot keys 2.10s · factor lab 511.35s · drawdown expectations 283.32s
+
+    The job used to stay `running` for the WHOLE 15m22s tail with its progress bar pinned at 8/8 — 87% of
+    that wait bought nothing the ingest itself produces. These three back `/research/factor-lab`,
+    `/research/event-study` and `/api/evidence`; none is read by `/data`, and `warmup._warm_drawdown_
+    expectations` already warms the drawdown cache at boot, so this path duplicates existing machinery.
+    They recompute over ALL history on every ingest because `research._dataset_version` folds in
+    `count(forward_returns)` (this run inserted 4,808), which is correct invalidation — these views
+    genuinely aggregate realized forward returns — so the lever is WHERE the work runs, not the stamp.
+
+    They are still warmed in-process rather than dropped: `compute_factor_lab_all` on a cold request path
+    was measured at 578-875s by the iter-50 audit, which is exactly the AG-8 request-path compute the
+    ingest-time warm exists to prevent. Deferring moves the cost off the job's critical path; it does not
+    move it onto a user's request.
+
+    Runs WITHOUT `_do_backfill`'s shared `_BarCache`: `_refresh_ingest_aggregates`'s `finally` has already
+    released it (~1.13 GB) by the time this is called, which is a memory win — these phases re-read what
+    they need through the ordinary bounded paths rather than pinning the whole-table load for another 13
+    minutes. Wrapped in its own `_enter_ingest_heavy_warm` window so the boot re-warm keeps yielding to it,
+    and publishes `prog.finalize_phase` throughout so a poller sees `status: ok` alongside an explicit
+    "still warming X" rather than silence."""
+    refreshed: list[str] = []
+    _enter_ingest_heavy_warm(prog.job_id)
+    try:
+
+        prog.enter_finalize_phase("research hot keys")
+        _phase_t0 = time.monotonic()
+        try:
+            subjects = subject_catalog(cfg)
+            if subjects:
+                # the SAME default (first catalog subject, config default_horizon, episodes view,
+                # all-history) a fresh `/research/event-study` page load with no query params would
+                # request — the one hot key worth warming at ingest (goal.md: "warm default
+                # (subject,horizon,all-history) keys").
+                event_study_cached(session, subjects[0]["key"], cfg.walk_forward.default_horizon, cfg)
+                refreshed.append("research_hot_keys")
+        except Exception as exc:  # noqa: BLE001 — non-fatal: log + continue
+            _log_isolation_failure("ingest research hot-key warm failed (non-fatal): %s", exc)
+        logger.info(
+            "J-05 finalize-tail phase timing: job=%s phase=%s elapsed=%.2fs",
+            prog.job_id, "research_hot_keys_warm", time.monotonic() - _phase_t0,
+        )
+
+        # ops-hardening iter-51 (J-05/J-06/J-07): warm the Factor Lab's default all-history hot key
+        # (`factor_lab_all_cached` -> `compute_factor_lab_all`, the SAME `EventStudyCache` sentinel
+        # namespace `research_hot_keys_warm` above uses for the event-study default key) so
+        # `GET /api/research/factor-lab?all=true`'s first post-ingest view is always a stored-row cache
+        # HIT — never the 578-875s live compute the iter-50 audit measured on the request path (its own
+        # verbatim recommendation: "serve /research/factor-lab from an ingest-time artifact instead of
+        # computing it on the request path"). Unconditional (not gated on `prog.new_snapshot_dates`),
+        # mirroring `forward_aggregates`/`index_series` above: the dataset-version stamp is GLOBAL, so
+        # ANY ingest anywhere can invalidate the one all-history key. A single default-key warm (never a
+        # per-as-of sweep), mirroring `research_hot_keys_warm`'s own "warm default keys only" philosophy.
+        #
+        # `prog.tick()` stamps the heartbeat immediately before this call — this single call can itself
+        # run for several minutes (measured 578-875s cold-MISS, `reports/perf-budgets.md` Addendum 8),
+        # so a tick right before it starts keeps `last_progress_at` from reading stale relative to the
+        # OTHER per-item loops in this tail, mirroring their own per-item tick convention.
+        #
+        # Honesty gate: `factor_lab_all_cached` never lets a MemoryError from `compute_factor_lab_all`
+        # escape — it catches it INTERNALLY and returns an honest degraded payload (`factors_status:
+        # "unavailable"`, or a per-(factor,horizon) `by_horizon[].status: "unavailable"`) WITHOUT
+        # persisting to `EventStudyCache` (see that function's own "never cached" degrade contract). So
+        # "the call didn't raise" is NOT sufficient proof a fresh row was written — this phase inspects
+        # the SAME degrade signals `factor_lab_all_cached` uses internally before claiming the category,
+        # mirroring `index_series_warm`'s "persisted this run" honesty gate just above (never a
+        # fabricated refresh for a degraded response). The outer `except MemoryError`/`except Exception`
+        # below still guard the rarer case of a MemoryError escaping BEFORE that internal catch (e.g.
+        # the dataset-version stamp read) — mirroring every other phase's per-item isolation convention.
+        prog.enter_finalize_phase("factor lab")
+        _phase_t0 = time.monotonic()
+        try:
+            prog.tick()
+            factor_lab_all_payload = factor_lab_all_cached(session, cfg, as_of=None)
+            _factor_lab_all_degraded = (
+                factor_lab_all_payload.get("factors_status") == "unavailable"
+                or any(
+                    bh.get("status") == "unavailable"
+                    for entry in factor_lab_all_payload.get("factors_table", [])
+                    for bh in entry.get("by_horizon", [])
+                )
+            )
+            if not _factor_lab_all_degraded:
+                refreshed.append("factor_lab_all")
+        except MemoryError as exc:
+            _log_isolation_failure(
+                "ingest factor-lab-all warm aborted — memory pressure: %s", exc,
+            )
+            _release_process_memory()
+        except Exception as exc:  # noqa: BLE001 — non-fatal: log + continue to the next aggregate
+            _log_isolation_failure("ingest factor-lab-all warm failed (non-fatal): %s", exc)
+        logger.info(
+            "J-05 finalize-tail phase timing: job=%s phase=%s elapsed=%.2fs",
+            prog.job_id, "factor_lab_all_warm", time.monotonic() - _phase_t0,
+        )
+
+        # ops-hardening iter-7 (J-06 closeout, audit B1): warm the per-claim `drawdown_expectations`
+        # EventStudyCache view slot — the SAME cache slot `build_evidence_payload` looks up lazily via
+        # `forward_testing.compute_drawdown_expectations_cached` on a live `/api/evidence` request.
+        # Without this warm, the FIRST `/evidence` view after any ingest pays a per-claim cold-miss
+        # compute (measured ~73s on the grown live dev DB, reports/perf-budgets.md iter-6 CORRECTION).
+        # Mirrors the `research_hot_keys` block just above: its own top-level try/except (a missing/
+        # corrupt ledger file degrades to zero warm calls — an honest omission, never an exception that
+        # aborts the rest of this finalize hook), the SAME `type == FORWARD_WALK_TYPE` filter `build_
+        # evidence_payload` already applies (a forward-walk record re-scores an existing claim — it is
+        # not itself a claim to warm a panel for), and the SAME `entry.get("claim")` extraction `evidence.
+        # _claim_row` uses (so the cache subject hash matches exactly what `/api/evidence` looks up). A
+        # `prog.tick()` heartbeat stamps before each claim's warm call (mirrors the `forward_aggregates`
+        # per-horizon tick above), and each claim's own try/except (log + continue) means one
+        # unresolvable/erroring claim never blocks another or fails the ingest job.
+        try:
+            ledger_entries = read_entries(evidence.resolve_ledger_path())
+        except Exception as exc:  # noqa: BLE001 — non-fatal: a missing/corrupt ledger degrades to zero
+                                   # warm calls
+            _log_isolation_failure("ingest drawdown-expectations ledger read failed (non-fatal): %s", exc)
+            ledger_entries = []
+
+        prog.enter_finalize_phase("drawdown expectations")
+        _phase_t0 = time.monotonic()
+        drawdown_warmed = False
+        _dd_phases_memory_abort = False
+        # ops-hardening iter-50 (J-07): the shared warm-in-progress guard — this phase and
+        # `warmup._warm_drawdown_expectations` (the boot/re-warm path) must never run their heavy
+        # per-claim loops concurrently in the same process (the second proven-concurrent crash
+        # contributor from iter-49's own traceback read). A loss here is NON-FATAL: `drawdown_warmed`
+        # stays False, so "drawdown_expectations" is honestly omitted from `refreshed` rather than
+        # claimed for work that never ran — this job's OWN next ingest naturally retries.
+        _drawdown_warm_won = _try_acquire_drawdown_warm("ingest_finalize")
+        if _drawdown_warm_won:
+            try:
+                # ops-hardening iter-49 (J-05, drawdown_expectations_warm bound): `phase_context_by_date`'s
+                # all-history causal timeline is invariant across every claim in this loop (`as_of=None`
+                # always, `cfg` unchanged mid-loop) — computed ONCE here and threaded through
+                # `compute_drawdown_expectations_cached`'s new `phases` parameter, instead of once per claim (7x
+                # on the live ledger). Own try/except: a NON-MEMORY failure here degrades to every claim
+                # self-computing its own timeline below (`phases=None` falls back to the SAME per-claim
+                # behavior `compute_drawdown_expectations` always had) — never a reason to abort the whole warm.
+                #
+                # ops-hardening iter-50 (TC-6): skip this precompute ENTIRELY when NO ledger claim
+                # actually needs (re)computation (every claim is already a cache HIT for the current
+                # dataset version) — closes the ~23.6-23.9s measured MID health-poll-stall cluster
+                # (`reports/perf-budgets.md` Item R Addendum 6) for the common case where an ingest's
+                # own new data never touched any drawdown-expectations claim's cohort. The per-claim
+                # loop below still runs unconditionally over `ledger_entries` either way (a HIT claim's
+                # own cached-read cost is unaffected by `phases`) — only this precompute is gated.
+                if _drawdown_expectations_ledger_needs_recompute(session, ledger_entries, cfg):
+                    try:
+                        _dd_phases = market_phase.phase_context_by_date(session, as_of=None, config=cfg)
+                    # ops-hardening iter-49 AUDIT (finding B3 fix): a `MemoryError` here STOPS this phase — it does
+                    # NOT fall through to the per-claim loop. Falling through set `phases=None`, which makes every
+                    # one of the ledger's claims self-compute its own all-history timeline: degrading under memory
+                    # pressure into the MORE allocating path, i.e. exactly the "hammering the next claim's
+                    # allocation under pressure" the iter-8 convention (see the per-claim handler below) exists to
+                    # prevent. Now this handler matches that convention in full — stop, release memory back to the
+                    # OS, and report honestly: `drawdown_warmed` stays False, so `drawdown_expectations` is omitted
+                    # from `aggregates_refreshed` rather than claimed for work that never ran.
+                    except MemoryError as exc:
+                        _log_isolation_failure(
+                            "ingest drawdown-expectations phase-context warm aborted — memory pressure, stopping "
+                            "the drawdown-expectations warm without attempting any claim: %s", exc,
+                        )
+                        _release_process_memory()
+                        _dd_phases = None
+                        _dd_phases_memory_abort = True
+                    except Exception as exc:  # noqa: BLE001 — non-fatal: fall back to per-claim self-compute
+                        _log_isolation_failure(
+                            "ingest drawdown-expectations phase-context warm failed (non-fatal, falling back to "
+                            "per-claim self-compute): %s", exc,
+                        )
+                        _dd_phases = None
+                else:
+                    _dd_phases = None
+                    logger.info(
+                        "J-05 finalize-tail drawdown_expectations_warm: phase_context_by_date skipped -- "
+                        "every ledger claim already cache-HIT for the current dataset version (TC-6)"
+                    )
+                # `()` (never `ledger_entries`) after a memory-pressure abort above — the loop is skipped
+                # entirely, per the iter-8 stop convention. Every other outcome (success, a skipped
+                # precompute, or a non-memory precompute failure that degraded to `phases=None`)
+                # iterates the ledger exactly as before.
+                for entry in (() if _dd_phases_memory_abort else ledger_entries):
+                    if not isinstance(entry, dict) or entry.get("type") == FORWARD_WALK_TYPE:
+                        continue
+                    claim = entry.get("claim") if isinstance(entry.get("claim"), dict) else {}
+                    prog.tick()  # heartbeat stamp before each claim's warm call — see docstring above.
+                    # ops-hardening iter-49 (J-05/J-07 TC-2): a stable, honest per-claim identity for the
+                    # sub-phase timing log below — kind + the claim's own discriminating selector (factor /
+                    # event-study subject / combination cohort) + horizon, NEVER a raw loop index (an index is
+                    # not diagnostic across runs whose ledger order can change).
+                    _claim_id = "{}:{}:h{}".format(
+                        claim.get("kind", "?"),
+                        claim.get("factor") or claim.get("subject") or claim.get("cohort")
+                        or claim.get("signal") or "?",
+                        claim.get("horizon", "?"),
+                    )
+                    # Re-label per claim so the disclosed phase MOVES inside this multi-minute block
+                    # (7 claims, 283.32s measured, one of them 102.25s alone) rather than sitting on a
+                    # single static "drawdown expectations" for the whole sweep.
+                    prog.enter_finalize_phase(f"drawdown expectations ({_claim_id})")
+                    _claim_t0 = time.monotonic()
+                    try:
+                        try:
+                            # iter-39 (audit B3 / J-07 step 4): test-only injection point — see
+                            # `_fault_inject_memory_error` (a no-op unless this process names this site in the
+                            # env).
+                            _fault_inject_memory_error("drawdown_expectations")
+                            result = forward_testing.compute_drawdown_expectations_cached(
+                                session, claim, cfg, phases=_dd_phases,
+                            )
+                            # gate on an ACTUAL non-None payload (never just "the call didn't raise") — an
+                            # out-of-scope horizon or an unresolvable cohort returns None honestly and must NOT
+                            # be reported as refreshed (mirrors the `market_phase`/`research_hot_keys` "actually
+                            # did something" convention above).
+                            if result is not None:
+                                drawdown_warmed = True
+                        # ops-hardening iter-8 (J-05 REGRESSION fix): distinct from the generic per-claim
+                        # isolate-and-continue below — a `MemoryError` stops THIS loop immediately (no further
+                        # claims attempted) and forces memory back to the OS, instead of hammering the next
+                        # claim's allocation under pressure. `drawdown_warmed` already honestly reflects any
+                        # claim that succeeded before the abort.
+                        except MemoryError as exc:
+                            _log_isolation_failure(
+                                "ingest drawdown-expectations warm aborted — memory pressure, stopping "
+                                "remaining claims in this loop: %s", exc,
+                            )
+                            _release_process_memory()
+                            break
+                        except Exception as exc:  # noqa: BLE001 — non-fatal: log + continue to the next claim
+                            _log_isolation_failure(
+                                "ingest drawdown-expectations warm failed for one claim (non-fatal): %s", exc
+                            )
+                    finally:
+                        # per-claim sub-phase timing (TC-2), additive to the whole-phase log line below (byte-
+                        # for-byte unchanged) — logged in a `finally` so it fires on success, MemoryError
+                        # (before the `break` takes effect), or any other isolated per-claim failure.
+                        logger.info(
+                            "J-05 finalize-tail sub-phase timing: job=%s phase=%s claim=%s elapsed=%.2fs",
+                            prog.job_id, "drawdown_expectations_warm", _claim_id,
+                            time.monotonic() - _claim_t0,
+                        )
+            finally:
+                _release_drawdown_warm()
+        if drawdown_warmed:
+            refreshed.append("drawdown_expectations")
+        logger.info(
+            "J-05 finalize-tail phase timing: job=%s phase=%s elapsed=%.2fs",
+            prog.job_id, "drawdown_expectations_warm", time.monotonic() - _phase_t0,
+        )
+    finally:
+        prog.clear_finalize_phase()
+        _exit_ingest_heavy_warm(prog.job_id)
+    return refreshed
+
 
 
 # --------------------------------------------------------------------------------------------------
@@ -5373,6 +5509,34 @@ def _finalize_run_record(engine: Engine, cfg: Config, prog: JobProgress) -> None
         session.commit()
 
 
+def _amend_run_record_detail(engine: Engine, prog: JobProgress) -> None:
+    """Re-write the `message` detail blob of an ALREADY-CLOSED run-history row for `job_id`, leaving its
+    `status`/`finished_at`/counts untouched.
+
+    Why this is separate from `_finalize_run_record`: the ingest finalize tail is split, and the DEFERRED
+    half (`_refresh_deferred_hot_keys`) runs AFTER the row has been closed so Run history stops showing a
+    finished job as `running` for another ~13 minutes. Those warms still append to
+    `prog.aggregates_refreshed`, so the closed row's category list needs one amendment once they finish —
+    otherwise the persisted record would under-report work this job genuinely did.
+
+    `_finalize_run_record` cannot do this: it looks for an OPEN row and INSERTs a fresh one when it finds
+    none, so calling it twice would fabricate a duplicate history entry. This targets the row by `job_id`
+    alone (newest first, any status) and updates exactly one column. A no-op when no row exists.
+    Non-fatal by construction — the caller wraps it, mirroring every other post-completion step."""
+    detail = _run_detail(prog)
+    with Session(engine) as session:
+        row = session.exec(
+            select(DataProviderRun)
+            .where(DataProviderRun.job_id == prog.job_id)
+            .order_by(DataProviderRun.id.desc())
+        ).first()
+        if row is None:
+            return
+        row.message = json.dumps(detail)
+        session.add(row)
+        session.commit()
+
+
 def sweep_orphaned_runs(engine: Engine) -> int:
     """J-60 boot sweep — mark any orphaned `running` `DataProviderRun` rows as `interrupted` (an honest
     terminal state) so a job whose process died mid-run never lingers as a stuck `running` forever and
@@ -5438,6 +5602,36 @@ def _run_job(
     and the error scrubber here, NEVER written to the job registry, the checkpoint, the persisted run, the
     detail JSON, or any log (anti-goal: Import keys are env-or-session, never persisted)."""
     scrub = _make_scrubber(_resolved_key(cfg, prog.source, api_key))
+
+    # The job's ONE terminal run-history transition, hoisted into a closure so it can happen at the moment
+    # the job is genuinely finished rather than only in the `finally`. A backfill's DEFERRED hot-key warms
+    # (`_refresh_deferred_hot_keys`) run after that moment and take minutes; before this split they held
+    # the row open, so Run history kept reporting a completed job as `running` long after the job card had
+    # cleared. Idempotent: whichever caller runs first closes the row, the other is a no-op — so the
+    # `finally` still guarantees closure on every path that does NOT reach the deferred branch (failures,
+    # fetch/expand jobs, graceful `resumable` pauses).
+    record_closed = False
+
+    def _close_run_record() -> None:
+        nonlocal record_closed
+        if record_closed:
+            return
+        record_closed = True
+        # ops-hardening iter-44 (reviewer MINOR, carried from iter-43 B5): a job that failed via the outer
+        # exception handler already has its real captured reason on `prog.message` — do NOT clobber it
+        # with `_final_summary`'s generic "work done" text. Every other terminal status keeps that
+        # descriptive summary, byte-identical to before.
+        if prog.status != "failed":
+            prog.message = _final_summary(prog)
+        # J-60: a graceful `resumable` pause is NOT terminal — its row is UPDATEd to `resumable` but keeps
+        # `finished_at` NULL (it has not finished). Every other state is terminal.
+        if prog.status != "resumable":
+            prog.finished_at = _utcnow()
+        try:
+            _finalize_run_record(eng, cfg, prog)
+        except Exception as exc:  # noqa: BLE001 — persistence failure must not crash the worker thread
+            _record_error(prog, scrub(f"failed to persist run summary: {exc}"))
+
     paused = False
     is_expand = prog.kind in _EXPAND_KINDS
     # J-59: a `both`/`backfill` resume whose FETCH stage already completed routes STRAIGHT to the backfill
@@ -5718,6 +5912,46 @@ def _run_job(
                         "ingest coverage refresh failed for fetch/expand (non-fatal): %s", exc,
                     )
             prog.status = final_status
+            # The job is DONE: every output it owns is committed and every cache `/data` reads is warm, so
+            # the badge clears here rather than after the UI hot-key warms below. Measured live (run 530,
+            # an 8-date backfill): the essential set costs 124.6s and this deferred set 796.8s, so 87% of
+            # the old "still running" wait bought nothing the ingest itself produces — the job sat at a
+            # full 8/8 bar for 15m22s and read as hung.
+            #
+            # Deliberately AFTER the status flip and deliberately still on THIS worker thread: appending to
+            # the SAME `prog.aggregates_refreshed` keeps `_finalize_run_record`'s persisted list complete
+            # (it is written by the `finally` below, after this returns), so nothing this session warms
+            # goes unreported and no honesty contract narrows. The iter-?? concern that motivated the old
+            # ordering — "a poller must never observe ok/partial while `aggregates_refreshed` is still
+            # empty" — is now met by disclosure instead of by silence: `prog.finalize_phase` names the
+            # warm in flight, so a poller sees `status: ok` ALONGSIDE an explicit "still warming X".
+            #
+            # Same non-fatal contract as its sibling above, and for the same reason: a hot-key warm failure
+            # must never retro-flip an already-completed job to failed.
+            if final_status in ("ok", "partial") and (
+                prog.kind in _BACKFILL_KINDS or prog.kind in _REBUILD_KINDS
+            ):
+                # CLOSE the run-history row FIRST. `prog.status` alone only clears the live job card
+                # (`get_job` reads the in-memory `_JOBS`); Run history, the boot sweep and
+                # `_ingest_job_in_flight` all read `data_provider_runs.status`, so leaving the row open
+                # across the deferred warms would have Run history reporting a finished job as `running`
+                # for another ~13 minutes — the same two-sources-disagreeing defect in a second panel.
+                # `_close_run_record` is idempotent, so the `finally` below becomes a no-op for this path.
+                _close_run_record()
+                try:
+                    with Session(eng) as deferred_session:
+                        prog.aggregates_refreshed = list(prog.aggregates_refreshed) + (
+                            _refresh_deferred_hot_keys(deferred_session, cfg, prog)
+                        )
+                    # The closed row's category list must now name the deferred categories too, or the
+                    # persisted record would under-report work this job genuinely did. Status/finished_at
+                    # stay exactly as closed above — only the detail blob is amended.
+                    _amend_run_record_detail(eng, prog)
+                except Exception as exc:  # noqa: BLE001 — never flips an already-completed job to failed
+                    # `_log_isolation_failure`, not a bare `logger.exception`: identical reasoning to the
+                    # essential hook's own handler above (a logging allocation under an exhausted cap must
+                    # not be what escapes to the outer handler and rewrites a finished job's status).
+                    _log_isolation_failure("ingest deferred hot-key warm failed (non-fatal): %s", exc)
     except Exception as exc:  # noqa: BLE001 — any failure must surface as an explicit failed job (scrubbed)
         prog.status = "failed"
         # ops-hardening iter-44 AUDIT (B1): `str(MemoryError())` is the EMPTY STRING — and `MemoryError`
@@ -5803,25 +6037,12 @@ def _run_job(
         if prog._shared_bar_cache is not None:
             prog._shared_bar_cache = None
             _release_process_memory()
-        # ops-hardening iter-44 (reviewer MINOR, carried from iter-43 B5): a job that failed via the outer
-        # exception handler above already has its real captured reason on `prog.message` (set at the
-        # `except Exception as exc` block, alongside `_record_error`) — do NOT clobber it with
-        # `_final_summary`'s generic "work done" text. Every other terminal status (`ok`/`partial`/
-        # `resumable`) keeps getting `_final_summary`'s descriptive summary, byte-identical to before.
-        if prog.status != "failed":
-            prog.message = _final_summary(prog)
         # J-60: close the SAME run-history record this job created at start (one record per job, one
-        # transition). A graceful `resumable` pause is NOT a terminal state — its run row is UPDATEd to
-        # `resumable` (so it shows that way in Run history AND is skipped by the boot sweep, which only
-        # touches `running` rows) but keeps `finished_at` NULL (it has not finished); the durable
-        # checkpoint carries the resume point, and the eventual completed resume closes THIS SAME row to
-        # its terminal state. Every other state is terminal → set finished_at + UPDATE.
-        if prog.status != "resumable":
-            prog.finished_at = _utcnow()
-        try:
-            _finalize_run_record(eng, cfg, prog)
-        except Exception as exc:  # noqa: BLE001 — persistence failure must not crash the worker thread
-            _record_error(prog, scrub(f"failed to persist run summary: {exc}"))
+        # transition) — see `_close_run_record`'s own comment block for the message/finished_at rules and
+        # for why it is a closure. A completed backfill has ALREADY closed its row (before its deferred
+        # hot-key warms ran), so this is a no-op there; every other path — failures, fetch/expand jobs,
+        # graceful `resumable` pauses — still closes exactly here, exactly as before.
+        _close_run_record()
     return prog.to_dict()
 
 

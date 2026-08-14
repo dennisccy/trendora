@@ -237,6 +237,24 @@ class YahooProvider(PriceProvider):
             if not result:
                 raise ProviderUnavailableError(f"yahoo returned no result for {symbol!r}")
             block = result[0]
+            # A range Yahoo HAS no rows for is answered as a WELL-FORMED success, not an error: HTTP 200,
+            # `chart.error: null`, one `result` entry carrying a real `meta` (and an `indicators` object)
+            # but NO `timestamp` array at all. Reading `block["timestamp"]` straight through raised a bare
+            # `KeyError` that the handler below relabelled "yahoo response unparseable for 'X': 'timestamp'"
+            # — reporting a PROVIDER FAULT for a provider that answered correctly. Live-confirmed on
+            # 2026-08-14 for `^DXY` (a defunct quote: `firstTradeDate: null`, last market time in 2019) and
+            # `SATS` (listed too recently to have rows in the window); `EA` hit the same path intermittently
+            # whenever a requested window happened to precede its available rows. All three counted toward a
+            # job's failed-symbol tally and its "N errors" banner.
+            #
+            # Zero rows is the honest answer here — the symbol simply has no bars in `[start, end]` — so
+            # return no bars rather than raising. `.get(...)` falsiness covers all three empty shapes
+            # (key absent, `null`, `[]`) identically. This deliberately does NOT soften any other failure:
+            # a Yahoo-reported `chart.error`, a missing/empty `result`, an HTTP error (`fetch_json` raises
+            # before this is reached), or a block that HAS timestamps but malformed quote arrays all still
+            # surface exactly as before.
+            if not block.get("timestamp"):
+                return []
             timestamps = block["timestamp"]
             quote = block["indicators"]["quote"][0]
             opens, highs, lows, closes, volumes = (

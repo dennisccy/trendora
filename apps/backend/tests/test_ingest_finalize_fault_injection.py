@@ -28,7 +28,7 @@ from sqlmodel import Session
 
 from app.config import load_config
 from app.db import create_db_and_tables, make_engine
-from app.engine import data_manager, forward_testing
+from app.engine import data_manager, forward_testing, indexes
 from app.engine.data_manager import JobProgress
 from app.models import ScannerRun
 
@@ -99,10 +99,14 @@ def test_forward_aggregate_warm_memory_error_is_caught_isolated_and_named(
     _one_claim_ledger(monkeypatch)
 
     # Load-bearing isolation probe: did a LATER category still get a chance to run after the abort?
+    # The probe target is `index_series` — the next category after forward-aggregates in the ESSENTIAL
+    # half. It used to be drawdown-expectations, which now lives in `_refresh_deferred_hot_keys` (the
+    # finalize hook was split so the UI hot-key warms stop holding the job open); probing a category in
+    # a function this call no longer runs would assert nothing about isolation here.
     later_calls: list[str] = []
     monkeypatch.setattr(
-        forward_testing, "compute_drawdown_expectations_cached",
-        lambda *_a, **_k: later_calls.append("called") or None,
+        indexes, "index_series_cached_with_status",
+        lambda *_a, **_k: later_calls.append("called") or ({}, False),
     )
     horizon_calls: list[int] = []
     monkeypatch.setattr(
@@ -129,7 +133,7 @@ def test_forward_aggregate_warm_memory_error_is_caught_isolated_and_named(
     assert release_calls, "the iter-8 convention requires _release_process_memory() on the MemoryError path"
     assert later_calls, (
         "the abort must be isolated to the forward-aggregate loop — a LATER aggregate category "
-        "(drawdown-expectations) still had to run; it never did"
+        "(index-series) still had to run; it never did"
     )
 
 
@@ -162,8 +166,14 @@ def test_drawdown_expectations_warm_memory_error_is_caught_isolated_and_named(
     """The SECOND per-item handler J-07's acceptance names (`data_manager.py`, per-claim drawdown
     expectations): an injected `MemoryError` is caught by that loop's own `except MemoryError`, proven by
     ITS distinctive log line — distinct from the forward-aggregate one, so the assertion cannot pass on
-    the wrong stage aborting. The category is honestly absent, `_release_process_memory()` runs, and
-    `_refresh_ingest_aggregates` returns normally."""
+    the wrong stage aborting. The category is honestly absent, `_release_process_memory()` runs, and the
+    hook returns normally.
+
+    The per-claim drawdown loop now lives in `_refresh_deferred_hot_keys` (the finalize hook was split so
+    the UI hot-key warms stop holding the job open), so this drives BOTH halves in their real order. That
+    makes the isolation claim stronger than before, not weaker: the injected abort must leave the
+    un-targeted forward-aggregate category refreshed ACROSS the split, not merely earlier in one
+    function."""
     session, cfg = finalize_session
     release_calls = _spy_release(monkeypatch)
     _one_claim_ledger(monkeypatch)
@@ -177,7 +187,9 @@ def test_drawdown_expectations_warm_memory_error_is_caught_isolated_and_named(
     monkeypatch.setenv(FAULT_ENV, "drawdown_expectations")
     prog = JobProgress(job_id="fi-drawdown", kind="backfill", start=ASOF, end=ASOF)
     with caplog.at_level(logging.INFO, logger="trendora.data_manager"):
-        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)  # must never raise
+        # both halves, in the order `_run_job` calls them — neither may raise
+        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)
+        refreshed = refreshed + data_manager._refresh_deferred_hot_keys(session, cfg, prog)
 
     assert DRAWDOWN_ABORT in caplog.text, (
         "the per-claim drawdown-expectations loop's OWN MemoryError handler must be the one that fired; "

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity,
   AlertTriangle,
@@ -33,7 +33,14 @@ import { cn } from "@/lib/utils";
 import { resolveBackgroundComputePanelBranch } from "@/lib/background-compute-panel-branch";
 import { resolveLastOutcomeSummary } from "@/lib/background-compute-last-outcome";
 import { nextStateAfterFetchError } from "@/lib/data-overview-refresh";
-import { formatIsoDate, formatIsoDateTime, isValidIsoDate, ISO_DATE_PLACEHOLDER } from "@/lib/dates";
+import { backfillCountsLabel, finalizeView, shouldShowStallWarning } from "@/lib/job-finalize-phase";
+import {
+  formatIsoDate,
+  formatIsoDateTime,
+  isValidIsoDate,
+  ISO_DATE_PLACEHOLDER,
+  todayIsoDate,
+} from "@/lib/dates";
 import {
   MEMBERSHIP_TIMELINE_PAGE_SIZE,
   ALL_SENTINEL,
@@ -310,7 +317,6 @@ export default function DataManagerPage() {
   const [job, setJob] = useState<DataJob | null>(null);
   const [starting, setStarting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
-  const prefilled = useRef(false);
 
   const sources: ProviderSource[] = state.kind === "ok" ? state.data.sources : [];
   const selectedSource = sources.find((s) => s.id === source);
@@ -331,16 +337,13 @@ export default function DataManagerPage() {
     fetchDataCoverage(asOf ?? undefined, signal)
       .then((data) => {
         setState({ kind: "ok", data });
-        // Prefill the range ONCE from the actual backfill gaps so the default Start is a valid,
-        // gap-creating job (the date inputs are job PARAMETERS — they never touch the as-of switcher).
-        if (!prefilled.current) {
-          const gaps = data.coverage.gaps_preview;
-          if (gaps.length > 0) {
-            setStart(gaps[0]);
-            setEnd(gaps[Math.min(4, gaps.length - 1)]);
-            prefilled.current = true;
-          }
-        }
+        // The job range is NOT prefilled from coverage here any more. It used to seed Start/End once from
+        // `coverage.gaps_preview` (the first gap and up to the fifth), which meant the form opened on an
+        // arbitrary historical window a user had not asked for — easy to submit by accident and easy to
+        // mistake for "the range that needs work". Start now opens EMPTY (the operator states the range
+        // they mean, and the form blocks submission until they do) and End defaults to today — see the
+        // mount effect below. Clicking the availability heatmap still fills both, which is an explicit
+        // user action rather than a guess.
       })
       .catch(() => {
         // goal-ops-hardening iter-62 (auditor F3 fix): a transient failure on the ambient idle-cadence
@@ -396,11 +399,21 @@ export default function DataManagerPage() {
     return () => window.clearInterval(timer);
   }, [pollIdleIntervalSeconds, loadOverview, loadAvailability, refresh]);
 
+  // Seed the job form's End date with TODAY, once, on mount. Start is deliberately left empty: the
+  // operator names the range they mean, and `JobForm` already blocks Start while either date is empty or
+  // invalid, so an empty field is a safe default rather than a broken state.
+  //
+  // In an effect rather than a `useState` initialiser because this page is server-rendered on demand:
+  // computing the date during render would let the server's clock/timezone disagree with the browser's
+  // and produce a hydration mismatch. An effect runs client-side only, so the value always comes from
+  // the viewer's own machine.
+  useEffect(() => {
+    setEnd(todayIsoDate());
+  }, []);
+
   // J-61: clicking a heatmap day (start == end) or shift-click range prefills the JOB FORM's Start/End —
-  // these are JOB PARAMETERS, never the global as-of control (no setAsOf call here). Marking the range as
-  // user-chosen also stops the one-time gap prefill from overwriting it.
+  // these are JOB PARAMETERS, never the global as-of control (no setAsOf call here).
   const handleHeatmapPrefill = useCallback((s: string, e: string) => {
-    prefilled.current = true;
     setStart(s);
     setEnd(e);
   }, []);
@@ -2544,20 +2557,36 @@ function JobLiveActivity({
   job: DataJob;
   heartbeatStaleSeconds: number;
 }) {
-  const live = job.status === "running" || job.status === "resumable";
+  // A finalize phase is live while the post-scan cache warms run. It also keeps ticking after a job
+  // reaches `ok` (the deferred UI hot-key warms), so the clock must follow it too — otherwise the
+  // elapsed figure would freeze the moment the badge cleared.
+  const finalize = finalizeView(job, Date.now());
+  const live = job.status === "running" || job.status === "resumable" || finalize !== null;
   const now = useNow(live);
   const ago = heartbeatAgo(job.last_progress_at, now);
   const activity = job.current_activity?.trim();
-  if (!activity && !ago) return null;
+  // Recompute against the ticking clock so the elapsed advances between renders.
+  const finalizeNow = finalizeView(job, now);
+  if (!activity && !ago && !finalizeNow) return null;
 
   // staleness: the seconds-since-last-progress vs the config threshold (amber when stale + still running).
   const then = job.last_progress_at ? Date.parse(job.last_progress_at) : NaN;
   const staleSecs = Number.isFinite(then) ? (now - then) / 1000 : 0;
-  const stale = live && job.status === "running" && staleSecs > heartbeatStaleSeconds;
+  const heartbeatIsStale = live && job.status === "running" && staleSecs > heartbeatStaleSeconds;
+  // Suppressed while a finalize phase is named — the job is provably doing known work, and that phase's
+  // own elapsed time is the honest signal. See `lib/job-finalize-phase.ts` for why.
+  const stale = shouldShowStallWarning(job, heartbeatIsStale);
 
   return (
     <div className="flex flex-wrap items-center justify-between gap-2 text-xs" data-testid="job-live-activity">
-      {activity ? (
+      {finalizeNow ? (
+        // The post-scan tail, named. Replaces the scan line, which by construction is frozen at the last
+        // date scanned and would otherwise claim a scan is still running minutes after it ended.
+        <span className="num text-text-muted" data-testid="finalize-phase">
+          Finalizing: {finalizeNow.phase}
+          {finalizeNow.elapsed ? ` · ${finalizeNow.elapsed}` : ""}
+        </span>
+      ) : activity ? (
         <span className="num text-text-muted" data-testid="current-activity">
           {activity}
         </span>
@@ -2806,7 +2835,9 @@ function JobProgressPanel({
             <div className="flex items-center justify-between text-xs text-text-muted">
               <span>Snapshots backfilled</span>
               <span className="num">
-                {job.dates_done}/{job.dates_total} dates
+                {/* A bar sitting at 8/8 must not be the card's only signal while the finalize tail runs
+                    — see `lib/job-finalize-phase.ts` for the live case this fixes. */}
+                {backfillCountsLabel(job, job.dates_done, job.dates_total)}
               </span>
             </div>
             <ProgressBar done={job.dates_done} total={job.dates_total} />

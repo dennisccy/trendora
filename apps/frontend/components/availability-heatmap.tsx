@@ -6,6 +6,7 @@ import { CalendarDays, Loader2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/empty-state";
 import { shouldShowAvailabilityEmptyState } from "@/lib/availability-empty-state";
+import { toMonthBands } from "@/lib/availability-month-bands";
 import { cn } from "@/lib/utils";
 import { formatIsoDate } from "@/lib/dates";
 import type { AvailabilityCell, AvailabilityResponse } from "@/lib/api";
@@ -60,6 +61,17 @@ import type { AvailabilityCell, AvailabilityResponse } from "@/lib/api";
  * A persisted row that happens to be BOTH stale and empty (a narrow precondition) now falls through to
  * the stale banner above with no grid below it, rather than the "No availability yet" empty state —
  * that message stays reserved strictly for a DB where no row has ever been persisted.
+ *
+ * Calendar layout: the grid's slot list comes from `toMonthBands` (`lib/availability-month-bands.ts`),
+ * extracted here so it is unit-testable under `node` (same convention as
+ * `shouldShowAvailabilityEmptyState` above). It walks every calendar day of each month, so a non-trading
+ * day (weekend or market holiday, absent from the payload by construction) occupies an EMPTY grid
+ * position and every real cell stays under its own weekday column. The previous inline version offset
+ * only the 1st of the month and then packed the cells consecutively, which drifted each day one column
+ * left per skipped date and made the heatmap look as though it charted weekends and holidays — see that
+ * module's header for the measured before/after. Purely positional: the cells, the payload, and every
+ * behaviour below are unchanged, and a blank carries no `data-testid`, so the
+ * `[data-testid="availability-cell"]` set is exactly the payload's trading days as before.
  */
 
 type DensityBucket = 0 | 1 | 2 | 3 | 4 | 5;
@@ -119,43 +131,6 @@ const LEGEND: { bucket: DensityBucket; label: string }[] = [
 ];
 
 const WEEKDAYS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"] as const;
-
-/** Parse a `yyyy-MM-dd` cell date into a UTC Date (no locale/timezone shift — matches lib/dates). */
-function parseIsoUTC(iso: string): Date {
-  const [y, m, d] = iso.split("-").map(Number);
-  return new Date(Date.UTC(y, m - 1, d));
-}
-
-/** Monday-based weekday index (0 = Mon … 6 = Sun) — calendar grids start the week on Monday. */
-function mondayIndex(dt: Date): number {
-  return (dt.getUTCDay() + 6) % 7;
-}
-
-type MonthBand = {
-  key: string; // yyyy-MM
-  label: string; // "2026-05"
-  leadingBlanks: number; // empty grid slots before the first day of the month
-  cells: AvailabilityCell[]; // the trading-day cells in this month, ascending
-};
-
-/** Group the ascending availability cells into month bands, each with the leading-blank offset so the
- *  first day lands under its real weekday column. Only trading days are rendered (non-trading days are
- *  simply absent — honest: the grid shows what the calendar has, never a fabricated cell). */
-function toMonthBands(cells: AvailabilityCell[]): MonthBand[] {
-  const bands: MonthBand[] = [];
-  let current: MonthBand | null = null;
-  for (const cell of cells) {
-    const dt = parseIsoUTC(cell.date);
-    const key = cell.date.slice(0, 7); // yyyy-MM
-    if (!current || current.key !== key) {
-      const firstOfMonth = new Date(Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth(), 1));
-      current = { key, label: key, leadingBlanks: mondayIndex(firstOfMonth), cells: [] };
-      bands.push(current);
-    }
-    current.cells.push(cell);
-  }
-  return bands;
-}
 
 export function AvailabilityHeatmap({
   state,
@@ -330,11 +305,13 @@ export function AvailabilityHeatmap({
                       {w}
                     </div>
                   ))}
-                  {Array.from({ length: band.leadingBlanks }).map((_, i) => (
-                    <span key={`blank-${i}`} aria-hidden />
-                  ))}
-                  {band.cells.map((cell) => {
-                    const dt = parseIsoUTC(cell.date);
+                  {band.slots.map((slot, slotIndex) => {
+                    // A non-trading day (weekend / holiday) or a leading offset: an empty grid position,
+                    // which is what holds every real day under its own weekday column.
+                    if (slot.kind === "blank") {
+                      return <span key={`blank-${slotIndex}`} aria-hidden />;
+                    }
+                    const { cell } = slot;
                     const bucket = densityBucket(cell.symbols_with_bars, cell.total_symbols);
                     const selected = inSelectedRange(cell.date);
                     const isAnchor = anchor === cell.date;
@@ -370,7 +347,7 @@ export function AvailabilityHeatmap({
                         )}
                       >
                         {/* the day-of-month number — non-interactive text inside the single button */}
-                        <span aria-hidden>{dt.getUTCDate()}</span>
+                        <span aria-hidden>{slot.day}</span>
                       </button>
                     );
                   })}
@@ -384,7 +361,8 @@ export function AvailabilityHeatmap({
             filled by Fetch — one hue from dark (none) to bright (full; see the legend above). The ring =
             an immutable scored snapshot exists for that day, produced by Backfill, in a distinct colour
             never used by the fill. A trading day with no non-benchmark bars is shown honestly (the lowest
-            level), never omitted as if covered.
+            level), never omitted as if covered. Only trading days have cells — weekends and market
+            holidays are left empty, so every day sits under its own weekday column.
           </p>
         </div>
       ) : null}

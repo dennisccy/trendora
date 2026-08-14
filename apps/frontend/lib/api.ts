@@ -2686,6 +2686,13 @@ export interface DataJob {
   // is the heartbeat (the UI renders "updated Ns ago"). Honest metadata — never fabricated.
   current_activity?: string;
   last_progress_at?: string | null;
+  // The FINALIZE-TAIL disclosure pair. `current_activity` above belongs to the SCAN loop and is
+  // deliberately frozen once that loop ends; these name the post-scan cache-warm phase actually running
+  // and when it started, so the card can render a moving "Finalizing: <phase> · <elapsed>" instead of a
+  // stale scan line beside a full progress bar. Both absent/empty whenever no finalize phase is in
+  // flight. See `lib/job-finalize-phase.ts` for the rendering rules.
+  finalize_phase?: string | null;
+  finalize_phase_started_at?: string | null;
   // J-59: which pipeline stages completed (so the UI can render "failed at backfill — resumable from the
   // backfill stage" and the resume routes correctly).
   completed_stages?: string[];

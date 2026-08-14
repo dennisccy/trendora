@@ -1256,6 +1256,23 @@ def test_backfill_error_other_uncapped_past_sample_limit(backfilled_job, monkeyp
     assert prog.snapshots_created + prog.already_snapshotted + prog.error_other == prog.dates_total
 
 
+
+def _run_finalize_both_halves(session, cfg, prog):
+    """Run BOTH finalize halves in the exact order `_run_job` calls them, returning the combined
+    category list.
+
+    The ingest finalize hook was split so the UI hot-key warms (research hot keys, factor lab, drawdown
+    expectations — 796.8s of the 921s tail measured on run 530) stop holding the job open:
+    `_refresh_ingest_aggregates` now runs only what `/data` reads, the job's status flips, and
+    `_refresh_deferred_hot_keys` warms the rest afterwards. Both still append to the SAME
+    `prog.aggregates_refreshed`, so the persisted run record is unchanged.
+
+    Every test below predates that split and asserts against the WHOLE tail, which is still exactly what
+    a job performs — so they call this, not one half. A test that means to pin the split itself belongs in
+    `test_ingest_finalize_disclosure_and_split.py`, which asserts on each half separately."""
+    refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)
+    return refreshed + data_manager._refresh_deferred_hot_keys(session, cfg, prog)
+
 # ==================================================================================================
 # ops-hardening iter-2 (J-05): the ingest finalize hook — coverage_snapshot persistence, market-phase/
 # membership-timeline/research hot-key warming, and the aggregates_refreshed honesty gate.
@@ -1307,7 +1324,7 @@ def test_finalize_hook_persists_coverage_snapshot_and_warms_aggregates(finalize_
     with Session(engine) as session:
         prog = JobProgress(job_id="finalize-probe", kind="backfill", start=d, end=d)
         prog.new_snapshot_dates = [d]
-        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)
+        refreshed = _run_finalize_both_halves(session, cfg, prog)
     assert set(refreshed) == {
         "latest_snapshot", "coverage", "membership_timeline", "market_phase", "forward_aggregates",
         "research_hot_keys", "index_series", "factor_lab_all", "availability_heatmap",
@@ -1329,7 +1346,7 @@ def test_finalize_hook_warms_forward_aggregates_for_every_configured_horizon(fin
     with Session(engine) as session:
         prog = JobProgress(job_id="forward-agg-probe", kind="backfill", start=d, end=d)
         prog.new_snapshot_dates = [d]
-        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)
+        refreshed = _run_finalize_both_halves(session, cfg, prog)
     assert "forward_aggregates" in refreshed
     with Session(engine) as session:
         rows = session.exec(
@@ -1356,7 +1373,7 @@ def test_finalize_hook_forward_aggregate_warm_avoids_recompute_on_subsequent_rea
     with Session(engine) as session:
         prog = JobProgress(job_id="forward-agg-hit-probe", kind="backfill", start=d, end=d)
         prog.new_snapshot_dates = [d]
-        data_manager._refresh_ingest_aggregates(session, cfg, prog)
+        _run_finalize_both_halves(session, cfg, prog)
 
     call_count = {"n": 0}
     real = forward_testing.compute_forward_aggregates
@@ -1382,7 +1399,7 @@ def test_finalize_hook_coverage_snapshot_byte_identical_to_fresh_compute(finaliz
     with Session(engine) as session:
         prog = JobProgress(job_id="byte-identity-probe", kind="backfill", start=d, end=d)
         prog.new_snapshot_dates = [d]
-        data_manager._refresh_ingest_aggregates(session, cfg, prog)
+        _run_finalize_both_halves(session, cfg, prog)
     with Session(engine) as session:
         row = session.exec(select(CoverageSnapshot)).one()
         stored = json.loads(row.payload_json)
@@ -1404,7 +1421,7 @@ def test_finalize_hook_warms_index_series_hot_key(finalize_hook_engine):
     with Session(engine) as session:
         prog = JobProgress(job_id="index-series-probe", kind="backfill", start=d, end=d)
         prog.new_snapshot_dates = [d]
-        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)
+        refreshed = _run_finalize_both_halves(session, cfg, prog)
     assert "index_series" in refreshed
     with Session(engine) as session:
         rows = session.exec(select(IndexSeriesCache)).all()
@@ -1422,13 +1439,13 @@ def test_finalize_hook_index_series_second_run_hit_not_reported_as_refreshed(fin
     with Session(engine) as session:
         prog1 = JobProgress(job_id="index-series-first", kind="backfill", start=d, end=d)
         prog1.new_snapshot_dates = [d]
-        first = data_manager._refresh_ingest_aggregates(session, cfg, prog1)
+        first = _run_finalize_both_halves(session, cfg, prog1)
     assert "index_series" in first
 
     with Session(engine) as session:
         prog2 = JobProgress(job_id="index-series-second", kind="backfill", start=d, end=d)
         prog2.new_snapshot_dates = [d]
-        second = data_manager._refresh_ingest_aggregates(session, cfg, prog2)
+        second = _run_finalize_both_halves(session, cfg, prog2)
     assert "index_series" not in second  # a genuine HIT — nothing new persisted this run
     with Session(engine) as session:
         rows = session.exec(select(IndexSeriesCache)).all()
@@ -1458,7 +1475,7 @@ def test_finalize_hook_triggers_immediate_readiness_refresh(finalize_hook_engine
     with Session(engine) as session:
         prog = JobProgress(job_id="readiness-trigger-probe", kind="backfill", start=d, end=d)
         prog.new_snapshot_dates = [d]
-        data_manager._refresh_ingest_aggregates(session, cfg, prog)
+        _run_finalize_both_halves(session, cfg, prog)
         assert len(calls) == 1
         assert calls[0] is session  # the SAME session -- sees this job's just-persisted rows immediately
 
@@ -1538,7 +1555,7 @@ def test_finalize_hook_state_flip_served_by_health_within_one_tick(state_flip_en
             session.commit()
             prog = JobProgress(job_id="state-flip-probe", kind="backfill", start=d1, end=d1)
             prog.new_snapshot_dates = [d1]
-            data_manager._refresh_ingest_aggregates(session, cfg, prog)
+            _run_finalize_both_halves(session, cfg, prog)
 
         # GET /api/health (direct handler call) reflects the NEW state immediately -- the finalize hook's
         # trigger already published it; no periodic-tick wait needed.
@@ -1568,7 +1585,7 @@ def test_finalize_hook_index_series_memory_error_isolated_and_not_reported(
     with Session(engine) as session:
         prog = JobProgress(job_id="index-series-oom-probe", kind="backfill", start=d, end=d)
         prog.new_snapshot_dates = [d]
-        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)  # must not raise
+        refreshed = _run_finalize_both_halves(session, cfg, prog)  # must not raise
     assert "index_series" not in refreshed
     assert {
         "latest_snapshot", "coverage", "membership_timeline", "market_phase", "forward_aggregates",
@@ -1592,7 +1609,7 @@ def test_finalize_hook_warms_availability_heatmap(finalize_hook_engine):
     with Session(engine) as session:
         prog = JobProgress(job_id="availability-heatmap-probe", kind="backfill", start=d, end=d)
         prog.new_snapshot_dates = [d]
-        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)
+        refreshed = _run_finalize_both_halves(session, cfg, prog)
     assert "availability_heatmap" in refreshed
     with Session(engine) as session:
         rows = session.exec(select(AvailabilityCache)).all()
@@ -1609,7 +1626,7 @@ def test_finalize_hook_availability_heatmap_byte_identical_to_fresh_compute(fina
     with Session(engine) as session:
         prog = JobProgress(job_id="availability-byte-identity-probe", kind="backfill", start=d, end=d)
         prog.new_snapshot_dates = [d]
-        data_manager._refresh_ingest_aggregates(session, cfg, prog)
+        _run_finalize_both_halves(session, cfg, prog)
     with Session(engine) as session:
         row = session.exec(select(AvailabilityCache)).one()
         stored = json.loads(row.payload_json)
@@ -1628,13 +1645,13 @@ def test_finalize_hook_availability_heatmap_second_run_hit_not_reported_as_refre
     with Session(engine) as session:
         prog1 = JobProgress(job_id="availability-heatmap-first", kind="backfill", start=d, end=d)
         prog1.new_snapshot_dates = [d]
-        first = data_manager._refresh_ingest_aggregates(session, cfg, prog1)
+        first = _run_finalize_both_halves(session, cfg, prog1)
     assert "availability_heatmap" in first
 
     with Session(engine) as session:
         prog2 = JobProgress(job_id="availability-heatmap-second", kind="backfill", start=d, end=d)
         prog2.new_snapshot_dates = [d]
-        second = data_manager._refresh_ingest_aggregates(session, cfg, prog2)
+        second = _run_finalize_both_halves(session, cfg, prog2)
     assert "availability_heatmap" not in second  # a genuine HIT — nothing new persisted this run
     with Session(engine) as session:
         rows = session.exec(select(AvailabilityCache)).all()
@@ -1659,7 +1676,7 @@ def test_finalize_hook_availability_heatmap_memory_error_isolated_and_not_report
     with Session(engine) as session:
         prog = JobProgress(job_id="availability-heatmap-oom-probe", kind="backfill", start=d, end=d)
         prog.new_snapshot_dates = [d]
-        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)  # must not raise
+        refreshed = _run_finalize_both_halves(session, cfg, prog)  # must not raise
     assert "availability_heatmap" not in refreshed
     assert {
         "latest_snapshot", "coverage", "membership_timeline", "market_phase", "forward_aggregates",
@@ -1685,7 +1702,7 @@ def test_finalize_hook_warms_factor_lab_all_hot_key(finalize_hook_engine):
     with Session(engine) as session:
         prog = JobProgress(job_id="factor-lab-all-probe", kind="backfill", start=d, end=d)
         prog.new_snapshot_dates = [d]
-        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)
+        refreshed = _run_finalize_both_halves(session, cfg, prog)
     assert "factor_lab_all" in refreshed
     with Session(engine) as session:
         rows = session.exec(select(EventStudyCache)).all()
@@ -1710,7 +1727,7 @@ def test_finalize_hook_factor_lab_all_unconditional_even_with_no_new_snapshot(fi
     with Session(engine) as session:
         prog = JobProgress(job_id="factor-lab-all-zero-work-probe", kind="backfill", start=d, end=d)
         # prog.new_snapshot_dates deliberately left empty.
-        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)
+        refreshed = _run_finalize_both_halves(session, cfg, prog)
     assert "factor_lab_all" in refreshed
 
 
@@ -1725,13 +1742,13 @@ def test_finalize_hook_factor_lab_all_second_run_still_reported_on_cache_hit(fin
     with Session(engine) as session:
         prog1 = JobProgress(job_id="factor-lab-all-first", kind="backfill", start=d, end=d)
         prog1.new_snapshot_dates = [d]
-        first = data_manager._refresh_ingest_aggregates(session, cfg, prog1)
+        first = _run_finalize_both_halves(session, cfg, prog1)
     assert "factor_lab_all" in first
 
     with Session(engine) as session:
         prog2 = JobProgress(job_id="factor-lab-all-second", kind="backfill", start=d, end=d)
         prog2.new_snapshot_dates = [d]
-        second = data_manager._refresh_ingest_aggregates(session, cfg, prog2)
+        second = _run_finalize_both_halves(session, cfg, prog2)
     assert "factor_lab_all" in second
     with Session(engine) as session:
         rows = session.exec(select(EventStudyCache)).all()
@@ -1763,7 +1780,7 @@ def test_finalize_hook_factor_lab_all_memory_error_isolated_and_not_reported(
     with Session(engine) as session:
         prog = JobProgress(job_id="factor-lab-all-oom-probe", kind="backfill", start=d, end=d)
         prog.new_snapshot_dates = [d]
-        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)  # must not raise
+        refreshed = _run_finalize_both_halves(session, cfg, prog)  # must not raise
     assert "factor_lab_all" not in refreshed
     assert {
         "latest_snapshot", "coverage", "membership_timeline", "market_phase", "forward_aggregates",
@@ -1787,7 +1804,7 @@ def test_finalize_hook_factor_lab_all_generic_failure_isolated_other_aggregates_
     with Session(engine) as session:
         prog = JobProgress(job_id="factor-lab-all-failure-probe", kind="backfill", start=d, end=d)
         prog.new_snapshot_dates = [d]
-        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)
+        refreshed = _run_finalize_both_halves(session, cfg, prog)
     assert "factor_lab_all" not in refreshed
     assert {
         "latest_snapshot", "coverage", "membership_timeline", "market_phase", "forward_aggregates",
@@ -1819,7 +1836,7 @@ def test_finalize_hook_factor_lab_all_never_reported_on_whole_response_degrade(
     with Session(engine) as session:
         prog = JobProgress(job_id="factor-lab-all-degrade-probe", kind="backfill", start=d, end=d)
         prog.new_snapshot_dates = [d]
-        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)  # must not raise
+        refreshed = _run_finalize_both_halves(session, cfg, prog)  # must not raise
     assert "factor_lab_all" not in refreshed, (
         "a whole-response degraded payload must never be claimed as a refresh, even though the call itself "
         "did not raise"
@@ -1839,7 +1856,7 @@ def test_finalize_hook_factor_lab_all_phase_timing_log_line_present(finalize_hoo
         with Session(engine) as session:
             prog = JobProgress(job_id="factor-lab-all-timing-probe", kind="backfill", start=d, end=d)
             prog.new_snapshot_dates = [d]
-            data_manager._refresh_ingest_aggregates(session, cfg, prog)
+            _run_finalize_both_halves(session, cfg, prog)
     assert (
         "J-05 finalize-tail phase timing: job=factor-lab-all-timing-probe phase=factor_lab_all_warm"
         in caplog.text
@@ -1864,7 +1881,7 @@ def test_finalize_hook_market_phase_computed_exactly_once_not_on_subsequent_read
     with Session(engine) as session:
         prog = JobProgress(job_id="market-phase-probe", kind="backfill", start=d, end=d)
         prog.new_snapshot_dates = [d]
-        data_manager._refresh_ingest_aggregates(session, cfg, prog)
+        _run_finalize_both_halves(session, cfg, prog)
     assert len(calls) == 1, "compute_market_phase should run exactly once, during the finalize hook"
 
     # a subsequent read of the SAME as-of must serve from the cache — zero additional compute calls.
@@ -1882,7 +1899,7 @@ def test_finalize_hook_only_warms_market_phase_for_newly_created_dates(finalize_
     with Session(engine) as session:
         prog = JobProgress(job_id="zero-work-probe", kind="backfill", start=d, end=d)
         # prog.new_snapshot_dates deliberately left empty — simulates a zero-work re-run.
-        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)
+        refreshed = _run_finalize_both_halves(session, cfg, prog)
     assert "market_phase" not in refreshed
     assert "latest_snapshot" not in refreshed
     assert {"coverage", "membership_timeline", "research_hot_keys"} <= set(refreshed)
@@ -1904,7 +1921,7 @@ def test_finalize_hook_partial_failure_isolated_other_aggregates_still_refresh(
     with Session(engine) as session:
         prog = JobProgress(job_id="partial-failure-probe", kind="backfill", start=d, end=d)
         prog.new_snapshot_dates = [d]
-        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)
+        refreshed = _run_finalize_both_halves(session, cfg, prog)
     assert "research_hot_keys" not in refreshed
     assert {"latest_snapshot", "coverage", "membership_timeline", "market_phase"} <= set(refreshed)
 
@@ -1929,7 +1946,7 @@ def test_finalize_hook_never_raises_even_when_everything_fails(finalize_hook_eng
     with Session(engine) as session:
         prog = JobProgress(job_id="all-fail-probe", kind="backfill", start=d, end=d)
         prog.new_snapshot_dates = [d]
-        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)  # must not raise
+        refreshed = _run_finalize_both_halves(session, cfg, prog)  # must not raise
     assert refreshed == ["latest_snapshot"]
 
 
@@ -1946,7 +1963,7 @@ def test_finalize_hook_makes_no_network_call(finalize_hook_engine, monkeypatch):
     with Session(engine) as session:
         prog = JobProgress(job_id="no-network-probe", kind="backfill", start=d, end=d)
         prog.new_snapshot_dates = [d]
-        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)
+        refreshed = _run_finalize_both_halves(session, cfg, prog)
     assert refreshed  # completed successfully with zero socket.connect calls
 
 
@@ -2032,7 +2049,7 @@ def test_finalize_hook_warms_drawdown_expectations_for_resolvable_claim(
     with Session(engine) as session:
         prog = JobProgress(job_id="dd-warm-probe", kind="backfill", start=d, end=d)
         prog.new_snapshot_dates = [d]
-        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)
+        refreshed = _run_finalize_both_halves(session, cfg, prog)
     assert "drawdown_expectations" in refreshed
     with Session(engine) as session:
         rows = session.exec(
@@ -2058,7 +2075,7 @@ def test_finalize_hook_drawdown_expectations_byte_identical_to_fresh_compute(
     with Session(engine) as session:
         prog = JobProgress(job_id="dd-byte-identity-probe", kind="backfill", start=d, end=d)
         prog.new_snapshot_dates = [d]
-        data_manager._refresh_ingest_aggregates(session, cfg, prog)
+        _run_finalize_both_halves(session, cfg, prog)
     with Session(engine) as session:
         row = session.exec(
             select(EventStudyCache).where(EventStudyCache.view == "drawdown_expectations")
@@ -2089,7 +2106,7 @@ def test_finalize_hook_drawdown_expectations_unresolvable_claim_not_reported(
     with Session(engine) as session:
         prog = JobProgress(job_id="dd-unresolvable-probe", kind="backfill", start=d, end=d)
         prog.new_snapshot_dates = [d]
-        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)  # must not raise
+        refreshed = _run_finalize_both_halves(session, cfg, prog)  # must not raise
     assert "drawdown_expectations" not in refreshed
     assert {"coverage", "membership_timeline"} <= set(refreshed)
 
@@ -2127,7 +2144,7 @@ def test_finalize_hook_drawdown_expectations_isolates_claim_that_raises(
     with Session(engine) as session:
         prog = JobProgress(job_id="dd-raise-isolation-probe", kind="backfill", start=d, end=d)
         prog.new_snapshot_dates = [d]
-        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)  # must not raise
+        refreshed = _run_finalize_both_halves(session, cfg, prog)  # must not raise
     assert calls["n"] == 2, "both claims must be attempted — the first's failure must not skip the second"
     assert "drawdown_expectations" in refreshed  # the SECOND claim's successful warm still counts
 
@@ -2151,7 +2168,7 @@ def test_finalize_hook_drawdown_expectations_missing_ledger_not_reported(
     with Session(engine) as session:
         prog = JobProgress(job_id="dd-empty-ledger-probe", kind="backfill", start=d, end=d)
         prog.new_snapshot_dates = [d]
-        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)
+        refreshed = _run_finalize_both_halves(session, cfg, prog)
     assert calls["n"] == 0
     assert "drawdown_expectations" not in refreshed
 
@@ -2172,7 +2189,7 @@ def test_finalize_hook_drawdown_expectations_forward_walk_only_ledger_not_report
     with Session(engine) as session:
         prog = JobProgress(job_id="dd-forward-walk-only-probe", kind="backfill", start=d, end=d)
         prog.new_snapshot_dates = [d]
-        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)
+        refreshed = _run_finalize_both_halves(session, cfg, prog)
     assert "drawdown_expectations" not in refreshed
 
 
@@ -2190,7 +2207,7 @@ def test_finalize_hook_drawdown_expectations_corrupt_ledger_degrades_gracefully(
     with Session(engine) as session:
         prog = JobProgress(job_id="dd-corrupt-ledger-probe", kind="backfill", start=d, end=d)
         prog.new_snapshot_dates = [d]
-        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)  # must not raise
+        refreshed = _run_finalize_both_halves(session, cfg, prog)  # must not raise
     assert "drawdown_expectations" not in refreshed
     assert {"latest_snapshot", "coverage", "membership_timeline", "market_phase"} <= set(refreshed)
 
@@ -2314,7 +2331,7 @@ def test_finalize_hook_market_phase_memory_error_on_first_date_aborts_loop(
     with Session(engine) as session:
         prog = JobProgress(job_id="mp-mem-first-probe", kind="backfill", start=dates[0], end=dates[-1])
         prog.new_snapshot_dates = dates
-        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)  # must not raise
+        refreshed = _run_finalize_both_halves(session, cfg, prog)  # must not raise
     assert calls["n"] == 1, "the loop must stop after the FIRST MemoryError — second date never attempted"
     assert "market_phase" not in refreshed
 
@@ -2339,7 +2356,7 @@ def test_finalize_hook_market_phase_memory_error_after_partial_success_reports_h
     with Session(engine) as session:
         prog = JobProgress(job_id="mp-mem-partial-probe", kind="backfill", start=dates[0], end=dates[-1])
         prog.new_snapshot_dates = dates
-        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)  # must not raise
+        refreshed = _run_finalize_both_halves(session, cfg, prog)  # must not raise
     assert calls["n"] == 2, "both dates must be attempted — the second raises, stopping the loop there"
     assert "market_phase" in refreshed  # the FIRST date's real warm still counts honestly
 
@@ -2361,7 +2378,7 @@ def test_finalize_hook_memory_error_leaves_no_leaked_lock_subsequent_read_succee
     with Session(engine) as session:
         prog = JobProgress(job_id="mp-mem-recovery-probe", kind="backfill", start=dates[0], end=dates[-1])
         prog.new_snapshot_dates = dates
-        data_manager._refresh_ingest_aggregates(session, cfg, prog)  # must not raise, must not leak a lock
+        _run_finalize_both_halves(session, cfg, prog)  # must not raise, must not leak a lock
 
     # a genuine subsequent DB read, in the SAME process, on a FRESH session against the SAME engine —
     # `refresh_coverage_snapshot` is unrelated to the patched `market_phase_cached`, so this proves the DB
@@ -2436,7 +2453,7 @@ def test_finalize_hook_coverage_membership_timeline_fault_injected_releases_memo
 
     with Session(engine) as session:
         prog = JobProgress(job_id="cov-fault-probe", kind="backfill", start=d, end=d)
-        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)  # must not raise
+        refreshed = _run_finalize_both_halves(session, cfg, prog)  # must not raise
 
     assert "coverage" not in refreshed and "membership_timeline" not in refreshed, (
         f"the faulted category must be honestly omitted, never a fabricated refresh: {refreshed}"
@@ -2471,7 +2488,7 @@ def test_finalize_hook_market_phase_fault_injected_releases_memory_honestly(fina
     with Session(engine) as session:
         prog = JobProgress(job_id="mp-fault-probe", kind="backfill", start=dates[0], end=dates[-1])
         prog.new_snapshot_dates = dates
-        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)  # must not raise
+        refreshed = _run_finalize_both_halves(session, cfg, prog)  # must not raise
 
     assert "market_phase" not in refreshed, (
         f"the faulted category must be honestly omitted, never a fabricated refresh: {refreshed}"
@@ -2505,7 +2522,7 @@ def test_finalize_hook_forward_aggregates_memory_error_on_first_horizon_aborts_l
     with Session(engine) as session:
         prog = JobProgress(job_id="fa-mem-first-probe", kind="backfill", start=d, end=d)
         prog.new_snapshot_dates = [d]
-        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)  # must not raise
+        refreshed = _run_finalize_both_halves(session, cfg, prog)  # must not raise
     assert calls["n"] == 1, "the loop must stop after the FIRST MemoryError — no further horizons attempted"
     assert "forward_aggregates" not in refreshed
 
@@ -2540,7 +2557,7 @@ def test_finalize_hook_forward_aggregates_memory_error_after_partial_success_rep
     with Session(engine) as session:
         prog = JobProgress(job_id="fa-mem-partial-probe", kind="backfill", start=d, end=d)
         prog.new_snapshot_dates = [d]
-        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)  # must not raise
+        refreshed = _run_finalize_both_halves(session, cfg, prog)  # must not raise
     assert calls["n"] == 2, "the loop must stop right after the SECOND (raising) horizon"
     assert "forward_aggregates" not in refreshed, (
         "iter-55: a mid-loop MemoryError must omit forward_aggregates even though the FIRST horizon "
@@ -2579,7 +2596,7 @@ def test_finalize_hook_forward_aggregates_live_incident_shape_omits_but_preserve
     with Session(engine) as session:
         prog = JobProgress(job_id="fa-live-incident-probe", kind="backfill", start=d, end=d)
         prog.new_snapshot_dates = [d]
-        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)  # must not raise
+        refreshed = _run_finalize_both_halves(session, cfg, prog)  # must not raise
     assert calls["n"] == 4, "3 horizons succeed (1/5/10), the 4th call (horizon 20) raises and stops the loop"
     assert "forward_aggregates" not in refreshed, (
         f"TC-1/TC-4: 3 of 5 horizons completing is still incomplete -- must be omitted: {refreshed}"
@@ -2622,7 +2639,7 @@ def test_finalize_hook_drawdown_expectations_memory_error_on_first_claim_aborts_
     with Session(engine) as session:
         prog = JobProgress(job_id="dd-mem-first-probe", kind="backfill", start=d, end=d)
         prog.new_snapshot_dates = [d]
-        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)  # must not raise
+        refreshed = _run_finalize_both_halves(session, cfg, prog)  # must not raise
     assert calls["n"] == 1, "the loop must stop after the FIRST MemoryError — second claim never attempted"
     assert "drawdown_expectations" not in refreshed
 
@@ -2659,7 +2676,7 @@ def test_finalize_hook_drawdown_expectations_memory_error_after_partial_success_
     with Session(engine) as session:
         prog = JobProgress(job_id="dd-mem-partial-probe", kind="backfill", start=d, end=d)
         prog.new_snapshot_dates = [d]
-        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)  # must not raise
+        refreshed = _run_finalize_both_halves(session, cfg, prog)  # must not raise
     assert calls["n"] == 2, "both claims must be attempted — the second raises, stopping the loop there"
     assert "drawdown_expectations" in refreshed  # the FIRST claim's real warm still counts honestly
 
@@ -2706,7 +2723,7 @@ def test_finalize_hook_drawdown_expectations_isolates_claim_that_raises_non_memo
     with Session(engine) as session:
         prog = JobProgress(job_id="dd-nonmem-isolation-probe", kind="backfill", start=d, end=d)
         prog.new_snapshot_dates = [d]
-        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)  # must not raise
+        refreshed = _run_finalize_both_halves(session, cfg, prog)  # must not raise
     assert calls["n"] == 2, "a non-memory exception must NOT abort the loop — both claims still attempted"
     assert "drawdown_expectations" in refreshed
 
@@ -2752,7 +2769,7 @@ def test_finalize_hook_drawdown_phase_context_warm_non_memory_failure_falls_back
     with Session(engine) as session:
         prog = JobProgress(job_id="dd-phase-ctx-nonmem-probe", kind="backfill", start=d, end=d)
         prog.new_snapshot_dates = [d]
-        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)  # must not raise
+        refreshed = _run_finalize_both_halves(session, cfg, prog)  # must not raise
     assert calls["n"] == 2, (
         "the pre-loop precompute (call 1, fails) plus the single claim's own internal self-compute "
         "fallback (call 2, succeeds) must both have fired"
@@ -2801,7 +2818,7 @@ def test_finalize_hook_drawdown_phase_context_warm_memory_error_releases_and_sto
     with Session(engine) as session:
         prog = JobProgress(job_id="dd-phase-ctx-mem-probe", kind="backfill", start=d, end=d)
         prog.new_snapshot_dates = [d]
-        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)  # must not raise
+        refreshed = _run_finalize_both_halves(session, cfg, prog)  # must not raise
     assert release_calls, "the iter-8 convention requires _release_process_memory() on the MemoryError path"
     assert calls["n"] == 1, (
         "the per-claim loop must be skipped entirely after a memory-pressure abort in the precompute — a "
@@ -2848,7 +2865,7 @@ def test_finalize_hook_drawdown_expectations_column_projected_read_non_memory_fa
     with Session(engine) as session:
         prog = JobProgress(job_id="dd-col-proj-nonmem-probe", kind="backfill", start=d, end=d)
         prog.new_snapshot_dates = [d]
-        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)  # must not raise
+        refreshed = _run_finalize_both_halves(session, cfg, prog)  # must not raise
     # ops-hardening iter-49 AUDIT (T1): without this the proof is VACUOUS — "drawdown_expectations" is
     # absent from `refreshed` for many reasons that have nothing to do with the injected fault (an
     # unresolvable cohort, an out-of-scope horizon, a decile branch never reached on this fixture all
@@ -2911,7 +2928,7 @@ def test_finalize_hook_sub_phase_timing_names_each_horizon_and_claim_and_memoize
         with Session(engine) as session:
             prog = JobProgress(job_id="sub-phase-timing-probe", kind="backfill", start=d, end=d)
             prog.new_snapshot_dates = [d]
-            refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)
+            refreshed = _run_finalize_both_halves(session, cfg, prog)
 
     lines = [r.getMessage() for r in caplog.records]
     sub = [m for m in lines if m.startswith("J-05 finalize-tail sub-phase timing:")]
@@ -3037,7 +3054,7 @@ def test_drawdown_warm_guard_ingest_finalize_defers_when_boot_rewarm_already_in_
             prog = JobProgress(job_id="dd-guard-ingest-defers", kind="backfill", start=d, end=d)
             prog.new_snapshot_dates = [d]
             with caplog.at_level("INFO", logger="trendora.data_manager"):
-                refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)  # must not raise
+                refreshed = _run_finalize_both_halves(session, cfg, prog)  # must not raise
     finally:
         data_manager._release_drawdown_warm()
 
@@ -3054,7 +3071,7 @@ def test_drawdown_warm_guard_ingest_finalize_defers_when_boot_rewarm_already_in_
     with Session(engine) as session:
         prog = JobProgress(job_id="dd-guard-ingest-recovers", kind="backfill", start=d, end=d)
         prog.new_snapshot_dates = [d]
-        refreshed2 = data_manager._refresh_ingest_aggregates(session, cfg, prog)
+        refreshed2 = _run_finalize_both_halves(session, cfg, prog)
     assert "drawdown_expectations" in refreshed2, "once the slot is free, the finalize phase must proceed"
 
 
@@ -3216,7 +3233,7 @@ def test_ingest_finalize_declares_a_heavy_warm_window_across_its_whole_tail(
     with Session(engine) as session:
         prog = JobProgress(job_id="heavy-warm-window", kind="backfill", start=d, end=d)
         prog.new_snapshot_dates = [d]
-        data_manager._refresh_ingest_aggregates(session, cfg, prog)
+        _run_finalize_both_halves(session, cfg, prog)
 
     assert seen.get("forward_aggregates_warm") is True, (
         "the heavy-warm window must be OPEN during forward_aggregates_warm — the phase measured at "
@@ -3253,7 +3270,7 @@ def test_ingest_heavy_warm_window_closes_even_when_a_phase_raises(
     with Session(engine) as session:
         prog = JobProgress(job_id="heavy-warm-window-raises", kind="backfill", start=d, end=d)
         prog.new_snapshot_dates = [d]
-        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)
+        refreshed = _run_finalize_both_halves(session, cfg, prog)
 
     assert "forward_aggregates" not in refreshed, "a failed phase must be honestly absent from refreshed"
     assert data_manager._INGEST_HEAVY_WARM_DEPTH == 0, (
@@ -3292,14 +3309,14 @@ def test_drawdown_expectations_phase_context_skipped_when_ledger_fully_cache_war
     with Session(engine) as session:
         prog1 = JobProgress(job_id="dd-skip-first", kind="backfill", start=d, end=d)
         prog1.new_snapshot_dates = [d]
-        refreshed1 = data_manager._refresh_ingest_aggregates(session, cfg, prog1)
+        refreshed1 = _run_finalize_both_halves(session, cfg, prog1)
     assert "drawdown_expectations" in refreshed1, f"fixture sanity: the claim must genuinely warm; got {refreshed1}"
     assert phase_ctx_calls["n"] == 1, "the FIRST (cache-MISS) call must compute the timeline exactly once"
 
     with Session(engine) as session:
         prog2 = JobProgress(job_id="dd-skip-second", kind="backfill", start=d, end=d)
         prog2.new_snapshot_dates = [d]
-        refreshed2 = data_manager._refresh_ingest_aggregates(session, cfg, prog2)
+        refreshed2 = _run_finalize_both_halves(session, cfg, prog2)
     assert "drawdown_expectations" in refreshed2, (
         f"the claim is still a HIT, still honestly reported as warm; got {refreshed2}"
     )
@@ -3497,7 +3514,7 @@ def test_finalize_hook_ticks_heartbeat_at_least_once_per_date_in_market_phase_lo
         prog = JobProgress(job_id="heartbeat-probe", kind="backfill", start=dates[0], end=dates[-1])
         prog.new_snapshot_dates = list(dates)
         prog.last_progress_at = stale_sentinel
-        data_manager._refresh_ingest_aggregates(session, cfg, prog)
+        _run_finalize_both_halves(session, cfg, prog)
 
     assert len(seen_at_call) == len(dates), "expected one market-phase compute per new snapshot date"
     for i, seen in enumerate(seen_at_call):
@@ -3631,7 +3648,7 @@ def test_finalize_hook_yields_at_least_once_per_date_in_market_phase_loop(
     with Session(engine) as session:
         prog = JobProgress(job_id="phase-yield-probe", kind="backfill", start=dates[0], end=dates[-1])
         prog.new_snapshot_dates = list(dates)
-        data_manager._refresh_ingest_aggregates(session, cfg, prog)
+        _run_finalize_both_halves(session, cfg, prog)
 
     assert len(sleep_calls) >= len(dates), (
         f"expected >= one yield per new-snapshot date ({len(dates)}) in the market-phase loop alone, got "
@@ -3663,7 +3680,7 @@ def test_finalize_hook_yields_at_least_once_per_horizon_in_forward_aggregates_wa
     with Session(engine) as session:
         prog = JobProgress(job_id="forward-agg-yield-probe", kind="backfill", start=d, end=d)
         prog.new_snapshot_dates = [d]
-        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)
+        refreshed = _run_finalize_both_halves(session, cfg, prog)
 
     assert "forward_aggregates" in refreshed  # sanity: the loop under test actually ran to completion
     assert len(sleep_calls) >= len(cfg.walk_forward.horizons), (
@@ -4180,7 +4197,7 @@ def test_finalize_hook_persists_per_date_coverage_for_historical_switcher_date(t
     with Session(engine) as session:
         prog = JobProgress(job_id="hist-per-date-probe", kind="backfill", start=d_old, end=d_old)
         prog.new_snapshot_dates = [d_old]
-        data_manager._refresh_ingest_aggregates(session, cfg, prog)
+        _run_finalize_both_halves(session, cfg, prog)
 
     with Session(engine) as session:
         # the historical date is served from storage, byte-identical to a fresh compute-at-d_old...
@@ -4360,7 +4377,7 @@ def test_data_overview_serves_freshest_ingested_coverage_after_unrelated_dataset
         session.commit()
         prog = JobProgress(job_id="freshness-probe", kind="backfill", start=d_new, end=d_new)
         prog.new_snapshot_dates = [d_new]
-        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)
+        refreshed = _run_finalize_both_halves(session, cfg, prog)
     assert "coverage" in refreshed
 
     with Session(engine) as session:
@@ -7717,7 +7734,7 @@ def test_historical_gap_fill_resolver_failure_isolated_never_hangs_the_job(
     with Session(engine) as session:
         prog = JobProgress(job_id="gap-insert-resolver-failure-probe", kind="backfill", start=d_gap, end=d_gap)
         prog.new_snapshot_dates = [d_gap]
-        refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)  # must not raise
+        refreshed = _run_finalize_both_halves(session, cfg, prog)  # must not raise
 
     assert "coverage" not in refreshed, "an honest omission is required when the underlying compute failed"
     assert "membership_timeline" not in refreshed, (

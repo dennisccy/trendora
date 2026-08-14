@@ -63,6 +63,25 @@ export function isValidIsoDate(value: string): boolean {
 }
 
 /**
+ * Today's calendar date as `yyyy-MM-dd`, in the VIEWER'S LOCAL timezone.
+ *
+ * Local, not UTC, deliberately: the only caller is a date INPUT default (`/data`'s job form End date),
+ * and the least surprising default there is the date the user's own machine calls today. A UTC-derived
+ * value would read as "yesterday" for anyone east of Greenwich during their evening — e.g. 02:00 on the
+ * 15th in Hong Kong is still the 14th in UTC. Every OTHER date path in this app stays UTC-anchored
+ * (`isValidIsoDate`, `formatIsoDate`, the calendar grids): those render STORED dates, where a timezone
+ * shift would corrupt a real value, whereas this one only seeds an editable field.
+ *
+ * `now` is injectable so the helper stays pure and unit-testable; production passes nothing.
+ */
+export function todayIsoDate(now: Date = new Date()): string {
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+/**
  * The one formatter every surface uses to display a calendar date as `yyyy-MM-dd`.
  *
  * Backend dates are already ISO `yyyy-MM-dd` (possibly carrying a time suffix, e.g. an ISO datetime

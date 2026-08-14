@@ -150,6 +150,37 @@ def _warm_coverage_snapshot(engine: Engine, cfg: Config) -> None:
         logger.exception("coverage snapshot warm failed (non-fatal): %s", exc)
 
 
+def _warm_availability(engine: Engine, cfg: Config) -> None:
+    """The boot-time safety net for `AvailabilityCache` — the counterpart of `_warm_coverage_snapshot`
+    above, which the coverage snapshot has had since iter-2 and this cache never did. Mirrors that
+    function's exact contract: opens its OWN session on `engine` (never a request session), is idempotent
+    (`availability_cached_with_status` is a no-op HIT
+    once a row exists under the current stamp — this is a bootstrap/repair net, not a per-boot refresh;
+    the ingest finalize hook is what keeps it fresh thereafter), and is NON-FATAL (any exception is caught
+    + logged here). Computes no canonical value — it reuses `data_manager.availability_cached_with_status`,
+    whose sole producer is the unchanged `compute_availability`.
+
+    Why this exists (observed live 2026-08-14): `AvailabilityCache`'s only writer was the ingest finalize
+    hook, so a job whose bars COMMITTED but whose finalize never ran — here, a backend restart that swept
+    the run to `interrupted` — stranded the cache behind the data with no path back. `GET /api/data`'s
+    coverage block self-healed at the next boot (via `_warm_coverage_snapshot`) to 5,398 trading days
+    while `GET /api/data/availability` kept serving 5,391, missing exactly the 7 fetched dates
+    2026-08-05..08-13 and reporting `stale: False` because no job was running. Coverage recovered and the
+    heatmap did not for one reason only: this function did not exist.
+
+    Runs in the background warm-up thread strictly AFTER `yield` (see the call site), so boot readiness
+    gains no synchronous compute — the warm itself measures ~1.1s on the live 8.4 GB dev DB."""
+    try:
+        with Session(engine) as session:
+            payload, persisted = data_manager.availability_cached_with_status(session, cfg)
+            if persisted:
+                logger.info(
+                    "availability cache warmed (%d trading days)", payload["trading_day_count"],
+                )
+    except Exception as exc:  # NON-FATAL: an availability warm failure must not fail the whole warm-up
+        logger.exception("availability cache warm failed (non-fatal): %s", exc)
+
+
 def _warm_drawdown_expectations(engine: Engine, cfg: Config) -> None:
     """ops-hardening iter-46 FIX PASS (QA blocker 3 — J-06/J-07): precompute the per-claim
     `drawdown_expectations` EventStudyCache rows `GET /api/evidence` looks up lazily, so the FIRST Evidence
@@ -326,6 +357,12 @@ def _run_warmup(engine: Engine, cfg: Config, prog: "data_manager.JobProgress") -
         # gaining any new synchronous compute (this step runs strictly in this background warm-up thread,
         # after `yield`).
         _warm_coverage_snapshot(engine, cfg)
+        # The `AvailabilityCache` counterpart of the coverage safety net immediately above — same guard,
+        # same session discipline, same non-fatal contract, same background thread (no boot-path compute).
+        # Without it, an ingest whose bars committed but whose finalize never ran (a restart mid-job)
+        # left `GET /api/data/availability` permanently behind `GET /api/data`'s coverage block, which
+        # this very sequence healed. See `_warm_availability`'s own docstring for the live evidence.
+        _warm_availability(engine, cfg)
         prog.status = "ok"
         prog.message = f"history {prog.dates_total}/{prog.dates_total}"
     except Exception as exc:  # NON-FATAL: caught + logged, never re-raised out of the thread

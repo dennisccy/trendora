@@ -799,7 +799,14 @@ def _run_detail_json(engine, job_id: str) -> dict:
 def test_interrupted_job_keeps_its_last_checkpointed_progress(tmp_path, monkeypatch):
     """J-04 step 6 — a job whose process dies mid-run leaves an `interrupted` row carrying the progress it
     had actually reached, NOT zeros. The death is simulated the only honest way an in-process test can: the
-    terminal transition (`_finalize_run_record`) never runs, exactly as it never runs under `kill -9`."""
+    terminal transition never runs, exactly as it never runs under `kill -9`.
+
+    BOTH post-completion run-record writers are disabled, not just one. `_finalize_run_record` closes the
+    row; `_amend_run_record_detail` re-writes the closed row's detail blob once a backfill's DEFERRED
+    hot-key warms finish (the finalize hook is split so those warms stop holding the row open). A killed
+    process executes NEITHER, so simulating death by silencing only the first would leave a "dead" job
+    still writing its aggregate list — which is what made this assertion fail when the second writer was
+    introduced. Patching both keeps the simulation faithful rather than loosening the claim."""
     cfg, engine = _fresh_seed_engine(tmp_path, "checkpoint_progress")
     with Session(engine) as session:
         trading = data_manager._trading_days(session, cfg)
@@ -809,6 +816,7 @@ def test_interrupted_job_keeps_its_last_checkpointed_progress(tmp_path, monkeypa
     # FIRST date. Zero interval => checkpoint after every date (the same code path, just unthrottled).
     monkeypatch.setattr(data_manager, "_RUN_RECORD_CHECKPOINT_INTERVAL_S", 0.0)
     monkeypatch.setattr(data_manager, "_finalize_run_record", lambda *a, **k: None)
+    monkeypatch.setattr(data_manager, "_amend_run_record_detail", lambda *a, **k: None)
 
     job = create_job("backfill", r_start, r_end)
     run_data_job(job.job_id, config=_with_backfill_workers(cfg, 1), engine=engine)

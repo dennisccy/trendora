@@ -129,6 +129,69 @@ def test_yahoo_skips_null_price_rows_never_fabricates():
     assert [b.date for b in bars] == [date(2024, 1, 2)]  # the null row is dropped, not invented
 
 
+# --------------------------------------------------------------------------------------------------
+# A range with NO rows is a successful empty answer, never a provider fault.
+#
+# Yahoo answers a window it has no data for with a WELL-FORMED success — HTTP 200, `chart.error: null`,
+# one `result` entry carrying a real `meta`/`indicators` but NO `timestamp` array. Reading `timestamp`
+# straight through raised a bare KeyError that surfaced to the operator as
+# "yahoo response unparseable for 'X': 'timestamp'", counting a correct provider answer as a failed
+# symbol. Live-confirmed 2026-08-14 against `^DXY` (defunct quote: `firstTradeDate: null`), `SATS`
+# (listed after the requested window) and intermittently `EA`.
+# --------------------------------------------------------------------------------------------------
+_YAHOO_EMPTY_WINDOW = {
+    "chart": {"error": None, "result": [{
+        # the exact shape Yahoo returned for ^DXY / SATS: meta + indicators present, timestamp absent
+        "meta": {"symbol": "SATS", "instrumentType": "EQUITY", "dataGranularity": "1d"},
+        "indicators": {"adjclose": [{}], "quote": [{}]},
+    }]}
+}
+
+
+@pytest.mark.parametrize("block", [
+    # key absent entirely — the live ^DXY / SATS shape
+    {"meta": {"symbol": "X"}, "indicators": {"quote": [{}]}},
+    # explicit null
+    {"meta": {"symbol": "X"}, "timestamp": None, "indicators": {"quote": [{}]}},
+    # empty array
+    {"meta": {"symbol": "X"}, "timestamp": [], "indicators": {"quote": [{}]}},
+])
+def test_yahoo_range_with_no_rows_returns_no_bars_not_an_error(block):
+    """THE REGRESSION: all three empty shapes mean the same thing — the symbol has no bars in the
+    requested window — and none of them is a provider fault."""
+    provider = YahooProvider(client=_FakeClient(payload={"chart": {"error": None, "result": [block]}}))
+    assert provider.get_daily("SATS", start=date(2026, 8, 3), end=date(2026, 8, 14)) == []
+
+
+def test_yahoo_empty_window_live_shape_returns_no_bars():
+    """The captured live payload verbatim, so the fix is pinned to what Yahoo actually sends."""
+    provider = YahooProvider(client=_FakeClient(payload=_YAHOO_EMPTY_WINDOW))
+    assert provider.get_daily("SATS", start=date(2026, 8, 3), end=date(2026, 8, 14)) == []
+
+
+def test_yahoo_genuinely_malformed_rows_still_raise():
+    """The empty-window allowance must not soften a REAL malformation: a block that HAS timestamps but
+    broken quote arrays is still an honest `unparseable`, exactly as before."""
+    payload = {"chart": {"error": None, "result": [{
+        "timestamp": [_unix(date(2024, 1, 2))],
+        "indicators": {"quote": [{"open": [1.0]}]},  # high/low/close/volume missing
+    }]}}
+    with pytest.raises(ProviderUnavailableError) as exc:
+        YahooProvider(client=_FakeClient(payload=payload)).get_daily("AAPL")
+    assert "unparseable" in str(exc.value)
+
+
+def test_yahoo_reported_error_and_empty_result_still_raise():
+    """The other two failure branches are untouched — an empty window is distinguished from Yahoo saying
+    it failed, and from a response carrying no result block at all."""
+    with pytest.raises(ProviderUnavailableError):
+        YahooProvider(
+            client=_FakeClient(payload={"chart": {"error": "Not Found", "result": [{"meta": {}}]}})
+        ).get_daily("ZZZZ")
+    with pytest.raises(ProviderUnavailableError):
+        YahooProvider(client=_FakeClient(payload={"chart": {"error": None, "result": []}})).get_daily("ZZZZ")
+
+
 # ==================================================================================================
 # Tiingo (key-aware)
 # ==================================================================================================
