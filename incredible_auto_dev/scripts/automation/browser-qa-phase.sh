@@ -269,6 +269,18 @@ if [[ "$PHASE" =~ ^goal-(.+)-iter-[0-9]+$ ]]; then
   replay_lane_paths "$PHASE"
   # shellcheck disable=SC2034
   REQUIRED_JOURNEYS="$(replay_lane_spec_journeys 'Required-still-passing' "$SPEC")"
+  _bqa_targets="$(replay_lane_spec_journeys 'Target journeys:' "$SPEC")"
+  # ops-hardening iter-42: mirror into the shared TARGET_JOURNEYS global name goal-iter-lean.sh
+  # already uses -- replay_lane_merge_results (lib/replay-lane.sh) reads this ONE name from both
+  # callers to thread `--target` into the merger, mirroring REQUIRED_JOURNEYS -> --required exactly.
+  #
+  # ops-hardening iter-79 (owner-approved 2026-08-13): this assignment MUST stay ABOVE
+  # replay_lane_partition_and_verify. It used to sit below, so the partitioner read an EMPTY
+  # TARGET_JOURNEYS and iter-60's target-journey replay routing was dead on this full-pipeline
+  # path (it worked only on the lean path, which sets the name first) -- target journeys went
+  # unreplayed for several rounds.
+  # shellcheck disable=SC2034
+  TARGET_JOURNEYS="$_bqa_targets"
   replay_lane_partition_and_verify "$PHASE"
   if [[ "$_use_replay" == "yes" ]]; then
     _llm_out="$LLM_RESULTS"
@@ -278,12 +290,6 @@ if [[ "$PHASE" =~ ^goal-(.+)-iter-[0-9]+$ ]]; then
   # replay_lane_llm_regression_set narrows itself when it is non-empty, and
   # the post-merge writer below appends the DEFERRED-BUDGET rows. Targets are
   # excluded from deferral — they are dispatched regardless.
-  _bqa_targets="$(replay_lane_spec_journeys 'Target journeys:' "$SPEC")"
-  # ops-hardening iter-42: mirror into the shared TARGET_JOURNEYS global name goal-iter-lean.sh
-  # already uses -- replay_lane_merge_results (lib/replay-lane.sh) reads this ONE name from both
-  # callers to thread `--target` into the merger, mirroring REQUIRED_JOURNEYS -> --required exactly.
-  # shellcheck disable=SC2034
-  TARGET_JOURNEYS="$_bqa_targets"
   REPLAY_DEFERRED_BUDGET="$(replay_lane_deferred_budget_set "$_bqa_targets")"
   if [[ -n "${REPLAY_DEFERRED_BUDGET// /}" ]]; then
     echo "[browser-qa] iter-budget trim (rung 2): deferring no-golden regression journey(s) this iteration: ${REPLAY_DEFERRED_BUDGET% }— targets + replay-FAIL re-confirms are never deferred."

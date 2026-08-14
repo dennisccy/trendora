@@ -9128,3 +9128,133 @@ budget — 18th over-budget round, the second-smallest so far, and the time-save
 review step); may we fix the one-line pattern in `closure_gate.py:72` that mis-flags a quoted word;
 may we fix the ordering bug in `browser-qa-phase.sh`; may we limit how many heavy calculations run at
 once (B-1107); and should the two-second health-answer promise apply to long jobs only or to all jobs?
+
+## Iteration 79 — goal-ops-hardening-iter-79
+
+**Date:** 2026-08-14T00:30:00Z
+**Verdict:** GOAL_ACHIEVED
+**Depth dispatched:** lean (`iter-79/depth-dispatched` = `lean`, although the spec asked for
+`evidence`; the lanes that ran were decomposer → developer → reviewer → browser-qa (both lanes) →
+coherence → evaluator. No QA, audit, closure, ux-regression or demo step runs at this depth)
+**Depth recommended next:** evidence
+
+**Journey deltas:**
+- **Newly passing: none — nothing was failing.** All eight Must-have journeys enter and leave
+  `passing`, each re-verified THIS round by BOTH lanes; `last_verified_iter` advances to iter-79
+  for all eight.
+- Newly failing: none. Regressed: none. `partial` / `unknown` / `DEFERRED-BUDGET` /
+  `pending_infra`: none (no `browser-infra.json`; both lanes ran; 0 skipped rows).
+- Deterministic replay **8/8 PASS first try** — and, for the first time in several rounds, all
+  EIGHT target rows executed (the owner-approved `browser-qa-phase.sh` ordering fix works: I read
+  `TARGET_JOURNEYS` assigned at :283 before `replay_lane_partition_and_verify` at :284). LLM lane
+  8/8. Merged file 8/8, 0 skipped, no FAIL / DEFERRED-BUDGET / BLOCKED cell.
+- `evidence_makeup` stays on **J-01, J-05, J-09** (each still owes one specific picture); absent
+  on J-03, J-04, J-06, J-07, J-08.
+- Anti-goal violations: **seven new, all MINOR, none critical** (iter-79/a the 9.3 s backtest
+  under manufactured concurrency; /b two blank `/data` screenshots; /c a poll count that
+  understates its own CSV; /d stale `status.json` bookkeeping; /e the 19th over-budget round at
+  1.35×; /f the demo `[NEW]`-flag gap being wider than the 20-round-old carry; /g a background
+  task cancelled at service shutdown). Ledger: **289 total, 153 unresolved, 0 unresolved
+  critical.** scan-report **CLEAN**; coherence **COHERENCE-PASS** (zero-change form); review
+  **PASS_WITH_NOTES**.
+
+**Reasoning:** I re-derived every load-bearing number from the raw artifacts, the database, the
+backend log and the engine source rather than from the reports.
+(1) **I AM DECLARING THE GOAL MET, AND THE OWNER'S AMENDMENT IS WHY THE ANSWER CHANGED — NOT THE
+EVIDENCE.** The evidence has been good for four rounds. What changed on 2026-08-13 is the rule:
+"unresolved anti-goal violations" in §C.3 is scoped to **critical** severity, and there are zero
+unresolved critical entries. I applied it as written and did not re-litigate it.
+(2) **BOTH LANES RAN AND BOTH COVERED ALL EIGHT JOURNEYS — THE DEFECT THAT SPOILED ROUNDS 60-78 IS
+FIXED.** The merged file records 8/8 with 0 skipped and no "no test case executed by any lane"
+row. I verified the mechanism in source, not just the outcome.
+(3) **I OPENED EIGHT PICTURES AND MATCHED THREE OF THEM TO THE DATABASE MYSELF.** J-01's frame
+reads Market Regime 67.83 / Risk-on / "Scanned 2026-07-20 17:31:10"; my own query returns
+`scanner_runs` 739 = 67.83 / "Risk-on" / 2026-07-20 17:31:10.527578. J-07's frame reads 60.23 /
+"Narrow leadership" and a 1d scorecard row of +0.70% n=20; `scanner_runs` 1927 stores 60.23 /
+"Narrow leadership", and my own join of `scanner_results` rank ≤ 20 to `forward_returns`
+horizon = 1 for that run returns n = 20, mean 0.6964743644 → +0.70%. J-09's frame shows "Ready"
+and "background compute running (1)" in one image.
+(4) **THE JOB RECORDS PARTITION EXACTLY, IN BOTH LANES.** `data_provider_runs` 518/522 (May
+range): dates_total 19, calendar 28, non-trading 9, already-snapshotted 19, created 0 — 9+19 = 28
+and 0+19+0 = 19. 519/523 (weekend): 0 of 0, 2 calendar, 2 non-trading. 524: the zero-work re-run.
+520/525: 2025-06-01 → 2026-07-17 = **412 calendar days**, 283/283, status ok — the retired 370-day
+cap is gone. 521: a real one-day ingest of 2005-08-16, 1 snapshot, 795 forward returns, 19m47s,
+nine aggregates refreshed inside the job, and `scanner_runs` 2999 written 11 s after the run
+started. All `provider='seed'` (AG-9).
+(5) **THE HEAVY-LOAD EVIDENCE IS THE STRONGEST OF THE SESSION AND I COUNTED IT MYSELF.** The
+cited CSV holds **312 rows, 312 × HTTP 200, max 0.55 s, zero breaches of the 2 s ceiling**, over
+five stacked background windows that I corroborated one by one in `forward_aggregate_cache`
+(2012-01-10, 2015-06-20, 2018-09-05, 2003-04-01, and the 2026-07-31 re-warm). The round's backend
+process logged 2,345 × HTTP 200 and **zero 5xx, zero MemoryError, zero QueuePool**.
+(6) **I FOUND J-04's TRUNCATED-LOG SIGNATURE BY ACCIDENT AND REPORT IT AS CORROBORATION.** In
+`logs/backend.log` the round's process writes a full boot sequence, while the PREVIOUS process
+(1075800) has no shutdown entry at all — precisely the "killed process writes no crash line"
+shape J-04 step 5 asserts. It does not replace the carried drill, but it is real, independent
+support for it.
+(7) **I DID NOT LET A CLEAN ROUND HIDE THE ONE OUT-OF-BUDGET MEASUREMENT.** A never-warmed
+`as_of=2003-04-01` request took 9.3 s against J-08's ≤1.5 s budget while another warm was in
+flight. I checked the cause instead of accepting the label: that key's five horizons committed
+between 23:56:41.68 and 23:56:43.14 UTC, i.e. ~1.5 s of compute — so the 9.3 s was queueing under
+concurrency the tester manufactured, which is the owner-deferred B-1107 gap that J-09's
+acceptance explicitly excludes. J-08's own step-2 scenario measured 0.03-0.12 s this round.
+Logged iter-79/a; not scored as a failure.
+(8) **I CORRECTED A TWENTY-ROUND-OLD CARRY BY OPENING THE FILE, AS THE ITER-78 LESSON DEMANDS.**
+The standing note says only J-05's walkthrough step lacks its `[NEW]` flag. I read
+`reports/goal-session-ops-hardening-demo.json`: **four** journeys' steps are `new: false` — J-01
+(3, 4), J-03 (5, 6), J-04 (2), J-05 (7) — all `verified: true` and viewable via the session-live
+demo; J-06, J-07, J-08 and J-09's steps are correctly `new: true`. Logged iter-79/f, and recorded
+as an interpretation call in `assumptions.md` because it touches journey acceptance text.
+(9) **TWO CAPTURES THIS ROUND ARE DEFECTIVE AND I SAY SO.** `J-09-background-compute-panel.png`
+and `-panel2.png` are byte-identical 2,061-byte solid-blank images (md5 7f1f02a…); the lane
+disclosed the cause (the browser tool cannot screenshot `/data` below the fold) and verified the
+panel by reading the DOM instead, and the replay golden asserts the panel's testid plus the
+verbatim "process-lifetime only, never persisted" sentence. J-05's replay frame is again the
+bottom of the leaderboard. Behavior confirmed; pictures owed.
+(10) **AG-10 CHECKED BY DIFF, NOT BY ASSERTION.** The product diff is EMPTY — my own
+`git diff f3b4f08a` with bookkeeping excluded returns nothing and there are no untracked product
+files — so no launcher line, no HOST-GUARD block and no `config.yaml` value could have moved.
+The only tree changes versus HEAD are `docs/goal.md` (the owner amendment) and the two
+owner-approved harness files, all already present in the iteration snapshot.
+(11) **I RAN THE DETERMINISTIC GATES MYSELF BEFORE COMMITTING TO THE VERDICT.**
+`goal_gate.py journeys` → 8/8, no blockers; `coherence --for-achievement` → rc 0 (the zero-change
+PASS is explicitly certification-valid, SPEED-14); `results` → rc 0 (no FAIL/DEFERRED/BLOCKED
+cell); `drift` → rc 0; `hash-journeys --history` → `changed: []`; `regressions` against this
+round's pre-snapshot → rc 0.
+Rejected **REGRESSION (C.1)**: nothing moved to `failing`; zero unresolved critical entries; the
+seven new entries are all minor and I state the grading reason for each.
+Rejected **STALLED (C.2)**: the human-owned blocker that halted iter-78 was answered by the owner
+on 2026-08-13; nothing is now waiting on a person to unblock.
+Rejected **ESCALATE (C.4)**: nothing failed twice, the review is a genuine PASS_WITH_NOTES, and
+there is no cross-cutting ambiguity left to resolve.
+Rejected **CONTINUE (C.5)**: every remaining item is either owner-owned backlog or a capture
+chore on already-working features, and my own instructions forbid making evidence capture an
+iteration's goal.
+**Chose GOAL_ACHIEVED (C.3):** all eight journeys `passing` on this round's own evidence, zero
+unresolved critical anti-goal violations, coherence not FAIL, no goal-edit drift.
+**FIVE THINGS I STATE PLAINLY RATHER THAN ROUND AWAY:** (i) **The verdict changed because the
+rule changed** — I say so instead of implying the product improved this round; nothing was built.
+(ii) **Three journeys lean partly on earlier drills** (J-04 restart/crash/logfile, J-05 cold
+restart, J-07 memory drill); that is legitimate under an empty product diff and was ordered by
+the spec, and I record it in each gap field rather than in a footnote. (iii) **One measurement
+was over budget** (9.3 s) and I traced its cause to queueing rather than accepting the report's
+attribution. (iv) **Two evidence files are blank images** and one prose count disagrees with its
+own attached file — both logged, neither hidden. (v) **153 minor items remain unresolved**; the
+owner's amendment says report them, so they are reported, not buried.
+
+**Next-step recommendation:** HALT — the goal is met. Hand the owner the small chore list rather
+than another build round: photograph J-01 "Backfill honors the requested range and explains
+zero-work"'s zero-work outcome panel (6th round owed); re-take J-05 "Aggregates are precomputed
+at ingest"'s frame so it shows the snapshot header, not the bottom of the leaderboard (6th);
+re-take J-09 "The backend discloses its own background-compute activity"'s `/data` panel picture,
+which the browser tool saved blank; write J-06 "Pages load only what they need"'s page timings
+into `reports/perf-budgets.md` (10th round owed); mark the walkthrough steps for J-01, J-03,
+J-04 and J-05 as new in the session demo file. If the owner wants a tidy finish, ONE
+`evidence`-depth round clears all five; none of them changes any journey's status. Owner-owned
+and still open, none blocking completion: cap on how many heavy calculations run at once
+(B-1107 — the cause of the single 9.3 s response), acceptance of the running cost (this round
+1h21m against a 1-hour budget — 1.35×, the smallest overrun of the 19-round streak), and whether
+the two-second health promise should cover short jobs too. Note for whoever resumes: this
+project has the continuous-improvement opt-in installed
+(`project-extensions/hooks/post-goal.sh` + `proposer-guidance.md`), so a GOAL_ACHIEVED verdict
+dispatches the goal-proposer; if it proposes new journeys the loop continues on NEW work, which
+is not unfinished business from this goal.

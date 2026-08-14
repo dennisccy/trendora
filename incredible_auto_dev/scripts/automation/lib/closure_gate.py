@@ -66,6 +66,18 @@ _PLACEHOLDER_RE = re.compile(
     r"\bTODO\b|\bTBD\b|<fill|\bFILL IN\b|\blorem\b|\bxxx+\b", re.IGNORECASE
 )
 
+# Code spans are quoted evidence, not authored prose — a marker inside one is
+# something a tool said, not a placeholder the author left behind (owner
+# amendment 2026-08-13; ops-hardening iter-78 blocked closure on an artifact
+# faithfully quoting Chrome MCP's own "TODO: Console logging not yet
+# implemented" message).
+_INLINE_CODE_RE = re.compile(r"`[^`]*`")
+_CODE_FENCE_RE = re.compile(r"^\s*(?:```|~~~)")
+# Straight and curly double quotes, bounded to one line so an unbalanced quote
+# cannot blank out the rest of the document. Single quotes are deliberately NOT
+# included — apostrophes ("don't") would swallow arbitrary prose.
+_QUOTED_SPAN_RE = re.compile(r"\"[^\"\n]{0,300}\"|“[^”\n]{0,300}”")
+
 # N/A-stub / backend-only claim markers — the same set check_backend_only_claim
 # greps (lib/common.sh) so both layers agree on what a backend-only claim is.
 _BACKEND_CLAIM_RE = re.compile(
@@ -178,14 +190,46 @@ def skip_reason(results_text: str) -> str | None:
 
 
 def placeholder_hits(text: str) -> list[str]:
-    """Placeholder markers on non-comment lines, as 'marker (line N)' strings."""
+    """Placeholder markers on non-comment lines, as 'marker (line N)' strings.
+
+    Markers inside a quoted span — fenced code, inline code, or double quotes —
+    are skipped: quoting a tool's own output is evidence, not an unfinished
+    placeholder. Bare markers in prose still block, which is what the guard
+    exists for.
+    """
     hits: list[str] = []
+    in_fence = False
     for i, line in enumerate(text.splitlines(), 1):
-        if line.strip().startswith("<!--"):
+        if _CODE_FENCE_RE.match(line):
+            in_fence = not in_fence
             continue
-        for m in _PLACEHOLDER_RE.finditer(line):
+        if in_fence or line.strip().startswith("<!--"):
+            continue
+        # Blank out quoted spans, preserving offsets. Code first, so a quote
+        # character inside a code span cannot open a stray quoted span.
+        scanned = _INLINE_CODE_RE.sub(lambda m: " " * len(m.group(0)), line)
+        scanned = _QUOTED_SPAN_RE.sub(lambda m: " " * len(m.group(0)), scanned)
+        for m in _PLACEHOLDER_RE.finditer(scanned):
             hits.append(f"{m.group(0)} (line {i})")
     return hits
+
+
+# A negated mention is the opposite of a claim: "no remaining backend-only gap"
+# and "no longer backend-only" both assert the gap is CLOSED. Clause-bounded so
+# "…no new pages; it is backend-only" still reads as a genuine claim.
+_BACKEND_CLAIM_NEGATOR_RE = re.compile(
+    r"\b(?:no|not|never|non|zero)\b[^.;]{0,32}$", re.IGNORECASE
+)
+
+
+def has_backend_only_claim(text: str) -> bool:
+    """True when the text actually claims backend-only, ignoring negated mentions."""
+    for m in _BACKEND_CLAIM_RE.finditer(text):
+        prefix = text[: m.start()].rsplit("\n", 1)[-1]
+        if _BACKEND_CLAIM_NEGATOR_RE.search(prefix):
+            continue
+        return True
+    return False
 
 
 def frontend_files_changed(repo_root: Path, phase: str) -> bool:
@@ -460,7 +504,7 @@ def _crossref_frontend(
     # Backend-only claim guard (port of check_backend_only_claim, blocking here
     # because Frontend Present: yes — body.md Step 4).
     uvc = texts.get("user-visible-changes")
-    if uvc is not None and _BACKEND_CLAIM_RE.search(uvc):
+    if uvc is not None and has_backend_only_claim(uvc):
         if frontend_files_changed(repo_root, phase):
             r.blocking.append((
                 "user-visible-changes claims no visible changes but frontend "

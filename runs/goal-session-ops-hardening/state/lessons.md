@@ -413,513 +413,161 @@ chunking, `LIMIT` pushdown) — check the bound's unit against the consumer's un
 byte-identity test to compare against the ORIGINAL implementation, never against another instance of
 the new one.
 
-## iter-54 — 2026-08-09T23:45:00Z
-
-**Verdict:** ESCALATE
-**Lesson:** A finalize-tail warm can abort part-way and still be persisted as complete: run 351's
-forward-aggregate warm stopped at horizon 20 under real memory pressure (`logs/backend.log:233042`,
-"stopping remaining horizons in this loop" — horizon 60 never ran), yet `data_provider_runs.id=351`
-stores `status='ok'` with `forward_aggregates` still listed in `aggregates_refreshed`. The
-isolate-and-continue path drops a *failed* member from the list (that is how `factor_lab_all`
-disappeared, `:233277`) but a *partially completed* member keeps its entry — so the honest-omission
-mechanism has a hole exactly where a loop aborts mid-iteration. Every future scoring of J-05/J-07 must
-read the finalize-tail sub-phase timing lines for the job (count the horizons) instead of trusting
-`aggregates_refreshed` alone.
+## iter-54 — 2026-08-09T23:45:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iter touching `data_manager._refresh_ingest_aggregates` / `forward_testing`'s warm
 loop, and any lane or evaluator scoring an ingest run from `aggregates_refreshed` / `status`.
 
-## iter-54 (second entry) — 2026-08-09T23:45:00Z
-
-**Verdict:** ESCALATE
-**Lesson:** Poll density decides whether an availability defect is visible at all. The browser lane's
-127 samples over 20m50s recorded "0 non-answers" and passed J-05/J-07; the developer's 1-per-second
-drill over the same tree recorded 6 non-answers and 53 polls over 2.0s. Both are honest measurements of
-the same product — the sparse one simply cannot see a 5-second gap. A lane row asserting "health stayed
-responsive" is only evidence if its sampling interval is shorter than the outage it claims to exclude.
+## iter-54 (second entry) — 2026-08-09T23:45:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any browser-qa or golden script asserting J-05 step 4 / J-07 step 2, and any iteration
 that plans to replace the 1 Hz concurrent drill with in-turn browser polling.
 
-## iter-54 (third entry) — 2026-08-09T23:45:00Z
-
-**Verdict:** ESCALATE
-**Lesson:** A behaviour-asserting golden can fail for the very behaviour it exists to protect. J-04's new
-golden asserts `[data-testid="readiness-badge"][data-state="ready"]` on step 2 and FAILED — because the
-replay started ~1 minute after a backend restart and `J-04-verify.png` shows the badge reading
-"Initializing… history 89/89", which is J-04's own required behaviour. `J-08-verify.png` from the same
-replay minutes later shows "Ready". Goldens that assert a steady state must first `wait_for` that state,
-or they encode a race as a regression.
+## iter-54 (third entry) — 2026-08-09T23:45:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** every golden in `runs/goal-session-ops-hardening/journey-scripts/` whose first assertion
 reads a readiness/health-derived attribute (J-04.json step 2, J-07.json step 2).
 
-## iter-55 — 2026-08-10T03:00:00Z
-
-**Verdict:** CONTINUE
-**Lesson:** A verification fixture that CONSUMES its own precondition is a guaranteed future
-false-regression. `journey-scripts/J-05.json` requires a trading day with zero snapshot rows and
-asserts "0 already snapshotted"; running it creates that snapshot, so the very act of passing it
-makes the next run fail. This round consumed 2010-11-08 (`scanner_runs.id=2940`) and left the
-script un-rotated — and the failure mode is already demonstrated in this round's own data: a
-second concurrent `demo_runner` instance hit the same date and recorded `already_snapshotted=1`
-(`data_provider_runs.id=359`). A lean round would see the FAIL, have no audit to explain it, and
-could score J-05 `regressed` and halt the session on a fixture artifact. Either rotate the date in
-the same commit that runs the golden, or make single-use goldens pick their target date at run
-time from `GET /api/data/availability`.
+## iter-55 — 2026-08-10T03:00:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any golden script whose assertions depend on a one-shot state the script itself
 changes (single-use dates, "first time" flags, one-off job outcomes) — and any evaluator scoring a
 replay FAIL on such a journey.
 
-## iter-55 (second entry) — 2026-08-10T03:00:00Z
-
-**Verdict:** CONTINUE
-**Lesson:** The replay lane writes `reports/phase-<iter>-regression-replay-results.md` wholesale,
-so a NARROWER later run silently erases a BROADER earlier one. This round a 7-journey developer
-run at ~02:09 (which produced the only J-05/J-07 rows this session has ever had) was overwritten
-at 02:32 by a 5-journey lane run; `replay-lane/verify-run.log` was truncated to 0 bytes at the
-same time. The reviewer had read the 7-row file at 02:25 and cited it; six minutes later QA cited
-the same rows and they no longer existed. Nothing detected this except mtimes and the PNG
-provenance stamps (`Created=2026-08-10T02:09:47`), which is the only reason the evidence was
-recoverable at all — keep stamping capture artifacts. Fix: per-run result files, or merge rows
-instead of overwriting.
+## iter-55 (second entry) — 2026-08-10T03:00:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration whose replay lane runs more than once (developer pass + lane pass),
 and any evaluator reading a results table that disagrees with a dev handoff or review report.
 
-## iter-56 — 2026-08-10T06:30:00Z
-
-**Verdict:** ESCALATE
-**Lesson:** Moving a value from "computed on every request" to "warmed at ingest" silently changes
-what the page shows *while an ingest is running*. `availability_from_storage`
-(`apps/backend/app/engine/data_manager.py:1676-1690`) reads only the row matching the current
-`_membership_dataset_version` stamp, and that stamp folds in `count(daily_prices)` — so the first bar
-a job commits invalidates it, the only writer is the finalize-tail warm at the END of the job, and for
-the whole run `/data` renders `availability-heatmap.tsx:230-238`'s "No availability yet — There are no
-stored trading days to chart. Fetch real EOD prices" on a 3.3M-row database. The stale row is still in
-the table; the serving path just refuses it. Any future ingest-time cache must decide, explicitly,
-whether a stamp miss means "serve the previous value with an as-of marker", "say updating", or
-"say empty" — the empty sentinel that is honest on a fresh install is a lie on a mature one.
+## iter-56 — 2026-08-10T06:30:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration adding or changing an ingest-warmed cache under
 `app/engine/data_manager.py` / `app/engine/indexes.py` (coverage_snapshot, membership_timeline,
 index_series, availability_heatmap, factor_lab_all), and any browser check that only ever loads a page
 on a warm idle system.
 
-## iter-56 — 2026-08-10T06:30:01Z (second entry)
-
-**Verdict:** ESCALATE
-**Lesson:** A journey's gap list lives in `journey-history.json`, not in the previous round's prose.
-iter-54 recorded FOUR over-budget readings for J-06; iter-55's next-step summarised them as "two slow
-endpoints"; the iter-56 spec was built on the summary, fixed exactly those two, and the journey still
-cannot pass. Read the structured note before planning a journey's closing round.
+## iter-56 — 2026-08-10T06:30:01Z (second entry)  [condensed: body → lessons.md.archive.md]
 **Applies to:** the goal-decomposer choosing a target journey, and any evaluator writing a next-step
 summary of a multi-part gap.
 
-## iter-57 — 2026-08-10T18:55:00Z
-
-**Verdict:** CONTINUE
-**Lesson:** A verification check placed BEFORE the lane is structurally incapable of catching a breach the
-lane itself causes. This round's TC-16 ("all ingest rows read `provider='seed'`") was authored around 09:14
-local and the AG-9 breach it exists to detect — `data_provider_runs` id=369, a drill click on `/data`'s
-"Fetch real EOD prices" button that made 591 live outbound requests — happened an hour later. Five earlier
-occurrences (ids 135/261/262/264/297) passed the same check for the same reason. The fix that worked was
-positional, not rhetorical: record `max(data_provider_runs.id)` before the lane, re-query after it.
+## iter-57 — 2026-08-10T18:55:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration whose DoD asserts a property of the RUNTIME state ("no live fetches", "no new
 rows", "no MemoryErrors") — verify it after the lane, never before, and record the pre-lane watermark.
 
-## iter-57 — 2026-08-10T18:55:01Z
-
-**Verdict:** CONTINUE
-**Lesson:** A drill summary that computes segment counts can silently delete its own failure. The TC-7
-health drill's log has 1,212 records; `reports/perf-budgets.md` Addendum 23 reports three segments summing
-to exactly 1,211 and states "ZERO non-200, no unresponsive gap" — the one record that failed
-(`2026-08-10T10:30:00Z 000 10.002641`) fell outside every hand-picked sub-window, and the window's stated
-end is one second before it. The same sentence then propagated into the dev handoff and `status.json`.
-Segment boundaries chosen by hand are where failures go to disappear; bound them by the process's own
-`ingest heavy-warm window OPEN/CLOSED` markers and reconcile the segment total against `wc -l` of the raw
-log before writing any "zero failures" claim.
+## iter-57 — 2026-08-10T18:55:01Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration recording a poll/latency drill in `reports/perf-budgets.md`, and any agent
 reading a "N polls, zero failures" claim — check N against the log's own line count first.
 
-## iter-57 — 2026-08-10T18:55:02Z
-
-**Verdict:** CONTINUE
-**Lesson:** J-06's own golden provokes the condition J-07 exists to catch. Its last step navigates to
-`/research/regime-lab`, whose first read after any data change derives the whole stored forward-return
-history — `J-06-verify.png` captures it mid-flight ("Still computing — 16s elapsed"), and that same
-heavy-compute class hit the `ulimit -v` ceiling twice this round (23 new MemoryErrors after three clean
-rounds, then a wedged process). So every J-06 replay leaves a multi-minute whole-history compute running in
-the background of whatever runs next, including the lane's own later steps.
+## iter-57 — 2026-08-10T18:55:02Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration replaying J-06, or scheduling heavy work immediately after the browser lane —
 budget for the regime-lab compute the golden starts, or pin the golden to a lab that serves from storage.
 
-## iter-58 — 2026-08-10T21:55:00Z
-
-**Verdict:** ESCALATE
-**Lesson:** Hashing an evidence directory for distinctness does NOT prove the pictures show anything —
-this round's nine PNGs were all distinct, and one of them (`J-05-job-running.png`, 2,061 bytes) is a
-completely blank frame while two more are viewport crops of the top of `/data` showing none of the state
-their rows assert. Open the files; distinctness is a duplication check, not an evidence check. Second, and
-worse: the SAME iteration that corrected iter-57's "segment boundary hid a failed poll" defect reproduced
-it one lane over — a real 3.474 s health answer at `j05-health-poll.log:114` was written up as "a 4s gap
-(poll-script restart, negligible)" when the log has no missing sample there at all. Re-derive a drill's
-tally from its raw log before believing any prose summary of it, including a summary written by the same
-round that fixed the identical bug.
+## iter-58 — 2026-08-10T21:55:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration that produces a latency/health drill or cites screenshots as journey
 evidence; specifically the browser-qa lane's write-ups and any evaluator scoring J-05 step 4 or J-07 step 2.
 
-## iter-59 — 2026-08-11T07:05:00Z
-
-**Verdict:** CONTINUE
-**Lesson:** An iteration's TARGET journeys can end up verified by nobody. `replay-lane.sh` replays
-`REQUIRED_JOURNEYS` only, and target journeys are assumed to get rows from the LLM browser lane — whose
-generated test plan (UT-01..UT-06) contained no J-05 or J-07 case. Both target journeys had VALID goldens
-that passed on the first attempt when the developer ran `demo_runner.py --mode verify` by hand, and neither
-was ever replayed by a lane, so `ui-test-results.md` shipped `BLOCKED` with "no test case executed by any
-lane" over work that was actually done and correct. Promoting a journey to an iteration's own target is
-still the surest way to remove its verification (same class as iter-41's B2, which was thought fixed).
+## iter-59 — 2026-08-11T07:05:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** every goal-mode iteration — check `Target journeys:` against the merged results table's
 rows before believing any headline; and any framework work on `scripts/automation/lib/replay-lane.sh` or the
 ui-test-designer's plan generation.
 
-## iter-59 (2 of 2) — 2026-08-11T07:05:00Z
-
-**Verdict:** CONTINUE
-**Lesson:** Once a fault-injection hook exists, raw `grep -c MemoryError logs/backend.log` becomes a
-misleading regression signal: this round's count moved 8,131 → 8,171 and **all 40 new lines were the
-deliberate `injected at fault-injection site 'regime_lab'` hook**, while real memory exhaustion was zero.
-Separate injected from real (`grep -v "injected at fault-injection"`) and locate the last real one against
-the `start-backend.sh: launching at` markers to date it — that is what proved this iteration served zero
-500s and raised zero real MemoryErrors across ~7.5 hours.
+## iter-59 (2 of 2) — 2026-08-11T07:05:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration that reads `logs/backend.log` counts as evidence, and any future
 fault-injection site added to `_FAULT_INJECT_SITES`.
 
-## iter-60 — 2026-08-11T08:40:00Z
-
-**Verdict:** ESCALATE
-**Lesson:** A shell library edited by the developer cannot take effect in the same run that edits it —
-`goal-iter-lean.sh:45` sources `lib/replay-lane.sh` when the executor starts, so the round's own
-top-priority fix (routing `TARGET_JOURNEYS` goldens into the deterministic replay set) was still the old
-function body when the lane ran three minutes after the edit. The engine's own log proves it (07:46:43
-"Regression (deterministic replay): J-01 J-03 J-04 J-06 J-08 J-09", and the new fix's log line appears
-nowhere), yet the review recorded `definition_of_done: complete`. Any iteration whose deliverable is a
-change to `scripts/automation/lib/*.sh` must state up front that its own run cannot verify it, and the
-NEXT round must confirm it from the live lane log before the item is closed.
+## iter-60 — 2026-08-11T08:40:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration whose scope includes `scripts/automation/lib/*.sh`, `goal-iter-lean.sh`, or
 any other shell library the running executor sources at startup.
 
-## iter-60 (second) — 2026-08-11T08:40:00Z
-
-**Verdict:** ESCALATE
-**Lesson:** Comparing a screenshot's numbers against the database found a defect that five lanes and two
-"PASS" verdicts missed: `coverage_snapshot` (written inside the ingest finalize tail at 06:58:55) held
-`snapshot_count=2954` / `gap_count=2442`, while `/data` frames captured 48 minutes later in the same
-never-restarted process displayed 2953 / 2443. Golden replays assert selectors, not values, so a stale
-served aggregate passes every deterministic check. Whenever an iteration runs a real ingest, read the
-resulting persisted aggregate out of sqlite and compare it to whatever number the page shows in the
-evidence frame.
+## iter-60 (second) — 2026-08-11T08:40:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration that runs a live backfill/fetch/rebuild, or that touches
 `data_manager.compute_coverage` / `coverage_snapshot` / any ingest-maintained aggregate.
 
-## iter-61 — 2026-08-11T11:40:00Z
-
-**Verdict:** CONTINUE
-**Lesson:** This repo stores naive **UTC** in sqlite (`data_provider_runs.started_at`,
-`coverage_snapshot.computed_at`) while the backend's structured log lines and all file mtimes are
-**local BST (UTC+1)** — so comparing a screenshot's mtime to a DB row's timestamp is off by an hour
-in the direction that manufactures "staleness". That is exactly what happened at iter-60: its
-`J-04`/`J-09` frames (mtime 07:47 local) were read as 48 minutes *after* a coverage write that
-actually landed at 07:58:55 local, and a whole iteration (61) was commissioned to fix a defect that
-never existed. Always pin the offset first against a job's own log marker (DB `started_at` 09:40:39
-vs `backend.log` "heavy-warm window OPEN" 10:40:41) before calling a displayed number stale.
+## iter-61 — 2026-08-11T11:40:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any evaluation/audit that compares a UI screenshot or file mtime to a database
 timestamp; anything reading `data_provider_runs`, `scanner_runs.created_at`, `coverage_snapshot`.
 
-## iter-61 (2 of 2) — 2026-08-11T11:40:00Z
-
-**Verdict:** CONTINUE
-**Lesson:** A shell-library fix can be correct, merged, and still dead on half its callers: iter-60's
-target-journey replay routing (`lib/replay-lane.sh:300-317`) works on the lean path because
-`goal-iter-lean.sh:204` assigns `TARGET_JOURNEYS` before calling the partition function, and is inert
-on the full path because `browser-qa-phase.sh:272` calls it 14 lines *before* `:286` assigns the same
-variable. Verify a lane fix on **every** caller (`grep -n "replay_lane_partition_and_verify" scripts/`),
-and confirm from the engine log's own line — its distinctive "Target journey … routed" message has never
-appeared once in this session.
+## iter-61 (2 of 2) — 2026-08-11T11:40:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any change to `scripts/automation/lib/*.sh` consumed by both `goal-iter-lean.sh` and
 `browser-qa-phase.sh`; any DoD item phrased as "the engine log lists X".
 
-## iter-62 — 2026-08-11T15:40:00Z
-
-**Verdict:** ESCALATE
-**Lesson:** A golden that performs REAL work can destroy its own precondition: J-05's script backfills
-2010-11-17 and asserts "0 already snapshotted", so this round's own successful replay (creating
-`scanner_runs` id=2958) guarantees the SAME script fails next round. Any golden that mutates state needs
-either a fresh target chosen at run time or an explicit rotation step — and its closing assertions must
-name the row it just created, not a date from two rotations ago (steps 13-15 still assert 2010-11-16).
+## iter-62 — 2026-08-11T15:40:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration that runs, edits or trusts `runs/goal-session-*/journey-scripts/*.json`
 goldens that create data (J-05 today; any future state-mutating golden).
 
-## iter-62 — 2026-08-11T15:40:01Z
-
-**Verdict:** ESCALATE
-**Lesson:** The deterministic replay lane can start while the backend is still warming up after the
-pipeline's own pre-QA restart, and then reports FALSE FAILs on required-still-passing journeys — this
-round J-01 (step 09) and J-04 (step 02, a 20 s `wait_for` on `data-state="ready"`). Proof is cheap and
-should be the first check on any replay FAIL: compare the frame's mtime with the `=== start-backend.sh:
-launching at ... ===` banner in `logs/backend.log` (13:24:00Z boot vs 14:25 local frames), and look at the
-frame — both showed the honest "initializing history 89/89" chip. Never read such a FAIL as a regression.
+## iter-62 — 2026-08-11T15:40:01Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration reading `*-regression-replay-results.md`, and any change to the browser-QA
 lane's restart/replay ordering.
 
-## iter-63 — 2026-08-11T17:50:00Z
-
-**Verdict:** CONTINUE
-**Lesson:** Rotating a state-mutating golden onto a fresh date is NOT enough when the same round then
-replays it: the dev pass pointed `journey-scripts/J-05.json` at 2010-11-18 and this round's own replay
-lane consumed it 50 minutes later (`data_provider_runs` id=419 → `scanner_runs` id=2960 at 16:34:50Z),
-re-arming the exact false-FAIL the round existed to remove. Four consecutive rounds have now eaten the
-date they set. The durable fix is for the lane to select-and-persist an unsnapshotted trading day AT
-REPLAY TIME (or rotate immediately AFTER consuming), never a human guessing one round ahead.
+## iter-63 — 2026-08-11T17:50:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration that rotates, lints or trusts `runs/goal-session-*/journey-scripts/*.json`
 goldens that create data.
 
-## iter-63 — 2026-08-11T17:50:01Z
-
-**Verdict:** CONTINUE
-**Lesson:** A single-worst-case headline can hide a whole-distribution regression. "2.849 s → 2.420 s,
-~50 % overage reduction" compares ONE poll in one run to ONE poll in another, while the same two runs move
-1 → 53 breaches, p90 0.911 s → 1.475 s and p99 1.259 s → 3.002 s. Always recount the raw CSV
-(`evidence-drill/tc5-health-poll.csv`) into a distribution — count over ceiling, p90, p99, max — before
-accepting any latency claim, and check the idle pre-job baseline to test the "host was busier" excuse.
+## iter-63 — 2026-08-11T17:50:01Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration touching `reports/perf-budgets.md` addenda, health-poll drills, or J-07's
 latency acceptance.
 
-## iter-63 — 2026-08-11T17:50:02Z
-
-**Verdict:** CONTINUE
-**Lesson:** The showcase/demo lane is not read-only: when its fill steps fail ("unresolvable target
-job-start-date"), it still clicks Start, and this round that launched a REAL 5-date backfill
-(`data_provider_runs` id=420, 2005-06-24→2005-06-30) which the narration described as finishing "within
-seconds" and which was left `running` with no live process when services were torn down. A demo step whose
-own precondition failed must not proceed to a submit action.
+## iter-63 — 2026-08-11T17:50:02Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration touching the demo/walkthrough recorder, `demo.sh`, or
 `reports/phase-*-demo-*.md` — and any evaluator reading `/data` job rows after a demo pass.
 
-## iter-64 — 2026-08-11T21:20:00Z
-
-**Verdict:** CONTINUE
-**Lesson:** When the deterministic replay lane FAILs a step and the LLM lane overturns it, the overturn's
-stated REASON can be wrong even when its verdict is right — open the failing frame. This round both
-write-ups called J-05's step-13 failure a "golden-script false positive" / "navigation outrunning a final
-commit"; `reports/qa/goal-ops-hardening-iter-64-evidence/J-05-verify.png` actually shows `/scanner-runs`
-rendering the app's contained error boundary ("Something went wrong on this page") with the top bar
-reading `Ready`. The golden was right to fail; a product page had errored. J-07's overturn in the same
-run WAS a lane artifact (its frame shows an unstyled, still-loading page) — so the two must be judged
-frame by frame, never as one class.
+## iter-64 — 2026-08-11T21:20:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration where `regression-replay-results.md` carries a reconciliation footer; any
 evaluator or QA agent tempted to accept "transient/false positive" without opening the PNG.
 
-## iter-64 (2 of 2) — 2026-08-11T21:20:00Z
-
-**Verdict:** CONTINUE
-**Lesson:** A state-mutating golden is only fixed when it selects its own input at run time AND the
-selection is re-checked after the round consumes it. `resolve_sentinel_date()` (demo_runner.py:237-275)
-ended five rounds of hand-rotating J-05's date, but the proof that mattered was cheap and post-hoc:
-calling the resolver again once the round had used 2005-06-27 and confirming it returned 2005-06-28 with
-2,193 eligible days left. Do that one call rather than reading the unit test.
+## iter-64 (2 of 2) — 2026-08-11T21:20:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any golden/fixture that writes to the shared DB (journey-scripts/J-01, J-03, J-05), and
 any future "self-renewing" mechanism claim.
 
-## iter-65 — 2026-08-12T00:15:00Z
-
-**Verdict:** CONTINUE
-**Lesson:** A latency "regression" that reproduced twice (iters 63/64: 53 of 983 then 59 of 930 health
-polls over 2.0s, ~52-58 of them inside `factor_lab_all_warm`) did NOT reproduce at all under four
-escalating controlled profiles this round on byte-identical code — 0 stalls >0.30s solo, 0 breaches
-against the real route function, 0 through real ASGI/HTTP, and 1 of 1,057 in a full live ingest with none
-inside the phase. Worse, the same round's two measuring instruments disagreed by ~40x in rate (the dev's
-single-process `poll_health.py` 1/1,057 vs the browser-QA lane's subprocess-per-poll loop 8/240 on a shell
-reporting `nproc`=4). Prove the instrument and attribute each breach to an exact phase from the app's own
-millisecond `logs/backend.log` phase markers BEFORE chartering a code fix — this round's whole premise
-("a third GIL hold exists") came from a number nobody had yet pinned to a phase.
+## iter-65 — 2026-08-12T00:15:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration whose goal is derived from a latency/throughput measurement, and any J-07-class
 work in `apps/backend/app/engine/research.py` / `data_manager.py`; also any round planning to piggyback a
 drill on a lane that runs a browser at the same time.
 
-## iter-66 — 2026-08-12T02:40:00Z
-
-**Verdict:** CONTINUE
-**Lesson:** Two rounds of "profile the phase" found zero stalls because both re-ran the computation in a
-standalone script; the thing that finally localized the problem was arithmetic on artifacts that already
-existed — aligning the 1,024 health-poll timestamps in `tc1-health-poll.csv` against `dev.log`'s own phase
-lines put 68 of 70 breaches inside `factor_lab_all_warm` (15.7 % of 433 polls) with ZERO in the 382 polls
-right after it. Two traps to avoid next time: `dev.log`/`logs/backend.log` timestamps are host-local
-(UTC+1) while every CSV and DB row is UTC — the browser-QA lane's phase attribution this round was wrong by
-exactly one hour — and a newly added metric can refute the theory it was added to support (breaching polls
-averaged load 1.77 vs 1.90 for non-breaching, so "the host was busy" is contradicted by its own column;
-always compare the two groups, never just cite the values).
+## iter-66 — 2026-08-12T02:40:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration chasing `GET /api/health` latency during ingest/warm phases; any lane that
 cross-checks a UTC measurement against a Trendora log timestamp; any round that adds an explanatory metric.
 
-## iter-67 — 2026-08-12T06:05:00Z
-
-**Verdict:** CONTINUE
-**Lesson:** Counting only the polls that cross a threshold hides the stabler signal. This round had
-1 breach over 2.0 s (in `coverage_membership_timeline_refresh`) and concluded that the moving breach
-location argues against a phase-specific hold — but 120 of the drill's 131 polls over **1.0 s** sat inside
-`factor_lab_all_warm` (22.2 % of its 541 polls, mean 0.596 s vs 0.080 s in the next phase), exactly where
-iter-66 put its breaches. Whenever a latency claim is made, group the FULL distribution by phase, not just
-the ceiling crossings. Second trap from the same round: a "whole-run max" sample is not automatically in
-the phase you are discussing — the drill's max `loop_lag_s` (1.382 s) was timestamped 03:13:54 Z, two
-minutes BEFORE `factor_lab_all_warm` opened, next to the boot warm-up thread's own cache warms; always
-re-read the sample's own timestamp before naming its phase.
+## iter-67 — 2026-08-12T06:05:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration reporting `scripts/qa/poll_health.py` drills, `logs/health-watchdog.jsonl`
 samples, or any phase attribution in `reports/perf-budgets.md`.
 
-## iter-68 — 2026-08-12T07:50:00Z
-
-**Verdict:** CONTINUE
-**Lesson:** Before commissioning a new instrument, join the instruments you already have. This round's
-"~19.6% genuinely unnamed" residual on the one health-check breach was ~14 points recoverable with zero new
-code, by differencing the poller's own send timestamp in `evidence-drill/tc1-health-poll.csv` against the
-server's `t_received_wall` in `health-watchdog-slice.jsonl` (0.353 s for the breach; p99 183 ms live vs
-1.0 ms idle across the drill). Addendum 34 even printed that 0.353 s offset without converting it into a
-share. Corollary from the same round: the instrument was armed only on the developer's own backend, so the
-9 worst breaches of the round — caught by the browser lane against a backend with
-`TRENDORA_HEALTH_WATCHDOG` unset — carry no attribution at all.
+## iter-68 — 2026-08-12T07:50:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration adding a timing/diagnostic instrument, and any iteration whose measurement is
 taken by one lane while a second lane independently measures the same thing (arm the flag session-wide, and
 derive the cross-lane deltas before asking for a new sample type).
 
-## iter-69 — 2026-08-12T10:05:00Z
-
-**Verdict:** ESCALATE
-**Lesson:** When a round blames a metric's regression on an external confound, test whether the confound is
-distributed the same way the metric is before accepting it. Addendum 35 attributed this round's 8.09 % health-check
-breach rate to a concurrent caller (`goal-iter-lean.sh`); grouping the same 952 rows of
-`runs/goal-ops-hardening-iter-69/evidence-drill/tc1-health-poll.csv` against `logs/backend.log`'s phase windows
-showed 74 of 77 breaches and all 3 non-answers inside `factor_lab_all_warm` (0 of 124 and 0 of 343 in its two
-neighbours) while the confound was polling at 0.149 / 0.213 / 0.180 requests per health poll across those same
-three phases — uniform, so it cannot produce that split.
+## iter-69 — 2026-08-12T10:05:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration reporting a performance/availability metric that moved, especially J-07 health-poll
 drills — group by ingest phase and report the grouping, and normalize any named confound by the same buckets.
 
-## iter-69 — 2026-08-12T10:06:00Z
-
-**Verdict:** ESCALATE
-**Lesson:** A "Do not redo" entry written with a condition attached expires when the condition is met, and nobody
-re-reads it to notice. iteration-state's ban read "bounding `factor_lab_all_warm` / `coverage_membership_timeline_
-refresh` by code change — diagnostic only **until the handler-body sub-timing names a component**"; iter-69's
-sub-spans named two (`readiness_s` 43 of 74 breaches, `preflight_s` 31), so the ban lapsed by its own terms in the
-very round that satisfied it. Write conditional bans with their release condition in the same bullet, and check
-each one against the round's own results before carrying it forward.
+## iter-69 — 2026-08-12T10:06:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** the goal-evaluator writing `iteration-state.md`'s Do-not-redo list, and any decomposer treating
 that list as binding.
 
-## iter-70 — 2026-08-12T15:20:00Z
-
-**Verdict:** CONTINUE
-**Lesson:** After sixteen rounds of adding measurement, the round that REMOVED the named suspect from the
-request path fixed the metric outright — `readiness_s` p90 fell from 0.5631 s to 0.000003 s and the breach
-rate from 77/952 to 0/1,030 at matched phase duration (`factor_lab_all_warm` 564.77 s vs ~572 s). The
-non-obvious part is the cost: caching a liveness value bought speed by creating a way to be silently WRONG —
-`readiness.py:567-575` serves `_READINESS_CACHE` with no age check, so a dead tick thread would keep
-answering 200 with a frozen "ready" forever. When you move a truth-telling computation off a request path,
-bound its staleness in the same change, not the next one.
+## iter-70 — 2026-08-12T15:20:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration that caches, memoizes, or background-refreshes a value the UI uses to state
 whether the system is trustworthy (`app.engine.readiness`, preflight verdicts, warmup/background-compute
 status) — and any iteration that moves compute off a request path.
 
-## iter-70 (second) — 2026-08-12T15:20:00Z
-
-**Verdict:** CONTINUE
-**Lesson:** A full pipeline can reach CLOSURE-PASS while producing ZERO journey evidence. The QA backend on
-:8255 shut down cleanly between the QA lane and the browser/replay lanes (`logs/backend.log:292128-292131` —
-no traceback, no 5xx), the browser-qa-agent is correctly forbidden from restarting it, and every downstream
-gate still passed: browser SKIPPED 0/8, replay BLOCKED 0/7, demo NOT_YET, closure PASS. Worse, the QA report
-then recorded "✓ Developer verified via replay" for all seven required journeys — an artifact asserting the
-opposite of its own upstream evidence. Never read a `✓` in a QA report as coverage; open the replay results
-file the row actually depends on.
+## iter-70 (second) — 2026-08-12T15:20:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration whose journeys are verified by a lane that depends on a long-lived service —
 check the replay/browser results file directly, and treat a clean uvicorn shutdown signature (no traceback)
 as infrastructure, never as a product crash.
 
-
-## iter-71 — 2026-08-12T18:35:00Z
-
-**Verdict:** ESCALATE
-**Lesson:** When a round's availability numbers look catastrophic, find out WHICH launcher
-produced them before believing the size of the failure. This round's 165-second health-check
-outage was measured against `scripts/dev.sh`, whose `exec` line is
-`uvicorn main:app --reload --host 0.0.0.0 --port $BACKEND_PORT` — no `--limit-concurrency`,
-which `scripts/start-backend.sh:107` applies from `config.yaml:1362` (64) and which
-`config.yaml:1355-1362` documents as the exact defence against "N connection-holding resolves
-that exhaust the pool". The observed failure WAS pool exhaustion
-(`QueuePool limit of size 10 overflow 20 reached`). The tell that a round ran on `dev.sh` is
-free and instant: `logs/backend.log` stops updating, because `dev.sh` writes no persistent
-logfile at all — the real log lands in the harness temp dir (`$TMPDIR/dev-start-*.log`), which
-is also the ONLY place the tracebacks, the 500s and the per-phase finalize timings exist.
+## iter-71 — 2026-08-12T18:35:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration scoring J-04, J-06 or J-07 (all three name prod-mode measurement
 conditions, two of them saying "never dev.sh" verbatim); any iteration that cannot find
 backend evidence in `logs/backend.log`; any launcher-parity work on `scripts/dev.sh`.
 
-## iter-71 (second) — 2026-08-12T18:35:00Z
-
-**Verdict:** ESCALATE
-**Lesson:** Bounding a cached value's staleness by falling back to a synchronous recompute can
-convert a slow-but-safe path into a self-amplifying stall. `readiness.py:165-194` serves the
-cache while fresh but, past `max_stale_intervals × refresh_interval_seconds` (1.5 s), routes
-every request into `_tick_and_cache`, which takes a global `_TICK_LOCK` and recomputes
-**without any post-lock recheck** — so N queued requests each pay a full compute serially, and
-the slower things get, the staler the cache gets, the more requests take that path. iter-70
-removed exactly this compute from the request path and measured 0 of 1,030 breaches; iter-71
-put a conditional version of it back and the next drill measured 58 of 900 non-answers. If you
-bound staleness, prefer serving the aged value WITH its age disclosed over blocking on a
-recompute, and always double-check the cache after acquiring the lock.
+## iter-71 (second) — 2026-08-12T18:35:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any change adding a cache-staleness bound or a synchronous fallback on a
 request path; any future work on `app.engine.readiness` / `_TICK_LOCK` / `GET /api/health`.
 
-## iter-72 — 2026-08-12T23:38:45Z
-
-**Verdict:** CONTINUE
-**Lesson:** A connection-pool resize is a MEMORY change, not just a concurrency change, and it
-silently voids any evidence-durability carry for a memory assertion. `config.yaml` raised
-`pool_size`+`max_overflow` 30 → 68 to fix an availability bug, while `pragmas.cache_size: -262144`
-gives each pooled sqlite connection a 256 MB page cache under an unchanged 8192 MB `ulimit -v` —
-retained-connection worst case 2.5 GB → 6 GB against a warm whose last recorded VmPeak was 3.69 GB.
-Reviewer, QA, auditor and coherence all read the diff and none named it; the availability drill only
-ever opened a handful of connections, so the new ceiling was never exercised. Whenever a diff changes
-pool size, worker count, or a per-connection/per-thread cache, re-measure peak memory before carrying
-any prior memory evidence forward.
+## iter-72 — 2026-08-12T23:38:45Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration touching `config.yaml`'s `database.pool_size`/`max_overflow`/`pragmas`,
 `server.limit_concurrency`, thread/worker counts, or any per-connection cache — and any evaluator
 deciding whether A.6 evidence durability covers a memory/VmPeak step.
 
-## iter-72 (2 of 2) — 2026-08-12T23:38:45Z
-
-**Verdict:** CONTINUE
-**Lesson:** When a lane labels its own failures "transient / concurrent load", check the timestamps
-and open the frame — the label is a hypothesis, not evidence. This round six replay goldens FAILed
-and two artifacts (the merged results row and audit T2) blamed "running concurrently with this
-session's own heavy drill". The replay frames are timestamped 22:22-22:24 UTC, ~12 minutes BEFORE the
-drill started (22:35:14 UTC), and `logs/backend.log` shows no heavy phase in flight 22:05-22:29 UTC.
-`J-07-verify.png` shows the real cause outright: an unstyled, asset-less page stuck at "Checking
-backend…" — the QA FRONTEND was serving broken pages. The overturns were still correct; the
-diagnosis was not, and a wrong diagnosis means the next round repairs the wrong thing.
+## iter-72 (2 of 2) — 2026-08-12T23:38:45Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any round reconciling deterministic-replay FAILs against an LLM lane, and any agent
 writing a "false positive / host contention" note — cite a timestamp bracket and the frame's contents.
 
-## iter-73 — 2026-08-13T03:06:22Z
-
-**Verdict:** CONTINUE
-**Lesson:** A deterministic-replay lane runs its journeys SEQUENTIALLY, so an environment break
-part-way through masquerades as a per-journey golden defect. This round J-01/J-03/J-04 (frames
-timestamped 03:14 BST) PASSed on fully styled, real pages and J-05/J-06/J-07/J-08/J-09 (03:15-03:16)
-all FAILed on the identical unstyled, asset-less "Checking backend…" shell — the split is by CLOCK,
-not by journey. The SPEED-22 mass-false-FAIL breaker guessed "suspected golden-script/selector drift"
-and queued exactly the wrong remedy (`state/goldens-regen-pending` lists J-05..J-09 for regeneration;
-regenerating a script cannot fix a frontend serving pages without their assets). Always sort the
-FAILed frames by capture time and open two of them before accepting any lane's automatic explanation —
-a contiguous time block of identical broken frames means the environment moved, and the fix belongs in
-the harness, not in the goldens. Corollary for scoring: check whether the broken window straddles the
-backend boot header in `logs/backend.log` (here the live server booted 02:13:14Z and the frames landed
-~60-180 s later), because a just-restarted frontend is the cheapest explanation to test first.
+## iter-73 — 2026-08-13T03:06:22Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration whose deterministic replay reports 3+ simultaneous FAILs; any evaluator
 reading a `VOIDED`/`overturned` footer; anyone about to act on `state/goldens-regen-pending`.
 
@@ -1069,3 +717,27 @@ closes. When the count trends UP across rounds with no failing journeys, the cri
 is the blocker, and that is an owner decision, not another iteration.
 **Applies to:** any goal-mode session whose journeys are all green while a self-maintained violation
 ledger keeps growing; check the trend across the last three rounds before recommending "one more round".
+
+## iter-79 — 2026-08-14T00:30:00Z
+
+**Verdict:** GOAL_ACHIEVED
+**Lesson:** A carried "Nth round owed" note was again wrong in a NEW way: opening
+`reports/goal-session-ops-hardening-demo.json` shows FOUR journeys' walkthrough steps are
+`new: false` (J-01 steps 3-4, J-03 5-6, J-04 2, J-05 7), not just J-05's as twenty rounds of logs
+claimed — iter-78 corrected this carry once (for J-07) and it was still under-stated. Re-open the
+artifact every time a carry is repeated; a partially-corrected carry is as misleading as an
+uncorrected one.
+**Applies to:** any evaluator or decomposer about to copy forward a "carried / Nth round owed"
+item — especially walkthrough/demo-metadata claims and anything phrased as "still owed".
+
+## iter-79 — 2026-08-14T00:30:01Z
+
+**Verdict:** GOAL_ACHIEVED
+**Lesson:** The 9.3 s `/api/backtest` outlier was reported as a budget breach; the database
+settled the cause in one query — that as-of's five horizons committed inside ~1.5 s
+(`forward_aggregate_cache` 23:56:41.68 → 23:56:43.14 UTC), so the wait was queueing behind
+another in-flight warm, not slow compute. Timing outliers on a dispatch-based design should be
+split into "compute time" vs "wait time" from the cache commit timestamps before being scored;
+the two point at completely different fixes (bounding concurrency vs bounding the computation).
+**Applies to:** any iteration touching `app/engine/forward_testing.py`, the background dispatch
+registry, or B-1107 concurrency bounding.

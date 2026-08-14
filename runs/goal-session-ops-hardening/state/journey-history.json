@@ -4,99 +4,99 @@
       "id": "J-01",
       "name": "Backfill honors the requested range and explains zero-work",
       "status": "passing",
-      "last_verified_iter": "goal-ops-hardening-iter-78",
-      "last_passing_iter": "goal-ops-hardening-iter-78",
+      "last_verified_iter": "goal-ops-hardening-iter-79",
+      "last_passing_iter": "goal-ops-hardening-iter-79",
       "first_seen_iter": "goal-ops-hardening-iter-0",
-      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-78-evidence/J-01-verify.png",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-79-evidence/J-01-llm-scanner-run-2026-05-15.png",
       "spec_hash": "06b26eaaf82dcdb532465e5c287f1177681a6c8697e4f96cfadddb4fc60b29ad",
-      "note": "Deterministic replay UT-J-01 PASS (5/5 lane, merged). I re-derived the run-summary contract from the DB myself rather than trusting the row: data_provider_runs 514 (2026-05-02..2026-05-29) reads dates_total 19 / dates_done 19 / snapshots_created 0 / calendar_days 28 / non_trading_days 9 / already_snapshotted 19 -- 9+19=28 and 0+19+0=19, the goal's partition exactly; run 515 (the 2026-05-02..2026-05-03 weekend span) reads 0 of 0 with calendar_days 2 / non_trading_days 2. Both provider='seed' (AG-9), started 17:38:42.5 / 17:38:44.6 UTC, minutes before the frame was written.",
-      "gap": "CAPTURE DEFECT, 5th round (evidence_makeup): I opened the frame -- it is /scanner-runs' immutable-snapshot page for 2026-05-29 (regime 75.20 Risk-on, 'Scanned 2026-07-20 ... provider seed'), NOT the zero-work outcome panel with its date counts and per-date exclusion reasons, which is this journey's headline acceptance. The behaviour is proven by the persisted run records above; only the picture is wrong.",
+      "note": "Both lanes PASS this round. I opened both frames. J-01-llm-scanner-run-2026-05-15.png shows /scanner-runs' immutable snapshot as-of 2026-05-15: Market Regime 67.83, Risk-on, 'Stored exactly as scanned; never recomputed for today. Scanned 2026-07-20 17:31:10'. My OWN query: scanner_runs id 739 = 2026-05-15, regime_score 67.83, regime_label 'Risk-on', created_at 2026-07-20 17:31:10.527578 -- exact match (AG-3). J-01-verify.png (replay) shows the 2026-05-29 snapshot, regime 75.20. My OWN data_provider_runs reads reproduce the run-summary partition in BOTH lanes: replay 518 (May range) 19/19 dates, 28 calendar, 9 non-trading, 19 already-snapshotted, 0 created; 519 (weekend) 0 of 0, 2 calendar, 2 non-trading; LLM 522/523/524 identical, 24 the zero-work re-run. 9+19=28 and 0+19+0=19 -- the goal's partition exactly. 19 distinct May trading dates (2026-05-04..2026-05-29) exist in scanner_runs (my count). The golden asserts the strings verbatim: 'Zero-work outcome', 'no new snapshots', '28 calendar days . 19 already snapshotted . 9 non-trading'.",
+      "gap": "CAPTURE DEFECT, 6th round (evidence_makeup): the zero-work OUTCOME PANEL (step 8) is still never photographed -- both of this round's J-01 frames show /scanner-runs snapshots instead. The distinct presentation was verified by the golden's verbatim text expects and by the LLM lane's DOM class read (zero-work run-status = border-border/bg-surface-2/text-text-muted 'no new snapshots' vs a productive run's border-pos/text-pos 'ok'). Behavior confirmed; only the picture is owed. Also: the session demo's J-01 steps 3-4 are new:false, not [NEW]-flagged (iter-79/f).",
       "evidence_makeup": true
     },
     "J-03": {
       "id": "J-03",
       "name": "No per-run range cap",
       "status": "passing",
-      "last_verified_iter": "goal-ops-hardening-iter-78",
-      "last_passing_iter": "goal-ops-hardening-iter-78",
+      "last_verified_iter": "goal-ops-hardening-iter-79",
+      "last_passing_iter": "goal-ops-hardening-iter-79",
       "first_seen_iter": "goal-ops-hardening-iter-0",
-      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-78-evidence/J-03-verify.png",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-79-evidence/J-03-verify.png",
       "spec_hash": "5457740bbb0cea982e9b1241f19ca50836ff584bbb960a5a088f7168d820c271",
-      "note": "Deterministic replay UT-J-03 PASS. My own DB check: data_provider_runs 516 spans 2025-06-01..2026-07-17 = 412 calendar days, well past the retired 370-day cap; dates_done 283 / dates_total 283, non_trading_days 129, status ok, provider='seed', 17:38:49 UTC -- accepted AND executed to completion in chunks.",
-      "gap": "none open."
+      "note": "Both lanes PASS. My OWN DB check is the load-bearing one: data_provider_runs 525 (LLM lane) and 520 (replay lane) both span 2025-06-01 -> 2026-07-17 = 412 calendar days, well past the retired 370-day cap; dates_total 283, dates_done 283, non_trading_days 129, error_other 0, status ok, provider 'seed'. No range-cap rejection of any kind. I opened J-03-llm-data-top.png (byte-identical to J-05's LLM frame): /data with the Ready badge and the persisted coverage panel. I did NOT open J-03-verify.png this round -- J-03's verification rests on the two lanes' rows plus my own database reads.",
+      "gap": "Session demo steps 5-6 for J-03 are new:false, not [NEW]-flagged (iter-79/f). Nothing else open."
     },
     "J-04": {
       "id": "J-04",
       "name": "Non-blocking boot with visible status",
       "status": "passing",
-      "last_verified_iter": "goal-ops-hardening-iter-78",
-      "last_passing_iter": "goal-ops-hardening-iter-78",
+      "last_verified_iter": "goal-ops-hardening-iter-79",
+      "last_passing_iter": "goal-ops-hardening-iter-79",
       "first_seen_iter": "goal-ops-hardening-iter-0",
-      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-78-evidence/UT-01-result.png",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-79-evidence/J-04-llm-ready-badge.png",
       "spec_hash": "4074a9c952a9a143dc543efef3c8d3e0a1e33a848ab250ec90c7c2f568dbcff8",
-      "note": "TARGET this round (its badge surface changed). Merged UT-J-04 PASS. I opened UT-01-result.png: fully styled Dashboard, 'Ready' pill at data-state=ready, the live 'as of 9s ago' annotation beside it, and 'GO -- today's board is current. (as of 9s ago)'. The new client-side tick was measured fresh by UT-02/UT-03 (2s -> 22s across a 19.7s anchored window in which a fetch interceptor confirmed only ONE real poll landed) and independently by me inside the re-recorded gallery ('as of <1s ago' at step-04 -> 'as of 12s ago' at step-05, ~12s apart in one uninterrupted session). UT-05 re-verified the unavailable presentation fresh: badge data-state='unavailable', NO-GO banner naming the reason, both staleness testids absent, recovery within one poll. I read apps/frontend/lib/staleness-tick.ts myself -- null / 0 / negative / non-finite bases return UNCHANGED and elapsed is floored at 0, so the annotation cannot tick its way into a fabricated age; readiness-provider.tsx:124-125 clears both refs on a failed poll, so a dead backend cannot keep counting up.",
-      "gap": "Steps 3 / 5 / 6 (pre-ready phase+progress payload from a real restart, the boot logfile, the interrupted-job row after a kill) were NOT re-exercised -- the browser lane is forbidden to restart or kill the live QA services this run and says so in its own row. They carry from iters 74-77 under A.6: no backend boot/crash code changed (the only apps/backend path in the diff is tests/test_start_frontend_script.py). The journey's [NEW]-walkthrough clause (restart->serving-in-seconds, crash->honest-unreachable) is still unmet: the session demo's J-04 step 2 is not [NEW]-flagged and shows only the steady-state badge."
+      "note": "Replay PASS (the J-04 golden asserts the readiness badge's REAL data-state attribute plus a persisted data_provider_runs-backed field, never a title match). LLM PASS with disclosed partial coverage: that lane may not restart or kill the live services. I opened J-04-llm-ready-badge.png: 'Ready' + 'as of 2s ago' + 'GO -- today's board is current'. INDEPENDENT corroboration I found myself in logs/backend.log: the round's process (1379676) writes 'Started server process' / 'Application startup complete.' at 23:57:14 local, and the PREVIOUS process (1075800) has NO shutdown entry at all -- exactly the truncated-log signature step 5 asserts for a killed process. 2,345 HTTP 200 and ZERO 5xx across the round's process.",
+      "gap": "Steps 3 / 5 / 6 (pre-ready phase+progress payload from a real restart, boot logfile assertions, the interrupted-job row after a kill) were NOT re-driven live this round; they carry from the 2026-07-31 and prior-round drills under the iteration spec's binding 'do not redo' note and methodology A.6 -- I verified the product diff is EMPTY myself (git diff vs snapshot f3b4f08a with bookkeeping excluded = nothing; no untracked product files). Session demo step 2 is new:false (iter-79/f)."
     },
     "J-05": {
       "id": "J-05",
       "name": "Aggregates are precomputed at ingest, never on the fly",
       "status": "passing",
-      "last_verified_iter": "goal-ops-hardening-iter-78",
-      "last_passing_iter": "goal-ops-hardening-iter-78",
+      "last_verified_iter": "goal-ops-hardening-iter-79",
+      "last_passing_iter": "goal-ops-hardening-iter-79",
       "first_seen_iter": "goal-ops-hardening-iter-0",
-      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-78-evidence/J-05-verify.png",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-79-evidence/J-05-llm-coverage-persisted.png",
       "spec_hash": "63dd5bf0983454e48338557d0f2b1e5ce9726d7aa247c20174ac9323f637564b",
-      "note": "Deterministic replay UT-J-05 PASS on a real live in-app backfill of one unsnapshotted historical trading day. My own DB check: data_provider_runs 517 (2005-08-15..2005-08-15) reads snapshots_created 1, forward_returns_inserted 800, started 17:39:01.29 finished 17:58:24.45 UTC = 19m23s, status ok, provider='seed', and its aggregates_refreshed list names latest_snapshot, coverage, membership_timeline, market_phase, forward_aggregates, research_hot_keys, availability_heatmap, factor_lab_all and drawdown_expectations -- every heavy aggregate produced INSIDE the ingest job, never on a request path.",
-      "gap": "CAPTURE DEFECT (evidence_makeup): I opened the frame -- it is again scrolled to the tail of the leaderboard (ranks 136-149), so it does not photograph the snapshot header it proves. The session demo's J-05 step 7 exists but is NOT [NEW]-flagged, so this journey's [NEW]-walkthrough clause is still unmet (20th round).",
+      "note": "Replay PASS -- the J-05 golden drives a LIVE one-day backfill of an auto-resolved unsnapshotted date and asserts job-status, '1/1 dates', stage-timings, backfill-breakdown '1 calendar day . 0 already snapshotted . 0 non-trading', '1 snapshots', the aggregates-refreshed testid, then the new /scanner-runs row and its rendered leaderboard. My OWN DB reads: data_provider_runs 521 = backfill 2005-08-16, snapshots_created 1, forward_returns_inserted 795, 22:57:41.09 -> 23:17:28.06 UTC (19m47s), aggregates_refreshed = [latest_snapshot, coverage, membership_timeline, market_phase, forward_aggregates, research_hot_keys, availability_heatmap, factor_lab_all, drawdown_expectations]; scanner_runs 2999 for 2005-08-16 created 22:57:52 UTC. I opened J-05-llm-coverage-persisted.png: /data's coverage panel reads 'Coverage as of a prior scan (version r2999-rc2999-b2026-08-03-bc3306390-h200) -- refreshes on the next data job' = a stored, versioned payload, not a request-time recompute. Health stayed 200 on 312/312 polls during the round's five background warm windows (my own count of the cited CSV).",
+      "gap": "CAPTURE DEFECT, 6th round (evidence_makeup): I opened J-05-verify.png -- it is AGAIN scrolled to the leaderboard tail (ranks 135-148), not the ingest/snapshot header the make-up asks for; the golden's final scroll position is the cause. Step 3's cold-restart sub-claim ('restart the backend, visit /data cold, no 3.3M-row prefill') was not re-driven this round -- carried under A.6 with an EMPTY product diff. Session demo step 7 is new:false (iter-79/f).",
       "evidence_makeup": true
     },
     "J-06": {
       "id": "J-06",
       "name": "Pages load only what they need",
       "status": "passing",
-      "last_verified_iter": "goal-ops-hardening-iter-78",
-      "last_passing_iter": "goal-ops-hardening-iter-78",
+      "last_verified_iter": "goal-ops-hardening-iter-79",
+      "last_passing_iter": "goal-ops-hardening-iter-79",
       "first_seen_iter": "goal-ops-hardening-iter-0",
-      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-78-evidence/J-06-verify.png",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-79-evidence/J-06-verify.png",
       "spec_hash": "a9654dc139add9c161b5d7e59a431f78bd94fdf0f26b15c4fe2c83a1007db045",
-      "note": "Deterministic replay UT-J-06 PASS. One of my two stable spot-checks: the frame shows /research's Regime Lab degrading honestly -- 'Still computing -- 16s elapsed' with the explicit 'nothing is shown in the meantime rather than a partial or fabricated result' copy, plus the survivorship-bias caveat. Direct AG-8 evidence, consistent with its recorded status.",
-      "gap": "Page timings still not written into reports/perf-budgets.md (9th round owed) -- a passenger documentation task, never an iteration goal. The session demo's J-06 step 8 IS [NEW]-flagged."
+      "note": "Both lanes PASS. LLM lane visited 13 surfaces (/, /stocks, /stocks/AAPL, /sectors, /themes, /data, /evidence, /scanner-runs, /scanner-runs/739, /backtest, /watchlist, /research, Factor Lab) with no error frames and timed the on-load endpoints: /api/health 0.045s, /api/data 0.21s, /api/stocks 0.23s, /api/stocks/AAPL/bars 0.36s, /api/sectors 0.017s, /api/themes 0.024s, /api/evidence 0.13s, /api/watchlist 0.032s, /api/runs 0.48s, /api/backtest 0.12s -- all inside the committed budgets. I did not open J-06-verify.png; the replay row plus these timings and the clean HTTP record (2,345 x 200, zero 5xx) carry the journey.",
+      "gap": "Step 2's RECORDING half is still not done: the page timings are not written into reports/perf-budgets.md (10th round owed; the file is unchanged this round). Documentation debt on measured-and-passing behavior -- never an iteration goal."
     },
     "J-07": {
       "id": "J-07",
       "name": "Heavy aggregates never take the service down",
       "status": "passing",
-      "last_verified_iter": "goal-ops-hardening-iter-78",
-      "last_passing_iter": "goal-ops-hardening-iter-78",
+      "last_verified_iter": "goal-ops-hardening-iter-79",
+      "last_passing_iter": "goal-ops-hardening-iter-79",
       "first_seen_iter": "goal-ops-hardening-iter-14",
-      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-78-evidence/UT-J-07-result.png",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-79-evidence/J-07-verify.png",
       "spec_hash": "1c7c67c3d6cd933820eeac29de54a7442c33e19d3ede0e6353fc044b929bf991",
-      "note": "TARGET this round. Merged UT-J-07 PASS, and I verified its numbers against the database myself instead of trusting the row: the frame shows /backtest at as-of 2026-07-31 with Market Regime 60.23 'Narrow leadership' and the forward-test scorecard's 1d row at +0.70% n=20. scanner_runs 1927 (asof_date 2026-07-31) stores regime_score 60.23 / 'Narrow leadership', and my own join of scanner_results rank<=20 to forward_returns horizon=1 for that run returns n=20, mean 0.6965% -> +0.70%. Exact AG-3 match, independently derived. Steps 1-2 fresh: the badge held data-state='ready' through a live background-compute window and every /api/health sample this round answered HTTP 200 (I curled it myself after the round and got 200 with stale_for_s 0.17).",
-      "gap": "Steps 3 (VmPeak vs server.memory_cap_mb margin) and 4 (induced memory-pressure abort) are CARRIED from the 2026-07-31 / iter-74 drill, as the iteration spec's binding 'Do not redo' directed. Valid under A.6: no backend runtime file changed -- compute_forward_aggregates and app/engine/readiness.py are byte-untouched (diff is 4 tracked files + 2 new frontend lib files). evidence_makeup CLEARED, and I state why because it corrects a 20-round-old carry: reports/goal-session-ops-hardening-demo.json step 9 IS a [NEW], verified J-07 walkthrough step ('Heavy number-crunching never slows down the rest of the app', with its measured 68.79 s window), viewable via demo.sh ops-hardening --session-live -- exactly what this journey's acceptance asks for. The 'J-07 [NEW] walkthrough owed, 19 rounds' carry was stale."
+      "note": "Replay PASS. I opened J-07-verify.png: /backtest at as-of 2026-07-31 (historical), Market Regime 60.23 'Narrow leadership', forward-test scorecard 1d row +0.70% n=20. My OWN queries reproduce both: scanner_runs 1927 stores regime_score 60.23 / 'Narrow leadership'; my own join of scanner_results rank<=20 to forward_returns horizon=1 for run 1927 returns n=20, mean realized_return 0.6964743644 = +0.70% (AG-3, derived not re-quoted). Steps 1-2 are FRESH: the canonical poll drill CSV holds 312 rows, 312 x HTTP 200, max elapsed 0.55s, 5 polls over 0.1s, ZERO over the owner-set 2s bounded-window ceiling, spanning five stacked background warm windows I corroborated in forward_aggregate_cache (2012-01-10 23:53:39->23:54:03, 2015-06-20 23:54:41->23:55:24, 2018-09-05 23:56:03->23:56:29, 2003-04-01 23:56:41->23:56:43, 2026-07-31 23:57:23->23:59:54 UTC). Zero MemoryError / QueuePool / 5xx in the round's log.",
+      "gap": "Steps 3-4 (VmPeak vs server.memory_cap_mb margin; induced memory-pressure abort) are CARRIED from the 2026-07-31 / iter-73-74 drills per the iteration spec's binding 'do not redo' note; valid under A.6 while the product diff stays empty, which I verified myself this round."
     },
     "J-08": {
       "id": "J-08",
       "name": "Backtest evidence serves from storage only \u2014 never a cold recompute on request",
       "status": "passing",
-      "last_verified_iter": "goal-ops-hardening-iter-78",
-      "last_passing_iter": "goal-ops-hardening-iter-78",
+      "last_verified_iter": "goal-ops-hardening-iter-79",
+      "last_passing_iter": "goal-ops-hardening-iter-79",
       "first_seen_iter": "goal-ops-hardening-iter-16",
-      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-78-evidence/J-08-verify.png",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-79-evidence/J-08-llm-backtest-latest.png",
       "spec_hash": "8a159d44a2eaf98e595f4e358a9db965b3e9e9d46ec8189768802bee577add21",
-      "note": "Deterministic replay UT-J-08 PASS (payload-gated golden). Not re-opened this round -- my two stable spot-checks were J-01 and J-06 -- but its replay row stands and the serving path is byte-unchanged. Corroborating fact I derived myself: forward_aggregate_cache holds all five horizons for as-of 2026-07-31 at dataset r2998-f6609160, so /backtest served stored rows rather than a cold recompute.",
-      "gap": "none open beyond the session-wide capture debt. The session demo's J-08 steps 10-12 ARE [NEW]-flagged."
+      "note": "Both lanes PASS (the replay golden is payload-gated). I opened J-08-llm-backtest-latest.png: /backtest 'Viewing as-of 2026-08-03 (latest)' with the top bar showing 'Ready' AND 'background compute running (1)' at the same moment. LLM measurements: /api/backtest?as_of=2010-03-15 (never warmed for the then-current version) returned IMMEDIATELY with evidence_status 'refreshing' and evidence_asof 2005-07-15 -- a real complete OLDER stored version, never a skeleton; already-warmed as-of values answered 0.03-0.12s while other warms were in flight. My OWN DB check on version mixing: each warmed as-of's five horizons carry exactly ONE dataset_version (2012-01-10 r3000, 2015-06-20 r3001, 2018-09-05 r3002, 2003-04-01 and the 2026-07-31 re-warm r3003) -- the last-good fallback never mixes versions.",
+      "gap": "NEW, disclosed by the lane and confirmed by me (iter-79/a): one never-warmed as-of (2003-04-01) requested WHILE another warm was in flight took 9.3s, over the <=1.5s budget. Its own compute took 1.5s (forward_aggregate_cache 23:56:41.68 -> 23:56:43.14 UTC), so the wait was queueing contention, not compute -- i.e. the owner-deferred B-1107 concurrency cap, which J-09's acceptance places explicitly out of scope. Not a journey-step failure: step 2's own scenario (serve stored last-good while a warm runs) measured 0.03-0.12s this round."
     },
     "J-09": {
       "id": "J-09",
       "name": "The backend discloses its own background-compute activity",
       "status": "passing",
-      "last_verified_iter": "goal-ops-hardening-iter-78",
-      "last_passing_iter": "goal-ops-hardening-iter-78",
+      "last_verified_iter": "goal-ops-hardening-iter-79",
+      "last_passing_iter": "goal-ops-hardening-iter-79",
       "first_seen_iter": "goal-ops-hardening-iter-24",
-      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-78-evidence/UT-06-result.png",
+      "last_evidence_path": "reports/qa/goal-ops-hardening-iter-79-evidence/J-09-inflight-badge.png",
       "spec_hash": "40d29150860c17a467851359d82af4524204a0cc874c7c3eb568255977363a61",
-      "note": "TARGET this round. Merged UT-J-09 PASS, and I opened three frames plus the database. UT-06-result.png shows the header carrying 'Ready' AND 'background compute running (1)' together at 1280x800, with /data's active row reading 'as-of 2026-07-31 - elapsed 1m 27s - horizons 3/5 - dataset r2998-f6609160'; UT-J-09-idle-result.png shows the same header back to a bare Ready after completion. My own DB check: forward_aggregate_cache committed all five horizons for 2026-07-31 at r2998-f6609160 between 18:28:15.77 and 18:29:42.25 UTC, consistent to the second with a window that began ~18:27:51 and reported 1m51s, and with 'elapsed 1m 27s at horizons 3/5'. A live GET /api/health I ran myself still carries the field, idle, with recent_outcomes holding the audit's own 2026-07-30 window (duration_ms 109090, matching forward_aggregate_cache's 18:52:41->18:54:30 commits).",
-      "gap": "CAPTURE DEFECT, narrowed not closed (evidence_makeup): iter-77/e IS fixed -- I opened the re-recorded gallery and step-04 and step-05 both show 'background compute running (1)' beside 'Ready' over a genuinely in-flight compute. But step-05's own point_out names 'the background compute progress row with elapsed time and horizon details' and that row is NOT in the picture (only the header chip is), and the gallery still carries no post-completion idle/last-outcome frame. The gallery steps are not [NEW]-flagged; the session demo's J-09 steps 13-16 are.",
+      "note": "Both lanes PASS. I opened J-09-inflight-badge.png: the top bar carries 'Ready' AND a pulsing 'background compute running (1)' chip in the SAME frame -- step 3's core acceptance, never a bare Ready. The replay golden is substantive: it asserts the /data testid [background-compute-idle | background-compute-active-row] AND the verbatim scope sentence 'process-lifetime only, never persisted'. The LLM lane read the panel by DOM: 'as-of 2026-07-31 . elapsed 4m 37s . horizons 2/5 . dataset r2999-f6609955', then the honest idle transition with recent_outcomes duration_ms 499545 -- a real measured duration, no fabricated percentage or ETA. My own forward_aggregate_cache reads corroborate five real windows in that period.",
+      "gap": "CAPTURE DEFECT (evidence_makeup, iter-79/b): the two /data panel screenshots (J-09-background-compute-panel.png / -panel2.png) are byte-identical 2,061-byte SOLID-BLANK images -- a Chrome MCP capture artifact on the heavy /data grid, disclosed by the lane and confirmed by me (I opened one). The panel's evidence this round is DOM text plus the golden's testid expects, not a photograph. Session demo J-09 steps are correctly new:true.",
       "evidence_makeup": true
     }
   },
@@ -2135,7 +2135,56 @@
       "severity": "minor",
       "evidence": "iter-78/i - NEW, open (audit B3, GAP, deliberately not fixed as scope creep). next writes a <distDir>/types/**/*.ts entry into the TRACKED apps/frontend/tsconfig.json for every scratch dist dir it builds, so an interrupted test run leaves TWO artifacts and the new launcher purge removes only one. The auditor found .next-test-tc4-77-jytlrs0n/ AND its matching tsconfig include entry live in the tree during this round, and verified the build is unharmed (an include glob matching nothing is a no-op for tsc). Residual cost is a dirty tracked file, not a broken build.",
       "resolved": false
+    },
+    {
+      "iter": "goal-ops-hardening-iter-79",
+      "anti_goal": "Budget honesty: a served page must meet its committed budget, and any breach is disclosed, not absorbed.",
+      "severity": "minor",
+      "evidence": "iter-79/a - NEW, open. GET /api/backtest?as_of=2003-04-01, issued while a DIFFERENT as-of's warm was in flight, took 9.3s against J-08's <=1.5s budget (reports/phase-goal-ops-hardening-iter-79-ui-test-results.md UT-J-08). I confirmed the compute itself was only ~1.5s (forward_aggregate_cache asof_key 2003-04-01, five horizons committed 2026-08-13 23:56:41.68 -> 23:56:43.14 UTC), so the 9.3s was queueing contention under manufactured concurrency -- the owner-deferred B-1107 concurrency cap, which J-09's acceptance places out of scope. Not a journey-step failure; disclosed by the lane rather than absorbed.",
+      "resolved": false
+    },
+    {
+      "iter": "goal-ops-hardening-iter-79",
+      "anti_goal": "Every capture cited as evidence must actually show what it claims.",
+      "severity": "minor",
+      "evidence": "iter-79/b - NEW, open. reports/qa/goal-ops-hardening-iter-79-evidence/J-09-background-compute-panel.png and -panel2.png are byte-identical 2,061-byte solid-blank images (md5 7f1f02a71bc756de6bfa59c91c217ca4). The LLM lane disclosed the cause honestly (Chrome MCP screenshot returns a solid colour for any non-top scroll position on /data's 5,475-element heatmap grid) and verified the panel via DOM extraction instead. Neither blank file is cited in the results table. Capture tooling, not a product defect.",
+      "resolved": false
+    },
+    {
+      "iter": "goal-ops-hardening-iter-79",
+      "anti_goal": "Reported counts must match the artifact they cite.",
+      "severity": "minor",
+      "evidence": "iter-79/c - NEW, open. The QA report states '304/304 polls returned HTTP 200'; the CSV it cites (J-07-poll-health.csv) actually holds 312 rows, all http_status 200, breach_over_2s 0. The prose UNDERSTATES the artifact, which is machine-checkable and stronger than the claim -- an accuracy slip, graded minor (not fabricated evidence: the file is real, canonical-script generated, and internally consistent at 1 Hz over 23:52:29 -> 23:57:41 UTC).",
+      "resolved": false
+    },
+    {
+      "iter": "goal-ops-hardening-iter-79",
+      "anti_goal": "Iteration bookkeeping must reflect what the pipeline actually ran.",
+      "severity": "minor",
+      "evidence": "iter-79/d - NEW, open. runs/goal-ops-hardening-iter-79/status.json still reads status 'in_progress', current_step 'dev_complete', browser_checks_run false, changed_files [] at evaluation time, although the browser lane completed at 01:03 local and wrote both results files. Stale harness bookkeeping; the iteration is NOT recorded blocked.",
+      "resolved": false
+    },
+    {
+      "iter": "goal-ops-hardening-iter-79",
+      "anti_goal": "Loop economy: an iteration must fit its own declared wall-clock budget.",
+      "severity": "minor",
+      "evidence": "iter-79/e - NEW, open. NINETEENTH consecutive over-budget round -- telemetry iter_budget for iter 79 records budget 3600, elapsed 4864 (1.35x) at the coherence step, in 'trim' mode. This is by far the SMALLEST overrun of the streak (previous rounds ran 3.5x and 5.6x). Still unsanctioned in writing by the owner.",
+      "resolved": false
+    },
+    {
+      "iter": "goal-ops-hardening-iter-79",
+      "anti_goal": "Walkthrough acceptance: each journey's walkthrough must be [NEW]-flagged in the session demo.",
+      "severity": "minor",
+      "evidence": "iter-79/f - NEW, open, and WIDER than the carry that has been repeated for twenty rounds. I read reports/goal-session-ops-hardening-demo.json myself instead of copying the note: FOUR journeys' steps are new:false, not just J-05's -- J-01 (steps 3,4), J-03 (5,6), J-04 (2), J-05 (7). All four are verified:true and viewable via demo.sh ops-hardening --session-live; J-06 (8), J-07 (9), J-08 (10-12) and J-09 (13-16) are correctly new:true. Presentation metadata, not missing content.",
+      "resolved": false
+    },
+    {
+      "iter": "goal-ops-hardening-iter-79",
+      "anti_goal": "Service shutdown must not cancel work without a record.",
+      "severity": "minor",
+      "evidence": "iter-79/g - NEW, open. When the pipeline stopped the services at ~01:05 local, logs/backend.log records 'Cancel 1 running task(s), timeout graceful shutdown exceeded' plus one ASGI CancelledError for an in-flight request: a background compute window (2026-07-31, horizon 60 committed 23:59:54 UTC) was still running when SIGTERM arrived. Shutdown-time only -- zero 5xx while serving. Cosmetic honesty note: the disclosure surface is process-lifetime and says so, so nothing false is displayed.",
+      "resolved": false
     }
   ],
-  "updated_at": "2026-08-13T19:25:26Z"
+  "updated_at": "2026-08-14T00:16:08.001047Z"
 }

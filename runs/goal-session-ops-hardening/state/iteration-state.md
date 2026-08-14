@@ -1,40 +1,40 @@
 # Iteration State — ops-hardening
 
-**After iteration:** 78 · **Date:** 2026-08-13 · **Verdict:** STALLED
+**After iteration:** 79 · **Date:** 2026-08-14 · **Verdict:** GOAL_ACHIEVED
 
 ## Journeys
 
-8 passing (J-01 J-03 J-04 J-05 J-06 J-07 J-08 J-09) · 0 failing · 0 unknown — all re-verified THIS round (replay 5/5 first pass, LLM lane 11/11); spec_hashes unchanged, no goal-edit drift.
+8 passing (J-01 J-03 J-04 J-05 J-06 J-07 J-08 J-09) · 0 failing · 0 partial/unknown — 8 total;
+all re-verified this round by BOTH lanes (replay 8/8 first try, LLM 8/8, merged 8/8, 0 skipped,
+no FAIL/DEFERRED/BLOCKED cell).
 
 ## Active blockers
 
-- **HALTED — owner decision (human).** 8/8 journeys pass, 0 critical open, but 146 self-logged minor
-  notes stand against the literal "no unresolved violations" rule; the count trends UP (138→140→146
-  over three all-green rounds) and 3 entries are only owner-closable. Options: `iter-78/eval.md`.
-- Owner (human), unanswered 3+ rounds: cost sanction (18th over-budget round, 12534 s vs 3600 s);
-  permission to fix `scripts/automation/lib/closure_gate.py:72` and `browser-qa-phase.sh`; B-1107
-  concurrency cap; 2 s health-ceiling scope.
-- Agent-owned, small: `reports/phase-goal-ops-hardening-iter-78-ui-test-results.md:23` quotes "TODO"
-  from a tool message → `closure_gate.py:66` regex → iteration recorded `blocked`. Reword, re-run.
-- Capture debt (passenger tasks, never an iteration goal): J-01 zero-work panel (5th round), J-05
-  snapshot header + `[NEW]` flag on session step 7 (20th), J-09 gallery step-05's progress row,
-  J-06 page timings → `reports/perf-budgets.md` (9th).
+- none. The owner's 2026-08-13 amendment settled the completion rule (minor ledger entries do
+  not gate); 0 unresolved CRITICAL entries; coherence COHERENCE-PASS; no goal-edit drift.
+- Owner-owned, NOT blocking: B-1107 concurrency cap, cost sanction (iter-79 4,864 s vs 3,600 s),
+  health-ceiling scope for short jobs.
+- Backlog chores, never an iteration goal: J-01 zero-work panel photo (6th round owed); J-05
+  snapshot-header frame (6th); J-09 `/data` panel photo (blank capture, iter-79/b); J-06 page
+  timings into `reports/perf-budgets.md` (10th); `[NEW]` flags for J-01/J-03/J-04/J-05 steps in
+  `reports/goal-session-ops-hardening-demo.json` (iter-79/f).
 
 ## Last 2 verdicts
 
-- iter 78: STALLED — real work landed (staleness tick, launcher residue purge, J-09 walkthrough
-  fixed) and all 8 journeys passed, but the only path to concluding is owner-owned.
-- iter 77: ESCALATE — full depth restored the code lane (13 files) but the round ended
-  `blocked`/`closure_failed` with 3 journeys recorded untested in the artifact of record.
+- iter 79: GOAL_ACHIEVED — 8/8 fresh on two lanes, 0 unresolved critical, coherence PASS, no
+  drift; key numbers re-derived from the DB and the deterministic gates re-run by the evaluator.
+- iter 78: STALLED — the completion rule was unanswerable by any agent; the owner answered it.
 
 ## Do not redo
 
-- **iter-77/c, /d, /e are CLOSED and verified**: `scripts/start-frontend.sh` purges
-  `__tc3_intentionally_broken.ts` / `.next-test-*` pre-build (sparing dirs a live server owns, 2
-  tests); `lib/staleness-tick.ts` + `readiness-provider.tsx` tick "as of Ns ago" every second and
-  cannot fabricate; demo steps 04/05 show "background compute running (1)" beside "Ready".
-- **J-07 steps 3-4** (VmPeak, induced-pressure abort) and **J-04 steps 3/5/6** (restart/crash/
-  logfile) carry validly while `apps/backend/app/` stays out of the diff — do not re-run the drills.
-- **Never regenerate the J-05..J-09 goldens**; `HOST-GUARD` + `flock` in `start-frontend.sh` are
-  byte-frozen (21/21 lines verified identical).
-- **J-07's `[NEW]` walkthrough is NOT owed** — session demo step 9 already carries it (`new: true`).
+- The completion rule is SETTLED by `docs/goal.md` "Additional binding notes" (2026-08-13):
+  critical-only gating. Do not re-litigate it.
+- `closure_gate.py` (quoted-span + negated backend-only) and `browser-qa-phase.sh`
+  (`TARGET_JOURNEYS` before `replay_lane_partition_and_verify`, :283/:284) are FIXED and verified
+  working — all 8 target rows replayed this round.
+- J-04 steps 3/5/6, J-05 step 3, J-07 steps 3-4 stand on prior drills while `apps/backend/app/`
+  and `apps/frontend/` stay out of the diff.
+- Never regenerate the 8 goldens in `runs/goal-session-ops-hardening/journey-scripts/`; the
+  HOST-GUARD/`flock` blocks in the launch scripts are byte-frozen (AG-10).
+- iter-78's launcher residue purge + `lib/staleness-tick.ts` are landed and verified.
+- Evidence capture is never an iteration goal (make-up lane or `Depth: evidence` only).

@@ -1,0 +1,15 @@
+**Verdict:** CONFIRM_ACHIEVED
+
+## Reasoning
+
+I tried to refute this and could not. What I checked myself, not by trusting the first eval:
+
+1. **No missing evidence row.** All 8 journeys carry BOTH a replay row and an LLM row in `reports/phase-goal-ops-hardening-iter-79-ui-test-results.md` (8/8, 0 skipped, `grep -c '| FAIL'` = 0, no DEFERRED-BUDGET/BLOCKED/"no test case executed"); the raw replay file is 8/8 with no reconciliation footer. Consistent with the gate report and the digest.
+2. **AG-3 re-derived independently.** My own SQL: `scanner_results rank<=20` ⋈ `forward_returns horizon=1` for run 1927 → n=20, mean 0.0069647436 = **+0.70%** — and I opened `J-07-verify.png`, which prints exactly "+0.70% n=20" and regime 60.23 "Narrow leadership". `scanner_runs` 739 = 2026-05-15 / 67.83 / "Risk-on" / created 2026-07-20 17:31:10, matching the cited J-01 frame.
+3. **J-01/J-03 correctness re-derived.** `scanner_runs` holds exactly **19 distinct dates** 2026-05-04…2026-05-29 (Memorial Day 2026-05-25 correctly absent). Runs 522/524: dates_total 19, calendar 28, already_snapshotted 19, created 0; 523: 0 of 2 calendar; 525: 2025-06-01→2026-07-17 = **412 calendar days**, 283 dates, status ok — no cap. Run 521: 1 snapshot, 9 aggregates refreshed (J-05).
+4. **`J-07-poll-health.csv` counted by me:** 312 rows, **312/312 HTTP 200**, max 0.55 s, 0 breaches of the 2 s ceiling. The QA prose's "304" understates its own evidence.
+5. **Anti-goals all explicitly cleared.** Product diff vs snapshot `f3b4f08a` (bookkeeping excluded) is **empty** — I ran it; launch scripts/HOST-GUARD untouched (AG-10). All runs 518–525 `provider='seed'` (AG-9). `scan-report.md` CLEAN (AG-7). `J-07-verify.png` shows "Research-only · decision support · no orders" + the survivorship-bias caveat (AG-1/AG-2/AG-4). Ledger: 289 entries, 153 unresolved, **0 unresolved critical** — my own count.
+6. **No renegotiated criterion.** I probed the two candidates. The 9.3 s `/api/backtest` was disclosed in the QA row, the eval, and the ledger; it occurred only under self-manufactured concurrency, still served stored evidence (`refreshing` + a real older as-of), and `docs/goal.md` J-09 itself defers concurrency bounding to B-1107. J-06's perf-budgets recording was satisfied at iter-11/12 (full 11-page TTI sweep, worst 1.1 s vs ≤3 s); the outstanding item is a refresh, and this round touched no data path. J-04/J-05/J-07 carried steps are disclosed in every journey's `gap` note under methodology A.6 with a verified-empty diff, and the iteration spec binds "do not redo".
+7. **Gates.** All 8 `spec_hash`es recomputed by me from `docs/goal.md` — byte-identical to `journey-history.json`; no `journeys-changed.md`; `coherence.md` = COHERENCE-PASS (valid zero-change form). Owner's 2026-08-13 rule applied as written, fail-closed intact — none of the 7 new minor findings sits near the critical categories.
+
+Stale `status.json` bookkeeping and two blank J-09 panel PNGs exist but are already logged minor; J-09's disclosure is proven by `J-09-inflight-badge.png`, which I opened — "Ready" and "background compute running (1)" in one frame.
