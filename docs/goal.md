@@ -1,396 +1,440 @@
 # Project Goal
 
-> This goal drives the **ops-hardening loop** for Trendora. Lineage: the original
-> feature-complete product goal is archived at [`docs/goal-product.md`](goal-product.md);
-> the decision-quality/evidence goal (GOAL_ACHIEVED 2026-07-16, 25/25 journeys, session
-> `mcp-loop`) is archived at [`docs/archive/goal-mcp-loop.md`](archive/goal-mcp-loop.md).
-> This file evolves Trendora from *"proves its signals out-of-sample"* to *"an instance the
-> owner can operate and trust: available in seconds, honest about its own state, and
-> unrestricted in historical data operations."* Session id: `ops-hardening`.
+> This goal drives the **market-compass loop** for Trendora. Lineage: the original product
+> goal is archived at [`docs/goal-product.md`](goal-product.md); the decision-quality/evidence
+> goal (GOAL_ACHIEVED 2026-07-16, session `mcp-loop`) at
+> [`docs/archive/goal-mcp-loop.md`](archive/goal-mcp-loop.md); the operational-hardening goal
+> (GOAL_ACHIEVED 2026-08-14, 8/8 journeys, session `ops-hardening`) at
+> [`docs/archive/goal-ops-hardening.md`](archive/goal-ops-hardening.md). This file evolves
+> Trendora from *"operationally solid research platform"* to *"a simple, auditable
+> next-session Market Compass over that platform"*. Session id: `market-compass`.
 
 ## Vision
 
-Trendora's product purpose is unchanged — explainable, regime-aware, evidence-statused
-equity-leadership rankings. This cycle makes the running instance **operationally solid**:
-the backend boots to serving in seconds; every heavy aggregate is **computed at ingest time
-and persisted to the database**, never recomputed on the fly at boot or on a request path;
-each page loads **only the data it needs**; the UI tells the truth about the backend's own
-state (starting with visible phase, crashed/unreachable, ready) and about data jobs
-(progress, blocked dates, exclusion reasons, zero-work outcomes); and historical backfills
-run over **any requested range without caps**, chunked and memory-bounded.
+Trendora's research platform is unchanged underneath. This cycle adds the decision surface
+on top of it: a **Today** page that answers, in roughly ten seconds after the close, *what
+kind of market this is, whether it is improving or deteriorating, what materially changed
+since the previous session, where leadership is rotating, and which names deserve attention
+next session — with the reasons, the cautions, and the why-nots stated*. Each close, that
+prior is **frozen into an immutable, versioned, provenance-stamped next-session manifest**
+(with an eligible-control cohort recorded for future prospective evaluation) and exported as
+a local JSON artifact that the owner's separate intraday project (Tapeology) can later
+consume through its own rails. Everything is deterministic and template-generated from
+stored values — no LLM, no new composite scores, no fabricated causes. The deep research
+surfaces all remain, one click away.
 
 ## Target Users
 
-The same self-directed, quant-minded swing/position traders — now also in their role as
-**operators of their own Trendora instance**, who need to trust that the app is up, see what
-it is doing when it is not ready, and run any historical data operation without silent
-no-ops or arbitrary limits.
+The same self-directed, quant-minded owner — now in the role of an **evening
+decision-maker** running a post-close ritual ("what is the market telling me; what deserves
+attention tomorrow; what should Tapeology confirm or reject") and as the **operator of the
+Trendora → Tapeology handoff**. Secondarily: any future machine consumer of the exported
+manifest artifact (it must be self-describing and self-caveating).
 
 ## Success Criteria
 
-- Backend process start → first `GET /api/health` HTTP 200 in **≤ 5 seconds** on the warm
-  committed-seed DB (measured, recorded in `reports/perf-budgets.md`).
-- Any historical trading day in the price basis is backfillable on demand: backfilling
-  2026-05-02 → 2026-05-29 produces **~19 daily May snapshots visible in the UI**.
-- **Zero silent zero-work jobs:** every job outcome shows date counts and per-date
-  exclusion reasons, persisted across page reloads.
-- **No per-run range cap:** the `max_range_days` rejection is removed; long spans execute
-  in visible chunks.
-- **No unbounded whole-table loads:** no code path streams the full `daily_prices` table
-  into RAM; ingest-maintained aggregates serve every heavy read.
-- Page loads stay within committed **never-regress budgets** in `reports/perf-budgets.md`.
+- From `/` alone, without navigating, a reader (or browser agent) can identify: system
+  readiness + preflight state; market regime label and score; market phase, severity, and
+  stress direction; breadth level and direction; the material changes vs the named prior
+  session (or an honest empty state); the top sector/theme movers in both directions; the
+  next-session candidates each with structured reasons AND cautions; the most-nearly-eligible
+  why-not names; and the manifest's mode and freeze timestamp.
+- Every at-ingest close produces exactly one frozen manifest version whose export file bytes
+  equal the stored payload, carrying schema/rule/engine/dataset/universe stamps, and the five
+  manifest invariants (time-safety, immutability, reproducibility, create-once, mode honesty)
+  are each covered by a named passing test.
+- Sector attribution covers ≥ 95% of resolved members on newly produced runs (from ~22%
+  today), with unknown still rendered "Unassigned" and the current-only basis disclosed.
+- `/` joins `reports/perf-budgets.md` and stays within its committed budgets; warm
+  `GET /api/compass` reads perform zero producer calls (call-count instrumentation).
+- Zero new proven-language anywhere; the language test (no imperative trade verbs, no
+  forecast wording, no causal attribution beyond stored rule reasons) is green.
+- Nothing is removed: `/market` renders the complete former dashboard inventory and every
+  existing surface remains reachable.
 
 ## Key Capabilities
 
-1. **Unrestricted-range backfill** — an explicit backfill request makes every trading day
-   in the requested range a snapshot target (requested range always wins; cadence governs
-   only automatic warm-up), chunked and memory-bounded.
-2. **Persisted job history with exclusion reasons** — the `/data` job surface reads
-   server-side run history: progress, outcomes, per-date exclusions, blocked/error states.
-3. **Ingest-time aggregate maintenance** — the aggregation inventory (see Improvement
-   direction) is refreshed at the end of every fetch/backfill/rebuild and served as stored
-   rows.
-4. **Instant-serving boot with phase-aware health** — boot performs existence checks only;
-   `/api/health` exposes boot/loading phase and progress.
-5. **Distinguishable backend states + persistent logfile** — starting (with phase) vs
-   crashed/unreachable vs ready; crashes leave evidence in a logfile.
-6. **Per-page minimal loading with budgets** — each page's on-load calls read persisted
-   aggregates or indexed windowed queries, measured against committed budgets.
+1. **Today compass** — the new default `/` page: system strip (existing), market state in
+   plain words, deterministic summary, what-changed, leadership rotation, next-session
+   focus with why/why-not, manifest strip.
+2. **Session delta engine** — meaningful changes between consecutive stored runs
+   (market / breadth / sector / theme / stock levels), config-thresholded, honest empties.
+3. **Deterministic plain-English summary** — template sentences composed engine-side from
+   stored facts, each carrying its template id and cited facts; golden-tested.
+4. **Transparent next-session selection** — a config-versioned attention rule over stored
+   scores with a full met/unmet trace, reasons, cautions, rule distances, and why-not.
+5. **Immutable next-session manifest** — append-only, versioned, provenance-stamped
+   (engine identity, rule hash, dataset stamp, universe basis), frozen at ingest for the
+   frontier date, exported as a byte-consistent JSON artifact; survives rebuild/removal.
+6. **Sector attribution coverage** — pool-sector wiring closing the 78%-Unassigned gap on
+   new runs, descriptive-only, honestly disclosed.
+7. **Market page** — the relocated deep market context (cross-view chart, phase detail,
+   breadth cards, top lists), intact.
 
 ## Non-Goals
 
-- No return/price prediction, "buy/sell" signals, price targets, or alpha claims. Decision
-  support only.
-- No order placement, broker keys, or trade simulation.
-- Not a rewrite — the ops/performance layer is **additive** to the existing surfaces
-  (Dashboard, Stocks, Sectors, Themes, Backtest, Research labs, Data, Watchlist, Evidence).
+- No companion / small-mid-cap universe this cycle (Track 7's B-701 audit is the future
+  gate); the manifest carries a `universe_profile` slot defaulting to `core` so a future
+  isolated profile needs no schema change.
+- No stock-level short/weakness selection model (group-level weakening deltas only).
+- No alerting or message delivery (B-302 stays in the backlog).
+- No LLM or generative text anywhere; no news/sentiment; no intraday/tick data.
+- No order placement, position sizing, portfolio logic, or trade simulation.
+- No modifications to the Tapeology repository, and no code/network coupling to it.
+- No new factors, indicators, patterns, or macro-leg enablement; no new composite scores.
+- No incremental-value experiment yet — this cycle only records the prospective substrate
+  (at-ingest manifests + control cohorts); the experiment is a future goal following
+  Tapeology's registration methodology.
 
 ## Constraints
 
 - Local-first, deterministic, offline against the committed seed; **strict no-lookahead**
-  preserved (scoring uses bars ≤ as-of; forward returns use bars > as-of).
-- **All "proven" status flows from the evidence ledger** as the single source of truth; the
-  UI never computes proven-ness itself.
-- A claim becomes "proven" only via the statistical **referee** (sealed holdout + controls +
-  multiple-testing correction); the referee and ledger live in the project (read-only MCP
-  "window" + `project-extensions/` gate), not in the shared framework.
-- **Compute-at-ingest:** heavy aggregation (snapshots, coverage, market phase, research
-  caches, membership timeline) happens inside ingest jobs (fetch/backfill/rebuild) and is
-  persisted to the DB; boot and request paths serve stored values and never stream the full
-  `daily_prices` table into RAM.
+  preserved (scoring uses bars ≤ as-of; forward returns use bars > as-of; the manifest for
+  close D derives only from the stored run at D and earlier stored state).
+- **All "proven" status flows from the evidence ledger**; nothing in this cycle introduces
+  proven-language or an Evidence Claim (the post-decompose referee gate passes automatically
+  every iteration; AG-1/AG-4/AG-6 still veto).
+- **Compute-at-ingest**: the manifest freeze and everything the compass serves are produced
+  in the ingest finalize tail or by create-once, and served from storage; no request-path
+  recompute (warm reads perform zero producer calls).
+- **Config-only thresholds**: every new threshold, word map, band edge, cap, and path lives
+  under `config.yaml` (`compass.*`, `provenance.*`, `universe.pool_sector_aliases`); the
+  three new engine modules join `test_no_magic_numbers.CALC_FILES`.
+- **Append-only manifest store**: `next_session_manifests` joins neither
+  `clear_snapshot_set` nor the remove-data cascade; no UPDATE path may exist.
+- New tests are synthetic-fixture, file-scoped (the full suite takes hours and is never run
+  by pipeline agents); frontend logic tests are plain node scripts under
+  `apps/frontend/lib/*.test.ts`.
 
 ## Design Direction
 
-- Visual style: minimal, data-dense, evidence-first — consistent with the existing Trendora UI.
-- Mood: skeptical, rigorous, honest. Evidence status is calm and unmissable, never hype.
-- Reference: existing Trendora surfaces; badges read like a quiet "proven ✓ / not yet
-  proven" chip; status/health/job surfaces read like the existing preflight banner — calm,
-  factual, unmissable, never a blank or frozen frame.
+- Visual style: unchanged — minimal, data-dense, evidence-first, consistent with the
+  existing Trendora UI (dark, calm, honest empty states).
+- Mood: **plain words first, numbers second; change over levels; a why beside every list**.
+  The compass reads like a briefing, not a terminal; every word is a served field.
+- Reference: the existing glance cards, preflight banner, and methodology tooltips; the
+  recovery-turn reason sentence is the voice of the narrative.
 
 ## Product Shape
 
 ### Navigation / information architecture
-- Existing nav unchanged: Dashboard | Stocks | Sectors | Themes | Backtest | Research |
-  Data | Watchlist | Evidence. No new nav entries this cycle — job history/status live on
-  `/data`; the readiness badge is global (top bar).
+- Sidebar order: **Today (`/`)** | **Market (`/market`)** | Stocks | Themes | Sectors |
+  Scanner Runs | Backtest | Research | Evidence | Watchlist | Methodology | Data Manager.
+- `/` = the compass (state band, summary, what-changed, rotation, next-session focus,
+  manifest strip). `/market` = the complete former dashboard body (glance cards, regime ×
+  phase cross-view, More-detail content, full Market Phase & Severity card), relocated
+  verbatim with its persisted toggles.
+- The global as-of switcher governs both pages; historical dates show that date's stored
+  (or labeled-retrospective) compass — never today's.
 
 ### Canonical values (single source of truth)
-- **Evidence status** and **certified-claim** for any (signal, as-of) — computed once by the
-  referee, stored in the evidence ledger, displayed identically everywhere (unchanged).
-- The three scores (Leadership / Entry Quality / Risk), regime score, market phase, and
-  realized forward-returns remain single-source from the existing engine (unchanged).
-- **Backend readiness / boot phase** — computed only in `app.engine.readiness`, served only
-  by `GET /api/health`; the badge, preflight banner, and any status surface re-read it.
-- **Job history & per-date exclusion reasons** — persisted in `data_provider_runs`
-  (extended as needed), served only by the data-jobs endpoints; the `/data` panels re-read
-  them and never recompute eligibility client-side.
-- **Coverage payload** (universe counts, per-symbol coverage, gaps, capacity) — persisted at
-  ingest, served only by `GET /api/data`.
-- **Backfill run-summary contract** — one persisted record per run: `dates_total` counts
-  trading days in the requested range; the per-date exclusion breakdown partitions every
-  calendar day in the range (non-trading / already-snapshotted / error-other), so
-  non-trading + `dates_total` = calendar days and `snapshots_created` + already-snapshotted
-  + error-other = `dates_total`. J-01's runs (19 trading of 28 calendar days; 0 of 2 on the
-  weekend span) all read this one record.
+- **Next-session manifest** (one document per `(as_of, version)`): computed only by
+  `app.engine.compass.build_manifest_payload`, persisted create-once in
+  `next_session_manifests`, served only by `GET /api/compass`; the exported JSON file's
+  bytes equal the stored `payload_json`. The session delta, narrative sentences, plain-word
+  labels, candidate set, reasons/cautions/trace, and eligible-control cohort are all blocks
+  INSIDE this one document — no second producer, no client-side derivation.
+- **Engine identity**: computed only in `app.engine.engine_identity` from the config-listed
+  file list + config subset; stamped on every manifest and on newly created `ScannerRun`
+  rows (additive nullable column; old rows stay NULL as "pre-stamping"); displayed verbatim.
+- **Stock sector label**: `ScannerResult.sector`, stored once at scan time
+  (`config.stock_sectors` first, pool-CSV sector via `universe.pool_sector_aliases`
+  fallback, else NULL); every surface re-reads the stored value.
+- Existing canonical values unchanged: the three scores/buckets/setups, regime, phase &
+  severity, breadth, sector/theme scores+ranks, readiness/preflight, evidence status,
+  coverage payload, run-summary contract.
 
 ## Must-have user journeys
 
-- **J-01: Backfill honors the requested range and explains zero-work**
+- **J-01: Sector attribution is honest and near-complete on new runs**
   - Steps:
-    1. With backend and frontend running, visit `/data`; in the job form select kind
-       `backfill`, start `2026-05-02`, end `2026-05-29`; start the job
-    2. Watch the live progress panel until the job completes
-    3. Assert the job summary reports `dates_total` = 19 (every trading day in the range —
-       2026-05-04 … 2026-05-29, Memorial Day 2026-05-25 excluded as non-trading) and
-       `snapshots_created` equal to the eligible dates not already snapshotted, with any
-       skipped date carrying an explicit reason
-    4. Visit `/scanner-runs` and assert runs now exist for in-range May dates (e.g.
-       2026-05-04, 2026-05-15, 2026-05-29); open one and assert its leaderboard renders
-       stored values
-    5. Start a second backfill over the weekend-only span 2026-05-02 → 2026-05-03; assert
-       the summary reports `dates_total` = 0 with a per-reason breakdown (2 non-trading
-       days) partitioning the 2 calendar days per the run-summary contract
-    6. Re-run the identical May range (2026-05-02 → 2026-05-29); assert a zero-work
-       outcome: 0 snapshots created, breakdown 19 already-snapshotted + 9 non-trading,
-       partitioning the 28 calendar days
-    7. Reload the page; assert the persisted job history panel still lists all three runs
-       with the same outcomes and reasons — never "no job started this session"
-    8. Assert both zero-work outcomes render as an explanatory state, visually distinct
-       from the productive run's success presentation — never the same unexplained green
-       success badge
+    1. With backend and frontend running (prod scripts), on `/data` use the seed-safe
+       Remove panel over the last two trading days of the committed basis (snapshots
+       cascade away; committed bars are protected), then run a backfill over the same
+       range so fresh snapshots are produced under the new mapping
+    2. Visit `/stocks` at the latest as-of; select the Sector filter's "Unassigned"
+       option; assert the Unassigned share of resolved members is at most 5% (it was
+       ~78% before this journey)
+    3. Spot-check two names — one mapped by `config.stock_sectors` and one previously
+       unmapped pool name — and assert the leaderboard Sector cell, the stock detail
+       header, and `GET /api/stocks` serve the same stored sector label
+    4. Visit `/methodology`; assert the universe/data section now discloses the two-source
+       sector basis (curated config first, pool snapshot fallback) and its current-only
+       limitation (no point-in-time sector history)
+    5. Assert at the API that a symbol absent from both maps still serves `sector: null`
+       and renders "Unassigned" — never a fabricated sector
+    6. Cite in the dev handoff the fixture test proving leadership/entry/risk scores,
+       buckets, and setup statuses are byte-identical for the same as-of before and after
+       the wiring (the mapping is descriptive only; `rs_sector` inputs untouched)
   - Acceptance:
-    - **Consistency (single source):** backfill eligibility, targets, and exclusion reasons
-      are computed once in the data-manager job engine and persisted; the UI renders the
-      persisted run record served by the data-jobs endpoints — no client-side eligibility
-      or exclusion logic.
-    - **Correctness:** after completion, `scanner_runs` holds a run for every trading day in
-      2026-05-04 … 2026-05-29 (19 dates), and a spot-checked date's UI leaderboard matches
-      the stored snapshot for that as-of.
-    - **Honest status & anti-goals:** the explicit request densifies exactly the requested
-      range (automatic warm-up cadence unchanged elsewhere); execution is chunked and
-      memory-bounded (AG-8); determinism and no-lookahead preserved (snapshots use
-      bars ≤ as-of only).
-    - **Zero-work honesty:** the weekend-only run shows 0 trading-day targets / 2
-      non-trading; the re-run shows 0 created / 19 already-snapshotted + 9 non-trading;
-      both persist across reload; no fabricated progress; zero-work is never rendered as
-      unexplained success and wording stays factual, no reassurance language.
-    - **Walkthrough:** a `[NEW]`-flagged walkthrough of the May backfill, the resulting
-      daily snapshots, and a zero-work job explaining itself, viewable via
-      `demo.sh ops-hardening --session-live`.
+    - **Consistency (single source):** `ScannerResult.sector` remains the one stored
+      source, populated once at scan time in `scoring.score_stocks`; the alias map lives
+      only in `universe.pool_sector_aliases`; every surface re-reads the stored value and
+      no UI derives a sector.
+    - **Correctness:** new-run coverage ≥ 95% of resolved members; spot-checked labels
+      match their source rows; the byte-identity fixture passes.
+    - **Honest status & anti-goals:** unknown stays NULL/"Unassigned" (NA over
+      fabrication); the current-only basis is disclosed on `/methodology`; historical
+      rows are not rewritten by this journey; B-114 (point-in-time sector honesty)
+      remains open and referenced.
+    - **Walkthrough:** a `[NEW]`-flagged walkthrough of the shrunken Unassigned filter
+      and the methodology disclosure, viewable via `demo.sh market-compass --session-live`.
 
-- **J-03: No per-run range cap**
+- **J-02: "What changed" reports meaningful session-over-session deltas with honest empties**
   - Steps:
-    1. Visit `/data`; request a backfill spanning more than 370 calendar days (e.g.
-       2025-06-01 → 2026-07-17)
-    2. Assert the request is accepted — no "date range too large" rejection — and the job
-       begins executing in visible chunks with live progress
-    3. Assert at least the first chunk completes and progress continues without any
-       cap-related failure (full completion may extend beyond the QA window; persisted
-       job history per J-01's acceptance keeps it observable)
+    1. Load `/` at the latest as-of; assert the What-changed card header names the prior
+       stored session date and that date equals the run immediately preceding the current
+       as-of in `GET /api/runs`, alongside the gap in days
+    2. Assert every visible change entry meets its kind's config threshold
+       (`compass.delta.*`), is ordered market → breadth → sectors → themes → stocks, and
+       links to its drill surface carrying the current `?asof`
+    3. Open the suppressed-moves disclosure; assert each suppressed entry sits below its
+       kind's threshold and the suppressed count equals the number of listed entries
+    4. Spot-check one sector-rank move against the stored ranks served by `GET /api/sectors`
+       at the prior and current as-of dates, and one leadership-bucket crossing against
+       `GET /api/stocks` rows at both dates
+    5. Step the as-of switcher to the earliest stored run; assert the explicit
+       no-prior-run state renders (no deltas, no direction words, a sentence naming the
+       condition) — nothing fabricated
+    6. Cite in the dev handoff the fixture test where a quiet pair of runs renders the
+       "no meaningful changes" state with its suppressed-count disclosure, and where a
+       name absent from the prior run is reported as new to the universe rather than as a
+       score change
   - Acceptance:
-    - **Consistency (single source):** the chunk plan derives from the config
-      `import_chunking` values; the UI progress reflects the same plan the engine executes.
-    - **Correctness:** the `max_range_days` rejection no longer exists in config, validation,
-      or API behavior, and the tests that pinned 370 are updated to the new contract.
-    - **Honest status & anti-goals:** memory stays bounded for the whole run (AG-8);
-      progress is honest and never reports done early.
-    - **Walkthrough:** a `[NEW]`-flagged walkthrough of a >370-day request being accepted
-      and chunk-executing, viewable via `demo.sh ops-hardening --session-live`.
+    - **Consistency (single source):** deltas are produced once by
+      `app.engine.session_delta` inside the manifest payload and served only via
+      `GET /api/compass`; thresholds live only in `config.yaml`; the UI evaluates no
+      threshold and computes no diff.
+    - **Correctness:** spot-checked from/to values equal the stored rows for both as-of
+      dates; the prior-session anchor is exactly the preceding stored run.
+    - **Honest status & anti-goals:** the three empty/degraded states (no prior run,
+      quiet-with-suppressed-count, NA velocity) are distinct and explicit; the prior date
+      and gap are always disclosed (monthly-cadence history makes historical gaps up to a
+      month); membership changes are never rendered as score deltas.
+    - **Walkthrough:** a `[NEW]`-flagged walkthrough of a changes list, its suppressed
+      disclosure, and the earliest-run empty state, viewable via
+      `demo.sh market-compass --session-live`.
 
-- **J-04: Non-blocking boot with visible status**
+- **J-03: The plain-English summary is deterministic, cited, and never invents a cause**
   - Steps:
-    1. Restart the backend via `scripts/start-backend.sh` (prod mode — never `dev.sh`,
-       matching J-06's measurement conditions); immediately poll `GET /api/health`
-    2. Assert the first HTTP 200 arrives within 5 seconds of process start on the warm DB,
-       even when background loading remains
-    3. With the frontend already open, restart the backend again; poll `GET /api/health` at
-       ≤ 250 ms intervals from process start and assert at least one pre-ready response
-       carries the boot phase and progress n/m; assert the top-bar badge polled in that same
-       window shows the same phase detail as an explicit initializing state — never a bare
-       "Backend unavailable" (evidence: the captured pre-ready health payload plus a badge
-       screenshot/DOM assertion from the same window)
-    4. Kill the backend process (simulated crash); assert the UI transitions to an explicit
-       unreachable/crashed presentation (preflight-banner language), visibly distinct from
-       the initializing state
-    5. Assert the persistent backend logfile (path documented in the dev handoff) contains
-       the boot events; after the simulated crash, assert the log ends abruptly — boot
-       entries present, no clean-shutdown entry — so the crash is evidenced by the
-       truncated log plus the UI's unreachable presentation (a killed process writes no
-       crash line)
-    6. Restart the backend; on `/data` assert any job that was mid-flight at the kill now
-       shows an explicit interrupted/error state with its last persisted progress — never a
-       still-"running" row with no living process
+    1. On `/` at the latest as-of, assert the summary card renders the state sentence plus
+       the direction, breadth, and focus-count sentences, each as served text
+    2. Open the "Show cited facts" disclosure; assert every sentence lists its template id
+       and its facts, and spot-check two fact values against the canonical endpoints for
+       the same as-of (`GET /api/dashboard` regime score; `GET /api/market-phase` severity)
+    3. Cite in the dev handoff the passing golden test: the same stored run pair and config
+       reproduce byte-identical sentences (via the manifest `content_hash`)
+    4. Assert no sentence contains a token from the committed banned-language list
+       (imperative trade verbs, forecast terms, causal-attribution phrases) — the language
+       test is green and its list file is committed
+    5. At the earliest stored run assert the no-comparison sentence variant renders; cite
+       the fixture for the NA-velocity variant (warm-up head) in the dev handoff
+    6. On a retrospective compass view (any pre-frontier historical date), assert the
+       summary carries the visible retrospective stamp naming that it was reconstructed
+       under the current rule/config
   - Acceptance:
-    - **Consistency (single source):** readiness/boot phase is computed only in
-      `app.engine.readiness` and served only via `GET /api/health`; badge and banner re-read
-      it.
-    - **Correctness:** measured start→first-200 ≤ 5 s on the warm DB is recorded in
-      `reports/perf-budgets.md`; the crashed presentation appears only when the health poll
-      fails, the initializing presentation only while the backend reports loading.
-    - **Honest status & anti-goals:** no "Ready" before real data is servable; boot performs
-      no whole-table loads and no synchronous snapshot computation (moved to ingest).
-    - **Walkthrough:** a `[NEW]`-flagged walkthrough of restart→serving-in-seconds and
-      crash→honest-unreachable, viewable via `demo.sh ops-hardening --session-live`.
+    - **Consistency (single source):** sentence templates and word maps live in config +
+      the engine producer; sentences are stored in the manifest payload and rendered
+      verbatim; no client-side text assembly.
+    - **Correctness:** cited facts byte-match the canonical endpoint values for the same
+      as-of; goldens reproduce exactly.
+    - **Honest status & anti-goals:** every sentence's content is a stored fact or a
+      config rule name — no causes appear that Trendora cannot observe; degraded variants
+      render for missing comparanda; no imperative or forecast wording (AG-2 lineage).
+    - **Walkthrough:** a `[NEW]`-flagged walkthrough of the summary and its cited-facts
+      audit view, viewable via `demo.sh market-compass --session-live`.
 
-- **J-05: Aggregates are precomputed at ingest, never on the fly**
+- **J-04: Every next-session candidate explains why, why-not, and what would change it**
   - Steps:
-    1. On `/data`, run a backfill covering exactly one unsnapshotted historical trading day
-       (e.g. 2026-05-15, or any day `/scanner-runs` lacks; offline, `fetch` finds no new
-       bars and is expected zero-work, so `backfill` is the ingest kind under test)
-    2. Immediately after completion, assert (a) the aggregates keyed by the ingested as-of
-       serve the new state from storage — `/scanner-runs` lists the date and its
-       leaderboard renders the stored snapshot; market phase for that as-of responds from
-       storage without compute-on-read — and (b) the persisted run record lists which
-       inventory aggregates its finalize hooks refreshed (latest-date snapshot, coverage
-       payload, membership timeline, market phase, research hot-key caches), each still
-       serving stored values with no recompute on any request path
-    3. Restart the backend and visit `/data` cold; assert coverage renders from the
-       persisted payload within its committed budget and the process performs no
-       3.3M-row bar prefill
-    4. While a heavy ingest job runs, poll `GET /api/health`; assert it stays responsive
-       throughout
+    1. On `/` at the latest as-of, assert the focus section's candidate count equals the
+       count served by `GET /api/compass` and the count named in the summary's focus
+       sentence
+    2. Open one candidate card; assert its Leadership/Entry/Risk words are the config
+       word-map values for the served buckets, and its buckets and scores equal the
+       `GET /api/stocks` row for that ticker at the same as-of
+    3. Assert each reason and caution cites a threshold and the stored actual value;
+       spot-check the ATR caution's value and percentile against the row's
+       `risk_budget.atr_pct`, and assert the invalidation line renders the row's stored
+       invalidation note verbatim
+    4. Assert the eligibility checklist rows each carry a verdict from the fixed set
+       (Pass / Miss / Supportive / Neutral / Unknown / NA) with threshold and actual, and
+       that the rule-trace verdicts jointly reproduce the candidate's inclusion
+    5. Assert the "what would change this" panel states each selection and qualifier rule
+       with threshold, current value, and met/unmet — and cite the code-audit note that no
+       rule table exists in frontend code (the trace rides the payload)
+    6. Assert the "Not priority" entries each name their failed condition(s) with
+       distances, and the aggregate exclusion counts partition member count minus
+       candidate count for the same as-of
+    7. Using `GET /api/regime-history`, step `?asof` to a stored date whose regime label
+       is Risk-off (the multi-decade history contains them; a synthetic fixture covers the
+       branch otherwise); assert every candidate carries the `REGIME_RISK_OFF` caution,
+       the market band reads Risk-off, and the list persists under the "worth monitoring
+       next session" framing with zero entry-advice wording
+    8. Cite in the dev handoff the fixture where no member clears the selection floor: the
+       section renders the explicit `candidates_empty_reason` state, never a bare empty list
   - Acceptance:
-    - **Consistency (single source):** each aggregate has exactly one producer (the ingest
-      finalize hooks) and one serving endpoint; no request path recomputes it.
-    - **Correctness:** aggregate values are byte-identical to the canonical computation for
-      the same as-of — storage is re-served, never re-derived.
-    - **Honest status & anti-goals:** no code path streams the full `daily_prices` table
-      into RAM (AG-8's unbounded-load ban enforced on serving paths); launch scripts
-      enforce the declared `memory_cap_mb` / `malloc_arena_max`.
-    - **Walkthrough:** a `[NEW]`-flagged walkthrough of ingest → fresh aggregates → cold
-      `/data` within budget, viewable via `demo.sh ops-hardening --session-live`.
+    - **Consistency (single source):** the candidate set, reasons, cautions, checklist,
+      and distances are all slices of the ONE `compass.evaluate_selection` trace computed
+      at manifest build over stored run fields; the UI re-renders served structures and
+      re-implements no rule; the existing Risk-off→no-Actionable entry gate in
+      `classify_setup` is untouched.
+    - **Correctness:** every cited score, bucket, percentile, and invalidation value
+      equals the stored snapshot row for the same as-of; trace verdicts reproduce
+      inclusion/exclusion for every spot-checked name; exclusion counts partition exactly.
+    - **Honest status & anti-goals:** why-not is as visible as why; the honest-zero and
+      Risk-off states are explanatory, never blank; no composite fit number exists
+      anywhere; no imperative trade verbs, no forecast language, no proven-language; the
+      evidence chips continue to read their true ledger status ("Not yet proven" today).
+    - **Walkthrough:** a `[NEW]`-flagged walkthrough of one candidate's
+      why/cautions/checklist/what-would-change, the why-not entries, and the Risk-off
+      caution state, viewable via `demo.sh market-compass --session-live`.
 
-- **J-06: Pages load only what they need**
+- **J-05: Each close freezes one provenance-stamped next-session manifest, exported byte-consistently**
   - Steps:
-    1. With a warm backend in prod mode (`scripts/start-backend.sh` /
-       `scripts/start-frontend.sh` — never `dev.sh`), load each page (`/`, `/stocks`,
-       `/stocks/AAPL`, `/sectors`, `/themes`, `/data`, `/evidence`, `/scanner-runs`,
-       `/backtest`, `/watchlist`, one `/research` lab) and record time-to-interactive plus
-       each page's on-load API latencies
-    2. Record the measurements in the committed budgets table `reports/perf-budgets.md`
-       (existing budgets carry; the ≤ 5 s boot budget and the cold `/api/data` budget join
-       the table) and assert every measurement is within budget
-    3. Record in the dev handoff a code-level audit that no on-load endpoint performs an
-       unbounded `daily_prices` scan or recomputes an inventory aggregate
+    1. On `/data`, remove the last two trading days of snapshots (seed-safe) and backfill
+       the same range; assert the job's finalize discloses a "next-session manifest" phase
+       and the run record's "Refreshed:" line names it
+    2. Assert `GET /api/compass` for the frontier date serves a manifest with
+       `mode: at_ingest`, `version: 1`, `frozen: true`, a generation timestamp, the engine
+       identity, the selection-rule version and hash with its verbatim config subset, the
+       dataset stamp, and the universe block (pool hash, resolver gate values, member count)
+    3. Assert the export file exists under the configured export directory and its bytes
+       equal the served `payload_json` (at-ingest exports only)
+    4. Assert the manifest strip on `/` shows the same stamps and counts, and its expanded
+       table equals the stored candidates plus the eligible-control cohort, whose count
+       equals member count minus candidate count
+    5. Assert a `ScannerRun` created by this backfill carries `engine_identity` while an
+       older run row shows the pre-stamping NULL state
+    6. Re-run the identical backfill range; assert the zero-work outcome mints no new
+       manifest version (create-once — still version 1)
+    7. Request `GET /api/compass` for an old stored run date with no manifest; assert
+       exactly one `retrospective` manifest is created (create-once on re-request) whose
+       recorded frontier bar date exceeds its as-of — and assert the frontier date's
+       manifest can only be minted by the finalize freeze or an explicit regenerate, never
+       by a plain GET
   - Acceptance:
-    - **Consistency (single source):** budgets live only in `reports/perf-budgets.md`; every
-      later iteration touching the data path re-asserts them alongside fresh numbers.
-    - **Correctness:** lazy/optimized paths return byte-identical values to the canonical
-      computation for the same as-of.
-    - **Honest status & anti-goals:** anything slower than its budget shows an honest
-      progress or initializing state, never a frozen or blank frame; caching introduces no
-      lookahead.
-    - **Walkthrough:** a `[NEW]`-flagged walkthrough of the budgets table vs live page
-      loads, viewable via `demo.sh ops-hardening --session-live`.
+    - **Consistency (single source):** one producer (`compass.build_manifest_payload` +
+      `persist_manifest`), one endpoint (`GET /api/compass`), one export whose bytes equal
+      the stored payload; the finalize hook follows the existing honesty-gated
+      "Refreshed:" pattern.
+    - **Correctness:** the content hash reproduces across rebuilds of the same inputs
+      (fixture); stamps match the computed engine identity and rule-config hash; the
+      data-driven mode rule assigns `at_ingest` only when no bar later than the as-of
+      exists at generation.
+    - **Honest status & anti-goals:** mode is never fabricated (fails toward
+      retrospective); no future session DATE is fabricated — the manifest states
+      "next session after the based-on close" semantically; the artifact embeds its own
+      evidence caveat ("Not yet proven — attention rule, not a certified edge") and
+      survivorship/sector-basis caveats.
+    - **Walkthrough:** a `[NEW]`-flagged walkthrough of ingest → freeze → stamps → export
+      file, viewable via `demo.sh market-compass --session-live`.
 
-- **J-07: Heavy aggregates never take the service down**
+- **J-06: A frozen manifest never changes — later data, rebuilds, and regeneration are safe**
   - Steps:
-    1. With the full deep basis loaded, trigger the forward-aggregate warm for every
-       configured horizon (the ingest finalize path) and serve `GET /api/backtest` for
-       each horizon throughout (served from storage per J-08) in one long-lived backend
-       process.
-    2. While step 1 runs, poll `GET /api/health` once per second; assert every poll
-       answers HTTP 200 within its existing budget — no frozen or unresponsive window.
-    3. Record the process's peak memory (VmPeak) during step 1; assert it stays under the
-       declared `server.memory_cap_mb`, with the margin recorded in
-       `reports/perf-budgets.md`.
-    4. Induce memory pressure during a warm (test hook or a tightened cap in a throwaway
-       process); assert the warm aborts honestly per the existing isolation convention
-       while the SAME process keeps serving `/api/health` and previously cached reads —
-       never a deadlock, wedge, or restart requirement.
+    1. With J-05's manifest stored, run a further backfill on another removed date; assert
+       the stored manifest's payload bytes and version are unchanged (API read + export file)
+    2. Run seed-safe remove-data over a range covering that manifest's as-of (its snapshots
+       cascade away); assert `GET /api/compass` still serves the manifest verbatim with a
+       read-time basis disclosure showing the underlying run is unavailable — never a 404,
+       never a recompute
+    3. Backfill the range back; assert the basis disclosure flips to available (and labels
+       the run as rebuilt when its creation timestamp changed) while the manifest bytes
+       remain identical
+    4. Trigger the explicit regenerate action for that as-of (confirm-gated); assert
+       version 2 appears with its own mode and generation timestamp, version 1 remains
+       readable and byte-identical, and the UI lists both versions with their stamps
+    5. Cite in the dev handoff the passing tests: time-safety (perturbing or deleting
+       post-as-of bars leaves the content hash unchanged), rebuild survival
+       (`clear_snapshot_set` and remove-data delete zero manifest rows), reproducibility
+       (two builds of the same inputs produce identical content hashes), and create-once
+       concurrency (two simultaneous requests yield one row)
   - Acceptance:
-    - **Consistency (single source):** `compute_forward_aggregates` remains the single
-      canonical producer; the bounded implementation replaces the unbounded one in place —
-      no second aggregation path.
-    - **Correctness:** the bounded/streamed implementation returns byte-identical payloads
-      to the previous computation for the same inputs (all horizons, with and without
-      `as_of`), proven by a fixture-backed equality test.
-    - **Honest status & anti-goals:** no unbounded whole-table ORM materialization remains
-      on the warm or serving path (`forward_returns` / `scanner_results` read
-      column-projected and/or chunked into bounded accumulators — AG-8); a memory-pressure
-      abort never leaves the process wedged (step 4); health/readiness stay truthful
-      throughout.
-    - **Walkthrough:** the crash-free warm + healthy `/api/health` sequence appended as
-      `[NEW]` steps viewable via `demo.sh ops-hardening --session-live`.
+    - **Consistency (single source):** the basis disclosure is a read-time comparison
+      (source-run creation timestamp + engine identity), never a mutation; the dataset
+      stamp alone is never trusted as a rebuild detector (a rebuild can reproduce it).
+    - **Correctness:** byte-identity assertions hold at every step; version numbering is
+      dense and append-only.
+    - **Honest status & anti-goals:** rebuilt/unavailable states are disclosed, old
+      versions are never hidden or deleted, and no code path UPDATEs a manifest row
+      (module audit cited in the handoff).
+    - **Walkthrough:** a `[NEW]`-flagged walkthrough of ingest-after-freeze, removal,
+      restore, and regenerate-as-version-2, viewable via
+      `demo.sh market-compass --session-live`.
 
-- **J-08: Backtest evidence serves from storage only — never a cold recompute on request**
+- **J-07: The Today page answers the ten-second read from served values only**
   - Steps:
-    1. With a warm backend and a fully warmed forward-aggregate store, note the served as-of
-       on `/backtest`; then on `/data` run a small single-day backfill (this bumps the
-       dataset version and schedules the finalize warm)
-    2. While the new version's warm is still running, load `/backtest`; assert it serves the
-       last COMPLETE stored version within its committed ≤ 1.5 s budget, labeled with that
-       version's served as-of plus a visible "refreshing" indicator — never a skeleton
-       waiting on a fresh compute, never a request-path recompute
-    3. After the run record lists `forward_aggregates` among the refreshed aggregates,
-       reload `/backtest`; assert it now serves the new version's stored values within the
-       same budget and the refreshing indicator is gone
-    4. Assert at the API/test layer that `GET /api/backtest` and the MCP `query_backtest`
-       tool perform zero aggregate computation on any request — the compute entry point is
-       invoked only by the ingest finalize warm (call-count instrumentation over the
-       request path)
-    5. On a store where no warm has ever completed for any version (fresh-install shape, a
-       test fixture), load `/backtest`; assert an explicit honest "not yet computed — run an
-       ingest" empty state within budget — never a synchronous compute, never a frozen or
-       blank frame
+    1. Load `/`; assert the page body renders, in order: the market-state band, the
+       plain-English summary, What changed, Leadership rotation, Next-session focus, and
+       the manifest strip — with the readiness badge and preflight strip in the layout
+       chrome above the body
+    2. Assert the regime tile's label and score equal `GET /api/dashboard` for the same
+       as-of, and the phase tile's phase, severity, and P(bear) equal
+       `GET /api/market-phase`
+    3. Assert the three direction words (regime, stress, breadth) equal the served
+       compass fields, and each is consistent with its served input under the config rule
+       (the stress word is the flat-band classification of the served severity velocity)
+    4. Expand each tile's breakdown disclosure; assert component names and contributions
+       equal the canonical endpoints' `components` arrays
+    5. Assert vocabulary separation: readiness/preflight tokens ("Ready", "GO",
+       "DEGRADED", "NO-GO") appear only inside the chrome elements, and regime/phase
+       tokens appear nowhere inside the chrome
+    6. Assert the regime × phase cross-view chart is absent from `/` and the named
+       link-out navigates to `/market` where it renders
+    7. Record `/`'s time-to-interactive and each on-load API latency in
+       `reports/perf-budgets.md`; assert every measurement is within its committed budget,
+       warm `GET /api/compass` reads perform zero producer calls (call-count
+       instrumentation cited in the handoff), and `/` no longer fetches `/api/sectors`,
+       `/api/themes`, or any full-history series on load
   - Acceptance:
-    - **Consistency (single source):** `compute_forward_aggregates` remains the single
-      producer, now invoked ONLY from the ingest finalize warm; `GET /api/backtest` and the
-      MCP tool are pure readers of the same stored rows.
-    - **Correctness:** served payloads are byte-identical to the stored aggregate for the
-      served version, and all horizons in one response come from ONE complete version —
-      the last-good fallback never mixes versions.
-    - **Honest status & anti-goals:** the refresh window is visibly disclosed (served as-of
-      + refreshing indicator); the never-warmed store renders the explicit empty state; no
-      unbounded loads on any path (AG-8); the fallback serves a complete OLDER snapshot,
-      never partially newer data (AG-5 no-lookahead preserved).
-    - **Walkthrough:** version-bump → instantly served last-good with refreshing marker →
-      fresh serve after the warm, appended as `[NEW]` steps viewable via
-      `demo.sh ops-hardening --session-live`.
+    - **Consistency (single source):** every word, delta, and echo on `/` is a served
+      field; word maps and thresholds live only in `config.yaml` and are applied only in
+      the engine producer; the frontend performs no threshold comparison, delta
+      computation, or word selection.
+    - **Correctness:** tile values match the stored run for the same as-of; compass
+      echoes are value-identical to the canonical endpoints' fields.
+    - **Honest status & anti-goals:** NA inputs render their NA words, never a fabricated
+      direction; no proven-language, imperative verbs, or forecast wording anywhere on
+      `/`; system readiness and market state never share a surface or a vocabulary token.
+    - **Walkthrough:** a `[NEW]`-flagged walkthrough of the ten-second read top to
+      bottom, viewable via `demo.sh market-compass --session-live`.
+
+- **J-08: The market surface relocates intact and history never lies**
+  - Steps:
+    1. Visit `/market`; assert it renders the two glance cards, the regime × phase
+       cross-view card (with its persisted hide toggle still keyed to the existing
+       localStorage names), and the complete former More-detail inventory (three breadth
+       cards, Top Sectors, Candidate Counts, Top Themes, the full Market Phase & Severity
+       card) reading the same endpoints as before the move — no card dropped
+    2. Assert the sidebar lists Today (`/`) first and Market (`/market`) second, with
+       route-active highlighting correct for both
+    3. Step `?asof` to a pre-feature historical run date D; assert the Today tiles show
+       D's stored values, What-changed compares D against D's predecessor (header names
+       that date), and the manifest strip serves a manifest whose as-of equals D with a
+       visible `retrospective` label — never a newer manifest's contents
+    4. Step to the J-05 frontier date; assert the strip shows the frozen `at_ingest`
+       version-1 stamps
+    5. Open `/?asof=D` in a fresh tab; assert the first rendered data is already D-scoped
+       (no latest-then-D repaint) and sidebar links carry `?asof=D`
+    6. Return to Latest; assert the parameter is gone and the strip shows the latest
+       session's state (frozen, or the explicit not-yet-frozen state before the next
+       ingest)
+  - Acceptance:
+    - **Consistency (single source):** the relocated surfaces reuse the existing
+      components and endpoints unchanged; the as-of provider remains the sole `?asof`
+      owner; there is exactly one manifest lookup path.
+    - **Correctness:** for historical D, every displayed value equals D's stored values;
+      the comparison anchor is D's predecessor run; the manifest served is exactly D's.
+    - **Honest status & anti-goals:** nothing from the former dashboard is removed or
+      hidden; retrospective reconstructions are visibly labeled; absence states are dated
+      and explicit; a historical view never substitutes a newer manifest (AG-5 lineage).
+    - **Walkthrough:** a `[NEW]`-flagged walkthrough of `/market` intact plus a
+      historical Today with that date's manifest, viewable via
+      `demo.sh market-compass --session-live`.
 
 <!-- Continuous-improvement auto-journeys: the goal-proposer appends NEW Must-have journeys ONLY
      between the two markers below (see the goal-self-extension skill). The human-authored journeys
      above and the Anti-goals below are never machine-edited. An empty block = nothing auto-proposed yet. -->
 <!-- AUTO:journeys -->
-
-- **J-09: The backend discloses its own background-compute activity**
-  - Steps:
-    1. With a warm backend in prod mode (`scripts/start-backend.sh`), open any page and note the
-       top-bar readiness badge reads `Ready`; poll `GET /api/health` and record the steady-state
-       payload plus its latency
-    2. Trigger exactly one background-compute window (BCW) the way a user does — load `/backtest`
-       for a historical trading day whose forward-aggregate evidence is not yet complete for the
-       current dataset version; assert the request still returns immediately (J-08 unchanged) while
-       the compute is dispatched to the background thread
-    3. While that window is in flight, poll `GET /api/health`; assert the SAME payload now carries an
-       explicit background-activity field naming what is running (the as-of key(s) computing, how
-       many are in flight, horizons done/total, when the window started), and assert the top-bar
-       badge polled in that same window shows a calm, explicit "background compute running" detail
-       alongside `Ready` — never a bare `Ready` that hides it, never a misstated
-       `initializing`/`Backend unavailable`
-    4. On `/data`, assert a panel renders that same field from that same poll: the in-flight
-       window(s) with elapsed time and horizons done/total, plus the last completed or failed
-       background compute with its outcome and, on failure, the recorded reason (the dispatch
-       already catches and logs its exceptions) — never a silent failure, never an unexplained
-       forever-refreshing state
-    5. After the window completes, poll again and assert the field returns to an explicit idle state
-       ("no background compute running") and the `/data` panel moves that window into its
-       last-outcome row with a real measured duration
-    6. Assert the disclosure is honest about its own scope: it is process-lifetime (a backend restart
-       clears it, and the panel says so) and it never claims progress it did not observe — no
-       fabricated percentages, no estimated finish times
-  - Acceptance:
-    - **Consistency (single source):** background-compute activity is a NEW Data Contract value with
-      exactly ONE producer — the in-process dispatch registry inside `app.engine.forward_testing`
-      (its existing single-flight guard stays the only writer) exposed through one read-only
-      accessor and composed into the payload by `app.engine.readiness.compute_readiness` — and
-      exactly ONE serving endpoint, `GET /api/health` (the same additive pattern the `preflight`
-      field used). The badge and the `/data` panel both read the existing single `ReadinessProvider`
-      poll and re-format only: no second endpoint, no second poll, no client-side derivation. Ingest
-      jobs keep their own single source (`GET /api/data` run records) and boot warm-up keeps
-      `warmup` — this value never restates either. Any new threshold or retained-record count comes
-      from `config.yaml`, never a literal.
-    - **Correctness:** the disclosed identities, counts, horizon progress, timestamps and outcomes
-      match the dispatch's own record for the same window (AG-3), cross-checkable against
-      `forward_aggregate_cache` commit timestamps and the backend logfile; a read taken during a
-      disclosed window is classifiable as a BCW read from the payload alone, so budget scoring no
-      longer depends on post-hoc forensic reconstruction.
-    - **No behavior change:** `ensure_historical_forward_aggregates_dispatched`'s keying and
-      single-flight semantics, `compute_forward_aggregates`, `resolved_forward_aggregate_evidence`,
-      and J-08's `ready`/`refreshing`/`not_yet_computed` state machine and served values are
-      semantically unchanged — this journey adds disclosure only. Bounding concurrency stays out of
-      scope (owner-deferred backlog card B-1107), as do the declined off-process-compute and
-      precompute-all-historical-dates redesigns.
-    - **Honest status & anti-goals:** the new field costs `GET /api/health` no database work (an
-      in-memory read under the existing lock) and steady-state `/api/health` stays within its
-      UNCHANGED ≤ 0.1 s budget, re-measured and recorded in `reports/perf-budgets.md` (the single
-      budgets artifact; steady-state and BCW ceilings are not amended by this journey); no frozen or
-      blank frame; copy stays factual with no reassurance language; no proven-language and no
-      Evidence Claim is introduced (AG-1/AG-4/AG-6), and AG-8/AG-10 are untouched.
-    - **Walkthrough:** a `[NEW]`-flagged walkthrough of steady-state `Ready` → a disclosed
-      background-compute window (badge detail + `/data` panel) → the honest idle/last-outcome state
-      after it completes, viewable via `demo.sh ops-hardening --session-live`.
-
 <!-- /AUTO:journeys -->
 
 ## Anti-goals
@@ -399,199 +443,127 @@ no-ops or arbitrary limits.
   **passing certified-claim entry** in the evidence ledger (out-of-sample, control-beating). Unbacked
   values MUST render a "not yet proven" state. *(critical)*
 - **AG-2 — Decision-quality only:** never present return promises, price targets, "buy/sell" signals, or alpha
-  claims; never place or simulate orders. *(critical)*
+  claims; never place or simulate orders. Candidate framing is "worth monitoring", never advice. *(critical)*
 - **AG-3:** A journey passes ONLY if the **displayed numbers are correct** — they match the engine's computation
   for the same as-of date — not merely that the page renders. *(critical)*
 - **AG-4 — No overfit edges:** any pattern surfaced as "proven" must have survived the referee (sealed
   out-of-sample holdout + controls + multiple-testing correction), never in-sample fit alone. *(critical)*
 - **AG-5 — Preserve determinism and no-lookahead:** scoring uses bars ≤ as-of; forward returns use bars > as-of;
-  never introduce lookahead anywhere. *(critical)*
+  the manifest for close D derives only from state stored at or before D; never introduce lookahead anywhere. *(critical)*
 - **AG-6:** No iteration ships if its evidence-derived claims (if any) lack a passing referee verdict from the
-  post-decompose gate. *(critical)*
+  post-decompose gate. (This cycle introduces no Evidence Claims — the gate passes automatically.) *(critical)*
 - **AG-7:** No hard-coded credentials, API keys, or tokens in source files. *(critical)*
-- **AG-8 — Resilience to data-shape and data-scale change:** widening the data basis (new nulls, broader pools, deeper history) must never crash an existing page or exhaust a service's memory — every
-  existing consumer of a widened field is re-validated, the UI degrades gracefully (contained error
-  boundary, honest "—"/NA placeholder, never a blank application-error page), and unbounded
-  whole-table ORM loads are forbidden on the deep basis. *(critical)*
-- **AG-9 — Offline-deterministic ingest:** ingest jobs (fetch/backfill/rebuild) run only
-  against the committed seed / local provider fixtures — no live external network calls or
-  paid data services may be introduced without an explicit goal.md amendment. *(critical)*
-- **AG-10 — Host resource ceiling (hardware protection):** heavy compute — backfills,
-  full-universe rebuilds, measurement passes, load drills, test-suite bursts — MUST be launched
-  only via the project launch scripts (`scripts/dev.sh` / `scripts/start-backend.sh`), and those
-  scripts MUST apply the host caps declared in `project-extensions/host-guard/host-guard.env`
-  whenever that file is present (CPU-affinity mask, BLAS/OMP thread caps, `memory_cap_mb`,
-  `malloc_arena_max`). Never remove, weaken, or bypass these caps: stripping a HOST-GUARD
-  marked block from a launch script is a REGRESSION regardless of test outcomes. The ceilings
-  are a physical constraint of the current host (two instant hardware resets under all-core
-  vectorized ingest bursts: 2026-07-20 19:17, 2026-07-21 10:33), not a performance budget to
-  optimize away. *(Owner amendment 2026-07-31, two corrections of record — nothing above is
-  relaxed: `memory_cap_mb` / `malloc_arena_max` live in `config.yaml`, not in `host-guard.env`;
-  and the 2026-07-20/21 resets were subsequently attributed to an uncorrected hardware
-  data-fabric fault (`host-guard.env`, 2026-07-30), so the ceiling VALUES are an owner-set
-  envelope — re-set by the dated entry in "Additional binding notes" below — while this
-  paragraph's prohibition on agents removing, weakening, or bypassing caps is unchanged.)*
-  *(critical)*
+- **AG-8 — Resilience to data-shape and data-scale change:** widening the data basis must never crash an existing
+  page or exhaust memory — consumers of widened fields are re-validated, the UI degrades gracefully (contained
+  error boundary, honest "—"/NA placeholder), and unbounded whole-table ORM loads are forbidden (the delta
+  engine reads column-projected selects, never full record_json sweeps). *(critical)*
+- **AG-9 — Offline-deterministic ingest:** ingest jobs run only against the committed seed / local provider
+  fixtures — no live external network calls or paid data services without an explicit goal.md amendment. *(critical)*
+- **AG-10 — Host resource ceiling (hardware protection), carried from ops-hardening:** heavy compute MUST be
+  launched only via the project launch scripts, which MUST apply the host caps declared in
+  `project-extensions/host-guard/host-guard.env` whenever present (CPU-affinity mask, BLAS/OMP thread caps)
+  plus the `config.yaml` `server.memory_cap_mb` / `malloc_arena_max` values. Never remove, weaken, or bypass
+  these caps; stripping a HOST-GUARD marked block from a launch script is a REGRESSION regardless of test
+  outcomes. The ceiling VALUES are an owner-set envelope (current: `memory_cap_mb` 8192,
+  `HOST_GUARD_MEMORY_HIGH` 12G, per the dated owner amendments recorded in
+  `docs/archive/goal-ops-hardening.md`); only the owner may change them. *(critical)*
+- **AG-11 — No new composite candidate number:** no "fit", "conviction", "match", "probability of success",
+  or any new blended score may be attached to candidates, the market, or the manifest; candidate presentation
+  is limited to the existing three scores/buckets, config word maps, and structured reason/caution codes. *(critical)*
+- **AG-12 — Manifest immutability:** a stored `next_session_manifests` row and its exported file are never
+  mutated or deleted by any later ingest, rebuild, data removal, config change, or code change; corrections
+  happen only as new version rows; a historical view never substitutes a newer manifest. *(critical)*
+- **AG-13 — System-vs-market separation:** readiness/preflight vocabulary (Ready, Initializing, Backend
+  unavailable, GO, DEGRADED, NO-GO) must never label market state, and regime/phase vocabulary must never
+  label system state; the manifest's market and narrative blocks must contain no readiness tokens. *(critical)*
+- **AG-14 — No Tapeology coupling:** no imports from, network calls to, or writes into the tapeology
+  repository or its services; the handoff is exclusively the local exported artifact and Trendora's own
+  served API. *(critical)*
+- **AG-15 — No outcome-tuned selection:** the selection rule and its thresholds must not be chosen or revised
+  from realized forward returns within this goal; no Evidence Claim is introduced for it; any future
+  selection-edge claim goes through the pre-registration registry and referee. *(critical)*
 
 ## Loop mechanics (for the iteration planner)
 
-- Journeys J-01 … J-06 are pure ops/performance/correctness work and carry **no Evidence
-  Claims** — the post-decompose referee gate passes automatically. No iteration in this
-  cycle may introduce proven-language (AG-1/AG-4/AG-6 still veto).
-- Suggested build order: the data-jobs cluster first (J-01, J-03 — unblocks the
-  owner's immediate backfill need), then the aggregate/boot cluster (J-05 enabling J-04),
-  then the measurement capstone (J-06). The decomposer may re-order with reasons.
-- `docs/improvement-backlog.md` remains the owner-governed idea registry; the goal-proposer
-  writes only between the AUTO markers above.
+- No journey in this cycle carries an Evidence Claim — the post-decompose referee gate passes automatically
+  every iteration; AG-1/AG-4/AG-6 still veto any proven-language regression.
+- Suggested build order: J-01 (sector wiring — unblocks candidate sector context), then the engine cluster
+  (J-02 delta + J-03 narrative + J-04 selection — one manifest producer), then the freeze/integrity pair
+  (J-05, J-06), then the surface pair (J-07 Today, J-08 relocation). The decomposer may re-order with reasons.
 - Depth: lean by default; full when an iteration first lands user-visible UI changes.
+- Backlog cards partially pulled forward (mark `IN-GOAL.MD (scoped, market-compass)` in
+  `docs/improvement-backlog.md`): B-306 (engine-identity stamping — scoped to manifests + new runs),
+  B-802 (rule distances — realized as the selection trace), B-804 (score diff — scoped to bucket/status/rank
+  crossings), B-1205 (stamped exports — scoped to the manifest artifact). Their full forms stay in the backlog.
+- `docs/improvement-backlog.md` remains the owner-governed idea registry; the goal-proposer writes only
+  between the AUTO markers above.
 
-## Improvement direction (engineering) — compute at ingest, serve from storage, load per page
+## Improvement direction (engineering) — freeze the prior, expose the change, keep one producer
 
-**Principle:** every heavy computation runs inside ingest jobs (fetch / backfill / rebuild),
-its result is persisted, and boot + request paths only read storage. Boot = config + engine +
-tables + orphan sweep + existence checks. Nothing global loads at startup.
+### Ground truth (measured 2026-08-19 on main @42167cf5)
+- Committed seed: `daily_prices` 3,311,510 rows / 591 symbols / 1996-01-02 → 2026-08-14;
+  `scanner_runs` 3,080 dates with consecutive DAILIES 2026-08-05 → 2026-08-14 (delta engine has real
+  prior-session pairs offline); every run stores 31 sector/industry + 11 theme rank rows.
+- Latest run (2026-08-14, id 3051): 541 members; setups Avoid 482 / Breakout-watch 51 / Extended 8 /
+  **Actionable 0**; leadership buckets A 0 / B 27 / C 76 / D 82 / E 356 — the selection floor
+  (leadership ≥ 80) yields a full candidate list today, while Actionable/A-bucket rules would yield none.
+- Sector: `config.stock_sectors` maps 122 names; 424/541 rows (78.4%) NULL at the latest run;
+  `apps/backend/data/seed/universe_pool.csv` carries a sector for all 548 pool names (its 11 sector names
+  verified identical to `config.etfs.sector` names today ⇒ `universe.pool_sector_aliases` defaults empty).
+- Provenance today: `scanner_runs` has created_at/provider/benchmark only — no engine/rule/code stamps;
+  `research._dataset_version` = counter stamps that a rebuild can reproduce byte-identically.
+- Evidence: canonical ledger 7 entries, all FAIL ⇒ every score reads "Not yet proven" (correct display).
 
-### Ground truth (measured 2026-07-18; DB size + `rebuild` range behavior corrected 2026-08-13,
-ops-hardening iter-74 — see the two corrected bullets below; the row/table counts are the
-original 2026-07-18 measurement, not re-measured this round)
-- DB **7,978.3 MiB / 8,365,871,104 bytes (~8.37 GB)** as of 2026-08-13 (`ls -la
-  apps/backend/data/trendora.db`; supersedes the stale ~811 MiB figure this block originally
-  recorded for 2026-07-18 — ten months of continued ingest have grown the committed dev DB ~10x
-  since); `daily_prices` 3,299,561 rows / 590 symbols / 1996-01-02 → 2026-07-17;
-  `scanner_results` 66,836 rows (**329 MB — largest table**, `record_json` blobs);
-  `forward_returns` 344,334; `scanner_runs` 180 dates (2005-02-25 → 2026-05-01 monthly +
-  recent dailies; the 2026-07-17 snapshot now exists, created at boot on 2026-07-18) — these
-  row/table counts are the original 2026-07-18 measurement, not re-measured this round.
-- The `rebuild` job kind runs the FULL committed `2005-02-25 → 2026-08-03` range
-  unconditionally, regardless of the `start`/`end` request parameters passed — confirmed via a
-  live `rebuild` job's own persisted `start`/`end` fields (ops-hardening iter-73,
-  `reports/perf-budgets.md` Addendum 38).
-- All indexes needed for lazy per-symbol/per-date queries already exist
-  (`uq_daily_prices_symbol_date`, `ix_daily_prices_date`, run/ticker/symbol indexes).
+### Integration map (where the new work plugs in)
+- Finalize hook: insert the "next-session manifest" phase in `_refresh_ingest_aggregates`
+  (`apps/backend/app/engine/data_manager.py`, between the market-phase warm ~:4509 and forward
+  aggregates ~:4528) — after the phase warm (the delta reads the causal timeline cache), before the long
+  aggregate phase (liveness); own try/except + `enter_finalize_phase` + honesty-gated
+  `refreshed.append("next_session_manifest")`. Freeze fires only when the frontier date is in
+  `prog.new_snapshot_dates` and no manifest exists for it.
+- Create-once writer mirrors `scanner.persist_run_payload`'s two IntegrityError guards
+  (`apps/backend/app/engine/scanner.py:118-130, :204-218`); read path reuses
+  `snapshot_serving`'s as-of error mapping. **Create-once-on-GET applies only to as-of dates strictly
+  before the data frontier**; the frontier's manifest is minted only by the freeze or an explicit
+  confirm-gated regenerate.
+- `next_session_manifests` joins NEITHER `clear_snapshot_set` (`data_manager.py:2223-2227`) nor the
+  remove-data cascade (`:2170-2177`); no foreign key to `scanner_runs` (rebuild recreates ids) —
+  `source_run_created_at` + `engine_identity` are the rebuild detectors, never the dataset stamp alone.
+- `ScannerRun.engine_identity` = additive nullable column via `db._ADDITIVE_COLUMNS`
+  (`apps/backend/app/db.py:108-145`), stamped only in `persist_run_payload`; old rows stay NULL
+  ("pre-stamping era"), never backfilled.
+- Mode rule is data-driven: `at_ingest` iff no bar dated later than the as-of exists at generation
+  (`generation.frontier_bar_date` records the evidence); fails toward `retrospective`.
+- Serialize once: build payload → `json.dumps(sort_keys=True, default=str)` → store those bytes → export
+  those bytes; `content_hash` covers the content block only (excludes generated_at/mode/generation/dataset).
+- Delta inputs: current vs previous stored run (indexed scalar select), the causal market-phase timeline
+  from `market_phase_cached` (prev point of the SAME payload), stored sector/theme rank rows, and
+  column-projected `ScannerResult` selects (ticker/scores/buckets/setup only — AG-8).
+- Narrative voice: the `market_phase._recovery_turn_signal` reason branches
+  (`apps/backend/app/engine/market_phase.py:618-638`) and `setups._REASONS` string-table shape are the
+  precedents; every sentence ships `{template_id, text, facts}`.
+- Frontend: `/` recomposed; `/market` receives the current dashboard body verbatim
+  (`apps/frontend/app/page.tsx` sections; keep localStorage keys `trendora.dashboard.phaseCrossView`,
+  `trendora.dashboard.moreDetail` so preferences survive); sidebar NAV order in
+  `apps/frontend/components/sidebar.tsx`; the as-of provider stays the sole `?asof` owner.
+- Config namespaces: `compass.selection` (rule_version, leadership_min_score 80.0, max_candidates,
+  qualifiers entry_min_score 70.0 / risk_max_score 60.0, why_not floor 75.0 + cap),
+  `compass.delta` (breadth_min_change_pts, rank_move_min, top_k, velocity_flat_band, pbear_bands,
+  max_stock_items), `compass.vocabulary` (direction/level/score word maps),
+  `compass.manifest` (schema_version, export dir + modes: at_ingest only),
+  `provenance` (engine_files list, config_keys list), `universe.pool_sector_aliases` (default empty).
+  Env override for tests: `TRENDORA_COMPASS_EXPORT_DIR` (name only, never a value in files).
+- New engine modules join `CALC_FILES` in `apps/backend/tests/test_no_magic_numbers.py:19`.
+- Methodology: add the sector-basis disclosure and a "Next-session focus" entry whose thresholds ref the
+  live `compass.selection.*` keys; TermInfo entries for every new word.
 
-### The four offenders to retire
-1. **`GET /api/data` coverage** (`data_manager.compute_coverage` →
-   `_compute_coverage_uncached`, data_manager.py:771/805): whole-table prefill of 3.3M rows
-   on the request path — the documented OOM-crash source (iter-24 evidence, reproduced 2/2);
-   result cached only in-process (8 keys), lost on restart.
-2. **Boot `ensure_latest_snapshot`** (main.py:73): synchronous full-universe scan whenever
-   the newest trading date lacks a snapshot — blocks serving for minutes.
-3. **Boot warm-up thread** (warmup.py:122): iterates cadence dates under `bar_cache`,
-   lazily pulling the whole universe into RAM to run no-ops on a maintained DB.
-4. **Lazy-only caches:** `market_phase_cache`, `event_study_cache` (+ research views) pay
-   first-request compute per new date/dataset-version instead of being warmed at ingest.
-
-### Aggregation candidates — compute at ingest, save to DB, serve as row reads
-| # | Computation | Today | Persisted form | Ingest update hook | Pages faster |
-|---|---|---|---|---|---|
-| 1 | Latest-date snapshot (runs+results+sector/theme scores) | synchronous at boot | existing snapshot tables — guarantee the row exists at ingest | end of fetch/`_do_backfill`/rebuild when a new trading date lands | boot unblocks; `/`, `/stocks`, `/sectors`, `/themes` |
-| 2 | Cadence snapshots + forward returns | boot warm-up loop | existing tables (backfill already writes them) — make ingest the SOLE path, delete the boot loop | `_do_backfill` (already there) | removes boot's whole-universe RAM load |
-| 3 | Coverage payload (universe_count, universe_diagnostic, per-symbol table, gaps, capacity) | whole-table prefill per request | **new** `coverage_snapshot(dataset_version PK, as_of, payload_json)` | `_do_backfill` / rebuild / remove-data finalize | `/data` (3.3M-row scan → one keyed row) |
-| 4 | Membership timeline | cached but warmed at boot | existing `membership_timeline_cache` | move warm from boot into `_do_backfill` | `/data` |
-| 5 | Market phase & severity (latest as_of) | lazy cache; miss = O(all runs) + SPY/VIX bars | existing `market_phase_cache` — warm the latest key at ingest | `_do_backfill` / rebuild finalize | `/` home card, phase labs |
-| 6 | Research event-study / factor-lab / regime-lab hot keys | lazy cache; miss streams results+returns | existing `event_study_cache` — warm default (subject,horizon,all-history) keys at ingest | `_do_backfill` / rebuild finalize | `/research/*` first loads |
-| 7 | (optional) Normalized index series; per-date bars-present rollup for the availability heatmap | per-request per-ETF query / grouped scan | small keyed caches | ingest | `/`, `/data` (minor) |
-
-### Cannot be precomputed (user-parameterized) — lazy INDEXED queries, never prefill
-- `/api/stocks/{ticker}/bars` (ticker × as_of × range × through) — served by the existing
-  `(symbol,date)` unique index; keep lazy.
-- Cold arbitrary `as_of` snapshot (`run_scan` on a non-cadence date) — keep create-once with
-  per-symbol bounded windows; must never wrap in a whole-table prefill.
-- Arbitrary research selectors — the lazy `event_study_cache` is the right shape; precompute
-  only the hot default keys.
-
-### Additional binding notes
-- The `snapshot_cadence` gate (`config.yaml` `deep_cadence: monthly`, `daily_start:
-  2026-06-01`) remains for **automatic warm-up density only**; explicit backfill requests
-  override it (J-01, "requested range always wins").
-- `max_range_days` (config.yaml, currently 370) is removed with its validation and the tests
-  that pin it (`test_data_manager.py:491-518`, `test_api_data.py:294-310`,
-  `test_config.py:477-485`, fixture copies in `test_themes.py` / `test_sectors.py` /
-  `test_indexes.py`); chunked execution (`import_chunking.date_window_days`) is the
-  unbounded-span safety mechanism.
-- Launch scripts must actually enforce the declared `server.memory_cap_mb` /
-  `malloc_arena_max` (today `config.py:620` claims it; no script does it) and write a
-  persistent backend logfile (today uvicorn writes only to the launching terminal).
-- Job history must survive restarts: the `/data` progress/history panels read persisted
-  `data_provider_runs` (extended with per-date exclusion reasons), not in-memory job state.
-- **Host-guard cap enforcement (added 2026-07-21 after two hard-reset incidents):** the existing
-  "launch scripts must enforce declared caps" requirement extends to host-guard: when
-  `project-extensions/host-guard/host-guard.env` declares them, `scripts/start-backend.sh` AND the
-  backend subshell of `scripts/dev.sh` apply an SMT-aware CPU-affinity mask (`taskset -c`) plus
-  BLAS/OMP/numexpr thread caps, and `dev.sh`'s backend subshell mirrors prod's `ulimit -v` +
-  `MALLOC_ARENA_MAX` (never the frontend subshell — `next dev` requires the address space).
-  Values come from `host-guard.env` — no magic numbers in scripts. As of 2026-07-21 `dev.sh`
-  applies no caps at all (confirmed by direct read); closing that gap is in-scope launcher work
-  for the next iteration. The sampler, `run-goal.sh` preflight, and `host-guard.env` itself are
-  owner/framework work, not product scope.
-- **Owner amendment — sanctioned memory envelope raised (added 2026-07-31 by the owner, committed
-  before the iter-43 resume, after the iter-42 REGRESSION_HALT):** `server.memory_cap_mb`
-  (`config.yaml`) 6144 → **8192**; `HOST_GUARD_MEMORY_HIGH` (`host-guard.env`) 10G → **12G**; the
-  machine budget `HOST_GUARD_GLOBAL_MEMORY_BUDGET` (`~/.config/iad/host-guard-host.env`, outside
-  this repo) 22G → **24G** — 12G + the other live project's 10G = 22G ≤ 24G ≤ 26.7G installed.
-  Grounds: 6144 was calibrated against a long-retired ~6.8 GB whole-table ORM load; measured demand
-  is 2.6-3.7 GB VmPeak for an *isolated* full historical forward-aggregate warm (iter-32:
-  2,691,600 kB; iter-38: 3,688,916 kB), and iter-42's outage came from ~6 *concurrent* heavy
-  computes stacking to the 6144 wall (`MemoryError` + `can't start new thread` → `/api/health`
-  500s → multi-minute outage), not from one runaway accumulator. **This is the OWNER re-setting
-  AG-10's envelope; AG-10's prohibition stands verbatim** — agents must never remove, weaken, or
-  bypass these caps, and the launch scripts must keep enforcing whatever values are declared.
-  J-09's "AG-8/AG-10 are untouched" acceptance clause describes what the J-09 change itself did and
-  is not contradicted by this owner edit; **no journey text is modified by this amendment** (all
-  eight journey `spec_hash`es verified unchanged across it). `reports/perf-budgets.md` stays
-  append-only: existing sections are records taken under the old cap; new measurements record their
-  margin against 8192. Commissioned by the same decision, for the iterations that follow:
-  - **`GET /api/health` (the iter-34/j owner item) is RESCOPED, not waived.** The ≤ 0.1 s ceiling
-    continues to bind steady-state reads, unchanged. During a *bounded background-compute window*
-    (an in-flight ingest / aggregate warm, order ~30 s), the binding requirement is that **every
-    poll answers HTTP 200** under a relaxed **≤ 2 s** ceiling; a frozen or unresponsive window, any
-    non-200, or an untruthful readiness value remains a failure. Recorded with its own dated
-    section in `reports/perf-budgets.md`; J-07 step 2's "within its existing budget" resolves to
-    that entry.
-  - **The iter-42 `_BarCache.prefill` symbol filter is REVERTED** — re-measured it costs +5.1 %
-    VmPeak rather than the 2.5 % reduction first recorded. The `KeyError` publish-race fix landed
-    alongside it in `prices.py` MUST survive the revert, with its regression test.
-  - **The warm seam is UNFROZEN for bounding work:** `compute_forward_aggregates`,
-    `_forward_agg_slice_map`, `_fr_slice_map` and `ensure_historical_forward_aggregates_dispatched`
-    may now be modified to bound their peak footprint — byte-identical outputs for the same inputs
-    still required (J-07 acceptance).
-  - **`scripts/start-frontend.sh` joins `HOST_GUARD_MARKER_FILES`** (the iter-33/i owner item): it
-    can trigger a multi-worker `next build` from the QA / demo lanes, so it carries a HOST-GUARD
-    block like the other launchers.
-- **Owner amendment — completion rule, harness approvals (added 2026-08-13 by the owner, after the
-  iter-78 STALLED halt):** answering the three questions the evaluator escalated in writing across
-  iterations 75-78. **No journey text and no anti-goal text is modified by this amendment** — it
-  changes when the session is allowed to *conclude*, and grants two named permissions.
-  - **The completion rule is settled: all eight Must-have journeys `passing`/`already_passing` on
-    fresh evidence + zero unresolved *critical* anti-goal violations + `coherence.md` not
-    `COHERENCE-FAIL` ⇒ GOAL_ACHIEVED.** Unresolved **minor** ledger entries in
-    `state/journey-history.json` **no longer block** GOAL_ACHIEVED. Grounds: the ledger is a
-    self-audit backlog that this loop grows faster than it closes (138 → 140 → 146 unresolved
-    across three consecutive all-green rounds, iters 76-78, at 3.5-5.6× the wall-clock budget), so
-    reading `.claude/skills/goal-evaluation-methodology.md` §C.3's "no unresolved anti-goal
-    violations" to include minor entries makes termination unreachable by construction. The
-    evaluator applies §C.3 with "unresolved anti-goal violations" scoped to **critical** severity
-    (that skill's own §B already defines critical narrowly: secrets, unapproved paid dependency,
-    license violation, security backdoor, fabricated data presented as real). Minor entries stay
-    recorded, stay counted, and stay in the ledger as the standing backlog — they are reported at
-    close, not gated on. The fail-closed rule is untouched: **when unsure whether a finding is
-    critical, treat it as critical.** REGRESSION on an unresolved critical violation still fires
-    verbatim.
-  - **`scripts/automation/lib/closure_gate.py` may be edited (APPROVED):** its placeholder scan
-    must not fire on `TODO`/`TBD` appearing inside a **quoted span** — fenced code, inline code, or
-    double quotes (an artifact faithfully *quoting* a tool's own message is evidence, not an
-    unfinished placeholder; the iter-78 instance quoted with double quotes, not backticks —
-    single quotes are excluded so apostrophes cannot swallow prose), and its
-    backend-only claim guard must not fire on a *negated* mention ("no remaining backend-only
-    gap", "no longer backend-only"). Both false positives blocked closure on complete artifacts in
-    iterations 77 and 78. The guards themselves stay — only these two false-positive classes are
-    excluded.
-  - **`scripts/automation/browser-qa-phase.sh` may be edited (APPROVED):** `TARGET_JOURNEYS` must
-    be assigned **before** `replay_lane_partition_and_verify` is called, not after. Assigning it
-    afterwards made iteration 60's target-journey replay routing dead on the full-pipeline path
-    (live only on the lean path), which is why target journeys went unreplayed for several rounds.
-  - **`CHAIN_EVIDENCE_MICRO_PATH=false` for the remainder of this session (owner directive).** With
-    every target journey already `passing`, the SPEED-9 evidence backstop
-    (`run-goal.sh:2513-2537`) demoted every lean spec to `evidence` and skipped the developer
-    entirely — that is how iterations 75 and 76 produced empty diffs against non-empty specs. The
-    backstop stays in the code; it is disabled for this session by environment.
+### Traps (binding)
+- The producer must never read `forward_returns`, the fenced retrospective smoothing, or any bar later
+  than the as-of — the time-safety test perturbs post-as-of bars and asserts an unchanged content hash.
+- Never auto-version manifests on rebuild (mass churn); skip-if-exists at finalize + explicit regenerate only.
+- The words are computed at freeze INTO the payload — historical reads stay stable across config changes;
+  a retrospective recomputation must say so on the surface.
+- Reason/caution codes get their own namespace; never reuse "…-watch" setup strings or the word
+  "watchlist" for the focus list.
+- The compass narrative may cite data-quality FACTS (coverage %, staleness) but never readiness/preflight
+  verdict tokens; the preflight verdict is recorded only in the manifest `generation` block (at-ingest only).

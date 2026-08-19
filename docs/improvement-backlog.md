@@ -1519,7 +1519,7 @@ The owner will look at this board on real mornings. This track makes "can I trus
 ---
 
 #### B-306 · Engine-version stamping + mixed-version policy
-**Track:** T3 · **Quarter:** Q2 · **Priority:** P2 · **Status:** PROPOSED
+**Track:** T3 · **Quarter:** Q2 · **Priority:** P2 · **Status:** IN-GOAL.MD (scoped, market-compass, 2026-08-19 — engine-identity hash stamped on next_session_manifests + new ScannerRuns only; the composition report, mixed-version policy doc, and readiness input remain here)
 **Difficulty:** EASY–MEDIUM · **Dominant failure mode:** data-integrity
 
 **What:** stamp every new `ScannerRun` with an **engine identity hash** (engine source files + the scoring-relevant config subset). A report shows the version composition of stored history; policy (documented in methodology + enforced as a readiness input): when a scoring-affecting change ships, historical snapshots become *mixed-version* — the policy names the sanctioned responses (full re-scan job, or explicit disclosure banner on affected eras) and B-103's time-machine audit uses the stamp to classify diffs ("expected: engine changed" vs "unexplained").
@@ -2784,7 +2784,7 @@ Numbers the owner cannot interrogate breed either blind trust or blind doubt. Th
 ---
 
 #### B-802 · "What would change this label" panel
-**Track:** T8 · **Quarter:** Q3 · **Priority:** P1 · **Status:** PROPOSED
+**Track:** T8 · **Quarter:** Q3 · **Priority:** P1 · **Status:** IN-GOAL.MD (scoped, market-compass, 2026-08-19 — realized as the compass selection/qualifier rule-trace with distances; the stock-detail setup-label panel remains here)
 **Difficulty:** EASY–MEDIUM · **Dominant failure mode:** boundary-adjacent wording (facts about rules, not coaching)
 
 **What:** setup statuses come from `classify_setup` over documented config thresholds. Per stock: show the rule distances — "Actionable requires Leadership ≥ 80 (now 76), Entry ≥ 70 (now 81), Risk ≤ 60 (now 55): one condition short" — plus which regime gate applies (Risk-off hard gate note when active). Pure rule arithmetic against stored scores; zero prediction.
@@ -2832,7 +2832,7 @@ Size: ~2 iterations. **Traps:** presenting the analogs' mean forward return as t
 ---
 
 #### B-804 · As-of score-diff view ("what changed & why") *(medium detail)*
-**Track:** T8 · **Quarter:** Q3 · **Priority:** P2 · **Status:** PROPOSED · **Difficulty:** EASY–MEDIUM · **Failure mode:** UI-recompute
+**Track:** T8 · **Quarter:** Q3 · **Priority:** P2 · **Status:** IN-GOAL.MD (scoped, market-compass, 2026-08-19 — bucket/status/rank-crossing deltas in the session delta engine; component-attributed diffs + the B-416 noise floor remain here) · **Difficulty:** EASY–MEDIUM · **Failure mode:** UI-recompute
 
 **What & rationale:** between two as-of dates (default: latest vs previous snapshot): per-stock score/label changes decomposed by component (B-801's stored fields diffed), filtered against B-416's noise floor — "changes within normal jitter" collapsed by default, super-noise changes highlighted with their driving components. Watchlist gets a "what changed since you saved it" strip.
 **Plugs in at:** stored snapshots (two dates) + noise-floor payload; diff computed engine-side; leaderboard/watchlist/detail surfaces.
@@ -3203,6 +3203,7 @@ The system is only as good as the owner's weekly loop around it. Personal-proces
 **Journey:** pick date → board renders as-of → step forward reveals subsequent stored states; no wealth language anywhere. **Depends on:** as-of infrastructure (exists).
 
 #### B-1205 · CSV/JSON exports *(condensed)*
+**Status:** IN-GOAL.MD (scoped, market-compass, 2026-08-19 — the stamped next-session manifest JSON export only; leaderboard/evidence/watchlist exports remain here)
 **What & why:** the owner's data belongs to the owner: export endpoints + buttons for the leaderboard (current as-of), evidence ledger view, watchlist (with X-ray summary), journal (if built), each export byte-consistent with the displayed data and stamped (as-of, engine version B-306, generation time).
 **How:** export serializers reading the same payloads the pages render. Size: ~1 iteration. ★ Fields: `N/A`/none/none. ★ **Do NOT touch:** payload semantics (exports mirror, never extend).
 **Journey:** each export downloads; spot-check rows byte-match the rendered surface; stamps present. **Depends on:** none.
