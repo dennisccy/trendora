@@ -1,0 +1,24 @@
+{
+  "phase": "goal-market-compass-iter-0",
+  "status": "in_progress",
+  "current_step": "dev_complete",
+  "updated_at": "2026-08-19T22:14:09Z",
+  "started_at": "2026-08-19T22:14:09Z",
+  "cli": "claude",
+  "blockers": [],
+  "changed_files": [
+    "docs/handoffs/goal-market-compass-iter-0-dev.md",
+    "runs/goal-market-compass-iter-0/status.json"
+  ],
+  "tests_run": false,
+  "browser_checks_run": false,
+  "next_action": "browser-qa (per iter spec: developer and reviewer steps are deliberate no-ops for this baseline iteration; live pass/fail/partial per journey J-01..J-08 is determined by the browser-qa-agent's empirical run, not by this step)",
+  "verify_only_pass": {
+    "evidence_claim_registered": false,
+    "product_source_diff_empty": true,
+    "config_diff_empty": true,
+    "targeted_tests": "none run (no code paths changed this iteration; OUT OF SCOPE explicitly excludes the full suite)",
+    "targeted_tests_result": "not executed — none required per spec TESTING REQUIREMENTS",
+    "finding": "Code-level (static-read) confirmation of all 8 target journeys (J-01..J-08) against current codebase, corroborating the decomposer's BACKGROUND/blueprint.md claims with fresh file:line evidence. Preliminary hypotheses: J-01 FAIL (scoring.py:445 sector source is cfg.stock_sectors.get(ticker) only; zero matches for pool_sector_aliases anywhere in the backend -- pool-CSV fallback not wired, matching goal.md's 424/541=78.4% NULL ground truth; honesty half already holds -- unmapped tickers return None, never fabricated). J-02 FAIL (no session_delta module, no What-changed markup). J-03 FAIL (no narrative producer module, no cited-facts markup). J-04 FAIL (no compass.evaluate_selection module, no Next-session focus markup). J-05 FAIL (no compass engine module, no next_session_manifests table, no /api/compass route registered anywhere -- confirmed via grep of main.py and api/*.py; no compass/provenance keys in config.yaml). J-06 FAIL/not-yet-testable (gated entirely on J-05's absent producer). J-07 FAIL (page.tsx:98 still titled 'Dashboard'/'The daily snapshot at a glance'; none of the six required compass sections present; current / renders the legacy glance cards + PhaseCrossViewCard + More-detail body that J-08 wants relocated). J-08 FAIL (no apps/frontend/app/market directory; sidebar.tsx:32 NAV still opens with href '/' label 'Dashboard', no Market entry in its 12-item array; both future-relocation localStorage keys -- trendora.dashboard.moreDetail, trendora.dashboard.phaseCrossView -- confirmed present today). See docs/handoffs/goal-market-compass-iter-0-dev.md for full file:line evidence. These are code-level hypotheses only -- no servers were started, no browser interaction performed (by design, per spec); the browser-qa-agent's live run is authoritative and the goal-evaluator seeds journey-history.json from it."
+  }
+}
