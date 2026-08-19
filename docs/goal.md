@@ -17,7 +17,8 @@ kind of market this is, whether it is improving or deteriorating, what materiall
 since the previous session, where leadership is rotating, and which names deserve attention
 next session — with the reasons, the cautions, and the why-nots stated*. Each close, that
 prior is **frozen into an immutable, versioned, provenance-stamped next-session manifest**
-(with an eligible-control cohort recorded for future prospective evaluation) and exported as
+(with frozen comparison and near-threshold shadow cohorts recorded for future prospective
+evaluation, and a fail-closed prospective-eligibility flag) and exported as
 a local JSON artifact that the owner's separate intraday project (Tapeology) can later
 consume through its own rails. Everything is deterministic and template-generated from
 stored values — no LLM, no new composite scores, no fabricated causes. The deep research
@@ -40,9 +41,14 @@ manifest artifact (it must be self-describing and self-caveating).
   next-session candidates each with structured reasons AND cautions; the most-nearly-eligible
   why-not names; and the manifest's mode and freeze timestamp.
 - Every at-ingest close produces exactly one frozen manifest version whose export file bytes
-  equal the stored payload, carrying schema/rule/engine/dataset/universe stamps, and the five
-  manifest invariants (time-safety, immutability, reproducibility, create-once, mode honesty)
-  are each covered by a named passing test.
+  equal the stored payload, carrying schema/rule/engine/dataset/universe stamps, and the seven
+  manifest invariants (time-safety, immutability, reproducibility, create-once, mode honesty,
+  cohort reproducibility, fail-closed prospective eligibility) are each covered by a named
+  passing test.
+- Every manifest freezes three cohorts — the candidates, the comparison cohort (the full
+  non-selected pool), and the near-threshold shadow — plus a `prospective_eligible` flag
+  derived fail-closed at write time; a retrospective or regenerated manifest is never
+  `prospective_eligible: true`.
 - Sector attribution covers ≥ 95% of resolved members on newly produced runs (from ~22%
   today), with unknown still rendered "Unassigned" and the current-only basis disclosed.
 - `/` joins `reports/perf-budgets.md` and stays within its committed budgets; warm
@@ -65,7 +71,9 @@ manifest artifact (it must be self-describing and self-caveating).
    scores with a full met/unmet trace, reasons, cautions, rule distances, and why-not.
 5. **Immutable next-session manifest** — append-only, versioned, provenance-stamped
    (engine identity, rule hash, dataset stamp, universe basis), frozen at ingest for the
-   frontier date, exported as a byte-consistent JSON artifact; survives rebuild/removal.
+   frontier date, exported as a byte-consistent JSON artifact; survives rebuild/removal;
+   freezes the candidates plus a comparison cohort (the full non-selected pool) and a
+   near-threshold shadow cohort, with a fail-closed `prospective_eligible` flag.
 6. **Sector attribution coverage** — pool-sector wiring closing the 78%-Unassigned gap on
    new runs, descriptive-only, honestly disclosed.
 7. **Market page** — the relocated deep market context (cross-view chart, phase detail,
@@ -83,8 +91,9 @@ manifest artifact (it must be self-describing and self-caveating).
 - No modifications to the Tapeology repository, and no code/network coupling to it.
 - No new factors, indicators, patterns, or macro-leg enablement; no new composite scores.
 - No incremental-value experiment yet — this cycle only records the prospective substrate
-  (at-ingest manifests + control cohorts); the experiment is a future goal following
-  Tapeology's registration methodology.
+  (at-ingest manifests + frozen comparison and near-threshold cohorts); the experiment is a
+  future goal following Tapeology's registration methodology, and no causal claim may be
+  made from candidate-vs-cohort differences without that separately registered experiment.
 
 ## Constraints
 
@@ -132,7 +141,8 @@ manifest artifact (it must be self-describing and self-caveating).
   `app.engine.compass.build_manifest_payload`, persisted create-once in
   `next_session_manifests`, served only by `GET /api/compass`; the exported JSON file's
   bytes equal the stored `payload_json`. The session delta, narrative sentences, plain-word
-  labels, candidate set, reasons/cautions/trace, and eligible-control cohort are all blocks
+  labels, candidate set, reasons/cautions/trace, the comparison cohort (non-selected pool),
+  the near-threshold shadow cohort, and the `prospective_eligible` flag are all blocks
   INSIDE this one document — no second producer, no client-side derivation.
 - **Engine identity**: computed only in `app.engine.engine_identity` from the config-listed
   file list + config subset; stamped on every manifest and on newly created `ScannerRun`
@@ -264,7 +274,10 @@ manifest artifact (it must be self-describing and self-caveating).
        rule table exists in frontend code (the trace rides the payload)
     6. Assert the "Not priority" entries each name their failed condition(s) with
        distances, and the aggregate exclusion counts partition member count minus
-       candidate count for the same as-of
+       candidate count for the same as-of; assert the near-threshold shadow cohort
+       appears nowhere in the focus section — not as a card, a pick, or an ordering
+       input (it is visible only inside the manifest audit view under its explicit
+       research-only label)
     7. Using `GET /api/regime-history`, step `?asof` to a stored date whose regime label
        is Risk-off (the multi-decade history contains them; a synthetic fixture covers the
        branch otherwise); assert every candidate carries the `REGIME_RISK_OFF` caution,
@@ -283,8 +296,9 @@ manifest artifact (it must be self-describing and self-caveating).
       inclusion/exclusion for every spot-checked name; exclusion counts partition exactly.
     - **Honest status & anti-goals:** why-not is as visible as why; the honest-zero and
       Risk-off states are explanatory, never blank; no composite fit number exists
-      anywhere; no imperative trade verbs, no forecast language, no proven-language; the
-      evidence chips continue to read their true ledger status ("Not yet proven" today).
+      anywhere; the shadow cohort is never rendered as a recommendation; no imperative
+      trade verbs, no forecast language, no proven-language; the evidence chips continue
+      to read their true ledger status ("Not yet proven" today).
     - **Walkthrough:** a `[NEW]`-flagged walkthrough of one candidate's
       why/cautions/checklist/what-would-change, the why-not entries, and the Risk-off
       caution state, viewable via `demo.sh market-compass --session-live`.
@@ -295,23 +309,27 @@ manifest artifact (it must be self-describing and self-caveating).
        the same range; assert the job's finalize discloses a "next-session manifest" phase
        and the run record's "Refreshed:" line names it
     2. Assert `GET /api/compass` for the frontier date serves a manifest with
-       `mode: at_ingest`, `version: 1`, `frozen: true`, a generation timestamp, the engine
+       `mode: at_ingest`, `version: 1`, `frozen: true`, `prospective_eligible: true`,
+       `generation.producer: ingest_finalize`, a generation timestamp, the engine
        identity, the selection-rule version and hash with its verbatim config subset, the
        dataset stamp, and the universe block (pool hash, resolver gate values, member count)
     3. Assert the export file exists under the configured export directory and its bytes
        equal the served `payload_json` (at-ingest exports only)
     4. Assert the manifest strip on `/` shows the same stamps and counts, and its expanded
-       table equals the stored candidates plus the eligible-control cohort, whose count
-       equals member count minus candidate count
+       table equals the stored candidates, the comparison cohort (non-selected pool) whose
+       count equals member count minus candidate count, and the near-threshold shadow
+       cohort (members with leadership in the config band from `shadow.min_score` up to
+       but excluding `leadership_min_score`) carrying its frozen per-name context fields
+       under an explicit research-only label
     5. Assert a `ScannerRun` created by this backfill carries `engine_identity` while an
        older run row shows the pre-stamping NULL state
     6. Re-run the identical backfill range; assert the zero-work outcome mints no new
        manifest version (create-once — still version 1)
     7. Request `GET /api/compass` for an old stored run date with no manifest; assert
        exactly one `retrospective` manifest is created (create-once on re-request) whose
-       recorded frontier bar date exceeds its as-of — and assert the frontier date's
-       manifest can only be minted by the finalize freeze or an explicit regenerate, never
-       by a plain GET
+       recorded frontier bar date exceeds its as-of and which carries
+       `prospective_eligible: false` — and assert the frontier date's manifest can only be
+       minted by the finalize freeze or an explicit regenerate, never by a plain GET
   - Acceptance:
     - **Consistency (single source):** one producer (`compass.build_manifest_payload` +
       `persist_manifest`), one endpoint (`GET /api/compass`), one export whose bytes equal
@@ -320,12 +338,16 @@ manifest artifact (it must be self-describing and self-caveating).
     - **Correctness:** the content hash reproduces across rebuilds of the same inputs
       (fixture); stamps match the computed engine identity and rule-config hash; the
       data-driven mode rule assigns `at_ingest` only when no bar later than the as-of
-      exists at generation.
+      exists at generation; comparison and shadow membership reproduce exactly from the
+      frozen rule config plus the stored run (fixture).
     - **Honest status & anti-goals:** mode is never fabricated (fails toward
       retrospective); no future session DATE is fabricated — the manifest states
-      "next session after the based-on close" semantically; the artifact embeds its own
-      evidence caveat ("Not yet proven — attention rule, not a certified edge") and
-      survivorship/sector-basis caveats.
+      "next session after the based-on close" semantically; the comparison cohort is
+      explicitly labeled a frozen non-selected comparison pool — not a matched or causal
+      control group; `prospective_eligible` is derived once at write from the recorded
+      generation facts, fail-closed (any missing condition forces false; an absent field
+      reads as false); the artifact embeds its own evidence caveat ("Not yet proven —
+      attention rule, not a certified edge") and survivorship/sector-basis caveats.
     - **Walkthrough:** a `[NEW]`-flagged walkthrough of ingest → freeze → stamps → export
       file, viewable via `demo.sh market-compass --session-live`.
 
@@ -341,13 +363,19 @@ manifest artifact (it must be self-describing and self-caveating).
        the run as rebuilt when its creation timestamp changed) while the manifest bytes
        remain identical
     4. Trigger the explicit regenerate action for that as-of (confirm-gated); assert
-       version 2 appears with its own mode and generation timestamp, version 1 remains
-       readable and byte-identical, and the UI lists both versions with their stamps
+       version 2 appears with its own mode and generation timestamp and carries
+       `prospective_eligible: false` even when its mode computes `at_ingest` (only
+       version 1 minted by the finalize producer can ever be true), version 1 remains
+       readable and byte-identical with its flag unchanged, and the UI lists both
+       versions with their stamps
     5. Cite in the dev handoff the passing tests: time-safety (perturbing or deleting
        post-as-of bars leaves the content hash unchanged), rebuild survival
        (`clear_snapshot_set` and remove-data delete zero manifest rows), reproducibility
-       (two builds of the same inputs produce identical content hashes), and create-once
-       concurrency (two simultaneous requests yield one row)
+       (two builds of the same inputs produce identical content hashes), create-once
+       concurrency (two simultaneous requests yield one row), cohort reproducibility
+       (comparison + shadow membership reproduce from the frozen rule and stored run),
+       and prospective-eligibility derivation (each violated condition — mode, producer,
+       version, frozen, missing provenance — independently forces false)
   - Acceptance:
     - **Consistency (single source):** the basis disclosure is a read-time comparison
       (source-run creation timestamp + engine identity), never a mutation; the dataset
@@ -482,6 +510,12 @@ manifest artifact (it must be self-describing and self-caveating).
 - **AG-15 — No outcome-tuned selection:** the selection rule and its thresholds must not be chosen or revised
   from realized forward returns within this goal; no Evidence Claim is introduced for it; any future
   selection-edge claim goes through the pre-registration registry and referee. *(critical)*
+- **AG-16 — Cohorts are not controls:** the comparison cohort and the near-threshold shadow cohort are frozen
+  non-selected pools, not matched or causal control groups; no surface, artifact, or narrative may present
+  candidate-vs-cohort differences as causal, as expectancy, or as a certified edge; any incremental-value or
+  threshold study over these cohorts requires its own pre-registered experiment (registry + referee) in a
+  future goal, consuming only manifests with `prospective_eligible: true` — consumers must fail closed,
+  treating anything other than `true` (including an absent field) as ineligible. *(critical)*
 
 ## Loop mechanics (for the iteration planner)
 
@@ -536,6 +570,33 @@ manifest artifact (it must be self-describing and self-caveating).
   (`generation.frontier_bar_date` records the evidence); fails toward `retrospective`.
 - Serialize once: build payload → `json.dumps(sort_keys=True, default=str)` → store those bytes → export
   those bytes; `content_hash` covers the content block only (excludes generated_at/mode/generation/dataset).
+- Cohort blocks (all inside the one manifest document): `candidates` (unchanged);
+  `comparison_cohort` — EVERY scored member of the source run not selected as a candidate,
+  compact field-array rows; its definition text carries verbatim "a frozen non-selected
+  comparison pool, not a matched or causal control group"; the shadow is a subset of it by
+  construction (shadow members are non-selected) and is never deduplicated out of it;
+  `near_threshold_shadow` — research-only substrate: scored members with leadership in
+  `[shadow.min_score, leadership_min_score)` (half-open — a name at exactly the selection
+  floor is candidate-eligible, never shadow), deterministic order (leadership desc,
+  ticker), uncapped, taking no part in selection, display ranking, or the Today focus
+  section; each shadow row freezes contemporaneous context from the stored run row ONLY
+  (ticker, leadership/entry/risk score+bucket, setup_status, rank_in_run, sector, theme
+  memberships with that run's theme ranks, close, atr_pct value+percentile,
+  high-proximity/distance-from-52w-high, gap p95, worst-20d, distance-to-invalidation,
+  ADV dollar figure — no new data sources); purpose note: it preserves a prospectively
+  frozen set of near-cutoff names for later better-matched or threshold-focused
+  incremental-value studies without retrospective reconstruction.
+- `prospective_eligible` — derived ONCE at write, stored at the payload top level OUTSIDE
+  the content-hash scope (generation-class metadata, like `mode`) plus a typed column for
+  filtering; true iff ALL of: mode `at_ingest` with consistent frontier evidence
+  (`generation.frontier_bar_date == based_on_close`), `generation.producer ==
+  "ingest_finalize"`, `version == 1`, `frozen: true`, and provenance complete (engine
+  identity, rule version+hash+verbatim config, dataset stamp, universe pool hash all
+  present). Never recomputed at read; a retrospective or regenerated manifest is always
+  false; consumers treat an absent field as false. `generation.preflight_verdict` is
+  recorded for later filtering but does NOT gate eligibility. The `generation` block gains
+  `producer: ingest_finalize / on_demand_get / regenerate`; the caveats block gains
+  `cohort_semantics` carrying the non-causal sentence.
 - Delta inputs: current vs previous stored run (indexed scalar select), the causal market-phase timeline
   from `market_phase_cached` (prev point of the SAME payload), stored sector/theme rank rows, and
   column-projected `ScannerResult` selects (ticker/scores/buckets/setup only — AG-8).
@@ -547,7 +608,10 @@ manifest artifact (it must be self-describing and self-caveating).
   `trendora.dashboard.moreDetail` so preferences survive); sidebar NAV order in
   `apps/frontend/components/sidebar.tsx`; the as-of provider stays the sole `?asof` owner.
 - Config namespaces: `compass.selection` (rule_version, leadership_min_score 80.0, max_candidates,
-  qualifiers entry_min_score 70.0 / risk_max_score 60.0, why_not floor 75.0 + cap),
+  qualifiers entry_min_score 70.0 / risk_max_score 60.0, why_not floor 75.0 + cap,
+  shadow.min_score 75.0 — the near-threshold band's own key, default equal to the why-not
+  display floor but independent of it so display tuning never moves the research band;
+  the whole `compass.selection` subtree is inside the rule-hash scope),
   `compass.delta` (breadth_min_change_pts, rank_move_min, top_k, velocity_flat_band, pbear_bands,
   max_stock_items), `compass.vocabulary` (direction/level/score word maps),
   `compass.manifest` (schema_version, export dir + modes: at_ingest only),
@@ -567,3 +631,18 @@ manifest artifact (it must be self-describing and self-caveating).
   "watchlist" for the focus list.
 - The compass narrative may cite data-quality FACTS (coverage %, staleness) but never readiness/preflight
   verdict tokens; the preflight verdict is recorded only in the manifest `generation` block (at-ingest only).
+- `prospective_eligible` is write-once and version-shopping-proof by construction: only version 1 minted by
+  the finalize producer can be true — a regenerate can never mint an eligible prior, even on the frontier
+  with no new bars, and no read path recomputes the flag.
+
+### Future research enabled by this goal (explicitly NOT in scope)
+
+The frozen candidate, comparison, and near-threshold shadow cohorts exist so that a FUTURE,
+separately pre-registered study can ask: does the same Tapeology setup show better net
+expectancy / MFE / MAE / failure characteristics when it occurs in a prospectively selected
+Trendora candidate versus a comparable non-selected or near-threshold name? That experiment
+is not part of this goal: it follows Tapeology's registration methodology (registration
+boundary, frozen denominators) plus Trendora's registry + referee, and it must consume only
+manifests with `prospective_eligible: true` (fail-closed — anything else, including an
+absent field, is ineligible). Until such a study passes, candidate-vs-cohort differences
+are descriptive only (AG-16).
