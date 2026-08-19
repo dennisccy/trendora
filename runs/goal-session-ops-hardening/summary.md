@@ -1,32 +1,32 @@
 # Goal Session Summary — ops-hardening
 
-**Final verdict:** STALLED
-**Total iterations:** 79
-**Wall time (seconds):** 246411
+**Final verdict:** GOAL_ACHIEVED
+**Total iterations:** 80
+**Wall time (seconds):** 12320
 **Quota pauses:** 0
 **Started:** 2026-07-19T13:57:02.848410Z
-**Finished:** 2026-08-13T19:35:46.029465Z
+**Finished:** 2026-08-14T02:07:10.133170Z
 
 ## Branch
 
 This session pushed iteration commits to `goal/ops-hardening`. Open a PR with:
 
     gh pr create --base main --head goal/ops-hardening \
-      --title "feat: ops-hardening — STALLED" \
+      --title "feat: ops-hardening — GOAL_ACHIEVED" \
       --body-file runs/goal-session-ops-hardening/summary.md
 
 ## Final journey state
 
 | Journey | Status | Last passing iter |
 |---|---|---|
-| J-01 | passing | goal-ops-hardening-iter-78 |
-| J-03 | passing | goal-ops-hardening-iter-78 |
-| J-04 | passing | goal-ops-hardening-iter-78 |
-| J-05 | passing | goal-ops-hardening-iter-78 |
-| J-06 | passing | goal-ops-hardening-iter-78 |
-| J-07 | passing | goal-ops-hardening-iter-78 |
-| J-08 | passing | goal-ops-hardening-iter-78 |
-| J-09 | passing | goal-ops-hardening-iter-78 |
+| J-01 | passing | goal-ops-hardening-iter-79 |
+| J-03 | passing | goal-ops-hardening-iter-79 |
+| J-04 | passing | goal-ops-hardening-iter-79 |
+| J-05 | passing | goal-ops-hardening-iter-79 |
+| J-06 | passing | goal-ops-hardening-iter-79 |
+| J-07 | passing | goal-ops-hardening-iter-79 |
+| J-08 | passing | goal-ops-hardening-iter-79 |
+| J-09 | passing | goal-ops-hardening-iter-79 |
 
 ## Anti-goal violations
 
@@ -312,6 +312,13 @@ This session pushed iteration commits to `goal/ops-hardening`. Open a PR with:
 - [minor] Measure what you change: a new always-on client behaviour should be measured, not assumed cheap. (iter goal-ops-hardening-iter-78)
 - [minor] Loop economy: an iteration must fit its own declared wall-clock budget. (iter goal-ops-hardening-iter-78)
 - [minor] Residue defence must cover every artifact the same residue leaves. (iter goal-ops-hardening-iter-78)
+- [minor] Budget honesty: a served page must meet its committed budget, and any breach is disclosed, not absorbed. (iter goal-ops-hardening-iter-79)
+- [minor] Every capture cited as evidence must actually show what it claims. (iter goal-ops-hardening-iter-79)
+- [minor] Reported counts must match the artifact they cite. (iter goal-ops-hardening-iter-79)
+- [minor] Iteration bookkeeping must reflect what the pipeline actually ran. (iter goal-ops-hardening-iter-79)
+- [minor] Loop economy: an iteration must fit its own declared wall-clock budget. (iter goal-ops-hardening-iter-79)
+- [minor] Walkthrough acceptance: each journey's walkthrough must be [NEW]-flagged in the session demo. (iter goal-ops-hardening-iter-79)
+- [minor] Service shutdown must not cancel work without a record. (iter goal-ops-hardening-iter-79)
 
 ## Telemetry
 
@@ -1566,16 +1573,31 @@ See `runs/goal-session-ops-hardening/telemetry.jsonl` for the structured event l
       pump-wait                  9.2m
       OVER BUDGET at post-dev-fanout: 6794s > 3600s (mode=trim)
       unattributed (glue)       15.5m  (wall − agents(active) − quota)
-  session: 79 completed iteration(s), mean wall 216.6m
-      total developer                 5809.1m
-      total browser-qa-agent          2453.6m
-      total goal-evaluator            1261.3m
-      total goal-decomposer           1130.2m
-      total reviewer                   999.0m
+  goal-ops-hardening-iter-79  depth=lean  verdict=GOAL_ACHIEVED  wall=110.4m
+      browser-qa-replay           42.3m  calls=1
+      browser-qa-agent            24.2m  calls=1
+      goal-evaluator              18.2m  calls=1
+      goal-decomposer             10.2m  calls=1
+      goal-evaluator-confirm       7.3m  calls=1
+      developer                    4.2m  calls=1
+      iteration-summarizer         3.8m  calls=1
+      reviewer                     3.2m  calls=1
+      [engine] lean-pipeline      70.8m  (contains agent time above)
+      [engine] showcase-join       0.0m  (contains agent time above)
+      (resume-skipped: coherence-auditor)
+      pump-wait                  4.5m
+      OVER BUDGET at coherence-auditor: 4864s > 3600s (mode=trim)
+      overlap saved              3.0m  (parallel steps)
+  session: 80 completed iteration(s), mean wall 215.3m
+      total developer                 5813.3m
+      total browser-qa-agent          2477.9m
+      total goal-evaluator            1279.5m
+      total goal-decomposer           1140.4m
+      total reviewer                  1002.2m
       total auditor                    855.8m
       total qa                         826.7m
-      total iteration-summarizer       638.7m
-      total browser-qa-replay          354.8m
+      total iteration-summarizer       642.5m
+      total browser-qa-replay          397.1m
       total coherence-auditor          349.0m
       total ui-impact-analyst          240.3m
       total orchestrator               140.7m
@@ -1583,6 +1605,7 @@ See `runs/goal-session-ops-hardening/telemetry.jsonl` for the structured event l
       total ui-test-designer            78.0m
       total demo-narrator               60.9m
       total ux-regression-reviewer      27.8m
+      total goal-evaluator-confirm       7.3m
       total AWAITING_PUMP paused gaps: 12.4m
       halts: AWAITING_PUMP, AWAITING_PUMP, REGRESSION_HALT, BUDGET_EXHAUSTED, REGRESSION_HALT, STALLED, DECOMPOSER_FAILED, STALLED, STALLED, AWAITING_PUMP, machine_reset, AWAITING_PUMP, REGRESSION_HALT, machine_reset, machine_reset, machine_reset, machine_reset, machine_reset, machine_reset, machine_reset, machine_reset, STALLED
 ```

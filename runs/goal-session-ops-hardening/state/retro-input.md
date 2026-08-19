@@ -6,10 +6,10 @@ scripts/automation/lib/retro_collect.sh — no model wrote this. Counters marked
 
 ## Outcome
 
-- **Terminal status:** STALLED
-- **Final verdict:** STALLED
-- **Iterations used:** 79
-- **Halted at (UTC):** 2026-08-13T19:35:46.029465Z
+- **Terminal status:** GOAL_ACHIEVED
+- **Final verdict:** GOAL_ACHIEVED
+- **Iterations used:** 80
+- **Halted at (UTC):** 2026-08-14T02:07:10.133170Z
 
 ## Verdict sequence
 
@@ -95,6 +95,7 @@ iter 75: CONTINUE
 iter 76: ESCALATE
 iter 77: ESCALATE
 iter 78: STALLED
+iter 79: GOAL_ACHIEVED
 ```
 
 ## Agent economics
@@ -104,24 +105,24 @@ Source: analyze_telemetry.py --json telemetry.jsonl (claude_usage events)
 | Agent | Invocations | Wall (s) | In tokens | Out tokens | Est. cost (USD) |
 |---|---|---|---|---|---|
 | auditor | 58 | 63490 | 23818 | 2885867 | 0.0000 |
-| browser-qa-agent | 76 | 132961 | 47500 | 4476335 | 0.0000 |
+| browser-qa-agent | 77 | 134355 | 47806 | 4556772 | 0.0000 |
 | coherence-auditor | 69 | 11224 | 18654 | 710667 | 0.0000 |
 | demo-narrator | 58 | 12113 | 4383 | 983425 | 0.0000 |
-| developer | 100 | 351339 | 114945 | 10067193 | 0.0000 |
-| goal-decomposer | 68 | 46548 | 38429 | 3212429 | 0.0000 |
-| goal-evaluator | 77 | 66726 | 60800 | 4184298 | 0.0000 |
-| goal-proposer | 1 | 503 | 64 | 30795 | 0.0000 |
-| iteration-summarizer | 64 | 18850 | 12110 | 1543960 | 0.0000 |
+| developer | 101 | 351541 | 114987 | 10083534 | 0.0000 |
+| goal-decomposer | 69 | 46877 | 38467 | 3233714 | 0.0000 |
+| goal-evaluator | 79 | 68130 | 68090 | 4279510 | 0.0000 |
+| goal-proposer | 2 | 784 | 110 | 49818 | 0.0000 |
+| iteration-summarizer | 66 | 19112 | 13660 | 1569695 | 0.0000 |
 | orchestrator | 49 | 12645 | 59636 | 879917 | 0.0000 |
 | phase-closure-auditor | 15 | 3395 | 314 | 258299 | 0.0000 |
 | qa | 88 | 37506 | 14433 | 818983 | 0.0000 |
 | readme-maintainer | 23 | 2954 | 4440 | 249090 | 0.0000 |
-| retro-analyst | 5 | 241 | 186 | 15321 | 0.0000 |
-| reviewer | 100 | 47677 | 64357 | 1952426 | 0.0000 |
+| retro-analyst | 6 | 325 | 228 | 22479 | 0.0000 |
+| reviewer | 101 | 47822 | 65303 | 1960396 | 0.0000 |
 | ui-impact-analyst | 49 | 13067 | 15227 | 985153 | 0.0000 |
 | ui-test-designer | 24 | 9880 | 2014 | 681699 | 0.0000 |
 | ux-regression-reviewer | 23 | 6420 | 12522 | 423579 | 0.0000 |
-| TOTAL | 947 | 837540 | 493832 | 34359436 | 0.0000 |
+| TOTAL | 957 | 841641 | 504092 | 34632597 | 0.0000 |
 
 Per-step wall breakdown (analyze_telemetry.py --wall):
 
@@ -1372,16 +1373,31 @@ Per-step wall breakdown (analyze_telemetry.py --wall):
       pump-wait                  9.2m
       OVER BUDGET at post-dev-fanout: 6794s > 3600s (mode=trim)
       unattributed (glue)       15.5m  (wall − agents(active) − quota)
-  session: 79 completed iteration(s), mean wall 216.6m
-      total developer                 5809.1m
-      total browser-qa-agent          2453.6m
-      total goal-evaluator            1261.3m
-      total goal-decomposer           1130.2m
-      total reviewer                   999.0m
+  goal-ops-hardening-iter-79  depth=lean  verdict=GOAL_ACHIEVED  wall=110.4m
+      browser-qa-replay           42.3m  calls=1
+      browser-qa-agent            24.2m  calls=1
+      goal-evaluator              18.2m  calls=1
+      goal-decomposer             10.2m  calls=1
+      goal-evaluator-confirm       7.3m  calls=1
+      developer                    4.2m  calls=1
+      iteration-summarizer         3.8m  calls=1
+      reviewer                     3.2m  calls=1
+      [engine] lean-pipeline      70.8m  (contains agent time above)
+      [engine] showcase-join       0.0m  (contains agent time above)
+      (resume-skipped: coherence-auditor)
+      pump-wait                  4.5m
+      OVER BUDGET at coherence-auditor: 4864s > 3600s (mode=trim)
+      overlap saved              3.0m  (parallel steps)
+  session: 80 completed iteration(s), mean wall 215.3m
+      total developer                 5813.3m
+      total browser-qa-agent          2477.9m
+      total goal-evaluator            1279.5m
+      total goal-decomposer           1140.4m
+      total reviewer                  1002.2m
       total auditor                    855.8m
       total qa                         826.7m
-      total iteration-summarizer       638.7m
-      total browser-qa-replay          354.8m
+      total iteration-summarizer       642.5m
+      total browser-qa-replay          397.1m
       total coherence-auditor          349.0m
       total ui-impact-analyst          240.3m
       total orchestrator               140.7m
@@ -1389,6 +1405,7 @@ Per-step wall breakdown (analyze_telemetry.py --wall):
       total ui-test-designer            78.0m
       total demo-narrator               60.9m
       total ux-regression-reviewer      27.8m
+      total goal-evaluator-confirm       7.3m
       total AWAITING_PUMP paused gaps: 12.4m
       halts: AWAITING_PUMP, AWAITING_PUMP, REGRESSION_HALT, BUDGET_EXHAUSTED, REGRESSION_HALT, STALLED, DECOMPOSER_FAILED, STALLED, STALLED, AWAITING_PUMP, machine_reset, AWAITING_PUMP, REGRESSION_HALT, machine_reset, machine_reset, machine_reset, machine_reset, machine_reset, machine_reset, machine_reset, machine_reset, STALLED
 ```
@@ -1404,26 +1421,26 @@ Per-step wall breakdown (analyze_telemetry.py --wall):
 Last 20 lines of state/lessons.md:
 
 ```
-**Verdict:** STALLED
-**Lesson:** `closure_gate.py:66`'s placeholder regex (`\bTODO\b|\bTBD\b|<fill|…`) matches the token
-anywhere in a UI-visibility artifact, including inside a QUOTED tool message. This round's browser-qa
-row honestly quoted Chrome-MCP's own file contents ("TODO: Console logging not yet implemented") and
-that single quotation failed the closure gate and left the whole iteration recorded
-`blocked`/`closure_failed` — a complete artifact rejected for a word it was reporting, not authoring.
-**Applies to:** browser-qa-agent, qa and any agent writing `reports/phase-*-{ui-test-results,
-implementation-summary,user-visible-changes,ui-surface-map,ui-test-plan,what-to-click}.md` — paraphrase
-tool messages containing TODO/TBD/XXX rather than quoting them verbatim.
+**Lesson:** A carried "Nth round owed" note was again wrong in a NEW way: opening
+`reports/goal-session-ops-hardening-demo.json` shows FOUR journeys' walkthrough steps are
+`new: false` (J-01 steps 3-4, J-03 5-6, J-04 2, J-05 7), not just J-05's as twenty rounds of logs
+claimed — iter-78 corrected this carry once (for J-07) and it was still under-stated. Re-open the
+artifact every time a carry is repeated; a partially-corrected carry is as misleading as an
+uncorrected one.
+**Applies to:** any evaluator or decomposer about to copy forward a "carried / Nth round owed"
+item — especially walkthrough/demo-metadata claims and anything phrased as "still owed".
 
-## iter-78 — 2026-08-13T19:32:00Z
+## iter-79 — 2026-08-14T00:30:01Z
 
-**Verdict:** STALLED
-**Lesson:** An acceptance criterion that a thorough audit keeps adding to cannot be driven to zero by
-working harder: this session's unresolved-note count went 138 → 140 → 146 across three rounds in which
-all eight journeys passed every time, because each round's own auditing opens more notes than the round
-closes. When the count trends UP across rounds with no failing journeys, the criterion — not the work —
-is the blocker, and that is an owner decision, not another iteration.
-**Applies to:** any goal-mode session whose journeys are all green while a self-maintained violation
-ledger keeps growing; check the trend across the last three rounds before recommending "one more round".
+**Verdict:** GOAL_ACHIEVED
+**Lesson:** The 9.3 s `/api/backtest` outlier was reported as a budget breach; the database
+settled the cause in one query — that as-of's five horizons committed inside ~1.5 s
+(`forward_aggregate_cache` 23:56:41.68 → 23:56:43.14 UTC), so the wait was queueing behind
+another in-flight warm, not slow compute. Timing outliers on a dispatch-based design should be
+split into "compute time" vs "wait time" from the cache commit timestamps before being scored;
+the two point at completely different fixes (bounding concurrency vs bounding the computation).
+**Applies to:** any iteration touching `app/engine/forward_testing.py`, the background dispatch
+registry, or B-1107 concurrency bounding.
 ```
 
 ## Halt context
@@ -1432,8 +1449,8 @@ session.json halt-relevant fields:
 
 ```json
 {
-  "status": "STALLED",
-  "last_verdict": "STALLED",
+  "status": "GOAL_ACHIEVED",
+  "last_verdict": "GOAL_ACHIEVED",
   "parked_wip_sha": "48e30e7e"
 }
 ```

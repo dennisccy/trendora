@@ -21,10 +21,10 @@
       "factor": "atr_pct",
       "horizon": 1,
       "decile": 1,
-      "mean_return": 0.0004791923602623557,
-      "mean_max_drawdown": -0.012671166193656137,
-      "n": 77817,
-      "rank_ic": 0.01637062136768964,
+      "mean_return": 0.0003934940904350612,
+      "mean_max_drawdown": -0.013385600212168117,
+      "n": 129612,
+      "rank_ic": 0.015123200571783313,
       "selector": {
         "kind": "factor",
         "factor": "atr_pct",
@@ -32,1106 +32,1050 @@
         "decile": 1,
         "horizon": 1
       },
-      "triad_score": 1.1000284825027915,
-      "screen": {
-        "survived": false,
-        "reason": "edge-did-not-persist",
-        "in_sample_dates": 754,
-        "holdout_dates": 808,
-        "in_sample_edge": 3.266632634065123e-05,
-        "holdout_edge": -0.00048200172114907944,
-        "required_holdout_edge": 0.011751200914481041,
-        "batch_size": 110
-      },
-      "oos_survived": false
-    },
-    {
-      "factor": "hv",
-      "horizon": 1,
-      "decile": 1,
-      "mean_return": 0.0004849890437814723,
-      "mean_max_drawdown": -0.013416208769685373,
-      "n": 77817,
-      "rank_ic": 0.013213385448164,
-      "selector": {
-        "kind": "factor",
-        "factor": "hv",
-        "slice_kind": "decile",
-        "decile": 1,
-        "horizon": 1
-      },
-      "triad_score": 1.0866995160775006,
-      "screen": {
-        "survived": false,
-        "reason": "edge-did-not-persist",
-        "in_sample_dates": 832,
-        "holdout_dates": 828,
-        "in_sample_edge": 0.0001794705604349873,
-        "holdout_edge": -0.0005888031211615999,
-        "required_holdout_edge": 0.011751200914481041,
-        "batch_size": 110
-      },
-      "oos_survived": false
-    },
-    {
-      "factor": "downside_vol",
-      "horizon": 1,
-      "decile": 1,
-      "mean_return": 0.00039785621012827457,
-      "mean_max_drawdown": -0.013604895567081422,
-      "n": 77817,
-      "rank_ic": 0.019474468957457938,
-      "selector": {
-        "kind": "factor",
-        "factor": "downside_vol",
-        "slice_kind": "decile",
-        "decile": 1,
-        "horizon": 1
-      },
-      "triad_score": 1.0803034836506498,
-      "screen": {
-        "survived": false,
-        "reason": "edge-did-not-persist",
-        "in_sample_dates": 854,
-        "holdout_dates": 820,
-        "in_sample_edge": 0.00011367845785297386,
-        "holdout_edge": -0.00029266662046596357,
-        "required_holdout_edge": 0.011751200914481041,
-        "batch_size": 110
-      },
-      "oos_survived": false
-    },
-    {
-      "factor": "risk_score",
-      "horizon": 1,
-      "decile": 1,
-      "mean_return": 0.000325781838950571,
-      "mean_max_drawdown": -0.015543750025926653,
-      "n": 77817,
-      "rank_ic": 0.015339839172711566,
-      "selector": {
-        "kind": "factor",
-        "factor": "risk_score",
-        "slice_kind": "decile",
-        "decile": 1,
-        "horizon": 1
-      },
-      "triad_score": 1.0426457309427513,
-      "screen": {
-        "survived": false,
-        "reason": "edge-did-not-persist",
-        "in_sample_dates": 1238,
-        "holdout_dates": 469,
-        "in_sample_edge": -8.041346557123616e-07,
-        "holdout_edge": -0.0009067938458693051,
-        "required_holdout_edge": 0.011751200914481041,
-        "batch_size": 110
-      },
-      "oos_survived": false
-    },
-    {
-      "factor": "entry_quality_score",
-      "horizon": 1,
-      "decile": 10,
-      "mean_return": 0.0005665181092184266,
-      "mean_max_drawdown": -0.018658954829152183,
-      "n": 77818,
-      "rank_ic": -0.004816939697352293,
-      "selector": {
-        "kind": "factor",
-        "factor": "entry_quality_score",
-        "slice_kind": "decile",
-        "decile": 10,
-        "horizon": 1
-      },
-      "triad_score": 0.9947236251114661,
-      "screen": {
-        "survived": false,
-        "reason": "edge-did-not-persist",
-        "in_sample_dates": 1437,
-        "holdout_dates": 425,
-        "in_sample_edge": -6.422295008737358e-06,
-        "holdout_edge": -0.0006890042141135631,
-        "required_holdout_edge": 0.011751200914481041,
-        "batch_size": 110
-      },
-      "oos_survived": false
-    },
-    {
-      "factor": "vcp_contraction",
-      "horizon": 1,
-      "decile": 1,
-      "mean_return": 0.0011217455332475203,
-      "mean_max_drawdown": -0.022757299378478195,
-      "n": 77817,
-      "rank_ic": -0.005363974562201155,
-      "selector": {
-        "kind": "factor",
-        "factor": "vcp_contraction",
-        "slice_kind": "decile",
-        "decile": 1,
-        "horizon": 1
-      },
-      "triad_score": 0.938814827969364,
-      "screen": {
-        "survived": false,
-        "reason": "edge-did-not-persist",
-        "in_sample_dates": 1211,
-        "holdout_dates": 570,
-        "in_sample_edge": 0.0005101934797255996,
-        "holdout_edge": -0.0005270611667383591,
-        "required_holdout_edge": 0.011751200914481041,
-        "batch_size": 110
-      },
-      "oos_survived": false
-    },
-    {
-      "factor": "ma_stack",
-      "horizon": 1,
-      "decile": 10,
-      "mean_return": 0.0004636018510694127,
-      "mean_max_drawdown": -0.021574804633009363,
-      "n": 77818,
-      "rank_ic": -0.01663550212091346,
-      "selector": {
-        "kind": "factor",
-        "factor": "ma_stack",
-        "slice_kind": "decile",
-        "decile": 10,
-        "horizon": 1
-      },
-      "triad_score": 0.9382767002952412,
-      "screen": {
-        "survived": false,
-        "reason": "edge-did-not-persist",
-        "in_sample_dates": 1329,
-        "holdout_dates": 517,
-        "in_sample_edge": 6.761103692917502e-06,
-        "holdout_edge": 2.050330192192451e-05,
-        "required_holdout_edge": 0.011751200914481041,
-        "batch_size": 110
-      },
-      "oos_survived": false
-    },
-    {
-      "factor": "up_down_vol",
-      "horizon": 1,
-      "decile": 1,
-      "mean_return": 0.0008944337494795762,
-      "mean_max_drawdown": -0.024593270045734635,
-      "n": 77817,
-      "rank_ic": 0.0016181535191709215,
-      "selector": {
-        "kind": "factor",
-        "factor": "up_down_vol",
-        "slice_kind": "decile",
-        "decile": 1,
-        "horizon": 1
-      },
-      "triad_score": 0.8977329629824637,
-      "screen": {
-        "survived": false,
-        "reason": "edge-did-not-persist",
-        "in_sample_dates": 1287,
-        "holdout_dates": 575,
-        "in_sample_edge": 0.00024698291725083765,
-        "holdout_edge": 7.172786267974326e-05,
-        "required_holdout_edge": 0.011751200914481041,
-        "batch_size": 110
-      },
-      "oos_survived": false
-    },
-    {
-      "factor": "high_proximity",
-      "horizon": 1,
-      "decile": 10,
-      "mean_return": 1.5583630105248983e-06,
-      "mean_max_drawdown": -0.0200330606591677,
-      "n": 77690,
-      "rank_ic": -0.019998627950574766,
-      "selector": {
-        "kind": "factor",
-        "factor": "high_proximity",
-        "slice_kind": "decile",
-        "decile": 10,
-        "horizon": 1
-      },
-      "triad_score": 0.8955855863219028,
-      "screen": {
-        "survived": false,
-        "reason": "edge-did-not-persist",
-        "in_sample_dates": 1257,
-        "holdout_dates": 543,
-        "in_sample_edge": -0.0002589903289631101,
-        "holdout_edge": -8.938298548015597e-05,
-        "required_holdout_edge": 0.011751200914481041,
-        "batch_size": 110
-      },
-      "oos_survived": false
-    },
-    {
-      "factor": "leadership_score",
-      "horizon": 1,
-      "decile": 10,
-      "mean_return": 0.0007554591260908292,
-      "mean_max_drawdown": -0.02746987824063853,
-      "n": 77818,
-      "rank_ic": -0.002402614270309299,
-      "selector": {
-        "kind": "factor",
-        "factor": "leadership_score",
-        "slice_kind": "decile",
-        "decile": 10,
-        "horizon": 1
-      },
-      "triad_score": 0.8411984140951797,
-      "screen": {
-        "survived": false,
-        "reason": "edge-did-not-persist",
-        "in_sample_dates": 1460,
-        "holdout_dates": 404,
-        "in_sample_edge": -0.00018832644719337833,
-        "holdout_edge": 0.0006303440183845322,
-        "required_holdout_edge": 0.011751200914481041,
-        "batch_size": 110
-      },
-      "oos_survived": false
-    },
-    {
-      "factor": "atr_pct",
-      "horizon": 5,
-      "decile": 1,
-      "mean_return": 0.0023985181504084536,
-      "mean_max_drawdown": -0.025475986332531304,
-      "n": 77601,
-      "rank_ic": 0.03397077605641971,
-      "selector": {
-        "kind": "factor",
-        "factor": "atr_pct",
-        "slice_kind": "decile",
-        "decile": 1,
-        "horizon": 5
-      },
-      "triad_score": 0.8402844342423319,
-      "screen": {
-        "survived": false,
-        "reason": "edge-did-not-persist",
-        "in_sample_dates": 745,
-        "holdout_dates": 804,
-        "in_sample_edge": 0.0004899180885932225,
-        "holdout_edge": -0.002427368089503341,
-        "required_holdout_edge": 0.011751200914481041,
-        "batch_size": 110
-      },
-      "oos_survived": false
-    },
-    {
-      "factor": "leadership_score",
-      "horizon": 1,
-      "decile": 1,
-      "mean_return": 0.0008627371765630854,
-      "mean_max_drawdown": -0.029286626913674913,
-      "n": 77817,
-      "rank_ic": -0.002402614270309299,
-      "selector": {
-        "kind": "factor",
-        "factor": "leadership_score",
-        "slice_kind": "decile",
-        "decile": 1,
-        "horizon": 1
-      },
-      "triad_score": 0.8114424839896353,
-      "screen": {
-        "survived": false,
-        "reason": "edge-did-not-persist",
-        "in_sample_dates": 1418,
-        "holdout_dates": 446,
-        "in_sample_edge": 0.0005798213782993165,
-        "holdout_edge": -0.000499145786619996,
-        "required_holdout_edge": 0.011751200914481041,
-        "batch_size": 110
-      },
-      "oos_survived": false
-    },
-    {
-      "factor": "hv",
-      "horizon": 5,
-      "decile": 1,
-      "mean_return": 0.0022833405154249484,
-      "mean_max_drawdown": -0.026909710910830723,
-      "n": 77601,
-      "rank_ic": 0.0318745309845711,
-      "selector": {
-        "kind": "factor",
-        "factor": "hv",
-        "slice_kind": "decile",
-        "decile": 1,
-        "horizon": 5
-      },
-      "triad_score": 0.8103281540041907,
-      "screen": {
-        "survived": false,
-        "reason": "edge-did-not-persist",
-        "in_sample_dates": 826,
-        "holdout_dates": 824,
-        "in_sample_edge": 0.00030624043456871255,
-        "holdout_edge": -0.002208054439721315,
-        "required_holdout_edge": 0.011751200914481041,
-        "batch_size": 110
-      },
-      "oos_survived": false
-    },
-    {
-      "factor": "downside_vol",
-      "horizon": 5,
-      "decile": 1,
-      "mean_return": 0.002066582192301892,
-      "mean_max_drawdown": -0.026994958568621427,
-      "n": 77601,
-      "rank_ic": 0.04452959043941131,
-      "selector": {
-        "kind": "factor",
-        "factor": "downside_vol",
-        "slice_kind": "decile",
-        "decile": 1,
-        "horizon": 5
-      },
-      "triad_score": 0.801391197257759,
-      "screen": {
-        "survived": false,
-        "reason": "edge-did-not-persist",
-        "in_sample_dates": 854,
-        "holdout_dates": 816,
-        "in_sample_edge": -8.46702437734546e-05,
-        "holdout_edge": -0.001625930431300424,
-        "required_holdout_edge": 0.011751200914481041,
-        "batch_size": 110
-      },
-      "oos_survived": false
-    },
-    {
-      "factor": "ma_stack",
-      "horizon": 1,
-      "decile": 1,
-      "mean_return": 0.001753531905401581,
-      "mean_max_drawdown": -0.03197924676346146,
-      "n": 77817,
-      "rank_ic": -0.01663550212091346,
-      "selector": {
-        "kind": "factor",
-        "factor": "ma_stack",
-        "slice_kind": "decile",
-        "decile": 1,
-        "horizon": 1
-      },
-      "triad_score": 0.7929238069490774,
-      "screen": {
-        "survived": false,
-        "reason": "edge-did-not-persist",
-        "in_sample_dates": 1589,
-        "holdout_dates": 275,
-        "in_sample_edge": 0.00030905831449402264,
-        "holdout_edge": -0.0007003812963945969,
-        "required_holdout_edge": 0.011751200914481041,
-        "batch_size": 110
-      },
-      "oos_survived": false
-    },
-    {
-      "factor": "up_down_vol",
-      "horizon": 1,
-      "decile": 10,
-      "mean_return": 0.0018685707239819384,
-      "mean_max_drawdown": -0.035543457307618015,
-      "n": 77818,
-      "rank_ic": 0.0016181535191709215,
-      "selector": {
-        "kind": "factor",
-        "factor": "up_down_vol",
-        "slice_kind": "decile",
-        "decile": 10,
-        "horizon": 1
-      },
-      "triad_score": 0.7325648041093297,
-      "screen": {
-        "survived": false,
-        "reason": "edge-did-not-persist",
-        "in_sample_dates": 1356,
-        "holdout_dates": 505,
-        "in_sample_edge": 0.00024773161191542307,
-        "holdout_edge": 0.00024705639111548397,
-        "required_holdout_edge": 0.011751200914481041,
-        "batch_size": 110
-      },
-      "oos_survived": false
-    },
-    {
-      "factor": "risk_score",
-      "horizon": 5,
-      "decile": 1,
-      "mean_return": 0.0015642746076691722,
-      "mean_max_drawdown": -0.031430067050733174,
-      "n": 77601,
-      "rank_ic": 0.03580414497291741,
-      "selector": {
-        "kind": "factor",
-        "factor": "risk_score",
-        "slice_kind": "decile",
-        "decile": 1,
-        "horizon": 5
-      },
-      "triad_score": 0.7037462948617648,
-      "screen": {
-        "survived": false,
-        "reason": "edge-did-not-persist",
-        "in_sample_dates": 1236,
-        "holdout_dates": 465,
-        "in_sample_edge": 0.00018905500221207423,
-        "holdout_edge": -0.003741147700382372,
-        "required_holdout_edge": 0.011751200914481041,
-        "batch_size": 110
-      },
-      "oos_survived": false
-    },
-    {
-      "factor": "entry_quality_score",
-      "horizon": 1,
-      "decile": 1,
-      "mean_return": 0.0012447175901647968,
-      "mean_max_drawdown": -0.037260091568949334,
-      "n": 77817,
-      "rank_ic": -0.004816939697352293,
-      "selector": {
-        "kind": "factor",
-        "factor": "entry_quality_score",
-        "slice_kind": "decile",
-        "decile": 1,
-        "horizon": 1
-      },
-      "triad_score": 0.6797023781076437,
-      "screen": {
-        "survived": false,
-        "reason": "edge-did-not-persist",
-        "in_sample_dates": 1450,
-        "holdout_dates": 414,
-        "in_sample_edge": 0.0002720227585795677,
-        "holdout_edge": 0.001249274255917026,
-        "required_holdout_edge": 0.011751200914481041,
-        "batch_size": 110
-      },
-      "oos_survived": false
-    },
-    {
-      "factor": "risk_score",
-      "horizon": 1,
-      "decile": 10,
-      "mean_return": 0.0015466391982386493,
-      "mean_max_drawdown": -0.038293007353150124,
-      "n": 77818,
-      "rank_ic": 0.015339839172711566,
-      "selector": {
-        "kind": "factor",
-        "factor": "risk_score",
-        "slice_kind": "decile",
-        "decile": 10,
-        "horizon": 1
-      },
-      "triad_score": 0.6716709372478018,
-      "screen": {
-        "survived": false,
-        "reason": "edge-did-not-persist",
-        "in_sample_dates": 1320,
-        "holdout_dates": 542,
-        "in_sample_edge": 0.00010978933425412422,
-        "holdout_edge": 0.0010079596937798661,
-        "required_holdout_edge": 0.011751200914481041,
-        "batch_size": 110
-      },
-      "oos_survived": false
-    },
-    {
-      "factor": "downside_vol",
-      "horizon": 60,
-      "decile": 10,
-      "mean_return": 0.13729494282626992,
-      "mean_max_drawdown": -0.21822806171557516,
-      "n": 74620,
-      "rank_ic": 0.14424201093593778,
-      "selector": {
-        "kind": "factor",
-        "factor": "downside_vol",
-        "slice_kind": "decile",
-        "decile": 10,
-        "horizon": 60
-      },
-      "triad_score": 0.660082741421993,
-      "screen": {
-        "survived": true,
-        "reason": "edge-persisted",
-        "in_sample_dates": 1270,
-        "holdout_dates": 441,
-        "in_sample_edge": 0.03641135880234623,
-        "holdout_edge": 0.030159363438701715,
-        "required_holdout_edge": 0.011751200914481041,
-        "batch_size": 110
-      },
-      "oos_survived": true
-    },
-    {
-      "factor": "vcp_contraction",
-      "horizon": 1,
-      "decile": 10,
-      "mean_return": 0.00018217575062492742,
-      "mean_max_drawdown": -0.03755190951653638,
-      "n": 77818,
-      "rank_ic": -0.005363974562201155,
-      "selector": {
-        "kind": "factor",
-        "factor": "vcp_contraction",
-        "slice_kind": "decile",
-        "decile": 10,
-        "horizon": 1
-      },
-      "triad_score": 0.6386116050261343,
-      "screen": {
-        "survived": false,
-        "reason": "edge-did-not-persist",
-        "in_sample_dates": 1276,
-        "holdout_dates": 529,
-        "in_sample_edge": -2.2437974863660807e-05,
-        "holdout_edge": -0.00018429168102453017,
-        "required_holdout_edge": 0.011751200914481041,
-        "batch_size": 110
-      },
-      "oos_survived": false
-    },
-    {
-      "factor": "entry_quality_score",
-      "horizon": 5,
-      "decile": 10,
-      "mean_return": 0.002525813051967501,
-      "mean_max_drawdown": -0.037162667872458255,
-      "n": 77602,
-      "rank_ic": -0.011886733415638562,
-      "selector": {
-        "kind": "factor",
-        "factor": "entry_quality_score",
-        "slice_kind": "decile",
-        "decile": 10,
-        "horizon": 5
-      },
-      "triad_score": 0.6328762211515537,
-      "screen": {
-        "survived": false,
-        "reason": "edge-did-not-persist",
-        "in_sample_dates": 1430,
-        "holdout_dates": 424,
-        "in_sample_edge": 0.00015188072283184865,
-        "holdout_edge": -0.0033550179731727187,
-        "required_holdout_edge": 0.011751200914481041,
-        "batch_size": 110
-      },
-      "oos_survived": false
-    },
-    {
-      "factor": "vcp_contraction",
-      "horizon": 5,
-      "decile": 1,
-      "mean_return": 0.00621465931554496,
-      "mean_max_drawdown": -0.04462054236724376,
-      "n": 77601,
-      "rank_ic": -0.010061797752154898,
-      "selector": {
-        "kind": "factor",
-        "factor": "vcp_contraction",
-        "slice_kind": "decile",
-        "decile": 1,
-        "horizon": 5
-      },
-      "triad_score": 0.6227981306881261,
-      "screen": {
-        "survived": false,
-        "reason": "edge-did-not-persist",
-        "in_sample_dates": 1205,
-        "holdout_dates": 567,
-        "in_sample_edge": 0.0002808089392654279,
-        "holdout_edge": -0.0006902317049140681,
-        "required_holdout_edge": 0.011751200914481041,
-        "batch_size": 110
-      },
-      "oos_survived": false
-    },
-    {
-      "factor": "atr_pct",
-      "horizon": 10,
-      "decile": 1,
-      "mean_return": 0.0048707830044755224,
-      "mean_max_drawdown": -0.03575635593621618,
-      "n": 77330,
-      "rank_ic": 0.06008233762448139,
-      "selector": {
-        "kind": "factor",
-        "factor": "atr_pct",
-        "slice_kind": "decile",
-        "decile": 1,
-        "horizon": 10
-      },
-      "triad_score": 0.6216192322812221,
-      "screen": {
-        "survived": false,
-        "reason": "edge-did-not-persist",
-        "in_sample_dates": 738,
-        "holdout_dates": 799,
-        "in_sample_edge": 0.0012671908791913175,
-        "holdout_edge": -0.003945987922529784,
-        "required_holdout_edge": 0.011751200914481041,
-        "batch_size": 110
-      },
-      "oos_survived": false
-    },
-    {
-      "factor": "hv",
-      "horizon": 10,
-      "decile": 1,
-      "mean_return": 0.004799306998684507,
-      "mean_max_drawdown": -0.03754822424481734,
-      "n": 77330,
-      "rank_ic": 0.056599879206109004,
-      "selector": {
-        "kind": "factor",
-        "factor": "hv",
-        "slice_kind": "decile",
-        "decile": 1,
-        "horizon": 10
-      },
-      "triad_score": 0.5866504756521356,
-      "screen": {
-        "survived": false,
-        "reason": "edge-did-not-persist",
-        "in_sample_dates": 825,
-        "holdout_dates": 820,
-        "in_sample_edge": 0.0007703138826600844,
-        "holdout_edge": -0.004181701399593555,
-        "required_holdout_edge": 0.011751200914481041,
-        "batch_size": 110
-      },
-      "oos_survived": false
-    },
-    {
-      "factor": "high_proximity",
-      "horizon": 1,
-      "decile": 1,
-      "mean_return": 0.002818200285877678,
-      "mean_max_drawdown": -0.04351989428901334,
-      "n": 77689,
-      "rank_ic": -0.019998627950574766,
-      "selector": {
-        "kind": "factor",
-        "factor": "high_proximity",
-        "slice_kind": "decile",
-        "decile": 1,
-        "horizon": 1
-      },
-      "triad_score": 0.5647614510560188,
-      "screen": {
-        "survived": false,
-        "reason": "edge-did-not-persist",
-        "in_sample_dates": 1586,
-        "holdout_dates": 275,
-        "in_sample_edge": 0.00066265940912479,
-        "holdout_edge": -0.0004097867021528738,
-        "required_holdout_edge": 0.011751200914481041,
-        "batch_size": 110
-      },
-      "oos_survived": false
-    },
-    {
-      "factor": "downside_vol",
-      "horizon": 10,
-      "decile": 1,
-      "mean_return": 0.00421567173551066,
-      "mean_max_drawdown": -0.03784984266548887,
-      "n": 77330,
-      "rank_ic": 0.0728318383371458,
-      "selector": {
-        "kind": "factor",
-        "factor": "downside_vol",
-        "slice_kind": "decile",
-        "decile": 1,
-        "horizon": 10
-      },
-      "triad_score": 0.5612784509291427,
-      "screen": {
-        "survived": false,
-        "reason": "edge-did-not-persist",
-        "in_sample_dates": 853,
-        "holdout_dates": 812,
-        "in_sample_edge": 8.563877073250388e-05,
-        "holdout_edge": -0.0048815512797311025,
-        "required_holdout_edge": 0.011751200914481041,
-        "batch_size": 110
-      },
-      "oos_survived": false
-    },
-    {
-      "factor": "atr_pct",
-      "horizon": 60,
-      "decile": 10,
-      "mean_return": 0.1438206975416218,
-      "mean_max_drawdown": -0.23617829479159647,
-      "n": 74620,
-      "rank_ic": 0.1426961311916186,
-      "selector": {
-        "kind": "factor",
-        "factor": "atr_pct",
-        "slice_kind": "decile",
-        "decile": 10,
-        "horizon": 60
-      },
-      "triad_score": 0.5566500820011664,
-      "screen": {
-        "survived": true,
-        "reason": "edge-persisted",
-        "in_sample_dates": 1352,
-        "holdout_dates": 417,
-        "in_sample_edge": 0.044643201144747305,
-        "holdout_edge": 0.07594338960317695,
-        "required_holdout_edge": 0.011751200914481041,
-        "batch_size": 110
-      },
-      "oos_survived": true
-    },
-    {
-      "factor": "rs_spy_3m",
-      "horizon": 1,
-      "decile": 10,
-      "mean_return": 0.0009756804511535446,
-      "mean_max_drawdown": -0.033942002941846364,
-      "n": 77388,
-      "rank_ic": -0.0010165734105254092,
-      "selector": {
-        "kind": "factor",
-        "factor": "rs_spy_3m",
-        "slice_kind": "decile",
-        "decile": 10,
-        "horizon": 1
-      },
-      "triad_score": 0.5466670238738497,
-      "screen": {
-        "survived": false,
-        "reason": "edge-did-not-persist",
-        "in_sample_dates": 1508,
-        "holdout_dates": 325,
-        "in_sample_edge": -9.622983177653312e-06,
-        "holdout_edge": 0.0005387549915201715,
-        "required_holdout_edge": 0.011751200914481041,
-        "batch_size": 110
-      },
-      "oos_survived": false
-    },
-    {
-      "factor": "rs_spy_3m",
-      "horizon": 1,
-      "decile": 1,
-      "mean_return": 0.0015888831594565397,
-      "mean_max_drawdown": -0.03508327024698491,
-      "n": 77387,
-      "rank_ic": -0.0010165734105254092,
-      "selector": {
-        "kind": "factor",
-        "factor": "rs_spy_3m",
-        "slice_kind": "decile",
-        "decile": 1,
-        "horizon": 1
-      },
-      "triad_score": 0.5464216249055527,
-      "screen": {
-        "survived": false,
-        "reason": "edge-did-not-persist",
-        "in_sample_dates": 1609,
-        "holdout_dates": 224,
-        "in_sample_edge": 0.0005440614885230837,
-        "holdout_edge": -0.0004179404057613088,
-        "required_holdout_edge": 0.011751200914481041,
-        "batch_size": 110
-      },
-      "oos_survived": false
-    },
-    {
-      "factor": "ma_stack",
-      "horizon": 5,
-      "decile": 10,
-      "mean_return": 0.002916165619968775,
-      "mean_max_drawdown": -0.042902032266479574,
-      "n": 77602,
-      "rank_ic": -0.030490327803527444,
-      "selector": {
-        "kind": "factor",
-        "factor": "ma_stack",
-        "slice_kind": "decile",
-        "decile": 10,
-        "horizon": 5
-      },
-      "triad_score": 0.5419825888860964,
-      "screen": {
-        "survived": false,
-        "reason": "edge-did-not-persist",
-        "in_sample_dates": 1323,
-        "holdout_dates": 514,
-        "in_sample_edge": 0.0010464897227529756,
-        "holdout_edge": 0.0005414107775690207,
-        "required_holdout_edge": 0.011751200914481041,
-        "batch_size": 110
-      },
-      "oos_survived": false
-    },
-    {
-      "factor": "hv",
-      "horizon": 60,
-      "decile": 10,
-      "mean_return": 0.1377093613142543,
-      "mean_max_drawdown": -0.22552141967196151,
-      "n": 74620,
-      "rank_ic": 0.1360620800255232,
-      "selector": {
-        "kind": "factor",
-        "factor": "hv",
-        "slice_kind": "decile",
-        "decile": 10,
-        "horizon": 60
-      },
-      "triad_score": 0.5417960779849282,
-      "screen": {
-        "survived": true,
-        "reason": "edge-persisted",
-        "in_sample_dates": 1382,
-        "holdout_dates": 415,
-        "in_sample_edge": 0.03841427240854386,
-        "holdout_edge": 0.0632551094128873,
-        "required_holdout_edge": 0.011751200914481041,
-        "batch_size": 110
-      },
-      "oos_survived": true
-    },
-    {
-      "factor": "downside_vol",
-      "horizon": 1,
-      "decile": 10,
-      "mean_return": 0.003296610189312836,
-      "mean_max_drawdown": -0.048742949439463695,
-      "n": 77818,
-      "rank_ic": 0.019474468957457938,
-      "selector": {
-        "kind": "factor",
-        "factor": "downside_vol",
-        "slice_kind": "decile",
-        "decile": 10,
-        "horizon": 1
-      },
-      "triad_score": 0.5416038262998687,
-      "screen": {
-        "survived": false,
-        "reason": "edge-did-not-persist",
-        "in_sample_dates": 1463,
-        "holdout_dates": 385,
-        "in_sample_edge": 0.0009688349229778988,
-        "holdout_edge": 0.0006678382052202411,
-        "required_holdout_edge": 0.011751200914481041,
-        "batch_size": 110
-      },
-      "oos_survived": false
-    },
-    {
-      "factor": "high_proximity",
-      "horizon": 5,
-      "decile": 10,
-      "mean_return": 0.0014769015900961335,
-      "mean_max_drawdown": -0.039685598613717385,
-      "n": 77473,
-      "rank_ic": -0.03795984365094486,
-      "selector": {
-        "kind": "factor",
-        "factor": "high_proximity",
-        "slice_kind": "decile",
-        "decile": 10,
-        "horizon": 5
-      },
-      "triad_score": 0.4959537953121682,
-      "screen": {
-        "survived": false,
-        "reason": "edge-did-not-persist",
-        "in_sample_dates": 1247,
-        "holdout_dates": 542,
-        "in_sample_edge": -0.0017206322990756765,
-        "holdout_edge": 0.00035847934248448905,
-        "required_holdout_edge": 0.011751200914481041,
-        "batch_size": 110
-      },
-      "oos_survived": false
-    },
-    {
-      "factor": "up_down_vol",
-      "horizon": 5,
-      "decile": 1,
-      "mean_return": 0.004569444182936084,
-      "mean_max_drawdown": -0.048914693609573984,
-      "n": 77601,
-      "rank_ic": 0.00803723761020031,
-      "selector": {
-        "kind": "factor",
-        "factor": "up_down_vol",
-        "slice_kind": "decile",
-        "decile": 1,
-        "horizon": 5
-      },
-      "triad_score": 0.48875087735945405,
-      "screen": {
-        "survived": false,
-        "reason": "edge-did-not-persist",
-        "in_sample_dates": 1281,
-        "holdout_dates": 571,
-        "in_sample_edge": 0.000986926724474697,
-        "holdout_edge": 2.5220466710672732e-05,
-        "required_holdout_edge": 0.011751200914481041,
-        "batch_size": 110
-      },
-      "oos_survived": false
-    },
-    {
-      "factor": "hv",
-      "horizon": 1,
-      "decile": 10,
-      "mean_return": 0.002485653360409023,
-      "mean_max_drawdown": -0.05133946035525281,
-      "n": 77818,
-      "rank_ic": 0.013213385448164,
-      "selector": {
-        "kind": "factor",
-        "factor": "hv",
-        "slice_kind": "decile",
-        "decile": 10,
-        "horizon": 1
-      },
-      "triad_score": 0.4668176763822347,
-      "screen": {
-        "survived": false,
-        "reason": "edge-did-not-persist",
-        "in_sample_dates": 1517,
-        "holdout_dates": 345,
-        "in_sample_edge": 0.00032027983902101117,
-        "holdout_edge": 0.001557394731421798,
-        "required_holdout_edge": 0.011751200914481041,
-        "batch_size": 110
-      },
-      "oos_survived": false
-    },
-    {
-      "factor": "risk_score",
-      "horizon": 10,
-      "decile": 1,
-      "mean_return": 0.0035235105401990067,
-      "mean_max_drawdown": -0.0439956708806937,
-      "n": 77330,
-      "rank_ic": 0.055652722149793284,
-      "selector": {
-        "kind": "factor",
-        "factor": "risk_score",
-        "slice_kind": "decile",
-        "decile": 1,
-        "horizon": 10
-      },
-      "triad_score": 0.42610261078417966,
-      "screen": {
-        "survived": false,
-        "reason": "edge-did-not-persist",
-        "in_sample_dates": 1235,
-        "holdout_dates": 462,
-        "in_sample_edge": 0.0005157798569144306,
-        "holdout_edge": -0.006670283145660332,
-        "required_holdout_edge": 0.011751200914481041,
-        "batch_size": 110
-      },
-      "oos_survived": false
-    },
-    {
-      "factor": "atr_pct",
-      "horizon": 1,
-      "decile": 10,
-      "mean_return": 0.0023209545131002477,
-      "mean_max_drawdown": -0.054302719004465004,
-      "n": 77818,
-      "rank_ic": 0.01637062136768964,
-      "selector": {
-        "kind": "factor",
-        "factor": "atr_pct",
-        "slice_kind": "decile",
-        "decile": 10,
-        "horizon": 1
-      },
-      "triad_score": 0.4074038670233925,
-      "screen": {
-        "survived": false,
-        "reason": "edge-did-not-persist",
-        "in_sample_dates": 1488,
-        "holdout_dates": 337,
-        "in_sample_edge": 0.00045337067069050913,
-        "holdout_edge": 0.001704850185025536,
-        "required_holdout_edge": 0.011751200914481041,
-        "batch_size": 110
-      },
-      "oos_survived": false
-    },
-    {
-      "factor": "leadership_score",
-      "horizon": 5,
-      "decile": 10,
-      "mean_return": 0.004338399215454319,
-      "mean_max_drawdown": -0.05348720178202024,
-      "n": 77602,
-      "rank_ic": -0.002767724354767283,
-      "selector": {
-        "kind": "factor",
-        "factor": "leadership_score",
-        "slice_kind": "decile",
-        "decile": 10,
-        "horizon": 5
-      },
-      "triad_score": 0.3982878620141692,
-      "screen": {
-        "survived": false,
-        "reason": "edge-did-not-persist",
-        "in_sample_dates": 1450,
-        "holdout_dates": 403,
-        "in_sample_edge": -7.403481492087041e-05,
-        "holdout_edge": 0.0029574494823973695,
-        "required_holdout_edge": 0.011751200914481041,
-        "batch_size": 110
-      },
-      "oos_survived": false
-    },
-    {
-      "factor": "vcp_contraction",
-      "horizon": 10,
-      "decile": 1,
-      "mean_return": 0.011733140343361152,
-      "mean_max_drawdown": -0.06109579748769574,
-      "n": 77330,
-      "rank_ic": -0.003946305553073236,
-      "selector": {
-        "kind": "factor",
-        "factor": "vcp_contraction",
-        "slice_kind": "decile",
-        "decile": 1,
-        "horizon": 10
-      },
-      "triad_score": 0.3955069739115288,
+      "triad_score": 1.0479045811839849,
       "screen": {
         "survived": false,
         "reason": "edge-did-not-persist",
         "in_sample_dates": 1196,
-        "holdout_dates": 563,
-        "in_sample_edge": 0.0009714727340796875,
-        "holdout_edge": -0.0006426174056671807,
+        "holdout_dates": 1290,
+        "in_sample_edge": -7.7042000607852e-05,
+        "holdout_edge": -0.00014194394138844686,
+        "required_holdout_edge": 0.011751200914481041,
+        "batch_size": 110
+      },
+      "oos_survived": false
+    },
+    {
+      "factor": "hv",
+      "horizon": 1,
+      "decile": 1,
+      "mean_return": 0.0003810873065795991,
+      "mean_max_drawdown": -0.014187038436618834,
+      "n": 129612,
+      "rank_ic": 0.011179546146478102,
+      "selector": {
+        "kind": "factor",
+        "factor": "hv",
+        "slice_kind": "decile",
+        "decile": 1,
+        "horizon": 1
+      },
+      "triad_score": 1.0332855643331018,
+      "screen": {
+        "survived": false,
+        "reason": "edge-did-not-persist",
+        "in_sample_dates": 1294,
+        "holdout_dates": 1419,
+        "in_sample_edge": 8.634135692931218e-05,
+        "holdout_edge": -0.0003288987236325944,
+        "required_holdout_edge": 0.011751200914481041,
+        "batch_size": 110
+      },
+      "oos_survived": false
+    },
+    {
+      "factor": "downside_vol",
+      "horizon": 1,
+      "decile": 1,
+      "mean_return": 0.00034849434153659835,
+      "mean_max_drawdown": -0.014326400691218294,
+      "n": 129612,
+      "rank_ic": 0.016527446882872804,
+      "selector": {
+        "kind": "factor",
+        "factor": "downside_vol",
+        "slice_kind": "decile",
+        "decile": 1,
+        "horizon": 1
+      },
+      "triad_score": 1.0293934213342482,
+      "screen": {
+        "survived": false,
+        "reason": "edge-did-not-persist",
+        "in_sample_dates": 1279,
+        "holdout_dates": 1369,
+        "in_sample_edge": 6.213483685457282e-05,
+        "holdout_edge": -0.00030542091231877005,
+        "required_holdout_edge": 0.011751200914481041,
+        "batch_size": 110
+      },
+      "oos_survived": false
+    },
+    {
+      "factor": "risk_score",
+      "horizon": 1,
+      "decile": 1,
+      "mean_return": 0.0003413732836419746,
+      "mean_max_drawdown": -0.01601287135385646,
+      "n": 129612,
+      "rank_ic": 0.011885504898535371,
+      "selector": {
+        "kind": "factor",
+        "factor": "risk_score",
+        "slice_kind": "decile",
+        "decile": 1,
+        "horizon": 1
+      },
+      "triad_score": 0.9994727421863208,
+      "screen": {
+        "survived": false,
+        "reason": "edge-did-not-persist",
+        "in_sample_dates": 1968,
+        "holdout_dates": 722,
+        "in_sample_edge": -8.891018355330698e-05,
+        "holdout_edge": -0.0005625289540200161,
+        "required_holdout_edge": 0.011751200914481041,
+        "batch_size": 110
+      },
+      "oos_survived": false
+    },
+    {
+      "factor": "entry_quality_score",
+      "horizon": 1,
+      "decile": 10,
+      "mean_return": 0.0005634176514837713,
+      "mean_max_drawdown": -0.01906984603578592,
+      "n": 129613,
+      "rank_ic": -0.003119180666450084,
+      "selector": {
+        "kind": "factor",
+        "factor": "entry_quality_score",
+        "slice_kind": "decile",
+        "decile": 10,
+        "horizon": 1
+      },
+      "triad_score": 0.9560784623163676,
+      "screen": {
+        "survived": false,
+        "reason": "edge-did-not-persist",
+        "in_sample_dates": 2283,
+        "holdout_dates": 713,
+        "in_sample_edge": -3.6438674903938292e-06,
+        "holdout_edge": -0.00036480087528197275,
+        "required_holdout_edge": 0.011751200914481041,
+        "batch_size": 110
+      },
+      "oos_survived": false
+    },
+    {
+      "factor": "vcp_contraction",
+      "horizon": 1,
+      "decile": 1,
+      "mean_return": 0.0009999100254460265,
+      "mean_max_drawdown": -0.022939841470905123,
+      "n": 129612,
+      "rank_ic": -0.00037848769519735546,
+      "selector": {
+        "kind": "factor",
+        "factor": "vcp_contraction",
+        "slice_kind": "decile",
+        "decile": 1,
+        "horizon": 1
+      },
+      "triad_score": 0.9070855695417692,
+      "screen": {
+        "survived": false,
+        "reason": "edge-did-not-persist",
+        "in_sample_dates": 2066,
+        "holdout_dates": 849,
+        "in_sample_edge": 0.0002347277461251542,
+        "holdout_edge": -0.0002473682492533836,
+        "required_holdout_edge": 0.011751200914481041,
+        "batch_size": 110
+      },
+      "oos_survived": false
+    },
+    {
+      "factor": "ma_stack",
+      "horizon": 1,
+      "decile": 10,
+      "mean_return": 0.000440240932062087,
+      "mean_max_drawdown": -0.02218864136632498,
+      "n": 129613,
+      "rank_ic": -0.011888792318955446,
+      "selector": {
+        "kind": "factor",
+        "factor": "ma_stack",
+        "slice_kind": "decile",
+        "decile": 10,
+        "horizon": 1
+      },
+      "triad_score": 0.8958664117099657,
+      "screen": {
+        "survived": false,
+        "reason": "edge-did-not-persist",
+        "in_sample_dates": 2088,
+        "holdout_dates": 880,
+        "in_sample_edge": 3.408135710929242e-05,
+        "holdout_edge": 8.620115581400804e-06,
+        "required_holdout_edge": 0.011751200914481041,
+        "batch_size": 110
+      },
+      "oos_survived": false
+    },
+    {
+      "factor": "up_down_vol",
+      "horizon": 1,
+      "decile": 1,
+      "mean_return": 0.000694080345660995,
+      "mean_max_drawdown": -0.025304055764723415,
+      "n": 129612,
+      "rank_ic": 0.007445183432308261,
+      "selector": {
+        "kind": "factor",
+        "factor": "up_down_vol",
+        "slice_kind": "decile",
+        "decile": 1,
+        "horizon": 1
+      },
+      "triad_score": 0.8520176638120466,
+      "screen": {
+        "survived": false,
+        "reason": "edge-did-not-persist",
+        "in_sample_dates": 2019,
+        "holdout_dates": 977,
+        "in_sample_edge": 0.0002684516048300876,
+        "holdout_edge": 6.740717560056111e-05,
+        "required_holdout_edge": 0.011751200914481041,
+        "batch_size": 110
+      },
+      "oos_survived": false
+    },
+    {
+      "factor": "leadership_score",
+      "horizon": 1,
+      "decile": 10,
+      "mean_return": 0.0005977440426923336,
+      "mean_max_drawdown": -0.027188187188102435,
+      "n": 129613,
+      "rank_ic": -0.0018772714626832348,
+      "selector": {
+        "kind": "factor",
+        "factor": "leadership_score",
+        "slice_kind": "decile",
+        "decile": 10,
+        "horizon": 1
+      },
+      "triad_score": 0.8150893112827144,
+      "screen": {
+        "survived": false,
+        "reason": "edge-did-not-persist",
+        "in_sample_dates": 2294,
+        "holdout_dates": 702,
+        "in_sample_edge": -0.000132436906060738,
+        "holdout_edge": 0.0002973256889235285,
+        "required_holdout_edge": 0.011751200914481041,
+        "batch_size": 110
+      },
+      "oos_survived": false
+    },
+    {
+      "factor": "high_proximity",
+      "horizon": 1,
+      "decile": 10,
+      "mean_return": 3.0857015358517856e-05,
+      "mean_max_drawdown": -0.020325430505868127,
+      "n": 129371,
+      "rank_ic": -0.01548990279371399,
+      "selector": {
+        "kind": "factor",
+        "factor": "high_proximity",
+        "slice_kind": "decile",
+        "decile": 10,
+        "horizon": 1
+      },
+      "triad_score": 0.8089025216957522,
+      "screen": {
+        "survived": false,
+        "reason": "edge-did-not-persist",
+        "in_sample_dates": 1986,
+        "holdout_dates": 924,
+        "in_sample_edge": -0.0002884576950828887,
+        "holdout_edge": -0.00012883841457177206,
+        "required_holdout_edge": 0.011751200914481041,
+        "batch_size": 110
+      },
+      "oos_survived": false
+    },
+    {
+      "factor": "atr_pct",
+      "horizon": 5,
+      "decile": 1,
+      "mean_return": 0.0019008696693002891,
+      "mean_max_drawdown": -0.027036039111640986,
+      "n": 129396,
+      "rank_ic": 0.036617721853086815,
+      "selector": {
+        "kind": "factor",
+        "factor": "atr_pct",
+        "slice_kind": "decile",
+        "decile": 1,
+        "horizon": 5
+      },
+      "triad_score": 0.7845380294734595,
+      "screen": {
+        "survived": false,
+        "reason": "edge-did-not-persist",
+        "in_sample_dates": 1189,
+        "holdout_dates": 1287,
+        "in_sample_edge": -4.8127942158454e-05,
+        "holdout_edge": -0.0008587928895431355,
+        "required_holdout_edge": 0.011751200914481041,
+        "batch_size": 110
+      },
+      "oos_survived": false
+    },
+    {
+      "factor": "leadership_score",
+      "horizon": 1,
+      "decile": 1,
+      "mean_return": 0.0009141315519764303,
+      "mean_max_drawdown": -0.03041800297647544,
+      "n": 129612,
+      "rank_ic": -0.0018772714626832348,
+      "selector": {
+        "kind": "factor",
+        "factor": "leadership_score",
+        "slice_kind": "decile",
+        "decile": 1,
+        "horizon": 1
+      },
+      "triad_score": 0.7720067930459641,
+      "screen": {
+        "survived": false,
+        "reason": "edge-did-not-persist",
+        "in_sample_dates": 2254,
+        "holdout_dates": 742,
+        "in_sample_edge": 0.000516030363901452,
+        "holdout_edge": -8.581960491387959e-05,
+        "required_holdout_edge": 0.011751200914481041,
+        "batch_size": 110
+      },
+      "oos_survived": false
+    },
+    {
+      "factor": "ma_stack",
+      "horizon": 1,
+      "decile": 1,
+      "mean_return": 0.0014048502384227896,
+      "mean_max_drawdown": -0.03185446532951008,
+      "n": 129612,
+      "rank_ic": -0.011888792318955446,
+      "selector": {
+        "kind": "factor",
+        "factor": "ma_stack",
+        "slice_kind": "decile",
+        "decile": 1,
+        "horizon": 1
+      },
+      "triad_score": 0.7685576696612096,
+      "screen": {
+        "survived": false,
+        "reason": "edge-did-not-persist",
+        "in_sample_dates": 2385,
+        "holdout_dates": 610,
+        "in_sample_edge": 0.0004522351378268377,
+        "holdout_edge": -0.0002835555521835512,
+        "required_holdout_edge": 0.011751200914481041,
+        "batch_size": 110
+      },
+      "oos_survived": false
+    },
+    {
+      "factor": "hv",
+      "horizon": 5,
+      "decile": 1,
+      "mean_return": 0.0018311517730175287,
+      "mean_max_drawdown": -0.028550177710194618,
+      "n": 129396,
+      "rank_ic": 0.031776866152624254,
+      "selector": {
+        "kind": "factor",
+        "factor": "hv",
+        "slice_kind": "decile",
+        "decile": 1,
+        "horizon": 5
+      },
+      "triad_score": 0.7548658908698231,
+      "screen": {
+        "survived": false,
+        "reason": "edge-did-not-persist",
+        "in_sample_dates": 1289,
+        "holdout_dates": 1414,
+        "in_sample_edge": -0.00021320952938073438,
+        "holdout_edge": -0.0012411773265012661,
+        "required_holdout_edge": 0.011751200914481041,
+        "batch_size": 110
+      },
+      "oos_survived": false
+    },
+    {
+      "factor": "downside_vol",
+      "horizon": 5,
+      "decile": 1,
+      "mean_return": 0.0016863038622433406,
+      "mean_max_drawdown": -0.028533188204193653,
+      "n": 129396,
+      "rank_ic": 0.039783460742371775,
+      "selector": {
+        "kind": "factor",
+        "factor": "downside_vol",
+        "slice_kind": "decile",
+        "decile": 1,
+        "horizon": 5
+      },
+      "triad_score": 0.7487390649904229,
+      "screen": {
+        "survived": false,
+        "reason": "edge-did-not-persist",
+        "in_sample_dates": 1274,
+        "holdout_dates": 1365,
+        "in_sample_edge": -6.554112511262271e-05,
+        "holdout_edge": -0.0016223694026389654,
+        "required_holdout_edge": 0.011751200914481041,
+        "batch_size": 110
+      },
+      "oos_survived": false
+    },
+    {
+      "factor": "up_down_vol",
+      "horizon": 1,
+      "decile": 10,
+      "mean_return": 0.0016694116188291101,
+      "mean_max_drawdown": -0.03382335246206193,
+      "n": 129613,
+      "rank_ic": 0.007445183432308261,
+      "selector": {
+        "kind": "factor",
+        "factor": "up_down_vol",
+        "slice_kind": "decile",
+        "decile": 10,
+        "horizon": 1
+      },
+      "triad_score": 0.7461499432021015,
+      "screen": {
+        "survived": false,
+        "reason": "edge-did-not-persist",
+        "in_sample_dates": 2304,
+        "holdout_dates": 683,
+        "in_sample_edge": 0.00021872039524995564,
+        "holdout_edge": 0.0002455213402314203,
+        "required_holdout_edge": 0.011751200914481041,
+        "batch_size": 110
+      },
+      "oos_survived": false
+    },
+    {
+      "factor": "vcp_contraction",
+      "horizon": 1,
+      "decile": 10,
+      "mean_return": 0.0007520115504923953,
+      "mean_max_drawdown": -0.034259455665095515,
+      "n": 129613,
+      "rank_ic": -0.00037848769519735546,
+      "selector": {
+        "kind": "factor",
+        "factor": "vcp_contraction",
+        "slice_kind": "decile",
+        "decile": 10,
+        "horizon": 1
+      },
+      "triad_score": 0.6978010518917683,
+      "screen": {
+        "survived": false,
+        "reason": "edge-did-not-persist",
+        "in_sample_dates": 2265,
+        "holdout_dates": 671,
+        "in_sample_edge": 7.262050734612631e-05,
+        "holdout_edge": -4.7036463637969334e-05,
+        "required_holdout_edge": 0.011751200914481041,
+        "batch_size": 110
+      },
+      "oos_survived": false
+    },
+    {
+      "factor": "risk_score",
+      "horizon": 5,
+      "decile": 1,
+      "mean_return": 0.001500151210488218,
+      "mean_max_drawdown": -0.03230369343257203,
+      "n": 129396,
+      "rank_ic": 0.02905347944977402,
+      "selector": {
+        "kind": "factor",
+        "factor": "risk_score",
+        "slice_kind": "decile",
+        "decile": 1,
+        "horizon": 5
+      },
+      "triad_score": 0.6742932613967243,
+      "screen": {
+        "survived": false,
+        "reason": "edge-did-not-persist",
+        "in_sample_dates": 1962,
+        "holdout_dates": 718,
+        "in_sample_edge": -0.00046334027919120994,
+        "holdout_edge": -0.0012565131355663213,
+        "required_holdout_edge": 0.011751200914481041,
+        "batch_size": 110
+      },
+      "oos_survived": false
+    },
+    {
+      "factor": "risk_score",
+      "horizon": 1,
+      "decile": 10,
+      "mean_return": 0.0012093782633349748,
+      "mean_max_drawdown": -0.03745866177476709,
+      "n": 129613,
+      "rank_ic": 0.011885504898535371,
+      "selector": {
+        "kind": "factor",
+        "factor": "risk_score",
+        "slice_kind": "decile",
+        "decile": 10,
+        "horizon": 1
+      },
+      "triad_score": 0.661928795709354,
+      "screen": {
+        "survived": false,
+        "reason": "edge-did-not-persist",
+        "in_sample_dates": 2049,
+        "holdout_dates": 947,
+        "in_sample_edge": 0.0002069239401780648,
+        "holdout_edge": 0.0007110937455664571,
+        "required_holdout_edge": 0.011751200914481041,
+        "batch_size": 110
+      },
+      "oos_survived": false
+    },
+    {
+      "factor": "entry_quality_score",
+      "horizon": 1,
+      "decile": 1,
+      "mean_return": 0.001162971490429531,
+      "mean_max_drawdown": -0.03837705363585709,
+      "n": 129612,
+      "rank_ic": -0.003119180666450084,
+      "selector": {
+        "kind": "factor",
+        "factor": "entry_quality_score",
+        "slice_kind": "decile",
+        "decile": 1,
+        "horizon": 1
+      },
+      "triad_score": 0.6433291202126259,
+      "screen": {
+        "survived": false,
+        "reason": "edge-did-not-persist",
+        "in_sample_dates": 2292,
+        "holdout_dates": 704,
+        "in_sample_edge": 0.0002896346765723813,
+        "holdout_edge": 0.0008616881821681973,
+        "required_holdout_edge": 0.011751200914481041,
+        "batch_size": 110
+      },
+      "oos_survived": false
+    },
+    {
+      "factor": "entry_quality_score",
+      "horizon": 5,
+      "decile": 10,
+      "mean_return": 0.002505397854491401,
+      "mean_max_drawdown": -0.03790963740440004,
+      "n": 129397,
+      "rank_ic": -0.010376691514724033,
+      "selector": {
+        "kind": "factor",
+        "factor": "entry_quality_score",
+        "slice_kind": "decile",
+        "decile": 10,
+        "horizon": 5
+      },
+      "triad_score": 0.6208943675151126,
+      "screen": {
+        "survived": false,
+        "reason": "edge-did-not-persist",
+        "in_sample_dates": 2275,
+        "holdout_dates": 712,
+        "in_sample_edge": -8.019762134948424e-05,
+        "holdout_edge": -0.0017352189081360058,
+        "required_holdout_edge": 0.011751200914481041,
+        "batch_size": 110
+      },
+      "oos_survived": false
+    },
+    {
+      "factor": "vcp_contraction",
+      "horizon": 5,
+      "decile": 1,
+      "mean_return": 0.005057537468689422,
+      "mean_max_drawdown": -0.04552097394044811,
+      "n": 129396,
+      "rank_ic": 0.0069568292969678,
+      "selector": {
+        "kind": "factor",
+        "factor": "vcp_contraction",
+        "slice_kind": "decile",
+        "decile": 1,
+        "horizon": 5
+      },
+      "triad_score": 0.6000692948956322,
+      "screen": {
+        "survived": false,
+        "reason": "edge-did-not-persist",
+        "in_sample_dates": 2060,
+        "holdout_dates": 847,
+        "in_sample_edge": 0.0005780256790890349,
+        "holdout_edge": -0.0017175599143567299,
+        "required_holdout_edge": 0.011751200914481041,
+        "batch_size": 110
+      },
+      "oos_survived": false
+    },
+    {
+      "factor": "atr_pct",
+      "horizon": 10,
+      "decile": 1,
+      "mean_return": 0.004040062840171702,
+      "mean_max_drawdown": -0.03787961221479771,
+      "n": 129125,
+      "rank_ic": 0.05173014884803188,
+      "selector": {
+        "kind": "factor",
+        "factor": "atr_pct",
+        "slice_kind": "decile",
+        "decile": 1,
+        "horizon": 10
+      },
+      "triad_score": 0.5753988426392156,
+      "screen": {
+        "survived": false,
+        "reason": "edge-did-not-persist",
+        "in_sample_dates": 1180,
+        "holdout_dates": 1280,
+        "in_sample_edge": 0.0003452426869407069,
+        "holdout_edge": -0.0023611885221903493,
+        "required_holdout_edge": 0.011751200914481041,
+        "batch_size": 110
+      },
+      "oos_survived": false
+    },
+    {
+      "factor": "hv",
+      "horizon": 10,
+      "decile": 1,
+      "mean_return": 0.003938434383455206,
+      "mean_max_drawdown": -0.03984647009493347,
+      "n": 129125,
+      "rank_ic": 0.046682531330973095,
+      "selector": {
+        "kind": "factor",
+        "factor": "hv",
+        "slice_kind": "decile",
+        "decile": 1,
+        "horizon": 10
+      },
+      "triad_score": 0.5363640681271669,
+      "screen": {
+        "survived": false,
+        "reason": "edge-did-not-persist",
+        "in_sample_dates": 1279,
+        "holdout_dates": 1409,
+        "in_sample_edge": -0.00021457285964487897,
+        "holdout_edge": -0.00183892688385138,
+        "required_holdout_edge": 0.011751200914481041,
+        "batch_size": 110
+      },
+      "oos_survived": false
+    },
+    {
+      "factor": "downside_vol",
+      "horizon": 1,
+      "decile": 10,
+      "mean_return": 0.00251725968331388,
+      "mean_max_drawdown": -0.04806827612748962,
+      "n": 129613,
+      "rank_ic": 0.016527446882872804,
+      "selector": {
+        "kind": "factor",
+        "factor": "downside_vol",
+        "slice_kind": "decile",
+        "decile": 10,
+        "horizon": 1
+      },
+      "triad_score": 0.5336985775911305,
+      "screen": {
+        "survived": false,
+        "reason": "edge-did-not-persist",
+        "in_sample_dates": 2373,
+        "holdout_dates": 607,
+        "in_sample_edge": 0.000604290913397028,
+        "holdout_edge": 0.0004587011467108254,
+        "required_holdout_edge": 0.011751200914481041,
+        "batch_size": 110
+      },
+      "oos_survived": false
+    },
+    {
+      "factor": "downside_vol",
+      "horizon": 10,
+      "decile": 1,
+      "mean_return": 0.0035441389314734544,
+      "mean_max_drawdown": -0.039851232439094775,
+      "n": 129125,
+      "rank_ic": 0.055646519012927005,
+      "selector": {
+        "kind": "factor",
+        "factor": "downside_vol",
+        "slice_kind": "decile",
+        "decile": 1,
+        "horizon": 10
+      },
+      "triad_score": 0.518790580080216,
+      "screen": {
+        "survived": false,
+        "reason": "edge-did-not-persist",
+        "in_sample_dates": 1265,
+        "holdout_dates": 1360,
+        "in_sample_edge": -0.0002651921714675397,
+        "holdout_edge": -0.003430445222206236,
+        "required_holdout_edge": 0.011751200914481041,
+        "batch_size": 110
+      },
+      "oos_survived": false
+    },
+    {
+      "factor": "high_proximity",
+      "horizon": 1,
+      "decile": 1,
+      "mean_return": 0.00226614019429526,
+      "mean_max_drawdown": -0.042862186524408985,
+      "n": 129371,
+      "rank_ic": -0.01548990279371399,
+      "selector": {
+        "kind": "factor",
+        "factor": "high_proximity",
+        "slice_kind": "decile",
+        "decile": 1,
+        "horizon": 1
+      },
+      "triad_score": 0.5124367617210454,
+      "screen": {
+        "survived": false,
+        "reason": "edge-did-not-persist",
+        "in_sample_dates": 2373,
+        "holdout_dates": 618,
+        "in_sample_edge": 0.0005619931995654086,
+        "holdout_edge": 0.00023441996004065245,
+        "required_holdout_edge": 0.011751200914481041,
+        "batch_size": 110
+      },
+      "oos_survived": false
+    },
+    {
+      "factor": "ma_stack",
+      "horizon": 5,
+      "decile": 10,
+      "mean_return": 0.00241639403979766,
+      "mean_max_drawdown": -0.04421634030871352,
+      "n": 129397,
+      "rank_ic": -0.029676093330684584,
+      "selector": {
+        "kind": "factor",
+        "factor": "ma_stack",
+        "slice_kind": "decile",
+        "decile": 10,
+        "horizon": 5
+      },
+      "triad_score": 0.5062366565997349,
+      "screen": {
+        "survived": false,
+        "reason": "edge-did-not-persist",
+        "in_sample_dates": 2081,
+        "holdout_dates": 879,
+        "in_sample_edge": 0.0007592872666612676,
+        "holdout_edge": -0.00012100812020715783,
+        "required_holdout_edge": 0.011751200914481041,
+        "batch_size": 110
+      },
+      "oos_survived": false
+    },
+    {
+      "factor": "hv",
+      "horizon": 1,
+      "decile": 10,
+      "mean_return": 0.0018849946805688906,
+      "mean_max_drawdown": -0.04946728314955348,
+      "n": 129613,
+      "rank_ic": 0.011179546146478102,
+      "selector": {
+        "kind": "factor",
+        "factor": "hv",
+        "slice_kind": "decile",
+        "decile": 10,
+        "horizon": 1
+      },
+      "triad_score": 0.4810944125100109,
+      "screen": {
+        "survived": false,
+        "reason": "edge-did-not-persist",
+        "in_sample_dates": 2428,
+        "holdout_dates": 562,
+        "in_sample_edge": 0.00026260721653304284,
+        "holdout_edge": 0.000900670814774222,
+        "required_holdout_edge": 0.011751200914481041,
+        "batch_size": 110
+      },
+      "oos_survived": false
+    },
+    {
+      "factor": "downside_vol",
+      "horizon": 60,
+      "decile": 10,
+      "mean_return": 0.10542816589879571,
+      "mean_max_drawdown": -0.236599717365396,
+      "n": 126416,
+      "rank_ic": 0.09609730981036874,
+      "selector": {
+        "kind": "factor",
+        "factor": "downside_vol",
+        "slice_kind": "decile",
+        "decile": 10,
+        "horizon": 60
+      },
+      "triad_score": 0.44796321056494603,
+      "screen": {
+        "survived": true,
+        "reason": "edge-persisted",
+        "in_sample_dates": 2101,
+        "holdout_dates": 733,
+        "in_sample_edge": 0.018385667325157166,
+        "holdout_edge": 0.049894803496302306,
+        "required_holdout_edge": 0.011751200914481041,
+        "batch_size": 110
+      },
+      "oos_survived": true
+    },
+    {
+      "factor": "atr_pct",
+      "horizon": 1,
+      "decile": 10,
+      "mean_return": 0.0021354610863832607,
+      "mean_max_drawdown": -0.05245641952180369,
+      "n": 129613,
+      "rank_ic": 0.015123200571783313,
+      "selector": {
+        "kind": "factor",
+        "factor": "atr_pct",
+        "slice_kind": "decile",
+        "decile": 10,
+        "horizon": 1
+      },
+      "triad_score": 0.4397322404916902,
+      "screen": {
+        "survived": false,
+        "reason": "edge-did-not-persist",
+        "in_sample_dates": 2339,
+        "holdout_dates": 615,
+        "in_sample_edge": 0.000444503595258625,
+        "holdout_edge": 0.0011647757342701864,
+        "required_holdout_edge": 0.011751200914481041,
+        "batch_size": 110
+      },
+      "oos_survived": false
+    },
+    {
+      "factor": "up_down_vol",
+      "horizon": 5,
+      "decile": 1,
+      "mean_return": 0.0031892432858704836,
+      "mean_max_drawdown": -0.05093879371601681,
+      "n": 129396,
+      "rank_ic": 0.016774437056596314,
+      "selector": {
+        "kind": "factor",
+        "factor": "up_down_vol",
+        "slice_kind": "decile",
+        "decile": 1,
+        "horizon": 5
+      },
+      "triad_score": 0.4220907557939382,
+      "screen": {
+        "survived": false,
+        "reason": "edge-did-not-persist",
+        "in_sample_dates": 2013,
+        "holdout_dates": 973,
+        "in_sample_edge": 0.0008798526218152623,
+        "holdout_edge": -0.00032413002094171576,
+        "required_holdout_edge": 0.011751200914481041,
+        "batch_size": 110
+      },
+      "oos_survived": false
+    },
+    {
+      "factor": "high_proximity",
+      "horizon": 5,
+      "decile": 10,
+      "mean_return": 0.001170050100860254,
+      "mean_max_drawdown": -0.04041841545242236,
+      "n": 129155,
+      "rank_ic": -0.03481968801319169,
+      "selector": {
+        "kind": "factor",
+        "factor": "high_proximity",
+        "slice_kind": "decile",
+        "decile": 10,
+        "horizon": 5
+      },
+      "triad_score": 0.4161100108880095,
+      "screen": {
+        "survived": false,
+        "reason": "edge-did-not-persist",
+        "in_sample_dates": 1975,
+        "holdout_dates": 924,
+        "in_sample_edge": -0.0012031551820177293,
+        "holdout_edge": -0.0007362963279464165,
+        "required_holdout_edge": 0.011751200914481041,
+        "batch_size": 110
+      },
+      "oos_survived": false
+    },
+    {
+      "factor": "risk_score",
+      "horizon": 10,
+      "decile": 1,
+      "mean_return": 0.0031462364814924273,
+      "mean_max_drawdown": -0.04521683163163849,
+      "n": 129125,
+      "rank_ic": 0.040225583972974065,
+      "selector": {
+        "kind": "factor",
+        "factor": "risk_score",
+        "slice_kind": "decile",
+        "decile": 1,
+        "horizon": 10
+      },
+      "triad_score": 0.406951369163112,
+      "screen": {
+        "survived": false,
+        "reason": "edge-did-not-persist",
+        "in_sample_dates": 1953,
+        "holdout_dates": 713,
+        "in_sample_edge": -0.0005095642047117793,
+        "holdout_edge": -0.002641900017503667,
+        "required_holdout_edge": 0.011751200914481041,
+        "batch_size": 110
+      },
+      "oos_survived": false
+    },
+    {
+      "factor": "leadership_score",
+      "horizon": 5,
+      "decile": 10,
+      "mean_return": 0.003355160219161504,
+      "mean_max_drawdown": -0.05311811226445932,
+      "n": 129397,
+      "rank_ic": -0.00741219194729862,
+      "selector": {
+        "kind": "factor",
+        "factor": "leadership_score",
+        "slice_kind": "decile",
+        "decile": 10,
+        "horizon": 5
+      },
+      "triad_score": 0.39161345057654,
+      "screen": {
+        "survived": false,
+        "reason": "edge-did-not-persist",
+        "in_sample_dates": 2287,
+        "holdout_dates": 700,
+        "in_sample_edge": -0.0001770179430507083,
+        "holdout_edge": 0.0018177932305984538,
+        "required_holdout_edge": 0.011751200914481041,
+        "batch_size": 110
+      },
+      "oos_survived": false
+    },
+    {
+      "factor": "vcp_contraction",
+      "horizon": 10,
+      "decile": 1,
+      "mean_return": 0.009481588214330709,
+      "mean_max_drawdown": -0.06267578899609141,
+      "n": 129125,
+      "rank_ic": 0.014465840402275613,
+      "selector": {
+        "kind": "factor",
+        "factor": "vcp_contraction",
+        "slice_kind": "decile",
+        "decile": 1,
+        "horizon": 10
+      },
+      "triad_score": 0.38149084001784367,
+      "screen": {
+        "survived": false,
+        "reason": "edge-did-not-persist",
+        "in_sample_dates": 2049,
+        "holdout_dates": 844,
+        "in_sample_edge": 0.001310298531616249,
+        "holdout_edge": -0.003527239488843633,
+        "required_holdout_edge": 0.011751200914481041,
+        "batch_size": 110
+      },
+      "oos_survived": false
+    },
+    {
+      "factor": "ma_stack",
+      "horizon": 5,
+      "decile": 1,
+      "mean_return": 0.006310634045161691,
+      "mean_max_drawdown": -0.06125608568776375,
+      "n": 129396,
+      "rank_ic": -0.029676093330684584,
+      "selector": {
+        "kind": "factor",
+        "factor": "ma_stack",
+        "slice_kind": "decile",
+        "decile": 1,
+        "horizon": 5
+      },
+      "triad_score": 0.379434460819061,
+      "screen": {
+        "survived": false,
+        "reason": "edge-did-not-persist",
+        "in_sample_dates": 2376,
+        "holdout_dates": 609,
+        "in_sample_edge": 0.002011841011107852,
+        "holdout_edge": -0.0012465889532304701,
+        "required_holdout_edge": 0.011751200914481041,
+        "batch_size": 110
+      },
+      "oos_survived": false
+    },
+    {
+      "factor": "up_down_vol",
+      "horizon": 5,
+      "decile": 10,
+      "mean_return": 0.007380116063566729,
+      "mean_max_drawdown": -0.06410225712641841,
+      "n": 129397,
+      "rank_ic": 0.016774437056596314,
+      "selector": {
+        "kind": "factor",
+        "factor": "up_down_vol",
+        "slice_kind": "decile",
+        "decile": 10,
+        "horizon": 5
+      },
+      "triad_score": 0.37733074452914717,
+      "screen": {
+        "survived": false,
+        "reason": "edge-did-not-persist",
+        "in_sample_dates": 2296,
+        "holdout_dates": 682,
+        "in_sample_edge": 0.0007273602641474936,
+        "holdout_edge": 0.0011607711272361213,
         "required_holdout_edge": 0.011751200914481041,
         "batch_size": 110
       },
@@ -1141,10 +1085,10 @@
       "factor": "entry_quality_score",
       "horizon": 10,
       "decile": 10,
-      "mean_return": 0.005221571969486505,
-      "mean_max_drawdown": -0.051135094259408216,
-      "n": 77331,
-      "rank_ic": -0.020540908771229046,
+      "mean_return": 0.0047094810243049606,
+      "mean_max_drawdown": -0.05235375564904978,
+      "n": 129126,
+      "rank_ic": -0.01400964449353321,
       "selector": {
         "kind": "factor",
         "factor": "entry_quality_score",
@@ -1152,55 +1096,55 @@
         "decile": 10,
         "horizon": 10
       },
-      "triad_score": 0.35479897981173714,
+      "triad_score": 0.3514284855457465,
       "screen": {
         "survived": false,
         "reason": "edge-did-not-persist",
-        "in_sample_dates": 1427,
-        "holdout_dates": 424,
-        "in_sample_edge": -0.000151691893059019,
-        "holdout_edge": -0.007004511508853191,
+        "in_sample_dates": 2264,
+        "holdout_dates": 710,
+        "in_sample_edge": -0.00036294852324699015,
+        "holdout_edge": -0.00402138841281258,
         "required_holdout_edge": 0.011751200914481041,
         "batch_size": 110
       },
       "oos_survived": false
     },
     {
-      "factor": "ma_stack",
-      "horizon": 5,
-      "decile": 1,
-      "mean_return": 0.0066696352425456166,
-      "mean_max_drawdown": -0.06139103458774729,
-      "n": 77601,
-      "rank_ic": -0.030490327803527444,
+      "factor": "atr_pct",
+      "horizon": 60,
+      "decile": 10,
+      "mean_return": 0.10820676342699992,
+      "mean_max_drawdown": -0.2495554172372771,
+      "n": 126416,
+      "rank_ic": 0.09502120711542328,
       "selector": {
         "kind": "factor",
-        "factor": "ma_stack",
+        "factor": "atr_pct",
         "slice_kind": "decile",
-        "decile": 1,
-        "horizon": 5
+        "decile": 10,
+        "horizon": 60
       },
-      "triad_score": 0.33383253977528343,
+      "triad_score": 0.34378612968909295,
       "screen": {
-        "survived": false,
-        "reason": "edge-did-not-persist",
-        "in_sample_dates": 1578,
-        "holdout_dates": 275,
-        "in_sample_edge": 0.0014734095954694274,
-        "holdout_edge": -0.003559295827743624,
+        "survived": true,
+        "reason": "edge-persisted",
+        "in_sample_dates": 2042,
+        "holdout_dates": 769,
+        "in_sample_edge": 0.009073131362416123,
+        "holdout_edge": 0.08112224269534633,
         "required_holdout_edge": 0.011751200914481041,
         "batch_size": 110
       },
-      "oos_survived": false
+      "oos_survived": true
     },
     {
       "factor": "leadership_score",
       "horizon": 5,
       "decile": 1,
-      "mean_return": 0.004514594967232939,
-      "mean_max_drawdown": -0.057690714216481566,
-      "n": 77601,
-      "rank_ic": -0.002767724354767283,
+      "mean_return": 0.0046349162100174516,
+      "mean_max_drawdown": -0.05971608033464108,
+      "n": 129396,
+      "rank_ic": -0.00741219194729862,
       "selector": {
         "kind": "factor",
         "factor": "leadership_score",
@@ -1208,55 +1152,111 @@
         "decile": 1,
         "horizon": 5
       },
-      "triad_score": 0.3275485814287999,
+      "triad_score": 0.33213782571786965,
       "screen": {
         "survived": false,
         "reason": "edge-did-not-persist",
-        "in_sample_dates": 1416,
-        "holdout_dates": 444,
-        "in_sample_edge": 0.002824627642196284,
-        "holdout_edge": -0.002906783145638364,
+        "in_sample_dates": 2246,
+        "holdout_dates": 741,
+        "in_sample_edge": 0.0027465029608822376,
+        "holdout_edge": -0.0006525702886364708,
         "required_holdout_edge": 0.011751200914481041,
         "batch_size": 110
       },
       "oos_survived": false
     },
     {
-      "factor": "up_down_vol",
-      "horizon": 5,
-      "decile": 10,
-      "mean_return": 0.008895128824651275,
-      "mean_max_drawdown": -0.06672840229919173,
-      "n": 77602,
-      "rank_ic": 0.00803723761020031,
+      "factor": "rs_spy_3m",
+      "horizon": 1,
+      "decile": 1,
+      "mean_return": 0.0014783569213650117,
+      "mean_max_drawdown": -0.03500929927956395,
+      "n": 128631,
+      "rank_ic": -0.0012988476213014308,
       "selector": {
         "kind": "factor",
-        "factor": "up_down_vol",
+        "factor": "rs_spy_3m",
         "slice_kind": "decile",
-        "decile": 10,
-        "horizon": 5
+        "decile": 1,
+        "horizon": 1
       },
-      "triad_score": 0.31322607589506807,
+      "triad_score": 0.30493590267778586,
       "screen": {
         "survived": false,
         "reason": "edge-did-not-persist",
-        "in_sample_dates": 1346,
-        "holdout_dates": 505,
-        "in_sample_edge": 0.0010004203064749842,
-        "holdout_edge": 0.0015087281409589253,
+        "in_sample_dates": 2519,
+        "holdout_dates": 414,
+        "in_sample_edge": 0.0005642404457664355,
+        "holdout_edge": 4.824342157560274e-05,
         "required_holdout_edge": 0.011751200914481041,
         "batch_size": 110
       },
       "oos_survived": false
+    },
+    {
+      "factor": "rs_spy_3m",
+      "horizon": 1,
+      "decile": 10,
+      "mean_return": 0.0007808168429304462,
+      "mean_max_drawdown": -0.033306916021630766,
+      "n": 128632,
+      "rank_ic": -0.0012988476213014308,
+      "selector": {
+        "kind": "factor",
+        "factor": "rs_spy_3m",
+        "slice_kind": "decile",
+        "decile": 10,
+        "horizon": 1
+      },
+      "triad_score": 0.30429851009669495,
+      "screen": {
+        "survived": false,
+        "reason": "edge-did-not-persist",
+        "in_sample_dates": 2305,
+        "holdout_dates": 630,
+        "in_sample_edge": 9.460570462939027e-06,
+        "holdout_edge": 0.0002611593708631681,
+        "required_holdout_edge": 0.011751200914481041,
+        "batch_size": 110
+      },
+      "oos_survived": false
+    },
+    {
+      "factor": "hv",
+      "horizon": 60,
+      "decile": 10,
+      "mean_return": 0.10321043921999862,
+      "mean_max_drawdown": -0.23921050296032692,
+      "n": 126416,
+      "rank_ic": 0.0896355220316846,
+      "selector": {
+        "kind": "factor",
+        "factor": "hv",
+        "slice_kind": "decile",
+        "decile": 10,
+        "horizon": 60
+      },
+      "triad_score": 0.3037602971379769,
+      "screen": {
+        "survived": true,
+        "reason": "edge-persisted",
+        "in_sample_dates": 2173,
+        "holdout_dates": 671,
+        "in_sample_edge": 0.011701273644315946,
+        "holdout_edge": 0.06659919693032659,
+        "required_holdout_edge": 0.011751200914481041,
+        "batch_size": 110
+      },
+      "oos_survived": true
     },
     {
       "factor": "ma_stack",
       "horizon": 10,
       "decile": 10,
-      "mean_return": 0.0066467442304586665,
-      "mean_max_drawdown": -0.05905948959240176,
-      "n": 77331,
-      "rank_ic": -0.04678397585338786,
+      "mean_return": 0.005172979894786256,
+      "mean_max_drawdown": -0.061329011844754026,
+      "n": 129126,
+      "rank_ic": -0.04110153035458335,
       "selector": {
         "kind": "factor",
         "factor": "ma_stack",
@@ -1264,14 +1264,42 @@
         "decile": 10,
         "horizon": 10
       },
-      "triad_score": 0.25951195187611875,
+      "triad_score": 0.21443373251427505,
       "screen": {
         "survived": false,
         "reason": "edge-did-not-persist",
-        "in_sample_dates": 1314,
-        "holdout_dates": 510,
-        "in_sample_edge": 0.0027054968168012013,
-        "holdout_edge": 0.0009657711738743019,
+        "in_sample_dates": 2069,
+        "holdout_dates": 879,
+        "in_sample_edge": 0.0020514308712562155,
+        "holdout_edge": -0.00021627103154693502,
+        "required_holdout_edge": 0.011751200914481041,
+        "batch_size": 110
+      },
+      "oos_survived": false
+    },
+    {
+      "factor": "up_down_vol",
+      "horizon": 10,
+      "decile": 10,
+      "mean_return": 0.01457613916137239,
+      "mean_max_drawdown": -0.08593629064693792,
+      "n": 129126,
+      "rank_ic": 0.026575503353459002,
+      "selector": {
+        "kind": "factor",
+        "factor": "up_down_vol",
+        "slice_kind": "decile",
+        "decile": 10,
+        "horizon": 10
+      },
+      "triad_score": 0.1995691525114322,
+      "screen": {
+        "survived": false,
+        "reason": "edge-did-not-persist",
+        "in_sample_dates": 2281,
+        "holdout_dates": 683,
+        "in_sample_edge": 0.001500236993817542,
+        "holdout_edge": 0.0013278985744824363,
         "required_holdout_edge": 0.011751200914481041,
         "batch_size": 110
       },
@@ -1281,10 +1309,10 @@
       "factor": "atr_pct",
       "horizon": 20,
       "decile": 1,
-      "mean_return": 0.008689098643974965,
-      "mean_max_drawdown": -0.05169356610181253,
-      "n": 76788,
-      "rank_ic": 0.09045233174409717,
+      "mean_return": 0.0072282919314050195,
+      "mean_max_drawdown": -0.054486665120398736,
+      "n": 128584,
+      "rank_ic": 0.06434946623524795,
       "selector": {
         "kind": "factor",
         "factor": "atr_pct",
@@ -1292,42 +1320,42 @@
         "decile": 1,
         "horizon": 20
       },
-      "triad_score": 0.22983860876539342,
+      "triad_score": 0.19836095967900885,
       "screen": {
         "survived": false,
         "reason": "edge-did-not-persist",
-        "in_sample_dates": 721,
-        "holdout_dates": 788,
-        "in_sample_edge": 0.002256034598455186,
-        "holdout_edge": -0.006735075061418458,
+        "in_sample_dates": 1163,
+        "holdout_dates": 1271,
+        "in_sample_edge": 6.79563618267834e-05,
+        "holdout_edge": -0.006054027706761723,
         "required_holdout_edge": 0.011751200914481041,
         "batch_size": 110
       },
       "oos_survived": false
     },
     {
-      "factor": "high_proximity",
-      "horizon": 10,
+      "factor": "vcp_contraction",
+      "horizon": 5,
       "decile": 10,
-      "mean_return": 0.004454003996714778,
-      "mean_max_drawdown": -0.054810982781409,
-      "n": 77202,
-      "rank_ic": -0.0570028563856035,
+      "mean_return": 0.003395877638158729,
+      "mean_max_drawdown": -0.06465945194654024,
+      "n": 129397,
+      "rank_ic": 0.0069568292969678,
       "selector": {
         "kind": "factor",
-        "factor": "high_proximity",
+        "factor": "vcp_contraction",
         "slice_kind": "decile",
         "decile": 10,
-        "horizon": 10
+        "horizon": 5
       },
-      "triad_score": 0.20653504426551808,
+      "triad_score": 0.19081945307075315,
       "screen": {
         "survived": false,
         "reason": "edge-did-not-persist",
-        "in_sample_dates": 1236,
-        "holdout_dates": 540,
-        "in_sample_edge": -0.0009956345831764893,
-        "holdout_edge": 0.0012916859322389665,
+        "in_sample_dates": 2259,
+        "holdout_dates": 668,
+        "in_sample_edge": 0.0012180043080116064,
+        "holdout_edge": -0.00044635974554286547,
         "required_holdout_edge": 0.011751200914481041,
         "batch_size": 110
       },
@@ -1337,10 +1365,10 @@
       "factor": "hv",
       "horizon": 20,
       "decile": 1,
-      "mean_return": 0.008868577810796835,
-      "mean_max_drawdown": -0.05390816763199759,
-      "n": 76788,
-      "rank_ic": 0.08246572636283196,
+      "mean_return": 0.0075700060191698495,
+      "mean_max_drawdown": -0.05691085794407024,
+      "n": 128584,
+      "rank_ic": 0.055961514254963006,
       "selector": {
         "kind": "factor",
         "factor": "hv",
@@ -1348,70 +1376,42 @@
         "decile": 1,
         "horizon": 20
       },
-      "triad_score": 0.19574995738547707,
+      "triad_score": 0.1709634772861242,
       "screen": {
         "survived": false,
         "reason": "edge-did-not-persist",
-        "in_sample_dates": 823,
-        "holdout_dates": 810,
-        "in_sample_edge": 0.0004890142638912137,
-        "holdout_edge": -0.007028225412148684,
+        "in_sample_dates": 1264,
+        "holdout_dates": 1397,
+        "in_sample_edge": -0.0009434918831473088,
+        "holdout_edge": -0.0034463794109034092,
         "required_holdout_edge": 0.011751200914481041,
         "batch_size": 110
       },
       "oos_survived": false
     },
     {
-      "factor": "up_down_vol",
-      "horizon": 10,
-      "decile": 1,
-      "mean_return": 0.008939788079056338,
-      "mean_max_drawdown": -0.06703266608893259,
-      "n": 77330,
-      "rank_ic": 0.02388935861607053,
-      "selector": {
-        "kind": "factor",
-        "factor": "up_down_vol",
-        "slice_kind": "decile",
-        "decile": 1,
-        "horizon": 10
-      },
-      "triad_score": 0.19249570078529846,
-      "screen": {
-        "survived": false,
-        "reason": "edge-did-not-persist",
-        "in_sample_dates": 1273,
-        "holdout_dates": 567,
-        "in_sample_edge": 0.001628226583960068,
-        "holdout_edge": -0.00010261731968915434,
-        "required_holdout_edge": 0.011751200914481041,
-        "batch_size": 110
-      },
-      "oos_survived": false
-    },
-    {
-      "factor": "up_down_vol",
-      "horizon": 10,
+      "factor": "risk_score",
+      "horizon": 5,
       "decile": 10,
-      "mean_return": 0.019484222424834836,
-      "mean_max_drawdown": -0.0879383908624643,
-      "n": 77331,
-      "rank_ic": 0.02388935861607053,
+      "mean_return": 0.005722409421357116,
+      "mean_max_drawdown": -0.07170767913671444,
+      "n": 129397,
+      "rank_ic": 0.02905347944977402,
       "selector": {
         "kind": "factor",
-        "factor": "up_down_vol",
+        "factor": "risk_score",
         "slice_kind": "decile",
         "decile": 10,
-        "horizon": 10
+        "horizon": 5
       },
-      "triad_score": 0.17282993580475506,
+      "triad_score": 0.17029148282551582,
       "screen": {
         "survived": false,
         "reason": "edge-did-not-persist",
-        "in_sample_dates": 1330,
-        "holdout_dates": 508,
-        "in_sample_edge": 0.0018255980655045565,
-        "holdout_edge": 0.0033337833622345916,
+        "in_sample_dates": 2042,
+        "holdout_dates": 944,
+        "in_sample_edge": 0.0013180393333518355,
+        "holdout_edge": 0.003900140278871505,
         "required_holdout_edge": 0.011751200914481041,
         "batch_size": 110
       },
@@ -1423,10 +1423,10 @@
       "factor": "downside_vol",
       "horizon": 60,
       "decile": 10,
-      "mean_return": 0.13729494282626992,
-      "mean_max_drawdown": -0.21822806171557516,
-      "n": 74620,
-      "rank_ic": 0.14424201093593778,
+      "mean_return": 0.10542816589879571,
+      "mean_max_drawdown": -0.236599717365396,
+      "n": 126416,
+      "rank_ic": 0.09609730981036874,
       "selector": {
         "kind": "factor",
         "factor": "downside_vol",
@@ -1434,14 +1434,14 @@
         "decile": 10,
         "horizon": 60
       },
-      "triad_score": 0.660082741421993,
+      "triad_score": 0.44796321056494603,
       "screen": {
         "survived": true,
         "reason": "edge-persisted",
-        "in_sample_dates": 1270,
-        "holdout_dates": 441,
-        "in_sample_edge": 0.03641135880234623,
-        "holdout_edge": 0.030159363438701715,
+        "in_sample_dates": 2101,
+        "holdout_dates": 733,
+        "in_sample_edge": 0.018385667325157166,
+        "holdout_edge": 0.049894803496302306,
         "required_holdout_edge": 0.011751200914481041,
         "batch_size": 110
       },
@@ -1451,10 +1451,10 @@
       "factor": "atr_pct",
       "horizon": 60,
       "decile": 10,
-      "mean_return": 0.1438206975416218,
-      "mean_max_drawdown": -0.23617829479159647,
-      "n": 74620,
-      "rank_ic": 0.1426961311916186,
+      "mean_return": 0.10820676342699992,
+      "mean_max_drawdown": -0.2495554172372771,
+      "n": 126416,
+      "rank_ic": 0.09502120711542328,
       "selector": {
         "kind": "factor",
         "factor": "atr_pct",
@@ -1462,14 +1462,14 @@
         "decile": 10,
         "horizon": 60
       },
-      "triad_score": 0.5566500820011664,
+      "triad_score": 0.34378612968909295,
       "screen": {
         "survived": true,
         "reason": "edge-persisted",
-        "in_sample_dates": 1352,
-        "holdout_dates": 417,
-        "in_sample_edge": 0.044643201144747305,
-        "holdout_edge": 0.07594338960317695,
+        "in_sample_dates": 2042,
+        "holdout_dates": 769,
+        "in_sample_edge": 0.009073131362416123,
+        "holdout_edge": 0.08112224269534633,
         "required_holdout_edge": 0.011751200914481041,
         "batch_size": 110
       },
@@ -1479,10 +1479,10 @@
       "factor": "hv",
       "horizon": 60,
       "decile": 10,
-      "mean_return": 0.1377093613142543,
-      "mean_max_drawdown": -0.22552141967196151,
-      "n": 74620,
-      "rank_ic": 0.1360620800255232,
+      "mean_return": 0.10321043921999862,
+      "mean_max_drawdown": -0.23921050296032692,
+      "n": 126416,
+      "rank_ic": 0.0896355220316846,
       "selector": {
         "kind": "factor",
         "factor": "hv",
@@ -1490,14 +1490,14 @@
         "decile": 10,
         "horizon": 60
       },
-      "triad_score": 0.5417960779849282,
+      "triad_score": 0.3037602971379769,
       "screen": {
         "survived": true,
         "reason": "edge-persisted",
-        "in_sample_dates": 1382,
-        "holdout_dates": 415,
-        "in_sample_edge": 0.03841427240854386,
-        "holdout_edge": 0.0632551094128873,
+        "in_sample_dates": 2173,
+        "holdout_dates": 671,
+        "in_sample_edge": 0.011701273644315946,
+        "holdout_edge": 0.06659919693032659,
         "required_holdout_edge": 0.011751200914481041,
         "batch_size": 110
       },
