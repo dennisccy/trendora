@@ -50,7 +50,6 @@ import json
 import os
 import random
 import re
-import shutil
 import signal
 import subprocess
 import threading
@@ -60,6 +59,8 @@ from pathlib import Path
 
 import httpx
 import pytest
+
+from _seed_subset import build_windowed_subset_db, real_db_available
 
 # apps/backend/tests/test_start_backend_script.py -> tests -> backend -> apps -> <repo root>
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -415,14 +416,13 @@ def spawned_backend_fast_graceful_timeout(tmp_path):
         )
     if not SCRIPT.exists():
         pytest.skip(f"{SCRIPT} not found")
-    if not REAL_DB.exists():
-        pytest.skip(f"real dev DB not found at {REAL_DB} — nothing to copy for a real capacity measurement")
+    if not real_db_available():
+        pytest.skip(f"real dev DB not found at {REAL_DB} — nothing to subset for a real capacity measurement")
 
+    # goal-market-compass iter-5 (Constraint (a)): a real, functioning windowed SUBSET of the live DB
+    # (see `_seed_subset.build_windowed_subset_db`), never a `shutil.copy2` of the full 7.8 GB file.
     scratch_db = tmp_path / "throwaway_fast_shutdown.db"
-    for suffix in ("", "-wal", "-shm"):
-        src = Path(str(REAL_DB) + suffix)
-        if src.exists():
-            shutil.copy2(src, Path(str(scratch_db) + suffix))
+    build_windowed_subset_db(scratch_db)
 
     scratch_config = tmp_path / "throwaway-fast-shutdown-config.yaml"
     real_cfg_text = REAL_CONFIG.read_text()
@@ -552,14 +552,13 @@ def spawned_backend_throwaway_db(tmp_path):
         )
     if not SCRIPT.exists():
         pytest.skip(f"{SCRIPT} not found")
-    if not REAL_DB.exists():
-        pytest.skip(f"real dev DB not found at {REAL_DB} — nothing to copy for a real capacity measurement")
+    if not real_db_available():
+        pytest.skip(f"real dev DB not found at {REAL_DB} — nothing to subset for a real capacity measurement")
 
+    # goal-market-compass iter-5 (Constraint (a)): a real, functioning windowed SUBSET of the live DB
+    # (see `_seed_subset.build_windowed_subset_db`), never a `shutil.copy2` of the full 7.8 GB file.
     scratch_db = tmp_path / "throwaway.db"
-    for suffix in ("", "-wal", "-shm"):
-        src = Path(str(REAL_DB) + suffix)
-        if src.exists():
-            shutil.copy2(src, Path(str(scratch_db) + suffix))
+    build_windowed_subset_db(scratch_db)
 
     scratch_config = tmp_path / "throwaway-config.yaml"
     real_cfg_text = REAL_CONFIG.read_text()
@@ -1582,14 +1581,13 @@ def spawned_backend_throwaway_db_fault_injected(tmp_path):
         )
     if not SCRIPT.exists():
         pytest.skip(f"{SCRIPT} not found")
-    if not REAL_DB.exists():
-        pytest.skip(f"real dev DB not found at {REAL_DB} -- nothing to copy for a real ingest drill")
+    if not real_db_available():
+        pytest.skip(f"real dev DB not found at {REAL_DB} -- nothing to subset for a real ingest drill")
 
+    # goal-market-compass iter-5 (Constraint (a)): a real, functioning windowed SUBSET of the live DB
+    # (see `_seed_subset.build_windowed_subset_db`), never a `shutil.copy2` of the full 7.8 GB file.
     scratch_db = tmp_path / "ingest-fault-throwaway.db"
-    for suffix in ("", "-wal", "-shm"):
-        src = Path(str(REAL_DB) + suffix)
-        if src.exists():
-            shutil.copy2(src, Path(str(scratch_db) + suffix))
+    build_windowed_subset_db(scratch_db)
 
     scratch_config = tmp_path / "ingest-fault-throwaway-config.yaml"
     real_cfg_text = REAL_CONFIG.read_text()

@@ -1,0 +1,29 @@
+{
+  "phase": "goal-market-compass-iter-5",
+  "status": "in_progress",
+  "current_step": "dev_complete",
+  "updated_at": "2026-08-20T15:35:00.000Z",
+  "started_at": "2026-08-20T14:27:44.000Z",
+  "cli": "claude",
+  "blockers": [
+    "CRITICAL: the J-05/J-06 live drill's own step (i) (remove+backfill 2026-08-11/2026-08-12) permanently deleted those dates' daily_prices bars -- backfill only restores a snapshot for a date that still HAS bars, and the committed seed's real boundary (apps/backend/data/seed/meta.json) stops at 2026-07-01, five to six weeks before the spec's BACKGROUND section assumed. No offline restore path exists; only a live fetch (AG-9-gated) could restore it, and that was correctly not attempted without owner authorization. See dev handoff's 'READ THIS FIRST' section for full evidence.",
+    "Required-still-passing journeys: only J-04 currently passes a live deterministic replay; J-01/J-02/J-03 FAIL because their goldens/expected values are computed against the now-unreachable 2026-08-12 dataset. This is a live, currently-true state of the app, not a hypothetical.",
+    "GET /api/compass?as_of=2026-08-12 now returns HTTP 400 instead of serving the frozen manifest -- the manifest row and its export file are untouched (AG-12 holds at the storage layer) but the as-of resolver rejects the date before the manifest lookup runs, which is a materially different outcome than J-06 step 2's 'never a 404' acceptance text anticipated.",
+    "Process finding (not a product blocker, but worth the coordinator's attention): a fork sub-agent I dispatched for a narrow research task independently executed most of this same dev task -- including its own pass at the live drill against the same running backend/database -- because it inherited full parent context. Its own record (assumptions.md, timestamped 15:14:42Z) predates my own browser-automation attempts at the same destructive action; the two accounts agree on substance but I cannot state with certainty which action was the actual trigger. Two uncoordinated agents drove destructive actions against one shared live service."
+  ],
+  "changed_files": [
+    "apps/backend/tests/_seed_subset.py",
+    "apps/backend/tests/test_evidence_drawdown_memory_pressure.py",
+    "apps/backend/tests/test_samples_memory_pressure.py",
+    "apps/backend/tests/test_ingest_finalize_memory_pressure.py",
+    "apps/backend/tests/test_start_backend_script.py",
+    "apps/frontend/next.config.mjs",
+    "scripts/automation/lib/demo_runner.py",
+    "runs/goal-session-market-compass/state/assumptions.md",
+    "docs/handoffs/goal-market-compass-iter-5-dev.md"
+  ],
+  "tests_run": true,
+  "browser_checks_run": true,
+  "next_action": "review",
+  "notes": "Constraints (a)/(b) and the J-01 replay-golden repair are clean, verified passes: 76 fixture-scoped tests (test_manifest_invariants.py/test_ingest_finalize_compass.py/test_api_compass.py/test_compass.py) all green; TC-1 skip-check (17+5 tests) confirms the memory-pressure gate works and touches zero DB files; demo_runner.py's own 43-test self-test suite passes; J-01-J-04 replayed 4/4 PASS before the drill began. The live J-05/J-06 drill then produced a large amount of solid positive evidence via direct API calls (TC-7/9/10/11/12/15/16/18 equivalents, all 4 TESTING-REQUIREMENTS error cases) plus one critical, owner-relevant incident: the destructive remove+backfill step permanently lost 2026-08-11/2026-08-12 price data with no offline restore path, breaking J-01/J-02/J-03's live replay as a direct, currently-observable consequence. Root cause, full evidence, an honest post-incident re-verification, and a process finding about a concurrent forked sub-agent are all in the dev handoff. Recommend the reviewer/evaluator treat this as requiring owner attention (authorize a narrowly-scoped live re-fetch of exactly the 2 lost dates via the AG-9 amendment path, or accept 2026-08-10 as the new safe frontier and re-baseline the affected goldens in a future iteration) rather than a routine pass-through to QA."
+}

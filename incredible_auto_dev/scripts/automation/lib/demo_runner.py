@@ -951,6 +951,14 @@ class _FakeLocator:
     def first(self):
         return self
 
+    def filter(self, *, visible: "bool | None" = None, **_ignored):
+        # goal-market-compass iter-5: real `_check_expect` now chains `.filter(visible=True)` before
+        # `.first` (see its docstring). This fake models exactly one candidate element per name (never
+        # the "N matches, some hidden" shape the real fix targets), so filtering is a no-op — the
+        # existing spy-recorded `.first.wait_for(...)` call sequence, and every self-test asserting on
+        # it, stays byte-identical.
+        return self
+
     def wait_for(self, state: str = "visible", timeout: float = 0):
         # ops-hardening iter-78: record the timeout each caller actually threaded through, so a
         # test can assert a step's own `timeout_ms` reaches Playwright's `.wait_for()` unclamped
@@ -1019,6 +1027,13 @@ class _FakeSettlingLocator:
 
     @property
     def first(self):
+        return self
+
+    def filter(self, *, visible: "bool | None" = None, **_ignored):
+        # goal-market-compass iter-5: see `_FakeLocator.filter` — same no-op rationale, this fake also
+        # models exactly one candidate per text (its OWN visibility already fully encoded in `.wait_for`
+        # via `page.phase`), so `.filter(visible=True)` changes nothing about the poll sequence
+        # `_t_settle_for_capture_before_after_frames_differ_when_state_changes` depends on.
         return self
 
     def wait_for(self, state: str = "visible", timeout: float = 0):
@@ -1470,7 +1485,25 @@ def _find(page, target: dict, timeout_ms: int):
 def _check_expect(page, exp: dict, timeout_ms: int) -> bool:
     try:
         if "text" in exp:
-            page.get_by_text(exp["text"]).first.wait_for(state="visible", timeout=timeout_ms)
+            # goal-market-compass iter-5 (J-01 replay-golden repair): `get_by_text(...).first` picks
+            # whichever DOM node containing the text comes FIRST in document order, visible or not —
+            # a raw contiguous-substring scan of the WHOLE page, not "the cell's own rendered text".
+            # J-01 step 3 (`expect.text: "Consumer Discretionary"`) produced the identical false FAIL
+            # twice (iter-3, iter-4): the /stocks sector-filter <select> renders an <option> with that
+            # exact text BEFORE the leaderboard table in DOM order, and a closed native <select>'s own
+            # <option> elements are never "visible" per Playwright's actionability rules — `.first`
+            # resolved to that hidden decoy and `.wait_for(state="visible")` timed out even though the
+            # GRMN row's own (two-line-wrapped, but textually intact) sector <td> was genuinely on
+            # screen with the identical text (confirmed by a live DOM probe: 2 matches, index 0 =
+            # hidden <option>, index 1 = the visible <td>). `.filter(visible=True)` scopes the match to
+            # elements actually rendered on screen — re-evaluated on every auto-retry, exactly like the
+            # rest of the locator chain — so `.first` now resolves to the real, visible cell instead of
+            # a same-text decoy elsewhere on the page. Playwright's own text engine already normalizes
+            # whitespace/newlines when comparing (collapses runs to one space, trims), so the cell's
+            # rendered text content is matched normalized without any extra code here.
+            page.get_by_text(exp["text"]).filter(visible=True).first.wait_for(
+                state="visible", timeout=timeout_ms
+            )
             return True
         if "target" in exp:
             _find(page, exp["target"], timeout_ms)

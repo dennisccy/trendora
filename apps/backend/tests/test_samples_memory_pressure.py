@@ -30,16 +30,27 @@ likelihood at a given pressure level, not immunity to arbitrarily severe pressur
 drill's own disclosed residual)."""
 from __future__ import annotations
 
-import shutil
+import os
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 
+from _seed_subset import build_research_subset_db, real_db_available
+
 REPO_ROOT = Path(__file__).resolve().parents[3]
 REAL_DB = REPO_ROOT / "apps/backend/data/trendora.db"
 BACKEND_ROOT = str(Path(__file__).resolve().parent.parent)
+
+# goal-market-compass iter-5 (goal.md Constraint (a) / host resource-fit, owner 2026-08-20): opt-in
+# only — see test_evidence_drawdown_memory_pressure.py's sibling `pytestmark` for the full rationale.
+# TC-1: WITHOUT the env var, every test below reports SKIPPED at setup, before any DB is touched.
+pytestmark = pytest.mark.skipif(
+    os.environ.get("TRENDORA_MEMORY_PRESSURE") != "1",
+    reason="opt-in only — set TRENDORA_MEMORY_PRESSURE=1 to run this real-subprocess memory-pressure "
+    "induction drill (multiple DB builds + ulimit -v subprocess spawns; run on an idle host)",
+)
 
 # The live ledger's OWN leadership_score/decile-10/horizon-20 claim (`runs/goal-session-mcp-loop/state/
 # certified-claims.jsonl`) — the real shape `compute_drawdown_expectations_cached` resolves for every
@@ -79,27 +90,39 @@ BOUNDED_TIMEOUT_S = 150.0
 
 
 def _skip_if_no_real_db() -> None:
-    if not REAL_DB.exists():
+    if not real_db_available():
         pytest.skip(f"real committed seed DB not found at {REAL_DB} — nothing to reproduce against")
 
 
+# goal-market-compass iter-5 (Constraint (a)): every claim in this file (decile/total/regime) is
+# horizon=20 today (see `_CLAIM`/`_TOTAL_CLAIM`/`_REGIME_CLAIM` below) — resolved as a set so a future
+# claim added at a different horizon is automatically carried into the subset instead of silently
+# missing its population. Referenced (not defined) by `_fresh_seed_copy`, so its own definition further
+# down the module is fine — Python resolves module globals at CALL time.
+def _all_claim_horizons() -> list[int]:
+    return sorted({_CLAIM["horizon"], _TOTAL_CLAIM["horizon"], _REGIME_CLAIM["horizon"]})
+
+
 def _fresh_seed_copy(tmp_path: Path, name: str) -> Path:
-    """A FRESH, never-cache-polluted disposable copy of the live committed seed DB, ONE PER CALL — mirrors
-    `test_evidence_drawdown_memory_pressure.py`'s own rationale: `compute_drawdown_expectations_cached`
-    WRITES an `EventStudyCache` row on a MISS, so a copy reused across probes would silently turn a later
-    probe into a trivial cache HIT. Never touches the actual committed `apps/backend/data/trendora.db`."""
+    """A FRESH, never-cache-polluted disposable SUBSET DB, ONE PER CALL — goal-market-compass iter-5
+    (Constraint (a)): built via `_seed_subset.build_research_subset_db` (an `ATTACH`-and-`INSERT
+    ... SELECT` read-only extraction — see that helper's docstring), never a `shutil.copy*` of the live
+    7.8 GB `apps/backend/data/trendora.db`. Mirrors `test_evidence_drawdown_memory_pressure.py`'s own
+    rationale: `compute_drawdown_expectations_cached` WRITES an `EventStudyCache` row on a MISS, so a DB
+    reused across probes would silently turn a later probe into a trivial cache HIT."""
     _skip_if_no_real_db()
     dest = tmp_path / name
-    shutil.copyfile(REAL_DB, dest)
+    build_research_subset_db(dest, horizons=_all_claim_horizons())
     return dest
 
 
 def _delete_copy(path: Path) -> None:
-    """ops-hardening iter-48: the total/regime drills below run TWICE as many DB-copy probes as the
-    existing decile drill (two variants x the same battery) — at ~8.4 GB per copy that is a real disk
-    concern (not merely a slow test), so each copy is deleted immediately after its probe subprocess
-    returns rather than left for `tmp_path`'s end-of-session cleanup. Best-effort: a failed cleanup must
-    never fail the test that already got its result."""
+    """ops-hardening iter-48 (pre-iter-5: sized against the old raw-file-copy fixture, ~8.4 GB per
+    copy): the total/regime drills below run TWICE as many DB-build probes as the existing decile drill
+    (two variants x the same battery), so each build is deleted immediately after its probe subprocess
+    returns rather than left for `tmp_path`'s end-of-session cleanup — still worth doing even at the
+    iter-5 subset DB's much smaller size (many probes x this file's own battery still adds up).
+    Best-effort: a failed cleanup must never fail the test that already got its result."""
     for suffix in ("", "-wal", "-shm"):
         p = Path(str(path) + suffix)
         if p.exists():

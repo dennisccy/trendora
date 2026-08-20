@@ -34,6 +34,7 @@ except -- the first thing to fail, never exercising the iter-8 forward_aggregate
 targets)."""
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import time
@@ -47,6 +48,19 @@ from sqlmodel import Session
 from app.config import load_config
 from app.db import create_db_and_tables, make_engine
 from app.models import ForwardReturn, ScannerResult, ScannerRun
+
+# goal-market-compass iter-5 (goal.md Constraint (a) / host resource-fit, owner 2026-08-20): opt-in
+# only, mirroring the sibling drawdown/samples memory-pressure files — see their `pytestmark` for the
+# full rationale. This file never touched the live `apps/backend/data/trendora.db` (its fixture is
+# already a from-scratch synthetic DB, below) but the drill itself is still a real `ulimit -v`
+# subprocess induction against 600K synthesized tickers x every configured horizon — heavy enough that
+# a plain `pytest` collection of this file must not pay it by accident. TC-1: WITHOUT the env var, both
+# tests below report SKIPPED at setup, in seconds.
+pytestmark = pytest.mark.skipif(
+    os.environ.get("TRENDORA_MEMORY_PRESSURE") != "1",
+    reason="opt-in only — set TRENDORA_MEMORY_PRESSURE=1 to run this real-subprocess memory-pressure "
+    "induction drill (a synthesized 600K-row fixture + ulimit -v subprocess spawn; run on an idle host)",
+)
 
 BACKEND_ROOT = str(Path(__file__).resolve().parent.parent)  # apps/backend -- for the child subprocess's sys.path
 N_TICKERS = 600_000

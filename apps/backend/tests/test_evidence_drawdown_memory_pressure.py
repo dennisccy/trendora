@@ -27,7 +27,7 @@ absolute KB values are calibrated to THIS host/Python build, following that same
 convention of host-measured absolute caps."""
 from __future__ import annotations
 
-import shutil
+import os
 import subprocess
 import sys
 import time
@@ -35,9 +35,22 @@ from pathlib import Path
 
 import pytest
 
+from _seed_subset import build_research_subset_db, real_db_available
+
 REPO_ROOT = Path(__file__).resolve().parents[3]
 REAL_DB = REPO_ROOT / "apps/backend/data/trendora.db"
 BACKEND_ROOT = str(Path(__file__).resolve().parent.parent)
+
+# goal-market-compass iter-5 (goal.md Constraint (a) / host resource-fit, owner 2026-08-20): this
+# module's real-subprocess `ulimit -v` induction is a genuinely heavy drill (multiple fresh DB builds +
+# subprocess spawns) — opt-in only, so a plain `pytest` collection of this file never pays that cost by
+# accident. TC-1: WITHOUT the env var, every test below reports SKIPPED at setup, before any DB is
+# touched, in seconds.
+pytestmark = pytest.mark.skipif(
+    os.environ.get("TRENDORA_MEMORY_PRESSURE") != "1",
+    reason="opt-in only — set TRENDORA_MEMORY_PRESSURE=1 to run this real-subprocess memory-pressure "
+    "induction drill (multiple DB builds + ulimit -v subprocess spawns; run on an idle host)",
+)
 
 _CLAIM = {"kind": "factor", "factor": "leadership_score", "slice_kind": "total", "horizon": 20, "direction": "positive"}
 
@@ -53,21 +66,24 @@ BOUNDED_TIMEOUT_S = 120.0
 
 
 def _skip_if_no_real_db() -> None:
-    if not REAL_DB.exists():
+    if not real_db_available():
         pytest.skip(f"real committed seed DB not found at {REAL_DB} — nothing to reproduce against")
 
 
 def _fresh_seed_copy(tmp_path: Path, name: str) -> Path:
-    """A FRESH, never-cache-polluted disposable copy of the live committed seed DB, ONE PER CALL.
+    """A FRESH, never-cache-polluted disposable SUBSET DB, ONE PER CALL — goal-market-compass iter-5
+    (Constraint (a)): built via `_seed_subset.build_research_subset_db` (an `ATTACH`-and-`INSERT
+    ... SELECT` read-only extraction of just the horizon=20 population this module's `_CLAIM` needs),
+    never a `shutil.copy*` of the live 7.8 GB `apps/backend/data/trendora.db` — see that helper's
+    docstring for exactly which rows/tables are carried and which are honestly dropped.
     `compute_drawdown_expectations_cached` (the real `/api/evidence` entry point this drill exercises)
-    WRITES an `EventStudyCache` row on a MISS — so a copy REUSED across sub-calls would silently turn a
+    WRITES an `EventStudyCache` row on a MISS — so a DB REUSED across sub-calls would silently turn a
     later "reference"/"starved" probe into a trivial cache HIT (never re-invoking the compute this drill
     exists to pressure-test) the moment an EARLIER probe on the SAME copy succeeded. Each probe therefore
-    gets its OWN fresh copy (a local-disk copy of the seed DB measures ~1-2s — cheap relative to the ~20s+
-    compute each probe pays). Never touches the actual committed `apps/backend/data/trendora.db` file."""
+    gets its OWN fresh subset build."""
     _skip_if_no_real_db()
     dest = tmp_path / name
-    shutil.copyfile(REAL_DB, dest)
+    build_research_subset_db(dest, horizons=[_CLAIM["horizon"]])
     return dest
 
 

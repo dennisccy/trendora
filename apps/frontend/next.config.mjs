@@ -155,5 +155,13 @@ export default function nextConfig(phase) {
     // Type-checking stays ON (the frontend "test" is `npm run build` = compile + typecheck).
     eslint: { ignoreDuringBuilds: true },
     distDir,
+    // goal.md Constraint (b) / AG-10 (host resource-fit, owner 2026-08-20): production `next build`
+    // otherwise fans out to `os.cpus().length - 1` static-worker processes (16-way on this host) —
+    // real concurrent CPU/memory pressure the 2026-08-20 desktop-freeze incident named as a
+    // contributing factor when a full-depth iteration runs alongside other host activity. Bounding
+    // `experimental.cpus` (the exact knob `getNumberOfWorkers` in Next's build pipeline reads — see
+    // `node_modules/next/dist/build/index.js`) caps the static-worker fan-out at 4 without touching
+    // `next start`/`next dev` (this same config, unaffected — Next only consults `cpus` at build time).
+    experimental: { cpus: 4 },
   };
 }
