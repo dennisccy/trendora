@@ -4,6 +4,7 @@ import { AlertTriangle } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Disclosure } from "@/components/ui/disclosure";
+import { formatFactValue } from "@/lib/format-fact";
 import type { CompassResponse } from "@/lib/api";
 
 /** J-03 (goal-market-compass iter-2): the plain-English summary card. Every sentence is rendered
@@ -50,7 +51,10 @@ export function CompassSummaryCard({ compass }: { compass: CompassResponse | nul
                     {sentence.facts.map((fact) => (
                       <li key={fact.name} className="flex items-center gap-2">
                         <span className="text-text-faint">{fact.name}:</span>
-                        <span className="num text-text">{String(fact.value)}</span>
+                        {/* TC-36: a number renders rounded (e.g. "-0.20"), never a raw floating-point
+                            artifact ("-0.20000000000000284") -- display-only, the served fact value
+                            itself is unchanged. */}
+                        <span className="num text-text">{formatFactValue(fact.value)}</span>
                       </li>
                     ))}
                   </ul>

@@ -1,7 +1,7 @@
 """app.engine.compass — the deterministic narrative + candidate-selection trace + manifest assembly
-(goal-market-compass iter-2, J-03/J-04, CONTENT block only).
+(goal-market-compass iter-2, J-03/J-04, CONTENT block; iter-3, J-05/J-06, the freeze/integrity block).
 
-Three producers, one assembler:
+Three CONTENT producers, one assembler (iter-2, unchanged this iteration):
 
   - `build_narrative(...)` — deterministic template sentences (state / direction / breadth /
     focus-count, plus a no-comparison / NA-velocity / retrospective-stamp variant where it applies),
@@ -11,37 +11,70 @@ Three producers, one assembler:
     `ScannerResult` rows: candidates with reasons/cautions/checklist/what-would-change/invalidation;
     why-not entries for near-miss and cap-excluded non-candidates; a disposition tally that partitions
     member count minus candidate count exactly; an explicit `candidates_empty_reason` when nothing
-    clears the floor. No new blended/composite score is introduced anywhere (AG-11) — every value shown
-    is one of the three existing per-stock scores/buckets plus a config word map.
+    clears the floor. iter-3 (J-05/J-06) additionally serializes FULL frozen-context rows for every
+    non-candidate member — `comparison_cohort` (the whole non-selected pool, each row carrying a
+    closed-vocabulary `selection_disposition`) and `near_threshold_shadow` (the leadership-banded
+    subset just below the floor) — reusing the SAME `non_qualifying` / `excluded_by_cap_pairs`
+    partitions the disposition tally already computed. No new blended/composite score is introduced
+    anywhere (AG-11) — every value shown is one of the three existing per-stock scores/buckets, a
+    config word map, or a structural context field already computed by `scoring.score_stocks`.
   - `build_manifest_payload(...)` — assembles `session_delta` + `narrative` + `selection` into one
     content document and computes `content_hash` (sha256 over the sorted-key JSON of the content block
-    only).
+    only — unchanged scope/contract from iter-2, including the cohorts now nested inside `selection`).
 
-`get_or_create_manifest` / `manifest_row_payload` are the storage half: compute once per `as_of`
-(create-once), persist immutably (AG-12 — never updated or deleted), serve from storage on every later
-hit (TC-1 — zero producer calls on a warm read).
+The freeze/integrity block (iter-3, J-05/J-06) — `_freeze_manifest` is the ONE writer behind all three
+producer paths:
 
-Reads ONLY column-projected `ScannerResult` selects for the universe-wide sweep, plus a SMALL, bounded
-`record_json` read for the (<= `max_candidates`) actual candidates only — never a full-universe
-`record_json` sweep (AG-8). Never reads `forward_returns` or any bar dated after the as-of — it reads
-already-stored, already-computed run rows only (AG-5).
+  - (a) `get_or_create_manifest(..., producer="ingest_finalize")` — the ingest-finalize freeze call site;
+    mints version 1, `mode` is data-driven (`at_ingest` iff no bar dated later than the as-of exists at
+    generation — `_resolve_mode`), `frozen: true` always.
+  - (b) `get_or_create_manifest(...)` (default `producer="on_demand_get"`) — create-once-on-GET for a
+    HISTORICAL (non-frontier) as-of with no row yet. The CURRENT frontier's manifest is NEVER minted this
+    way (`ManifestNotYetFrozen`) — only (a) or an explicit (c) can mint it (J-05 step 7 / TC-8).
+  - (c) `regenerate_manifest(...)` — the confirm-gated regenerate action; mints version N+1 for an
+    EXISTING `as_of`. `prospective_eligible` is write-once and version-shopping-proof: only version 1
+    minted by `ingest_finalize` can ever be `true` (`_derive_prospective_eligible` is fail-closed on
+    every condition independently — mode, producer, version, frozen, the `available_at_utc` fence, and
+    complete provenance).
+
+`manifest_row_payload(row)` reconstructs the served document from the row's split storage columns —
+a READ, never a recompute (AG-8 column-projection posture: `comparison_cohort_json` /
+`near_threshold_shadow_json` / `generation_json` / the three rule-identity config-subset columns are
+their OWN columns so a future column-projected read never has to deserialize a block it does not need).
+`basis_disclosure(session, row)` is a READ-TIME-ONLY comparison (never a mutation, never a recompute of
+the frozen content) between the manifest's recorded `source_run_created_at` and the CURRENT stored run
+for that as-of (never the dataset-version stamp alone, which a rebuild can reproduce byte-identically).
+
+Reads ONLY column-projected `ScannerResult` selects for the universe-wide sweep, plus a bounded
+`record_json` read for candidates AND (iter-3) every non-candidate member of the ONE run being frozen
+(up to ~530 rows today) — never a full-universe sweep across runs (AG-8; TC-30). Never reads
+`forward_returns` or any bar dated after the as-of — it reads already-stored, already-computed run rows
+only (AG-5).
 """
 from __future__ import annotations
 
 import hashlib
 import json
-from datetime import datetime, timezone
-from typing import Optional
+import logging
+import os
+from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any, Optional
 
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
-from app.config import Config, get_config
-from app.engine import market_phase
+from app.config import Config, REPO_ROOT, get_config
+from app.engine import engine_identity, evidence, market_phase, readiness
+from app.engine.prices import latest_data_date
+from app.engine.research import _dataset_version  # single-sourced dataset stamp (J-72) — never duplicated
 from app.engine.session_delta import compute_delta, find_previous_run
 from app.engine.setups import RISK_OFF_LABEL
 from app.engine.snapshot_serving import dashboard_payload
-from app.models import NextSessionManifest, ScannerResult, ScannerRun
+from app.engine.universe_screen import POOL_SURVIVORSHIP_LABEL, read_pool
+from app.models import NextSessionManifest, ScannerResult, ScannerRun, ThemeScoreRow
+
+logger = logging.getLogger(__name__)
 
 # --- narrative -------------------------------------------------------------------------------
 
@@ -166,15 +199,20 @@ def _retrospective_sentence() -> dict:
 
 def _is_retrospective(session: Session, current_run: ScannerRun) -> bool:
     """True when a LATER stored run already exists at the moment this manifest is generated — the
-    generation-time signal this narrative's retrospective stamp discloses. (Distinct from, and simpler
-    than, the future `mode`/`generation.*` freeze fields — J-05/J-06, OUT OF SCOPE this iteration.)"""
+    generation-time signal this narrative's retrospective stamp discloses. iter-3 (J-05/J-06) REUSES
+    this exact check as "is this NOT the current frontier run" — the manifest-freeze frontier guard
+    (`get_or_create_manifest`) and this narrative stamp ask the SAME question, so they share one
+    answer rather than two independently-drifting checks."""
     later = session.exec(select(ScannerRun.id).where(ScannerRun.asof_date > current_run.asof_date)).first()
     return later is not None
 
 
 def _assert_no_banned_language(sentences: list[dict], cfg: Config) -> None:
     """TC-11 as a runtime guarantee, not only an offline test scan: no rendered sentence may contain a
-    committed banned term (imperative trade verbs, forecast terms, causal-attribution phrases — AG-2)."""
+    committed banned term (imperative trade verbs, forecast terms, causal-attribution phrases — AG-2).
+    iter-3 (J-05/J-06, TC-35) reuses this SAME scan over `evaluate_selection`'s candidate reason/caution/
+    invalidation/why-not strings (`_scan_selection_language`, below) — these are about to be frozen into
+    an immutable exported artifact, so the guard must cover them too, not only narrative sentences."""
     banned = cfg.compass.vocabulary.banned_terms
     for sentence in sentences:
         lowered = sentence["text"].lower()
@@ -209,16 +247,38 @@ def build_narrative(
     return {"sentences": sentences}
 
 
-# --- selection (J-04) -------------------------------------------------------------------------
+# --- selection (J-04; iter-3 J-05/J-06 adds comparison_cohort + near_threshold_shadow) --------
 
 _QUALIFIER_CHECKS = ("leadership_min_score", "entry_min_score", "risk_max_score")
 
+# iter-3 (J-05/J-06): the cohort row's frozen context field list — part of `cohort_rule_hash`'s scope
+# (goal.md: "the cohort row field list"). Changing this list is itself a cohort-rule-affecting change
+# (a new/removed field moves `cohort_rule_hash`), so it is read into that hash's subset dict verbatim
+# rather than left as an unhashed implementation detail.
+_COHORT_ROW_FIELDS: tuple[str, ...] = (
+    "ticker", "leadership_score", "leadership_bucket", "entry_quality_score", "entry_quality_bucket",
+    "risk_score", "risk_bucket", "setup_status", "rank_in_run", "sector", "theme_memberships",
+    "close", "atr_pct", "distance_from_52w_high", "gap_p95", "worst_20d", "distance_to_invalidation",
+    "adv_dollars",
+)
+# The closed selection_disposition vocabulary (goal.md: partitions the non-selected set exactly under
+# the frozen rule — floor, then cap; nothing else excludes). Part of `cohort_rule_hash`'s scope.
+_DISPOSITION_BELOW_FLOOR = "below_selection_floor"
+_DISPOSITION_EXCLUDED_BY_CAP = "excluded_by_cap"
+_DISPOSITION_VOCABULARY: tuple[str, ...] = (_DISPOSITION_BELOW_FLOOR, _DISPOSITION_EXCLUDED_BY_CAP)
+# The declared candidate ordering rule (goal.md: "leadership desc, ticker asc") — a fixed descriptive
+# string, not a config value; part of `candidate_rule_hash`'s scope so a future re-ordering shows up as
+# an identity change even though no config KEY governs it today.
+_CANDIDATE_ORDERING_RULE = "leadership desc, ticker asc"
+
 
 def _record_json_by_ticker(session: Session, run: ScannerRun, tickers: list[str]) -> dict[str, dict]:
-    """A targeted, bounded `record_json` read for the actual candidates only (`len(tickers) <=
-    max_candidates`) — never a full-universe sweep (AG-8). Deliberately self-contained (does not reuse
-    `snapshot_serving.filtered_stock_rows`, which additionally attaches `forward_returns` — this producer
-    stays grep-clean of any post-as-of read, TC-23)."""
+    """A targeted, bounded `record_json` read for a specific ticker list SCOPED TO THIS ONE RUN — never a
+    full-universe or cross-run sweep (AG-8). Used for both candidates (`len(tickers) <= max_candidates`)
+    and, since iter-3 (J-05/J-06), every non-candidate member of the run being frozen (up to ~530 rows
+    today, TC-30) — still one bounded per-run query, not a whole-table scan. Deliberately self-contained
+    (does not reuse `snapshot_serving.filtered_stock_rows`, which additionally attaches `forward_returns`
+    — this producer stays grep-clean of any post-as-of read, TC-29)."""
     if not tickers:
         return {}
     rows = session.exec(
@@ -227,6 +287,103 @@ def _record_json_by_ticker(session: Session, run: ScannerRun, tickers: list[str]
         )
     ).all()
     return {ticker: json.loads(record_json) for ticker, record_json in rows}
+
+
+def _theme_rank_by_slug(session: Session, run: ScannerRun) -> dict[str, int]:
+    """One small, per-run-bounded query (as many rows as configured themes — 11 today) mapping this run's
+    theme slug -> its stored rank. Used to attach `theme_memberships`' per-theme rank to each cohort row
+    without a per-ticker query (AG-8)."""
+    rows = session.exec(
+        select(ThemeScoreRow.slug, ThemeScoreRow.rank).where(ThemeScoreRow.run_id == run.id)
+    ).all()
+    return dict(rows)
+
+
+def _component_raw(components: list[dict], name: str) -> Optional[float]:
+    """The stored RAW value of one named component from a `leadership`/`entry_quality`/`risk` score
+    block's `components` array (`scoring._build_score`'s output, already stored verbatim in
+    `record_json`) — a READ of an already-computed value, never a new computation. `None` when the
+    component is absent or was NA for this row (honestly propagated, never fabricated)."""
+    for component in components:
+        if component.get("name") == name:
+            return component.get("raw")
+    return None
+
+
+def _cohort_row(row: dict, record: Optional[dict], theme_rank_by_slug: dict[str, int]) -> dict:
+    """One frozen `comparison_cohort` / `near_threshold_shadow` context row (goal-market-compass iter-3,
+    J-05/J-06) — every value is read from the run's ALREADY-STORED `record_json` (the SAME canonical
+    per-stock document `_candidate_payload` already reads a slice of), never a new bar/DB read (AG-8, "no
+    new data sources"):
+
+      - `close` reuses the invalidation block's `price` field — the as-of last close
+        (`scoring._invalidation`'s `price` arg is literally `inv_closes[-1]`, the as-of-date close).
+      - `distance_from_52w_high` reuses the Leadership score's stored `high_proximity` component raw
+        (`scoring._raw_components`: `dist_high = ind.dist_from_high(...)`, <= 0; already surfaced
+        verbatim by the Factor Lab at `leadership.components.high_proximity.raw` — an established
+        cross-surface read of this exact stored value, not a new one).
+      - `adv_dollars` reuses the Risk score's stored `liquidity` component raw, sign-flipped back
+        (`scoring._raw_components` stores `_neg(adv)` there so a HIGHER raw reads as MORE dangerous,
+        matching every other Risk component's orientation — this is a re-sign of an already-stored
+        number, not a new computation, no bars read).
+      - `atr_pct` / `gap_p95` / `worst_20d` / `distance_to_invalidation` all come from the SAME
+        `risk_budget` block `_candidate_payload`'s ATR caution already reads a slice of."""
+    record = record or {}
+    risk_budget = record.get("risk_budget") or {}
+    atr = risk_budget.get("atr_pct") or {}
+    gap_profile = risk_budget.get("gap_profile") or {}
+    leadership_components = (record.get("leadership") or {}).get("components") or []
+    risk_components = (record.get("risk") or {}).get("components") or []
+    liquidity_raw = _component_raw(risk_components, "liquidity")
+    themes = record.get("themes") or []
+
+    return {
+        "ticker": row["ticker"],
+        "leadership_score": row["leadership_score"],
+        "leadership_bucket": row["leadership_bucket"],
+        "entry_quality_score": row["entry_quality_score"],
+        "entry_quality_bucket": row["entry_quality_bucket"],
+        "risk_score": row["risk_score"],
+        "risk_bucket": row["risk_bucket"],
+        "setup_status": row["setup_status"],
+        "rank_in_run": row["rank_in_run"],
+        "sector": row["sector"],
+        "theme_memberships": [
+            {"theme": theme["slug"], "rank": theme_rank_by_slug.get(theme["slug"])} for theme in themes
+        ],
+        "close": (record.get("invalidation") or {}).get("price"),
+        "atr_pct": {"value": atr.get("value"), "percentile": atr.get("percentile")},
+        "distance_from_52w_high": _component_raw(leadership_components, "high_proximity"),
+        "gap_p95": (gap_profile.get("p95") or {}).get("value"),
+        "worst_20d": (risk_budget.get("worst_20d_window") or {}).get("value"),
+        "distance_to_invalidation": (risk_budget.get("distance_to_invalidation_pct") or {}).get("value"),
+        "adv_dollars": -liquidity_raw if liquidity_raw is not None else None,
+    }
+
+
+def _scan_selection_language(candidates: list[dict], why_not: list[dict], cfg: Config) -> None:
+    """TC-35: extend the SAME runtime banned-language guard `build_narrative` already uses to
+    `evaluate_selection`'s candidate reason/caution/invalidation/why-not strings — these are about to be
+    frozen into an immutable exported artifact (iter-3), so the guard must cover them before ANY
+    candidate is returned, not only narrative sentences (the exact gap `lessons.md` iter-2 flagged)."""
+    pseudo_sentences: list[dict] = []
+    for candidate in candidates:
+        ticker = candidate["ticker"]
+        for index, text in enumerate(candidate["reasons"]):
+            pseudo_sentences.append({"template_id": f"candidate_reason_{ticker}_{index}", "text": text, "facts": []})
+        for index, text in enumerate(candidate["cautions"]):
+            pseudo_sentences.append({"template_id": f"candidate_caution_{ticker}_{index}", "text": text, "facts": []})
+        pseudo_sentences.append(
+            {"template_id": f"candidate_invalidation_{ticker}", "text": candidate["invalidation"], "facts": []}
+        )
+    for entry in why_not:
+        for index, failed in enumerate(entry["failed_conditions"]):
+            # `condition` is always one of the fixed `_QUALIFIER_CHECKS` tokens, never free text — scanned
+            # anyway so the guard's coverage matches goal.md's literal "why-not strings" wording exactly.
+            pseudo_sentences.append(
+                {"template_id": f"why_not_{entry['ticker']}_{index}", "text": failed["condition"], "facts": []}
+            )
+    _assert_no_banned_language(pseudo_sentences, cfg)
 
 
 def _qualifier_checks(row: dict, cfg: Config) -> list[dict]:
@@ -290,9 +447,8 @@ def _candidate_payload(row: dict, checks: list[dict], detail: Optional[dict], ru
     if atr.get("value") is not None:
         pct = atr.get("percentile")
         pct_text = f"p{pct * 100:.0f} of universe" if pct is not None else "percentile NA"
-        cautions.append(
-            f"ATR_RISK_BUDGET: ATR is {atr['value']:.2f}% of price ({pct_text}) — sized risk accordingly."
-        )
+        # TC-34 (iter-3 MINOR finding, iter-2 eval): states the fact only — no advice-sounding tail.
+        cautions.append(f"ATR_RISK_BUDGET: ATR is {atr['value']:.2f}% of price ({pct_text}).")
     else:
         cautions.append("ATR_RISK_BUDGET: risk-budget data not available for this row — reported NA, never fabricated.")
     inv = (detail or {}).get("invalidation") or {}
@@ -321,8 +477,9 @@ def _candidate_payload(row: dict, checks: list[dict], detail: Optional[dict], ru
 
 
 def evaluate_selection(session: Session, run: ScannerRun, config: Optional[Config] = None) -> dict:
-    """The `selection` CONTENT block (goal-market-compass iter-2, J-04). See the module docstring for
-    the anti-goal posture (AG-8 bounded reads, AG-11 no new composite score)."""
+    """The `selection` CONTENT block (goal-market-compass iter-2, J-04; iter-3, J-05/J-06 adds
+    `comparison_cohort` + `near_threshold_shadow`). See the module docstring for the anti-goal posture
+    (AG-8 bounded reads, AG-11 no new composite score)."""
     cfg = config or get_config()
     sel = cfg.compass.selection
 
@@ -335,6 +492,9 @@ def evaluate_selection(session: Session, run: ScannerRun, config: Optional[Confi
             ScannerResult.entry_quality_bucket,
             ScannerResult.risk_score,
             ScannerResult.risk_bucket,
+            ScannerResult.setup_status,
+            ScannerResult.rank,
+            ScannerResult.sector,
         )
         .where(ScannerResult.run_id == run.id)
         .order_by(ScannerResult.ticker)
@@ -343,7 +503,9 @@ def evaluate_selection(session: Session, run: ScannerRun, config: Optional[Confi
 
     qualifying: list[tuple[dict, list[dict]]] = []
     non_qualifying: list[tuple[dict, list[dict]]] = []
-    for ticker, l_score, l_bucket, e_score, e_bucket, r_score, r_bucket in raw_rows:
+    for (
+        ticker, l_score, l_bucket, e_score, e_bucket, r_score, r_bucket, setup_status, rank, sector,
+    ) in raw_rows:
         row = {
             "ticker": ticker,
             "leadership_score": l_score,
@@ -352,6 +514,9 @@ def evaluate_selection(session: Session, run: ScannerRun, config: Optional[Confi
             "entry_quality_bucket": e_bucket,
             "risk_score": r_score,
             "risk_bucket": r_bucket,
+            "setup_status": setup_status,
+            "rank_in_run": rank,
+            "sector": sector,
         }
         checks = _qualifier_checks(row, cfg)
         if all(check["passed"] for check in checks):
@@ -397,7 +562,34 @@ def evaluate_selection(session: Session, run: ScannerRun, config: Optional[Confi
             f"Entry Quality >= {sel.entry_min_score:.1f}, Risk <= {sel.risk_max_score:.1f}) for this as-of."
         )
 
-    return {
+    # --- iter-3 (J-05/J-06): comparison cohort (every non-candidate member) + near-threshold shadow.
+    # Reuses the SAME non_qualifying / excluded_by_cap_pairs partitions the disposition tally above
+    # already computed — exactly the below_selection_floor / excluded_by_cap split (BACKGROUND).
+    non_candidate_pairs: list[tuple[dict, str]] = [(row, _DISPOSITION_BELOW_FLOOR) for row, _failed in non_qualifying]
+    non_candidate_pairs.extend((row, _DISPOSITION_EXCLUDED_BY_CAP) for row, _checks in excluded_by_cap_pairs)
+    non_candidate_pairs.sort(key=lambda pair: (-pair[0]["leadership_score"], pair[0]["ticker"]))
+
+    non_candidate_tickers = [row["ticker"] for row, _disposition in non_candidate_pairs]
+    non_candidate_records = _record_json_by_ticker(session, run, non_candidate_tickers)  # TC-30: one bounded per-run read
+    theme_rank_by_slug = _theme_rank_by_slug(session, run)
+
+    comparison_cohort = [
+        {
+            **_cohort_row(row, non_candidate_records.get(row["ticker"]), theme_rank_by_slug),
+            "selection_disposition": disposition,
+        }
+        for row, disposition in non_candidate_pairs
+    ]
+    # Half-open band [shadow.min_score, leadership_min_score) — a name AT the floor is candidate-eligible,
+    # never shadow. A subset of comparison_cohort by construction (built from the SAME ordered pairs, so
+    # both stay in lockstep — never independently re-sorted / re-derived).
+    near_threshold_shadow = [
+        {k: v for k, v in cohort_row.items() if k != "selection_disposition"}
+        for cohort_row, (row, _disposition) in zip(comparison_cohort, non_candidate_pairs)
+        if sel.shadow.min_score <= row["leadership_score"] < sel.leadership_min_score
+    ]
+
+    result = {
         "candidates": candidates,
         "why_not": why_not,
         "disposition_tally": {
@@ -405,10 +597,15 @@ def evaluate_selection(session: Session, run: ScannerRun, config: Optional[Confi
             "excluded_by_cap": len(excluded_by_cap_pairs),
         },
         "candidates_empty_reason": candidates_empty_reason,
+        "member_count": member_count,
+        "comparison_cohort": comparison_cohort,
+        "near_threshold_shadow": near_threshold_shadow,
     }
+    _scan_selection_language(candidates, why_not, cfg)  # TC-35 — before ANY candidate/why-not is returned
+    return result
 
 
-# --- manifest assembly + storage ----------------------------------------------------------------
+# --- manifest CONTENT assembly (iter-2, unchanged scope) ----------------------------------------
 
 
 def build_manifest_payload(
@@ -418,7 +615,9 @@ def build_manifest_payload(
     config: Optional[Config] = None,
 ) -> dict:
     """Assemble the three CONTENT blocks + `content_hash` (sha256 hex over the sorted-key JSON of the
-    content block only — never re-derived at serve time; see `manifest_row_payload`)."""
+    content block only — never re-derived at serve time; see `manifest_row_payload`). UNCHANGED scope
+    from iter-2: `selection` now carries `comparison_cohort` / `near_threshold_shadow` (iter-3), which
+    flow through into `content_hash`'s scope automatically — no code change needed here for that."""
     cfg = config or get_config()
     delta = compute_delta(session, current_run, previous_run, cfg)
     selection = evaluate_selection(session, current_run, cfg)
@@ -429,32 +628,387 @@ def build_manifest_payload(
     return {**content, "content_hash": content_hash}
 
 
-def get_or_create_manifest(
-    session: Session, current_run: ScannerRun, config: Optional[Config] = None
-) -> NextSessionManifest:
-    """Serve the stored manifest row for `current_run.asof_date`, computing + persisting it ONCE if
-    absent (create-once-on-GET / finalize-hook write path — TC-1: zero producer calls on a warm hit).
-    Concurrency-safe the SAME way `scanner.persist_run_payload` is: a losing concurrent INSERT rolls
-    back and returns the already-committed row (never raises, never duplicates, never overwrites —
-    AG-12: a stored row is never mutated or deleted by any later call)."""
-    existing = session.exec(
-        select(NextSessionManifest).where(NextSessionManifest.as_of == current_run.asof_date)
-    ).first()
-    if existing is not None:
-        return existing
+# --- freeze/integrity block (iter-3, J-05/J-06) --------------------------------------------------
 
+
+class ManifestNotYetFrozen(Exception):
+    """J-05 step 7 / TC-8: the current frontier's manifest is minted ONLY by the ingest-finalize freeze
+    or an explicit regenerate — never by a plain GET. Raised, never silently fabricated; the API layer
+    maps this to an honest 404."""
+
+    def __init__(self, as_of: date):
+        self.as_of = as_of
+        super().__init__(
+            f"no next-session manifest exists yet for the current frontier date {as_of} — it is minted "
+            "at the next ingest finalize freeze, never by a plain GET"
+        )
+
+
+class ManifestNotFoundError(Exception):
+    """The confirm-gated regenerate action requires an EXISTING manifest for `as_of` — it never mints a
+    first version (that is the finalize freeze's or create-once-on-GET's job)."""
+
+    def __init__(self, as_of: date):
+        self.as_of = as_of
+        super().__init__(f"no next-session manifest exists yet for {as_of} — regenerate requires an existing manifest")
+
+
+def _canonical_dumps(obj: Any) -> str:
+    return json.dumps(obj, sort_keys=True, default=str)
+
+
+def _sha256_hex(text: str) -> str:
+    return hashlib.sha256(text.encode()).hexdigest()
+
+
+def _utc_isoformat(value: datetime) -> str:
+    """SQLite reads a stored timestamp back WITHOUT tzinfo even when it was WRITTEN as
+    `datetime.now(timezone.utc)` (the SAME gotcha `forward_testing._utc_isoformat` documents and fixes
+    for `evidence_generated_at`). Reattaching UTC to an already-naive value (never touching a genuinely
+    tz-aware one) keeps this producer's ISO strings byte-stable across a DB round-trip, which the
+    manifest-hash / export byte-equality contract (TC-4/TC-9) depends on."""
+    return (value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)).isoformat()
+
+
+def _resolve_mode(session: Session, as_of: date) -> tuple[str, Optional[date]]:
+    """TC-18: data-driven, fails toward retrospective. `at_ingest` iff no bar dated later than `as_of`
+    exists at generation time — the SAME global frontier (`latest_data_date`) every other as-of resolver
+    treats as "Latest". No price data at all also fails toward retrospective (never assumes at_ingest
+    without evidence)."""
+    frontier = latest_data_date(session)
+    if frontier is None or frontier > as_of:
+        return "retrospective", frontier
+    return "at_ingest", frontier
+
+
+def _candidate_rule_subset(cfg: Config) -> dict:
+    """`candidate_rule_hash`'s scope: ONLY membership/ordering-affecting keys (goal.md) — never the
+    why-not display cap, a caution qualifier, or the shadow band (TC-23)."""
+    sel = cfg.compass.selection
+    return {
+        "rule_version": sel.rule_version,
+        "leadership_min_score": sel.leadership_min_score,
+        "max_candidates": sel.max_candidates,
+        "ordering_rule": _CANDIDATE_ORDERING_RULE,
+    }
+
+
+def _cohort_rule_subset(cfg: Config) -> dict:
+    """`cohort_rule_hash`'s scope: cohort semantics — `shadow.min_score`, the shared `leadership_min_score`
+    band bound (a floor change moves BOTH scientific hashes, TC-23), the disposition-vocabulary version
+    (`rule_version` doubles as this — extending the vocabulary is a rule change carried by a bumped
+    `rule_version`, never a relabeling of frozen rows), and the cohort row field list."""
+    sel = cfg.compass.selection
+    return {
+        "rule_version": sel.rule_version,
+        "shadow_min_score": sel.shadow.min_score,
+        "leadership_min_score": sel.leadership_min_score,
+        "disposition_vocabulary": list(_DISPOSITION_VOCABULARY),
+        "cohort_row_fields": list(_COHORT_ROW_FIELDS),
+    }
+
+
+def _manifest_config_subset(cfg: Config) -> dict:
+    """`manifest_config_hash`'s scope: the WHOLE `compass.selection` subtree — qualifiers, why-not display
+    keys, everything (TC-23: a why-not/qualifier-only change moves ONLY this hash)."""
+    return cfg.compass.selection.model_dump()
+
+
+def _hash_subset(subset: dict) -> str:
+    return _sha256_hex(_canonical_dumps(subset))
+
+
+def _universe_block(member_count: int, cfg: Config) -> dict:
+    """`universe` block: pool hash + the point-in-time resolver gate values (read from config, never
+    re-typed) + the member count `evaluate_selection` already computed (no second query) +
+    `profile: "core"` (goal.md's companion-universe forward-compat non-goal — a defaulted slot only)."""
+    try:
+        pool_rows = read_pool()
+        pool_hash = _sha256_hex(_canonical_dumps(pool_rows))
+    except FileNotFoundError:
+        pool_hash = None  # honest gap — never fabricated (mirrors universe_screen.pool_survivorship)
+    filters = cfg.universe.filters
+    return {
+        "pool_hash": pool_hash,
+        "resolver_gate": {
+            "min_history_bars": cfg.indicators.min_history_bars,
+            "max_staleness_days": filters.max_staleness_days,
+            "min_price": filters.min_price,
+            "adv_window_days": filters.adv_window_days,
+            "min_dollar_vol": filters.min_dollar_vol,
+        },
+        "member_count": member_count,
+        "profile": "core",
+    }
+
+
+# TC-27 (AG-16): the frozen non-causal cohort disclosure — verbatim per goal.md's own wording so the
+# manifest and the frontend audit-view labels never drift from a second hand-typed copy.
+_COHORT_SEMANTICS_TEXT = (
+    "The comparison cohort is a frozen non-selected comparison pool, not a matched or causal control "
+    "group. The near-threshold shadow cohort is near the LEADERSHIP selection floor specifically, not "
+    "necessarily near the final candidate-selection boundary (deterministic ordering, the candidate cap, "
+    "and any future gating qualifier also affect final inclusion) — it is never described as \"near-selected\"."
+)
+
+# The compass selection rule's own evidence signal name — never registered as a certified claim within
+# this goal (AG-15: no outcome-tuned selection may be certified here). The check below is REAL (reads the
+# SAME ledger status every other evidence chip reads), not a hardcoded string — an honest future ledger
+# change would flip it, even though AG-15/AG-6 mean it never will within this goal.
+_COMPASS_SELECTION_SIGNAL = "compass_selection"
+
+
+def _evidence_caveat(session: Session, cfg: Config) -> str:
+    """The manifest's evidence caveat — sourced from the SAME `GET /api/evidence` ledger status
+    (`app.engine.evidence.build_evidence_payload`) every other "Proven / Not yet proven" surface in this
+    product reads, never a second proven-ness computation (AG-1). No Evidence Claim names the compass
+    selection rule itself within this goal (AG-15/AG-6), so this reads "Not yet proven" today — but the
+    check is real, not decorative."""
+    try:
+        payload = evidence.build_evidence_payload(evidence.resolve_ledger_path(), session=session, config=cfg)
+        proven = _COMPASS_SELECTION_SIGNAL in (payload.get("proven_signals") or {})
+    except Exception as exc:  # noqa: BLE001 — fail-closed: an unreadable ledger is honestly "not yet proven"
+        logger.error("compass manifest evidence-caveat read failed (non-fatal, fails closed): %s", exc)
+        proven = False
+    if proven:
+        return "Backed by a certified out-of-sample claim for the compass selection rule (see the Evidence ledger)."
+    return "Not yet proven — attention rule, not a certified edge (see the Evidence ledger)."
+
+
+def _sector_basis_caveat(cfg: Config) -> str:
+    """The sector-label basis disclosure — the SAME config prose `app.engine.methodology._sector_basis`
+    resolves (a direct config-field read, not a re-typed copy: both read `config.methodology.
+    universe_selection.sector_basis` verbatim)."""
+    universe_selection = cfg.methodology.universe_selection
+    if universe_selection is not None and universe_selection.sector_basis:
+        return universe_selection.sector_basis
+    return "Sector label basis disclosure is not configured for this build."
+
+
+def _caveats_block(session: Session, cfg: Config) -> dict:
+    return {
+        "evidence": _evidence_caveat(session, cfg),
+        "survivorship": POOL_SURVIVORSHIP_LABEL,
+        "sector_basis": _sector_basis_caveat(cfg),
+        "cohort_semantics": _COHORT_SEMANTICS_TEXT,
+    }
+
+
+def _derive_prospective_eligible(
+    *,
+    mode: str,
+    frontier_bar_date: Optional[date],
+    based_on_close: date,
+    producer: str,
+    version: int,
+    frozen: bool,
+    available_at_utc: Optional[datetime],
+    provenance_complete: bool,
+    manifest_hash: Optional[str],
+) -> bool:
+    """TC-20: fail-closed, write-once derivation — true iff EVERY condition holds; any missing/violated
+    condition independently forces `false` (never partially trusted, never recomputed at read).
+    `manifest_hash` here is a PRESENCE-only signal — production passes a non-None placeholder since the
+    real hash is computed moments later in the SAME `_freeze_manifest` call (after which it is always
+    non-null); this function's OWN fixture tests (TC-20) pass an explicit `None` to prove that branch in
+    isolation."""
+    return bool(
+        mode == "at_ingest"
+        and frontier_bar_date is not None
+        and frontier_bar_date == based_on_close
+        and producer == "ingest_finalize"
+        and version == 1
+        and frozen is True
+        and available_at_utc is not None
+        and provenance_complete
+        and manifest_hash is not None
+    )
+
+
+def verify_manifest_hash(document: dict) -> bool:
+    """Recompute `manifest_hash` over `document` (any dict carrying a `manifest_hash` key) the SAME
+    canonical way `_freeze_manifest` computed it at write time — the hash field itself is excluded from
+    what gets hashed, never a second convention. TC-4/TC-22: tamper detection — flipping any byte of a
+    copied export (including inside `prospective_eligible` or a provenance field) changes some field's
+    value and therefore fails this recomputation."""
+    stored = document.get("manifest_hash")
+    if not stored:
+        return False
+    without_hash = {key: value for key, value in document.items() if key != "manifest_hash"}
+    return _sha256_hex(_canonical_dumps(without_hash)) == stored
+
+
+def _write_export(document: dict, cfg: Config) -> Optional[str]:
+    """The at-ingest-mode export writer: the SAME canonical bytes used for `manifest_hash` / storage,
+    written to `compass.manifest.export_dir` (a `TRENDORA_COMPASS_EXPORT_DIR` env override exists for
+    tests — name only, never a value in files). Isolate-and-continue: an I/O failure here is caught and
+    logged, NEVER blocks or crashes the caller — `export_path` stays `None` (an honest gap, never a
+    half-written file)."""
+    export_dir_raw = os.environ.get("TRENDORA_COMPASS_EXPORT_DIR") or cfg.compass.manifest.export_dir
+    export_dir = Path(export_dir_raw)
+    if not export_dir.is_absolute():
+        export_dir = (REPO_ROOT / export_dir).resolve()
+    try:
+        export_dir.mkdir(parents=True, exist_ok=True)
+        path = export_dir / f"{document['as_of']}_v{document['version']}.json"
+        payload = _canonical_dumps(document)
+        try:
+            # AG-12: an already-exported artifact is NEVER rewritten. Exclusive create ("x") so a SECOND
+            # writer for the same `(as_of, version)` — a create-once/regenerate race whose INSERT loses,
+            # or any process sharing the configured export dir — can never mutate the frozen bytes an
+            # existing row's `export_path` already points at.
+            with open(path, "x") as handle:
+                handle.write(payload)
+        except FileExistsError:
+            if path.read_text() == payload:
+                return str(path)  # byte-identical — idempotent re-export, nothing was mutated
+            logger.error(
+                "compass manifest export refused for as_of=%s version=%s: %s already exists with "
+                "DIFFERENT bytes (AG-12 — a frozen artifact is never rewritten); export_path stays NULL "
+                "for this row rather than overwriting the existing artifact",
+                document.get("as_of"), document.get("version"), path,
+            )
+            return None
+        return str(path)
+    except OSError as exc:
+        logger.error(
+            "compass manifest export write failed for as_of=%s version=%s (non-fatal — export_path stays "
+            "NULL, never a half-written file): %s", document.get("as_of"), document.get("version"), exc,
+        )
+        return None
+
+
+def _freeze_manifest(
+    session: Session,
+    current_run: ScannerRun,
+    *,
+    version: int,
+    producer: str,
+    config: Optional[Config] = None,
+) -> NextSessionManifest:
+    """The ONE writer behind all three producer paths (goal-market-compass iter-3, J-05/J-06). Computes
+    the CONTENT block (unchanged iter-2 contract), the freeze/integrity block, assembles ONE canonical
+    document, computes `manifest_hash` over the complete document with only `manifest_hash` itself
+    excluded, writes the at-ingest-mode export file BEFORE the INSERT (so `export_path` is included in
+    the single write — AG-12 forbids any later UPDATE), then INSERTs the immutable row.
+
+    Concurrency-safe: a losing concurrent INSERT for the SAME `(as_of, version)` rolls back and returns
+    the already-committed row (mirrors `scanner.persist_run_payload`'s guard — never raises, never
+    duplicates, never overwrites; TC-17)."""
     cfg = config or get_config()
     previous_run = find_previous_run(session, current_run)
-    payload = build_manifest_payload(session, current_run, previous_run, cfg)
+    content_payload = build_manifest_payload(session, current_run, previous_run, cfg)
+    selection = dict(content_payload["selection"])
+    comparison_cohort = selection.pop("comparison_cohort")
+    near_threshold_shadow = selection.pop("near_threshold_shadow")
+    member_count = selection.pop("member_count")  # folded into universe.member_count -- one source, not two
+
+    generated_at = datetime.now(timezone.utc)
+    available_at_utc = generated_at + timedelta(seconds=cfg.compass.manifest.availability_margin_seconds)
+    mode, frontier_bar_date = _resolve_mode(session, current_run.asof_date)
+    frozen = True  # every row THIS writer mints is a permanent record (models.py: "True for every row
+    # minted by the iter-3 freeze writer") -- mode/producer/version already distinguish HOW it was minted
+
+    engine_id = engine_identity.compute_engine_identity(cfg)
+
+    preflight_verdict = None
+    if mode == "at_ingest":
+        # AG-13: the preflight verdict is recorded ONLY here (generation block, at-ingest only) -- never
+        # on the market/narrative surface. Isolate-and-continue: a read failure never blocks the freeze.
+        try:
+            preflight_verdict = readiness.compute_preflight(session, cfg).get("verdict")
+        except Exception as exc:  # noqa: BLE001
+            logger.error("compass manifest preflight read failed for %s (non-fatal): %s", current_run.asof_date, exc)
+
+    generation = {
+        "producer": producer,
+        "frontier_bar_date": frontier_bar_date.isoformat() if frontier_bar_date else None,
+        "generated_at": generated_at.isoformat(),
+        "preflight_verdict": preflight_verdict,
+        "engine_identity": engine_id,
+        "source_run_created_at": _utc_isoformat(current_run.created_at),
+    }
+
+    candidate_rule_config = _candidate_rule_subset(cfg)
+    cohort_rule_config = _cohort_rule_subset(cfg)
+    manifest_config_subset = _manifest_config_subset(cfg)
+    candidate_rule_hash = _hash_subset(candidate_rule_config)
+    cohort_rule_hash = _hash_subset(cohort_rule_config)
+    manifest_config_hash = _hash_subset(manifest_config_subset)
+
+    dataset = {"stamp": _dataset_version(session)}
+    universe = _universe_block(member_count, cfg)
+    caveats = _caveats_block(session, cfg)
+
+    provenance_complete = bool(
+        engine_id and candidate_rule_hash and cohort_rule_hash and manifest_config_hash
+        and dataset["stamp"] and universe["pool_hash"]
+    )
+    prospective_eligible = _derive_prospective_eligible(
+        mode=mode, frontier_bar_date=frontier_bar_date, based_on_close=current_run.asof_date,
+        producer=producer, version=version, frozen=frozen, available_at_utc=available_at_utc,
+        provenance_complete=provenance_complete, manifest_hash="pending",
+    )
+
+    document: dict[str, Any] = {
+        "as_of": current_run.asof_date.isoformat(),
+        "version": version,
+        "mode": mode,
+        "frozen": frozen,
+        "session_delta": content_payload["session_delta"],
+        "narrative": content_payload["narrative"],
+        "selection": selection,
+        "comparison_cohort": comparison_cohort,
+        "near_threshold_shadow": near_threshold_shadow,
+        "content_hash": content_payload["content_hash"],
+        "generation": generation,
+        "candidate_rule_hash": candidate_rule_hash,
+        "candidate_rule_config": candidate_rule_config,
+        "cohort_rule_hash": cohort_rule_hash,
+        "cohort_rule_config": cohort_rule_config,
+        "manifest_config_hash": manifest_config_hash,
+        "manifest_config_subset": manifest_config_subset,
+        "dataset": dataset,
+        "universe": universe,
+        "caveats": caveats,
+        "prospective_eligible": prospective_eligible,
+        "available_at_utc": available_at_utc.isoformat(),
+    }
+    manifest_hash = _sha256_hex(_canonical_dumps(document))
+    document["manifest_hash"] = manifest_hash
+
+    export_path = None
+    if mode == "at_ingest":  # goal.md: `modes: at_ingest only`
+        export_path = _write_export(document, cfg)
 
     row = NextSessionManifest(
         as_of=current_run.asof_date,
+        version=version,
         source_run_id=current_run.id,
-        session_delta_json=json.dumps(payload["session_delta"]),
-        narrative_json=json.dumps(payload["narrative"]),
-        selection_json=json.dumps(payload["selection"]),
-        content_hash=payload["content_hash"],
-        created_at=datetime.now(timezone.utc),
+        session_delta_json=json.dumps(content_payload["session_delta"]),
+        narrative_json=json.dumps(content_payload["narrative"]),
+        selection_json=json.dumps(selection),
+        content_hash=content_payload["content_hash"],
+        created_at=generated_at,
+        mode=mode,
+        frozen=frozen,
+        generation_json=json.dumps(generation),
+        engine_identity=engine_id,
+        candidate_rule_hash=candidate_rule_hash,
+        candidate_rule_config_json=json.dumps(candidate_rule_config),
+        cohort_rule_hash=cohort_rule_hash,
+        cohort_rule_config_json=json.dumps(cohort_rule_config),
+        manifest_config_hash=manifest_config_hash,
+        manifest_config_subset_json=json.dumps(manifest_config_subset),
+        dataset_json=json.dumps(dataset),
+        universe_json=json.dumps(universe),
+        comparison_cohort_json=json.dumps(comparison_cohort),
+        near_threshold_shadow_json=json.dumps(near_threshold_shadow),
+        caveats_json=json.dumps(caveats),
+        prospective_eligible=prospective_eligible,
+        available_at_utc=available_at_utc,
+        manifest_hash=manifest_hash,
+        export_path=export_path,
     )
     session.add(row)
     try:
@@ -462,7 +1016,9 @@ def get_or_create_manifest(
     except IntegrityError:
         session.rollback()
         existing = session.exec(
-            select(NextSessionManifest).where(NextSessionManifest.as_of == current_run.asof_date)
+            select(NextSessionManifest).where(
+                NextSessionManifest.as_of == current_run.asof_date, NextSessionManifest.version == version,
+            )
         ).first()
         if existing is not None:
             return existing
@@ -472,7 +1028,9 @@ def get_or_create_manifest(
     except IntegrityError:
         session.rollback()
         existing = session.exec(
-            select(NextSessionManifest).where(NextSessionManifest.as_of == current_run.asof_date)
+            select(NextSessionManifest).where(
+                NextSessionManifest.as_of == current_run.asof_date, NextSessionManifest.version == version,
+            )
         ).first()
         if existing is not None:
             return existing
@@ -481,13 +1039,110 @@ def get_or_create_manifest(
     return row
 
 
+def get_or_create_manifest(
+    session: Session, current_run: ScannerRun, config: Optional[Config] = None, *, producer: str = "on_demand_get",
+) -> NextSessionManifest:
+    """Serve the LATEST stored manifest version for `current_run.asof_date`, minting version 1 ONCE if
+    none exists yet (TC-1: zero producer calls on a warm hit). `producer` defaults to `"on_demand_get"`
+    (the `GET /api/compass` call site); the ingest-finalize call site passes `producer="ingest_finalize"`
+    explicitly.
+
+    J-05 step 7 / TC-8: for the CURRENT frontier run (no LATER stored run exists) with no manifest yet,
+    a non-finalize caller NEVER auto-creates one — raises `ManifestNotYetFrozen`. A HISTORICAL
+    (non-frontier) `as_of` still create-once-mints here regardless of caller (mode resolves
+    `retrospective` since a later run already exists)."""
+    cfg = config or get_config()
+    existing = session.exec(
+        select(NextSessionManifest)
+        .where(NextSessionManifest.as_of == current_run.asof_date)
+        .order_by(NextSessionManifest.version.desc())
+    ).first()
+    if existing is not None:
+        return existing
+
+    if producer != "ingest_finalize" and not _is_retrospective(session, current_run):
+        raise ManifestNotYetFrozen(current_run.asof_date)
+
+    return _freeze_manifest(session, current_run, version=1, producer=producer, config=cfg)
+
+
+def regenerate_manifest(session: Session, as_of: date, config: Optional[Config] = None) -> NextSessionManifest:
+    """The confirm-gated regenerate action (path c) — mints version N+1 for an EXISTING `as_of`. Raises
+    `ManifestNotFoundError` when no manifest (or no source run) exists for `as_of` — NEVER fabricates a
+    first version this way (that is `get_or_create_manifest`'s job). ALWAYS `prospective_eligible: false`
+    (via `_derive_prospective_eligible`'s `producer == "ingest_finalize"` / `version == 1` checks — no
+    special-casing needed here). Version 1 is never touched — a NEW row only."""
+    cfg = config or get_config()
+    latest = session.exec(
+        select(NextSessionManifest)
+        .where(NextSessionManifest.as_of == as_of)
+        .order_by(NextSessionManifest.version.desc())
+    ).first()
+    if latest is None:
+        raise ManifestNotFoundError(as_of)
+    current_run = session.exec(select(ScannerRun).where(ScannerRun.asof_date == as_of)).first()
+    if current_run is None:
+        # the source run is gone -- nothing to recompute content from; honest failure, never fabricated
+        raise ManifestNotFoundError(as_of)
+    return _freeze_manifest(session, current_run, version=latest.version + 1, producer="regenerate", config=cfg)
+
+
+def list_manifest_versions(session: Session, as_of: date) -> list[NextSessionManifest]:
+    """Every stored version for `as_of`, oldest first — read-only, bounded to this one date's rows (a
+    handful at most). Backs the manifest strip's "both versions" listing once more than one exists."""
+    return list(
+        session.exec(
+            select(NextSessionManifest).where(NextSessionManifest.as_of == as_of).order_by(NextSessionManifest.version)
+        ).all()
+    )
+
+
+def basis_disclosure(session: Session, row: NextSessionManifest) -> dict:
+    """Read-time-only comparison (TC-10/TC-11) — NEVER a mutation, NEVER a recompute of the frozen
+    content. Compares the manifest's recorded `source_run_created_at` against the CURRENT stored run for
+    this `as_of` (never the dataset-version stamp alone, which a rebuild can reproduce byte-identically).
+    `{"status": "available"|"unavailable"|"rebuilt", "detail": str|None}`."""
+    current_run = session.exec(select(ScannerRun).where(ScannerRun.asof_date == row.as_of)).first()
+    if current_run is None:
+        return {"status": "unavailable", "detail": "the underlying scanner run for this as-of is no longer stored"}
+    if not row.generation_json:
+        return {"status": "available", "detail": None}  # pre-freeze-era row -- no recorded basis to compare
+    generation = json.loads(row.generation_json)
+    recorded = generation.get("source_run_created_at")
+    current = _utc_isoformat(current_run.created_at)
+    if recorded is not None and recorded != current:
+        return {"status": "rebuilt", "detail": "the source scanner run was recreated after this manifest was frozen"}
+    return {"status": "available", "detail": None}
+
+
 def manifest_row_payload(row: NextSessionManifest) -> dict:
     """Re-shape a STORED `NextSessionManifest` row into the served `GET /api/compass` dict — a read,
-    never a recompute (single source of truth)."""
+    never a recompute (single source of truth). iter-3 (J-05/J-06): reconstructs the full freeze/
+    integrity block from its split storage columns (AG-8 column-projection posture); every datetime is
+    re-serialized via `_utc_isoformat` so the reconstructed bytes match what was hashed/exported at write
+    time regardless of SQLite's tzinfo-dropping round-trip (TC-4/TC-9 byte-equality)."""
     return {
         "as_of": row.as_of.isoformat(),
+        "version": row.version,
+        "mode": row.mode,
+        "frozen": row.frozen,
         "session_delta": json.loads(row.session_delta_json),
         "narrative": json.loads(row.narrative_json),
         "selection": json.loads(row.selection_json),
+        "comparison_cohort": json.loads(row.comparison_cohort_json) if row.comparison_cohort_json else [],
+        "near_threshold_shadow": json.loads(row.near_threshold_shadow_json) if row.near_threshold_shadow_json else [],
         "content_hash": row.content_hash,
+        "generation": json.loads(row.generation_json) if row.generation_json else None,
+        "candidate_rule_hash": row.candidate_rule_hash,
+        "candidate_rule_config": json.loads(row.candidate_rule_config_json) if row.candidate_rule_config_json else None,
+        "cohort_rule_hash": row.cohort_rule_hash,
+        "cohort_rule_config": json.loads(row.cohort_rule_config_json) if row.cohort_rule_config_json else None,
+        "manifest_config_hash": row.manifest_config_hash,
+        "manifest_config_subset": json.loads(row.manifest_config_subset_json) if row.manifest_config_subset_json else None,
+        "dataset": json.loads(row.dataset_json) if row.dataset_json else None,
+        "universe": json.loads(row.universe_json) if row.universe_json else None,
+        "caveats": json.loads(row.caveats_json) if row.caveats_json else None,
+        "prospective_eligible": row.prospective_eligible,
+        "available_at_utc": _utc_isoformat(row.available_at_utc) if row.available_at_utc else None,
+        "manifest_hash": row.manifest_hash,
     }

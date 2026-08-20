@@ -2471,7 +2471,7 @@ class JobProgress:
     # already branches on `existed_before`), so the finalize hook knows which as-ofs to warm in
     # `MarketPhaseCache` ("for each newly-created snapshot date" — never every stored date).
     # `aggregates_refreshed` is the finalize hook's honest output — the subset of `["latest_snapshot",
-    # "coverage", "membership_timeline", "market_phase", "next_session_manifest", "forward_aggregates",
+    # "coverage", "membership_timeline", "market_phase", "next-session_manifest", "forward_aggregates",
     # "research_hot_keys", "drawdown_expectations", "index_series", "factor_lab_all",
     # "availability_heatmap"]` it actually refreshed — empty/default until the hook has actually run (never fabricated on an
     # interrupted/failed row; gated in `_run_detail()` the SAME way `calendar_days` etc. already are).
@@ -4199,7 +4199,7 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
     never raises (the caller in `_run_job` wraps the whole call in its own try/except too, mirroring
     `_warm_membership_timeline`'s non-fatal contract in warmup.py — an aggregate-refresh failure must never
     flip an otherwise-successful ingest job to failed). Returns the subset of `["latest_snapshot",
-    "coverage", "membership_timeline", "market_phase", "next_session_manifest", "forward_aggregates",
+    "coverage", "membership_timeline", "market_phase", "next-session_manifest", "forward_aggregates",
     "research_hot_keys", "drawdown_expectations", "index_series", "factor_lab_all",
     "availability_heatmap"]` ACTUALLY refreshed — never a fabricated category (mirrors the
     `omitted`/`passers` honesty convention already used elsewhere in this module).
@@ -4529,7 +4529,13 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
                 try:
                     run_for_date = scanner.get_run_for_date(session, d)
                     if run_for_date is not None:
-                        compass.get_or_create_manifest(session, run_for_date, cfg)
+                        # goal-market-compass iter-3 (J-05/J-06): producer="ingest_finalize" routes this
+                        # through the freeze writer's path (a) -- mints version 1, mode is data-driven
+                        # (at_ingest only for the actual frontier date; a mid-history backfilled date in
+                        # this SAME loop honestly resolves mode="retrospective" and prospective_eligible
+                        # stays False via _derive_prospective_eligible's own mode check -- no special-
+                        # casing needed here for "is this the frontier").
+                        compass.get_or_create_manifest(session, run_for_date, cfg, producer="ingest_finalize")
                         compass_warmed = True
                 except MemoryError as exc:
                     _log_isolation_failure(
@@ -4541,7 +4547,11 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
                 except Exception as exc:  # noqa: BLE001 — non-fatal: log + continue to the next date/aggregate
                     _log_isolation_failure("ingest compass-content warm failed for %s (non-fatal): %s", d, exc)
             if compass_warmed:
-                refreshed.append("next_session_manifest")
+                # goal-market-compass iter-3 (J-05/J-06, TC-1): renamed so the frontend's
+                # `s.replace(/_/g, " ")` humanizer (apps/frontend/app/data/page.tsx) renders "next-session
+                # manifest" (hyphenated) exactly matching J-05 step 1's disclosure text -- the OLD key
+                # "next_session_manifest" rendered "next session manifest" (missing hyphen).
+                refreshed.append("next-session_manifest")
             logger.info(
                 "J-05 finalize-tail phase timing: job=%s phase=%s elapsed=%.2fs",
                 prog.job_id, "compass_content_warm", time.monotonic() - _phase_t0,

@@ -984,22 +984,149 @@ export interface CompassSelection {
   candidates_empty_reason: string | null;
 }
 
-/** GET /api/compass payload (goal-market-compass iter-2) — the next-session manifest CONTENT
- *  block: what changed (J-02), the plain-English summary (J-03), and the next-session candidates
- *  (J-04), all computed ONCE per `as_of` and served from storage thereafter. `content_hash` is the
- *  sha256 of the sorted-key JSON of exactly these three blocks. */
+// --- freeze/integrity block (goal-market-compass iter-3, J-05/J-06) --------------------------
+
+/** The manifest's provenance/generation record — WHO/WHEN/HOW it was minted. `engine_identity` is the
+ *  config-listed engine-code + config-subset hash (`app.engine.engine_identity`); `preflight_verdict`
+ *  is recorded here ONLY (at-ingest mode only) — never on the market/narrative surface (AG-13). */
+export interface CompassGeneration {
+  producer: "ingest_finalize" | "on_demand_get" | "regenerate";
+  frontier_bar_date: string | null;
+  generated_at: string;
+  preflight_verdict: string | null;
+  engine_identity: string;
+  source_run_created_at: string | null;
+}
+
+export interface CompassThemeMembership {
+  theme: string;
+  rank: number | null;
+}
+
+export interface CompassAtrPct {
+  value: number | null;
+  percentile: number | null;
+}
+
+/** One frozen context row shared by `comparison_cohort` / `near_threshold_shadow` (J-05/J-06) — every
+ *  field is read from the run's own stored record, never a new computation (AG-8, AG-11: only the
+ *  existing three scores/buckets plus named structural context, nothing blended). */
+export interface CompassCohortRow {
+  ticker: string;
+  leadership_score: number;
+  leadership_bucket: string;
+  entry_quality_score: number;
+  entry_quality_bucket: string;
+  risk_score: number;
+  risk_bucket: string;
+  setup_status: string;
+  rank_in_run: number;
+  sector: string | null;
+  theme_memberships: CompassThemeMembership[];
+  close: number | null;
+  atr_pct: CompassAtrPct;
+  distance_from_52w_high: number | null;
+  gap_p95: number | null;
+  worst_20d: number | null;
+  distance_to_invalidation: number | null;
+  adv_dollars: number | null;
+}
+
+/** The closed selection_disposition vocabulary (J-05/J-06) — partitions every non-candidate member of
+ *  the run exactly; tallies sum to member_count minus candidate count. */
+export type CompassSelectionDisposition = "below_selection_floor" | "excluded_by_cap";
+
+export interface CompassComparisonCohortRow extends CompassCohortRow {
+  selection_disposition: CompassSelectionDisposition;
+}
+
+export interface CompassDatasetStamp {
+  stamp: string | null;
+}
+
+export interface CompassUniverseBlock {
+  pool_hash: string | null;
+  resolver_gate: Record<string, number>;
+  member_count: number;
+  profile: string;
+}
+
+/** The manifest's own embedded evidence caveat + survivorship/sector-basis disclosures + the
+ *  non-causal cohort-semantics sentence (AG-16) — rendered verbatim, never re-composed client-side. */
+export interface CompassCaveats {
+  evidence: string;
+  survivorship: string;
+  sector_basis: string;
+  cohort_semantics: string;
+}
+
+/** The read-time-only basis disclosure (never a mutation, never a recompute of the frozen content) —
+ *  compares the manifest's recorded source run against the CURRENT stored run for its as_of. */
+export interface CompassBasisDisclosure {
+  status: "available" | "unavailable" | "rebuilt";
+  detail: string | null;
+}
+
+/** One entry in the "both versions" summary list — present once more than one version exists for an
+ *  as_of (a confirm-gated regenerate minted a later one). */
+export interface CompassVersionSummary {
+  version: number;
+  mode: string | null;
+  frozen: boolean;
+  prospective_eligible: boolean;
+  generated_at: string | null;
+}
+
+/** GET /api/compass payload (goal-market-compass iter-2 CONTENT block; iter-3 J-05/J-06 freeze/
+ *  integrity block). Every freeze/integrity field is `null`/absent-shaped on a pre-iter-3 legacy row
+ *  ("pre-freeze era" — honestly rendered, never fabricated as frozen). `content_hash` is the sha256 of
+ *  the sorted-key JSON of the CONTENT block only; `manifest_hash` is the whole-document integrity
+ *  identity (a DIFFERENT, broader hash, excluding only itself). */
 export interface CompassResponse {
   as_of: string;
+  version: number;
+  mode: "at_ingest" | "retrospective" | null;
+  frozen: boolean;
   session_delta: SessionDelta;
   narrative: Narrative;
   selection: CompassSelection;
+  comparison_cohort: CompassComparisonCohortRow[];
+  near_threshold_shadow: CompassCohortRow[];
   content_hash: string;
+  generation: CompassGeneration | null;
+  candidate_rule_hash: string | null;
+  candidate_rule_config: Record<string, unknown> | null;
+  cohort_rule_hash: string | null;
+  cohort_rule_config: Record<string, unknown> | null;
+  manifest_config_hash: string | null;
+  manifest_config_subset: Record<string, unknown> | null;
+  dataset: CompassDatasetStamp | null;
+  universe: CompassUniverseBlock | null;
+  caveats: CompassCaveats | null;
+  prospective_eligible: boolean;
+  available_at_utc: string | null;
+  manifest_hash: string | null;
+  basis: CompassBasisDisclosure;
+  versions: CompassVersionSummary[];
 }
 
-/** Canonical next-session-manifest CONTENT source: GET /api/compass. `asof` time-travels to that
- *  date's stored (or create-once-computed) manifest — never recomputed client-side. */
+/** Canonical next-session-manifest source: GET /api/compass. `asof` time-travels to that date's stored
+ *  (or create-once-computed, for a HISTORICAL date only) manifest — never recomputed client-side. The
+ *  CURRENT frontier with no manifest yet (not-yet-frozen) throws (404) like any other unavailable
+ *  state — callers already degrade to `compass = null` on any fetch failure. */
 export async function fetchCompass(asof?: string, signal?: AbortSignal): Promise<CompassResponse> {
   return getJSON<CompassResponse>(withAsOf("/api/compass", asof), signal);
+}
+
+/** POST /api/compass/regenerate — the confirm-gated regenerate action (J-05/J-06). Mints a NEW version
+ *  for a stored `as_of` that already has a manifest; `GET /api/compass` remains the sole read path (this
+ *  is an action route, not a second read path). Throws with the backend's honest `detail` on a non-2xx
+ *  (404 no existing manifest for this as_of) so the UI shows an explicit failure, never a silent no-op. */
+export async function regenerateManifest(asOf: string): Promise<CompassResponse> {
+  return sendJSON<CompassResponse>(
+    "POST",
+    `/api/compass/regenerate?as_of=${encodeURIComponent(asOf)}&confirm=true`,
+  );
 }
 
 // --- scanner runs (iter-5) -----------------------------------------------------------------

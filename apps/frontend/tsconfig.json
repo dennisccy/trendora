@@ -34,7 +34,8 @@
     ".next-alt-qa/types/**/*.ts",
     ".next-verify/types/**/*.ts",
     ".next/types/**/*.ts",
-    "next-env.d.ts"
+    "next-env.d.ts",
+    ".next-verify-review/types/**/*.ts"
   ],
   "exclude": [
     "node_modules",

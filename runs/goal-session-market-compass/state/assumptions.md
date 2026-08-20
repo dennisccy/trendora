@@ -175,3 +175,42 @@ iterations would not reduce diagnosability (a J-06-only iteration cannot even st
 schema) — it would only mean opening the same writer path twice. This reading is consistent with, not a
 deviation from, priority-rubric rule 3 (unblocker) and rule 4 (smallest coherent spec).
 **Reversible:** yes
+
+## iter-3 — goal-evaluator
+
+**Ambiguity:** AG-12 ends "a historical view never substitutes a newer manifest". After a regenerate,
+`GET /api/compass` serves the NEWEST version for that same date and the UI lists version 1 only as a
+stamp row — its frozen content is not viewable anywhere (auditor finding F4, explicitly left to me).
+goal.md does not say whether "newer manifest" means a newer DATE's manifest or a newer VERSION of the
+same date's manifest.
+**We chose:** Read it as date-scoped, not version-scoped: serving the newest version for the SAME
+as-of is in-spec, because J-06 step 4 explicitly requires that "version 2 appears… version 1 remains
+readable and byte-identical… and the UI lists both versions with their stamps", and J-08 step 3 is
+where the date-substitution rule actually lives ("never a newer manifest's contents" for a historical
+date D). Recorded as OK in the anti-goal table rather than as a violation.
+**Reversible:** yes
+
+## iter-3 — goal-evaluator
+
+**Ambiguity:** J-01–J-04 carry `evidence_makeup: true` for a missing `[NEW]` walkthrough. Methodology
+A.7's clearing rule says the flag clears "the moment a fresh capture lands — whatever the outcome", and
+fresh captures DID land this iteration (`J-01..J-04-verify.png`, `UT-J-01-result.png`). But the
+specific make-up asked for — the `demo.sh --session-live` walkthrough, TC-32 — was not produced: the
+iter-3 demo run recorded 8 iter-3 steps with an empty Journey column.
+**We chose:** KEPT `evidence_makeup: true` on all four, reading the flag as tracking the outstanding
+CAPTURE KIND (a walkthrough recording), not merely "any newer image". Clearing it would delete the only
+scheduling hook for a make-up that is now two iterations overdue. The flag does not affect their
+`passing` status either way.
+**Reversible:** yes
+
+## iter-3 — goal-evaluator
+
+**Ambiguity:** J-06 step 2's "unavailable" basis disclosure is demonstrably unreachable (auditor B2,
+reproduced), while J-06's other steps are met with evidence. The status vocabulary offers `failing`
+("verified failing") and `partial` ("only some assertion steps passed") with no rule for a journey that
+has both a proven defect and proven working parts.
+**We chose:** Scored J-06 `partial` rather than `failing`, and wrote the unmet step out in full in
+eval.md and in the journey note so nothing is hidden. `partial` records the real shape (regenerate,
+versioning, immutability and the confirm gate all verified; one step unmet, two steps unrun); neither
+label supports GOAL_ACHIEVED, so the choice costs nothing at the gate and preserves diagnosis detail.
+**Reversible:** yes

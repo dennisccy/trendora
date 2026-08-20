@@ -1,4 +1,4 @@
-// File: /home/dennisccy/Git/trendora/apps/frontend/app/stocks/[ticker]/page.tsx
+// File: /home/dennis-chan/Git/trendora/apps/frontend/app/stocks/[ticker]/page.tsx
 import * as entry from '../../../../../app/stocks/[ticker]/page.js'
 import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
 

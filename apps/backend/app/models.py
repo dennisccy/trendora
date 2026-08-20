@@ -212,6 +212,13 @@ class ScannerRun(SQLModel, table=True):
     breadth_above_200dma: Optional[float] = None
     new_high_low_json: str
     candidate_counts_json: str
+    # goal-market-compass iter-3 (J-05/J-06): the engine-code + config identity stamp
+    # (`app.engine.engine_identity.compute_engine_identity`), written ONCE at persist time by
+    # `scanner.persist_run_payload` — an ADDITIVE nullable column (`db._ADDITIVE_COLUMNS`). An existing
+    # pre-iter-3 row stays NULL forever ("pre-stamping era" — never backfilled); only NEWLY created runs
+    # carry a stamp. Read (never recomputed) by the next-session manifest freeze writer's read-time basis
+    # disclosure (compares this against the manifest's own frozen `generation.engine_identity`).
+    engine_identity: Optional[str] = Field(default=None)
 
 
 class ScannerResult(SQLModel, table=True):
@@ -761,36 +768,85 @@ class AvailabilityCache(SQLModel, table=True):
 
 
 class NextSessionManifest(SQLModel, table=True):
-    """One next-session manifest row for one `as_of` date (goal-market-compass iter-2, J-02/J-03/J-04 —
-    the CONTENT block only; J-05/J-06 add `mode`/`version`/`frozen`/`generation.*`/hashes/provenance/
-    cohort-storage/export columns ADDITIVELY in a later iteration — this iteration's five columns below
-    never change shape, per `docs/phases/goal-market-compass-iter-2.md` OUT OF SCOPE).
+    """One next-session manifest VERSION row for one `(as_of, version)` pair (goal-market-compass iter-2,
+    J-02/J-03/J-04 — the CONTENT block; iter-3, J-05/J-06 — the freeze/integrity block: `mode`/`version`/
+    `frozen`/`generation`/three hashes/provenance/cohort-storage/`prospective_eligible`/
+    `available_at_utc`/`export_path`, added ADDITIVELY).
 
     UNLIKE the `*Cache` tables above (`MarketPhaseCache` et al.), this is NOT a cache of a re-derivable
-    read — it is a first-class IMMUTABLE record, like `ScannerRun`: computed ONCE per `as_of` (at ingest
-    finalize, or on the first `GET /api/compass` for a not-yet-computed `as_of` — create-once-on-GET) and
-    NEVER updated or deleted afterward (anti-goal AG-12 — manifest immutability binds from this iteration
-    on, even though the `frozen`/`version` columns that make that explicit are still J-05/J-06). `as_of`
-    is unique — exactly one row per date, mirroring `ScannerRun.asof_date`. A concurrent create-once race
-    is resolved the SAME way `scanner.persist_run_payload` resolves a `ScannerRun` race: roll back the
-    losing INSERT and return the already-committed row (never raise, never duplicate, never overwrite).
+    read — it is a first-class IMMUTABLE record, like `ScannerRun`: computed ONCE per `(as_of, version)`
+    (at ingest finalize for the frontier date, on the first `GET /api/compass` for a not-yet-computed
+    HISTORICAL `as_of` — create-once-on-GET, never the frontier — or via the explicit confirm-gated
+    regenerate action) and NEVER updated or deleted afterward (anti-goal AG-12 — manifest immutability).
+    `(as_of, version)` is unique — `version` starts at 1 and is dense/append-only per `as_of`; a
+    concurrent create-once race is resolved the SAME way `scanner.persist_run_payload` resolves a
+    `ScannerRun` race: roll back the losing INSERT and return the already-committed row (never raise,
+    never duplicate, never overwrite). `next_session_manifests` joins NEITHER `clear_snapshot_set` NOR
+    the remove-data cascade — no code path deletes a row here.
 
-    The three CONTENT blocks (`session_delta`, `narrative`, `selection` — see `app.engine.compass`'s
-    Data-contract shapes) are stored as their OWN JSON columns rather than one combined blob so a future
-    column-projected read never has to deserialize a block it does not need (AG-8 posture). `content_hash`
-    is the sha256 hex digest of the sorted-key JSON of exactly these three blocks (see
-    `app.engine.compass.build_manifest_payload`) — NOT of this row's other columns."""
+    The three CONTENT blocks (`session_delta`, `narrative`, `selection` — the `selection` block now also
+    carries `comparison_cohort` / `near_threshold_shadow`, iter-3) are stored as their OWN JSON columns
+    rather than one combined blob so a future column-projected read never has to deserialize a block it
+    does not need (AG-8 posture). `content_hash` is the sha256 hex digest of the sorted-key JSON of
+    exactly these three blocks (see `app.engine.compass.build_manifest_payload`) — NOT of this row's
+    other columns; it stays invariant across legitimate generation-metadata-only differences (e.g. a
+    regenerate with unchanged inputs).
+
+    The FREEZE/INTEGRITY columns below are all ADDITIVE and nullable/defaulted (`db._ADDITIVE_COLUMNS`)
+    so an existing pre-iter-3 row backfills `version=1`, `frozen=False`, `mode`/every hash/JSON-block
+    column NULL, `prospective_eligible=False` — an honest "pre-freeze era" marker, NEVER retroactively
+    marked frozen or eligible. Every column here is written ONCE, together, by
+    `app.engine.compass._freeze_manifest` (the single writer behind all three producer paths) and never
+    touched again. `generation_json`/`candidate_rule_config_json`/`cohort_rule_config_json`/
+    `manifest_config_subset_json`/`dataset_json`/`universe_json`/`comparison_cohort_json`/
+    `near_threshold_shadow_json`/`caveats_json` hold their block's OWN verbatim JSON (AG-8 posture, same
+    reasoning as the three content columns above). `engine_identity`/`candidate_rule_hash`/
+    `cohort_rule_hash`/`manifest_config_hash`/`prospective_eligible`/`manifest_hash` are ALSO typed
+    top-level columns (not just JSON-nested) so a future consumer can column-project-filter without
+    parsing `generation_json` (`prospective_eligible` is explicitly called out for this in goal.md).
+    `export_path` stays NULL when the at-ingest export write fails (isolate-and-continue — an honest gap,
+    never a half-written file silently treated as present)."""
 
     __tablename__ = "next_session_manifests"
+    __table_args__ = (
+        UniqueConstraint("as_of", "version", name="uq_next_session_manifests_as_of_version"),
+    )
 
     id: Optional[int] = Field(default=None, primary_key=True)
-    as_of: date = Field(index=True, unique=True)
+    as_of: date = Field(index=True)
+    # iter-3: version starts at 1 (the finalize freeze or the first historical on-demand GET); a
+    # confirm-gated regenerate mints version N+1 for an existing as_of. Pre-iter-3 rows backfill 1.
+    version: int = Field(default=1)
     source_run_id: int = Field(foreign_key="scanner_runs.id", index=True)
     session_delta_json: str
     narrative_json: str
     selection_json: str
     content_hash: str = Field(index=True)
     created_at: datetime
+
+    # --- iter-3 freeze/integrity block (additive; NULL/False on a pre-iter-3 row) -----------------
+    mode: Optional[str] = Field(default=None)  # "at_ingest" | "retrospective" — data-driven, never chosen
+    frozen: bool = Field(default=False)  # True for every row minted by the iter-3 freeze writer
+    generation_json: Optional[str] = Field(default=None)  # {producer, frontier_bar_date, generated_at,
+    # preflight_verdict, engine_identity, source_run_created_at}
+    engine_identity: Optional[str] = Field(default=None)  # mirror of generation.engine_identity (typed)
+    candidate_rule_hash: Optional[str] = Field(default=None, index=True)
+    candidate_rule_config_json: Optional[str] = Field(default=None)
+    cohort_rule_hash: Optional[str] = Field(default=None, index=True)
+    cohort_rule_config_json: Optional[str] = Field(default=None)
+    manifest_config_hash: Optional[str] = Field(default=None)
+    manifest_config_subset_json: Optional[str] = Field(default=None)
+    dataset_json: Optional[str] = Field(default=None)  # {"stamp": ...}
+    universe_json: Optional[str] = Field(default=None)  # {pool_hash, resolver_gate, member_count, profile}
+    comparison_cohort_json: Optional[str] = Field(default=None)  # list of frozen non-candidate rows
+    near_threshold_shadow_json: Optional[str] = Field(default=None)  # subset of the above, near the floor
+    caveats_json: Optional[str] = Field(default=None)  # {evidence, survivorship, sector_basis, cohort_semantics}
+    # fail-closed, write-once: true iff mode=at_ingest, producer=ingest_finalize, version=1, frozen=True,
+    # a well-formed available_at_utc, and complete provenance — derived ONCE at write, NEVER at read.
+    prospective_eligible: bool = Field(default=False, index=True)
+    available_at_utc: Optional[datetime] = Field(default=None)
+    manifest_hash: Optional[str] = Field(default=None)  # whole-document integrity hash (excl. itself)
+    export_path: Optional[str] = Field(default=None)  # NULL when never exported / export write failed
 
 
 # --- ops-hardening iter-2 (J-05) coverage derived-aggregate snapshot (a PERFORMANCE cache, not a

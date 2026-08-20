@@ -1,4 +1,4 @@
-// File: /home/dennisccy/Git/trendora/apps/frontend/app/methodology/page.tsx
+// File: /home/dennis-chan/Git/trendora/apps/frontend/app/methodology/page.tsx
 import * as entry from '../../../../app/methodology/page.js'
 import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
 

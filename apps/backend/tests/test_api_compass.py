@@ -59,9 +59,21 @@ def compass_engine(tmp_path):
     return engine
 
 
+def _freeze_frontier(engine, cfg) -> None:
+    """iter-3: the route can no longer auto-mint the CURRENT frontier's manifest (J-05 step 7) -- tests
+    that exercise the WARM-HIT/served-fields behavior must first simulate the ingest-finalize freeze the
+    same way `data_manager._refresh_ingest_aggregates` does."""
+    with Session(engine) as session:
+        run = session.exec(
+            __import__("sqlmodel").select(ScannerRun).where(ScannerRun.asof_date == date(2024, 6, 8))
+        ).first()
+        compass_module.get_or_create_manifest(session, run, cfg, producer="ingest_finalize")
+
+
 def test_compass_route_serves_every_new_field_directly(compass_engine, cfg):
     from app.api.compass import compass as compass_route
 
+    _freeze_frontier(compass_engine, cfg)
     with Session(compass_engine) as session:
         result = compass_route(None, session)
 
@@ -75,12 +87,41 @@ def test_compass_route_serves_every_new_field_directly(compass_engine, cfg):
     for key in ("candidates", "why_not", "disposition_tally", "candidates_empty_reason"):
         assert key in result["selection"]
     assert isinstance(result["content_hash"], str) and len(result["content_hash"]) == 64  # sha256 hex
+    # iter-3 (J-05/J-06) freeze/integrity fields -- every one served at the response layer directly.
+    assert result["mode"] == "at_ingest"
+    assert result["version"] == 1
+    assert result["frozen"] is True
+    assert result["prospective_eligible"] is True
+    assert result["generation"]["producer"] == "ingest_finalize"
+    assert result["generation"]["engine_identity"]
+    assert result["candidate_rule_hash"] and result["cohort_rule_hash"] and result["manifest_config_hash"]
+    assert result["dataset"]["stamp"]
+    assert result["universe"]["member_count"] == 1
+    assert isinstance(result["comparison_cohort"], list)
+    assert isinstance(result["near_threshold_shadow"], list)
+    assert result["caveats"]["cohort_semantics"]
+    assert result["available_at_utc"]
+    assert isinstance(result["manifest_hash"], str) and len(result["manifest_hash"]) == 64
+    # `basis`/`versions` are READ-TIME-ONLY additions the API layer attaches AFTER manifest_row_payload()
+    # -- they were never part of what got hashed at write time, so verification runs over the pure
+    # reconstructed document (TC-4's exact contract), not the full API response shape.
+    hashed_document = {k: v for k, v in result.items() if k not in ("basis", "versions")}
+    assert compass_module.verify_manifest_hash(hashed_document)
+    assert result["basis"]["status"] == "available"
+    assert result["versions"] == [
+        {
+            "version": 1, "mode": "at_ingest", "frozen": True, "prospective_eligible": True,
+            "generated_at": result["generation"]["generated_at"],
+        }
+    ]
 
 
 def test_compass_route_computes_once_serves_from_storage_after(compass_engine, cfg, monkeypatch):
-    """TC-1: the second call for the same as-of returns byte-identical content with ZERO additional
-    producer calls (get_or_create_manifest short-circuits on the stored row)."""
+    """TC-1: once frozen, the SECOND call for the same as-of returns byte-identical content with ZERO
+    additional producer calls (get_or_create_manifest short-circuits on the stored row)."""
     from app.api.compass import compass as compass_route
+
+    _freeze_frontier(compass_engine, cfg)
 
     calls = {"n": 0}
     original = compass_module.build_manifest_payload
@@ -93,11 +134,11 @@ def test_compass_route_computes_once_serves_from_storage_after(compass_engine, c
 
     with Session(compass_engine) as session:
         first = compass_route(None, session)
-    assert calls["n"] == 1
+    assert calls["n"] == 0  # already frozen by _freeze_frontier -- this call is a pure warm read
 
     with Session(compass_engine) as session:
         second = compass_route(None, session)
-    assert calls["n"] == 1  # no additional producer call on the second, separate-request hit
+    assert calls["n"] == 0  # no additional producer call on the second, separate-request hit
 
     assert first == second
 
@@ -106,6 +147,23 @@ def test_compass_route_computes_once_serves_from_storage_after(compass_engine, c
             __import__("sqlmodel").select(NextSessionManifest).where(NextSessionManifest.as_of == date(2024, 6, 8))
         ).all()
     assert len(rows) == 1
+
+
+def test_compass_route_frontier_with_no_manifest_yet_returns_honest_404(compass_engine, cfg):
+    """J-05 step 7 / TC-8: a plain GET for the CURRENT frontier with no manifest yet never mints one --
+    an honest 404, never a fabricated payload."""
+    from app.api.compass import compass as compass_route
+
+    with Session(compass_engine) as session:
+        with pytest.raises(HTTPException) as exc_info:
+            compass_route(None, session)
+    assert exc_info.value.status_code == 404
+
+    with Session(compass_engine) as session:
+        rows = session.exec(
+            __import__("sqlmodel").select(NextSessionManifest).where(NextSessionManifest.as_of == date(2024, 6, 8))
+        ).all()
+    assert rows == []  # no partial/fabricated row was written
 
 
 def test_compass_route_unknown_asof_returns_honest_error_never_fabricated(compass_engine, cfg):
@@ -125,3 +183,64 @@ def test_compass_route_historical_asof_serves_that_dates_own_manifest(compass_en
         result = compass_route("2024-06-01", session)
     assert result["as_of"] == "2024-06-01"
     assert result["session_delta"]["prior_as_of"] is None  # earliest stored run -- explicit no-prior-run state
+
+
+# --- POST /api/compass/regenerate (iter-3, J-05/J-06) --------------------------------------------
+
+
+def test_regenerate_route_requires_confirm_flag(compass_engine, cfg):
+    """TC-13 / Error cases: called without confirm=true, no row is created."""
+    from app.api.compass import compass_regenerate
+
+    with Session(compass_engine) as session:
+        with pytest.raises(HTTPException) as exc_info:
+            compass_regenerate("2024-06-01", False, session)
+    assert exc_info.value.status_code == 400
+
+    with Session(compass_engine) as session:
+        rows = session.exec(
+            __import__("sqlmodel").select(NextSessionManifest).where(NextSessionManifest.as_of == date(2024, 6, 1))
+        ).all()
+    assert rows == []
+
+
+def test_regenerate_route_missing_manifest_returns_honest_404(compass_engine, cfg):
+    """Error cases: regenerate for an as_of with no existing manifest returns an honest 4xx, never
+    fabricates a version."""
+    from app.api.compass import compass_regenerate
+
+    with Session(compass_engine) as session:
+        with pytest.raises(HTTPException) as exc_info:
+            compass_regenerate("2024-06-01", True, session)
+    assert exc_info.value.status_code == 404
+
+
+def test_regenerate_route_mints_version_2_leaves_version_1_untouched(compass_engine, cfg):
+    """TC-12: version 2 carries its own generation/available_at_utc/manifest_hash, prospective_eligible
+    False even though a historical as_of's mode also computes at_ingest-ineligible (retrospective);
+    version 1 stays byte-identical."""
+    from app.api.compass import compass as compass_route
+    from app.api.compass import compass_regenerate
+
+    with Session(compass_engine) as session:
+        v1 = compass_route("2024-06-01", session)
+
+    with Session(compass_engine) as session:
+        v2 = compass_regenerate("2024-06-01", True, session)
+
+    assert v2["version"] == 2
+    assert v2["prospective_eligible"] is False
+    assert v2["manifest_hash"] != v1["manifest_hash"]
+    assert v2["generation"]["producer"] == "regenerate"
+
+    with Session(compass_engine) as session:
+        v1_reread = compass_route("2024-06-01", session)
+    # re-reading after a regenerate still serves the LATEST version by default...
+    assert v1_reread["version"] == 2
+    # ...but version 1's own row is untouched -- fetch it explicitly via list_manifest_versions
+    with Session(compass_engine) as session:
+        versions = compass_module.list_manifest_versions(session, date(2024, 6, 1))
+    assert [v.version for v in versions] == [1, 2]
+    assert versions[0].manifest_hash == v1["manifest_hash"]
+    assert versions[0].content_hash == v1["content_hash"]
+    assert versions[0].prospective_eligible is False  # historical as_of was never eligible either

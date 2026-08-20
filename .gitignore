@@ -76,6 +76,13 @@ htmlcov/
 # Anchored with a leading slash so apps/backend/data/ is unaffected.
 /data/
 
+# goal-market-compass iter-3 (J-05/J-06): the at-ingest-mode next-session-manifest export writer's
+# target dir (config.yaml compass.manifest.export_dir) — a LOCAL JSON artifact directory regenerated
+# from stored manifest rows on every freeze (never hand-edited, never a repo artifact), the SAME
+# never-commit posture as the DB file itself. Test runs that omit TRENDORA_COMPASS_EXPORT_DIR also
+# write here — ephemeral either way.
+apps/backend/data/exports/
+
 # Goal-mode interactive pump transient logs
 runs/goal-session-*/pump-launch.out
 

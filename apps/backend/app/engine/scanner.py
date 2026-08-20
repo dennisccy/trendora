@@ -35,6 +35,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from app.config import Config, get_config
+from app.engine import engine_identity
 from app.engine.prices import bar_cache, latest_data_date
 from app.engine.regime import score_regime
 from app.engine.scoring import score_stocks
@@ -113,6 +114,9 @@ def persist_run_payload(
         breadth_above_200dma=regime["breadth_above_200dma"],
         new_high_low_json=json.dumps(regime["new_high_low"]),
         candidate_counts_json=json.dumps(candidate_counts),
+        # goal-market-compass iter-3 (J-05/J-06): stamped ONCE at persist time on every NEWLY created
+        # run only — an existing pre-iter-3 row stays NULL forever ("pre-stamping era", never backfilled).
+        engine_identity=engine_identity.compute_engine_identity(cfg),
     )
     session.add(run)
     try:

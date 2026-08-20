@@ -1,0 +1,98 @@
+{
+  "journeys": {
+    "J-01": {
+      "id": "J-01",
+      "name": "Sector labels are honest and nearly complete on new runs",
+      "status": "passing",
+      "last_verified_iter": "goal-market-compass-iter-2",
+      "last_passing_iter": "goal-market-compass-iter-2",
+      "first_seen_iter": "goal-market-compass-iter-0",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-2-evidence/UT-J-01-result.png",
+      "spec_hash": "5217f3fe85d2a05c2f436d3ec6d140f2b7539b8798c161925a2e9e76ddab61f9",
+      "gap": "Acceptance met. VERIFIED this iteration (UT-J-01, reports/phase-goal-market-compass-iter-2-ui-test-results.md): coverage 0/539 Unassigned (0.00%) on run 3081 at as-of 2026-08-12 -- the Sector filter renders NO 'Unassigned' option at all (select.options read directly) and GET /api/stocks returns 539/539 non-null; GRMN='Consumer Discretionary' agrees across the /stocks leaderboard row, the /stocks/GRMN detail header and GET /api/stocks/GRMN (screenshot UT-J-01-result.png shows the leaderboard cell at as-of 2026-08-12 with 1/539 filtered); DELL='Technology' confirmed at the API; /methodology's sector-basis card carries the two-source + current-only disclosure verbatim from config.yaml:1473; GWW at as-of 2026-07-23 serves sector:null and renders 'Unassigned' (honest NA, never fabricated); step-6 byte-identity fixture cited in the iter-1 dev handoff. Independently corroborated by the iter-1 auditor's live API + full 539-row DOM sweep. CAPTURE GAP ONLY (evidence_makeup): no [NEW]-flagged walkthrough exists (the lean pipeline ran no demo lane this iteration), and no screenshot captures the coverage state itself or the GWW 'Unassigned' render. OWNER ACTION still open: goal.md J-01 step 1's destructive Remove+backfill precondition and step 2's 'select the Unassigned filter option' are both unexecutable as written (the option honestly disappears at 0%) -- a wording amendment is needed before J-01 is ever re-run verbatim.",
+      "evidence_makeup": true
+    },
+    "J-02": {
+      "id": "J-02",
+      "name": "What changed since the previous session",
+      "status": "passing",
+      "last_verified_iter": "goal-market-compass-iter-2",
+      "last_passing_iter": "goal-market-compass-iter-2",
+      "first_seen_iter": "goal-market-compass-iter-0",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-2-evidence/UT-J-02-result.png",
+      "spec_hash": "4a55fbb172e17090c2d095af6a36d95e08edadeda2ed05941cbe3ce9476eb993",
+      "gap": "Acceptance met. VERIFIED (UT-J-02 row + screenshot UT-J-02-result.png, personally opened): the What-changed card on / at as-of 2026-08-12 is headed 'vs 2026-08-11 (1 day ago)' -- the run immediately preceding the current as-of in GET /api/runs -- and lists 17 threshold-clearing entries in kind order (5 Sector, 2 Theme, 10 Stock; market/breadth fell below threshold and are correctly absent), each with from -> to values and a drill link carrying ?asof; the 'Suppressed moves (28)' disclosure count equals its 28 listed sub-threshold entries. Spot-checks re-verified against stored rows at BOTH dates: Home Construction (iShares) sector rank 21->25 vs GET /api/sectors, SMCI leadership bucket E->D vs GET /api/stocks. At as-of 1996-02-01 (earliest of 3093 stored runs) the explicit no-prior-run state renders with 0 changes and 0 suppressed. Sole producer app.engine.session_delta.compute_delta, served only by GET /api/compass (coherence.md Data Contract row OK); the UI evaluates no threshold. CAPTURE GAP ONLY (evidence_makeup): no [NEW]-flagged walkthrough (no demo lane ran at lean depth), and the earliest-run empty state + the expanded suppressed disclosure have no screenshot of their own.",
+      "evidence_makeup": true
+    },
+    "J-03": {
+      "id": "J-03",
+      "name": "Plain-English summary with cited facts",
+      "status": "passing",
+      "last_verified_iter": "goal-market-compass-iter-2",
+      "last_passing_iter": "goal-market-compass-iter-2",
+      "first_seen_iter": "goal-market-compass-iter-0",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-2-evidence/UT-J-03-result.png",
+      "spec_hash": "81cd6c9267c0d734cd88b19f43baf53bcab70c7b60d60cd5b2018a76425e87e7",
+      "gap": "Acceptance met, with the strongest evidence in the iteration. VERIFIED (UT-J-03 row + screenshot UT-J-03-result.png, personally opened with the 'Show cited facts' disclosure EXPANDED): all four sentences (state, direction, breadth, focus_count) render as served text, each listing its template_id and its facts -- template_id values are literally 'state'/'direction'/'breadth'/'focus_count' (apps/backend/app/engine/compass.py:90,117,142,153; rendered at apps/frontend/components/compass-summary-card.tsx:45). AG-3 CROSS-CHECKED BY THE EVALUATOR INSIDE THE SCREENSHOTS THEMSELVES, not from prose: at as-of 2026-08-12 the cited facts regime_score 73.24 / severity 25.84 / breadth 59.84 / 66.39 equal the canonical Market Regime, Market Phase & Severity and More-detail breadth tiles rendered lower on the SAME page (UT-J-02-result.png); at as-of 2026-07-23 the summary's 57.9 / 36.6 / 39.3% / 57.4% equal the tiles 57.87 / 36.61 / 39.34% / 57.38% (UT-J-04-result.png). Retrospective stamp renders at both pre-frontier dates tested. Earliest-run no-comparison and breadth-NA variants render. Banned-language list committed at config.yaml:1435-1447 with a runtime guard (compass.py:175-183, called at :208); no banned token found in any rendered sentence. content_hash byte-identical across two API calls minutes apart (8bb67cd6...). CAPTURE GAP ONLY (evidence_makeup): no [NEW]-flagged walkthrough (no demo lane ran at lean depth).",
+      "evidence_makeup": true
+    },
+    "J-04": {
+      "id": "J-04",
+      "name": "Each next-session candidate explains why and why-not",
+      "status": "passing",
+      "last_verified_iter": "goal-market-compass-iter-2",
+      "last_passing_iter": "goal-market-compass-iter-2",
+      "first_seen_iter": "goal-market-compass-iter-0",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-2-evidence/UT-J-04-result.png",
+      "spec_hash": "d1521389ca8fcf3fd1b7ac60e53bdb9608112247219ccbbea2ae66e99bff8ad0",
+      "gap": "Acceptance met. VERIFIED (UT-J-04 row + screenshot UT-J-04-result.png, personally opened): the GWW candidate card at as-of 2026-07-23 shows exactly the three existing scores with config word maps (Strong leader 81.2 / Fair entry 70.3 / Very low risk 43.3), three WHY lines each citing threshold + actual, the ATR_RISK_BUDGET caution (2.23% of price, p17), an Eligibility checklist (3 rows, threshold vs actual, all Pass) that jointly reproduces inclusion, a 'What would change this' panel with the same 3 rows all 'met', the invalidation note verbatim, and a 'Not priority (20)' list where every entry names its failed condition with actual, threshold and distance. Disposition tally partitions exactly at both dates tested (2026-08-12: 539+0 = 539 members - 0 candidates; 2026-07-23: 539+0 = 540 - 1). The honest-zero state at the latest as-of renders its explicit candidates_empty_reason (visible in UT-J-02-result.png). Shadow cohort absent from payload, component source and UI (test_compass.py:220). No composite/blended number anywhere (test_compass.py:209). CAPTURE GAP ONLY (evidence_makeup): no [NEW]-flagged walkthrough (no demo lane ran at lean depth) and no screenshot of the Risk-off caution state at as-of 2026-03-30 -- that branch is backed by the browser-QA row, the code at compass.py:301-305 and test_compass.py:186, but not by a picture. PRODUCT-QUALITY FLAG for the owner (not a defect): zero names clear the three-qualifier AND on the current frontier date, so the headline section is empty today; any threshold change must be owner-sanctioned and must not be tuned from realized returns (AG-15).",
+      "evidence_makeup": true
+    },
+    "J-05": {
+      "id": "J-05",
+      "name": "Each close freezes one next-session manifest, exported byte-consistently",
+      "status": "failing",
+      "last_verified_iter": "goal-market-compass-iter-0",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-market-compass-iter-0",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-0-evidence/UT-J-05-fail.png",
+      "spec_hash": "de33a9d149ebefe4f8cf0ffb9fe86243e3f9fa9d83850c890848f268e5c54c4f",
+      "gap": "Not re-tested this iteration -- explicitly OUT OF SCOPE in the iter-2 spec. MATERIALLY UNBLOCKED, though: iter-2 landed the substrate this journey extends -- the next_session_manifests table (apps/backend/app/models.py:763), GET /api/compass (apps/backend/app/api/compass.py), the create-once/serve-from-storage path (compass.py:432-482) and a 'compass content' ingest-finalize phase (data_manager.py:4523-4548). Still absent and owed by this journey: mode / version / frozen / generation.*, engine identity, candidate_rule_hash + cohort_rule_hash + manifest_config_hash, dataset and universe stamps, manifest_hash, prospective_eligible, available_at_utc, the frozen comparison + near-threshold shadow cohorts, the export file writer, the committed JSON Schema, and the twelve named invariant tests."
+    },
+    "J-06": {
+      "id": "J-06",
+      "name": "A frozen manifest never changes",
+      "status": "failing",
+      "last_verified_iter": "goal-market-compass-iter-0",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-market-compass-iter-0",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-0-evidence/UT-J-06-fail.png",
+      "spec_hash": "4934b178e966fdb05cfb68537e861e0f34f961f630a57e4098f9fb69be2cdda8",
+      "gap": "Not re-tested this iteration -- explicitly OUT OF SCOPE in the iter-2 spec; still gated on J-05's freeze apparatus. Partially pre-satisfied by construction: the new table already has SELECT + a single INSERT and no UPDATE or DELETE path (compass.py:441-475), and it is absent from the remove-data / clear-snapshot cascade in data_manager.py -- so AG-12 holds today. Owed: versioned corrections, rebuild/removal survival proof, and the never-substitute-a-newer-manifest historical view."
+    },
+    "J-07": {
+      "id": "J-07",
+      "name": "The Today page answers the ten-second read",
+      "status": "failing",
+      "last_verified_iter": "goal-market-compass-iter-0",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-market-compass-iter-0",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-0-evidence/UT-J-07-fail.png",
+      "spec_hash": "3277c326632d90b5aa5d4331f051b419d2e71d022b640c5851acd9f105d57b72",
+      "gap": "Not re-tested this iteration -- explicitly OUT OF SCOPE in the iter-2 spec. Materially advanced: three of the six required body sections (summary, what-changed, next-session focus) now render on / above the unmodified dashboard body (apps/frontend/app/page.tsx:709-711, visible in UT-J-02-result.png). Still owed: the page heading is still 'Dashboard', the market-state band is not positioned/composed per the spec, readiness/preflight chrome is not separated, the leadership-rotation section and manifest strip do not exist, perf-budget instrumentation is absent from reports/perf-budgets.md, and the old dashboard body still sits on / because /market does not exist."
+    },
+    "J-08": {
+      "id": "J-08",
+      "name": "Market page moves over intact and history stays honest",
+      "status": "failing",
+      "last_verified_iter": "goal-market-compass-iter-1",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-market-compass-iter-0",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-1-evidence/UT-J-08-fail.png",
+      "spec_hash": "621deda83bfbe069b3899a9860d352ac2ef7f6e7f80acf0630cd39acbb2ce860",
+      "gap": "Not re-tested this iteration -- explicitly OUT OF SCOPE in the iter-2 spec, which states the sidebar keeps its current 'Dashboard' label until J-08's own iteration. Unchanged from the iter-1 measurement (NOT a regression -- this journey has never passed): /market returns a Next.js 404 and the sidebar has no 'Today'/'Market' entries. The coherence audit independently confirmed no nav/router file appears in this iteration's 27-file changeset."
+    }
+  },
+  "anti_goal_violations": [],
+  "updated_at": "2026-08-20T09:05:00Z"
+}

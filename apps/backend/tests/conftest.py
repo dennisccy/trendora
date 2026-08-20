@@ -28,6 +28,20 @@ def pytest_configure(config):
     )
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _isolated_compass_export_dir(tmp_path_factory):
+    """goal-market-compass iter-3 (J-05/J-06) audit: point the next-session-manifest export writer
+    (`compass._write_export`) at a per-run temp dir so NO test ever writes into the product's configured
+    `compass.manifest.export_dir`. A synthetic fixture's as-of can collide with a real frozen at-ingest
+    artifact's file name there, and an exported manifest is immutable (AG-12) — tests must never land in
+    that directory at all. Env-var override only (name, never a value in files)."""
+    import os
+
+    os.environ["TRENDORA_COMPASS_EXPORT_DIR"] = str(tmp_path_factory.mktemp("compass_exports"))
+    yield
+    os.environ.pop("TRENDORA_COMPASS_EXPORT_DIR", None)
+
+
 @pytest.fixture(scope="session")
 def config():
     return load_config()

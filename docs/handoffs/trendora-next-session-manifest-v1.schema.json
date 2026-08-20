@@ -1,0 +1,167 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://trendora.local/schemas/next-session-manifest-v1.schema.json",
+  "title": "Trendora Next-Session Manifest v1",
+  "description": "goal-market-compass iter-3 (J-05/J-06) -- the committed, versioned machine-readable contract every produced next-session manifest document (GET /api/compass's served payload, minus the read-time-only `basis`/`versions` fields the API layer attaches) must validate against. A schema change is always a NEW versioned file, never an in-place edit of this one (schema_version stays in lockstep with `compass.manifest.schema_version` in config.yaml). This is Trendora's producer-side contract only -- no Tapeology importer ships in this goal.",
+  "type": "object",
+  "required": [
+    "as_of",
+    "version",
+    "mode",
+    "frozen",
+    "session_delta",
+    "narrative",
+    "selection",
+    "comparison_cohort",
+    "near_threshold_shadow",
+    "content_hash",
+    "generation",
+    "candidate_rule_hash",
+    "cohort_rule_hash",
+    "manifest_config_hash",
+    "dataset",
+    "universe",
+    "caveats",
+    "prospective_eligible",
+    "available_at_utc",
+    "manifest_hash"
+  ],
+  "properties": {
+    "as_of": { "type": "string", "format": "date" },
+    "version": { "type": "integer", "minimum": 1 },
+    "mode": { "type": "string", "enum": ["at_ingest", "retrospective"] },
+    "frozen": { "type": "boolean" },
+    "session_delta": { "type": "object" },
+    "narrative": { "type": "object" },
+    "selection": {
+      "type": "object",
+      "required": ["candidates", "why_not", "disposition_tally", "candidates_empty_reason"],
+      "properties": {
+        "candidates": { "type": "array" },
+        "why_not": { "type": "array" },
+        "disposition_tally": {
+          "type": "object",
+          "required": ["below_selection_floor", "excluded_by_cap"],
+          "properties": {
+            "below_selection_floor": { "type": "integer", "minimum": 0 },
+            "excluded_by_cap": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "candidates_empty_reason": { "type": ["string", "null"] }
+      }
+    },
+    "comparison_cohort": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/comparisonCohortRow" }
+    },
+    "near_threshold_shadow": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/shadowRow" }
+    },
+    "content_hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "generation": {
+      "type": "object",
+      "required": ["producer", "generated_at", "engine_identity"],
+      "properties": {
+        "producer": { "type": "string", "enum": ["ingest_finalize", "on_demand_get", "regenerate"] },
+        "frontier_bar_date": { "type": ["string", "null"], "format": "date" },
+        "generated_at": { "type": "string" },
+        "preflight_verdict": { "type": ["string", "null"] },
+        "engine_identity": { "type": "string" },
+        "source_run_created_at": { "type": ["string", "null"] }
+      }
+    },
+    "candidate_rule_hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "candidate_rule_config": { "type": ["object", "null"] },
+    "cohort_rule_hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "cohort_rule_config": { "type": ["object", "null"] },
+    "manifest_config_hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "manifest_config_subset": { "type": ["object", "null"] },
+    "dataset": {
+      "type": "object",
+      "required": ["stamp"],
+      "properties": { "stamp": { "type": ["string", "null"] } }
+    },
+    "universe": {
+      "type": "object",
+      "required": ["pool_hash", "resolver_gate", "member_count", "profile"],
+      "properties": {
+        "pool_hash": { "type": ["string", "null"] },
+        "resolver_gate": { "type": "object" },
+        "member_count": { "type": "integer", "minimum": 0 },
+        "profile": { "type": "string", "const": "core" }
+      }
+    },
+    "caveats": {
+      "type": "object",
+      "required": ["evidence", "survivorship", "sector_basis", "cohort_semantics"],
+      "properties": {
+        "evidence": { "type": "string" },
+        "survivorship": { "type": "string" },
+        "sector_basis": { "type": "string" },
+        "cohort_semantics": { "type": "string" }
+      }
+    },
+    "prospective_eligible": { "type": "boolean" },
+    "available_at_utc": { "type": ["string", "null"] },
+    "manifest_hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+  },
+  "definitions": {
+    "cohortRowCore": {
+      "type": "object",
+      "required": [
+        "ticker", "leadership_score", "leadership_bucket", "entry_quality_score", "entry_quality_bucket",
+        "risk_score", "risk_bucket", "setup_status", "rank_in_run", "sector", "theme_memberships",
+        "close", "atr_pct", "distance_from_52w_high", "gap_p95", "worst_20d", "distance_to_invalidation",
+        "adv_dollars"
+      ],
+      "properties": {
+        "ticker": { "type": "string" },
+        "leadership_score": { "type": "number" },
+        "leadership_bucket": { "type": "string" },
+        "entry_quality_score": { "type": "number" },
+        "entry_quality_bucket": { "type": "string" },
+        "risk_score": { "type": "number" },
+        "risk_bucket": { "type": "string" },
+        "setup_status": { "type": "string" },
+        "rank_in_run": { "type": "integer" },
+        "sector": { "type": ["string", "null"] },
+        "theme_memberships": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["theme", "rank"],
+            "properties": { "theme": { "type": "string" }, "rank": { "type": ["integer", "null"] } }
+          }
+        },
+        "close": { "type": ["number", "null"] },
+        "atr_pct": {
+          "type": "object",
+          "required": ["value", "percentile"],
+          "properties": {
+            "value": { "type": ["number", "null"] },
+            "percentile": { "type": ["number", "null"] }
+          }
+        },
+        "distance_from_52w_high": { "type": ["number", "null"] },
+        "gap_p95": { "type": ["number", "null"] },
+        "worst_20d": { "type": ["number", "null"] },
+        "distance_to_invalidation": { "type": ["number", "null"] },
+        "adv_dollars": { "type": ["number", "null"] }
+      }
+    },
+    "comparisonCohortRow": {
+      "allOf": [
+        { "$ref": "#/definitions/cohortRowCore" },
+        {
+          "type": "object",
+          "required": ["selection_disposition"],
+          "properties": {
+            "selection_disposition": { "type": "string", "enum": ["below_selection_floor", "excluded_by_cap"] }
+          }
+        }
+      ]
+    },
+    "shadowRow": { "$ref": "#/definitions/cohortRowCore" }
+  }
+}

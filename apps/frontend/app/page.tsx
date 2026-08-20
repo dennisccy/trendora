@@ -9,6 +9,7 @@ import { ComponentBreakdown } from "@/components/component-breakdown";
 import { CompassSummaryCard } from "@/components/compass-summary-card";
 import { CompassWhatChangedCard } from "@/components/compass-whatchanged-card";
 import { CompassFocusSection } from "@/components/compass-focus-section";
+import { CompassManifestStrip } from "@/components/compass-manifest-strip";
 import { MarketPhaseCard } from "@/components/market-phase-card";
 import { PhaseCrossViewCard } from "@/components/phase-cross-view-card";
 import { PageHeading } from "@/components/page-heading";
@@ -137,10 +138,14 @@ export default function DashboardPage() {
           {/* goal-market-compass iter-2 (J-02/J-03/J-04): three new Today-page sections, each reading
               ONLY GET /api/compass, rendered ABOVE the existing dashboard body below. That body
               (DashboardBody and everything it renders) is UNCHANGED by this iteration — final section
-              ordering/chrome placement is J-07's job, and removing it from `/` is J-08's job. */}
+              ordering/chrome placement is J-07's job, and removing it from `/` is J-08's job.
+              iter-3 (J-05/J-06) appends the manifest strip as the LAST compass card, per goal.md's
+              Product Shape ordering ("...next-session focus, manifest strip") — still above the
+              unmodified DashboardBody (preserves the free in-image AG-3 cross-check, lessons.md iter-2). */}
           <CompassSummaryCard compass={state.compass} />
           <CompassWhatChangedCard compass={state.compass} />
           <CompassFocusSection compass={state.compass} />
+          <CompassManifestStrip compass={state.compass} asOf={asOf} />
           <DashboardBody
             dashboard={state.dashboard}
             phase={state.phase}

@@ -1,1 +1,1 @@
-self.__REACT_LOADABLE_MANIFEST='{"components/price-chart.tsx -> lightweight-charts":{"id":4004,"files":["static/chunks/d0709137.55379af80595610c.js","static/chunks/54.81557e7b8ebef3c9.js"]}}';
+self.__REACT_LOADABLE_MANIFEST='{"components/phase-cross-view-chart.tsx -> lightweight-charts":{"id":4004,"files":["static/chunks/d0709137.d48fbf57b897c396.js","static/chunks/1054.402634e89c0c4b64.js"]},"components/price-chart.tsx -> lightweight-charts":{"id":4004,"files":["static/chunks/d0709137.d48fbf57b897c396.js","static/chunks/1054.402634e89c0c4b64.js"]}}';

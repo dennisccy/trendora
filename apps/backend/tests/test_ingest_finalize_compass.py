@@ -66,7 +66,7 @@ def test_compass_content_phase_persists_manifest_and_reports_refreshed(finalize_
     cfg = load_config()
     with Session(finalize_engine) as session:
         refreshed = data_manager._refresh_ingest_aggregates(session, cfg, _progress())
-    assert "next_session_manifest" in refreshed
+    assert "next-session_manifest" in refreshed
     assert "market_phase" in refreshed  # the pre-existing phase this one is inserted after still ran
 
     with Session(finalize_engine) as session:
@@ -87,7 +87,7 @@ def test_compass_content_failure_is_isolated_forward_aggregates_still_runs(final
         with Session(finalize_engine) as session:
             refreshed = data_manager._refresh_ingest_aggregates(session, cfg, _progress())
 
-    assert "next_session_manifest" not in refreshed  # honestly NOT reported as refreshed -- it failed
+    assert "next-session_manifest" not in refreshed  # honestly NOT reported as refreshed -- it failed
     assert "forward_aggregates" in refreshed  # the NEXT phase still ran -- isolation held
     assert any("compass-content warm failed" in record.message for record in caplog.records)
 
@@ -104,4 +104,4 @@ def test_compass_content_is_a_noop_when_no_new_snapshot_dates(finalize_engine):
     prog.new_snapshot_dates = []
     with Session(finalize_engine) as session:
         refreshed = data_manager._refresh_ingest_aggregates(session, cfg, prog)
-    assert "next_session_manifest" not in refreshed
+    assert "next-session_manifest" not in refreshed

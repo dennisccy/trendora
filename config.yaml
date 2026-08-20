@@ -1445,6 +1445,29 @@ compass:
       - "act now"
       - "because of"
       - "caused by"
+  # goal-market-compass iter-3 (J-05/J-06) — the next-session manifest freeze/export tunables.
+  # `availability_margin_seconds` is a publication-latency allowance, never a research threshold.
+  manifest:
+    schema_version: "v1"
+    export_dir: "apps/backend/data/exports/next_session_manifests"
+    availability_margin_seconds: 60
+    schema_path: "docs/handoffs/trendora-next-session-manifest-v1.schema.json"
+
+# ----------------------------------------------------------------------------------------
+# goal-market-compass iter-3 (J-05/J-06) — the engine-identity stamp's own inputs. `engine_files` are
+# repo-root-relative paths whose CONTENT is hashed; `config_keys` are dotted config paths whose VALUES
+# are hashed. Together they define what `app.engine.engine_identity.compute_engine_identity` is
+# sensitive to — stamped on every manifest's `generation.engine_identity` and on newly created
+# `scanner_runs` rows (old rows stay NULL, "pre-stamping era", never backfilled).
+provenance:
+  engine_files:
+    - "apps/backend/app/engine/compass.py"
+    - "apps/backend/app/engine/session_delta.py"
+    - "apps/backend/app/engine/engine_identity.py"
+  config_keys:
+    - "compass.selection"
+    - "compass.delta"
+    - "compass.manifest"
 
 # ----------------------------------------------------------------------------------------
 # iter-12 CONSUMED — Methodology / Glossary catalog (J-12). The SINGLE config-backed source that

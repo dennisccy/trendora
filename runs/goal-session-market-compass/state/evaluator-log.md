@@ -107,3 +107,66 @@ tester to pick an "Unassigned" filter option that no longer exists now that ever
 sector); and please say whether the empty "next-session focus" on the newest date is acceptable
 as an honest result, or whether the three cut-off numbers should be revisited — noting that the
 rules forbid changing them just because past prices would have looked better.
+
+## Iteration 3 — goal-market-compass-iter-3
+
+**Date:** 2026-08-20T13:20:00Z
+**Verdict:** CONTINUE
+**Depth dispatched:** full (`iter-3/depth-dispatched` reads `full`, matching the spec's own
+`**Depth:** full` line — iter-2's ESCALATE trigger did NOT recur; audit, coherence and demo lanes all
+ran. The ux-regression lane was shed by the wall-clock budget trim, SPEED-15 rung 3b.)
+
+**Journey deltas:**
+- Newly passing: none
+- Advanced failing -> partial: J-05, J-06 (both this iteration's TARGET journeys — built and largely
+  correct, but neither is journey-verified end-to-end; see below)
+- Re-verified, unchanged: J-01, J-02, J-03, J-04 all still passing (merged 4/4; the replay lane's J-01
+  FAIL was overturned as a stale golden and I confirmed the overturn from the frame myself)
+- Newly failing: none. Regressed: none.
+- Not tested (out of scope, carried): J-07, J-08 — still failing
+- NEW journey entered the ledger: J-09 (owner insert at `f6c31afc`, 2026-08-20 10:26, AFTER this
+  iteration's spec 07:38 and snapshot 08:22) — status `unknown`, no `spec_hash`, never measured
+- Anti-goal violations: ONE CRITICAL, found and FIXED inside this iteration (AG-12 — the export writer
+  silently overwrote an already-frozen artifact; auditor reproduced it, fixed it, added a regression
+  test, and the real artifact was never touched). ONE MINOR CLOSED from iter-2 (AG-2 — the ATR
+  caution's advice tail is gone and the language guard now covers the candidate strings). Ledger: 2
+  total, 0 unresolved.
+
+**Reasoning:** The sealed-briefing feature is real, and I checked it with my own eyes rather than
+trusting the reports. The home page now carries a Manifest card showing the record is frozen, which
+version it is, when it was sealed, four fingerprint codes, the data and universe stamps, 539 members,
+and an audit table listing all 539 names that were NOT picked, each with the reason "below selection
+floor" and the plain sentence saying this list is not a control group. One number checks itself inside
+the same picture: the card says 539 members, the table holds 539 rows, and the page says no name
+cleared the rule — so 539 minus 0 candidates is exactly right. So why is neither target journey
+finished? Because the half that matters most was never run. Nobody watched a real market close seal a
+record: the test that would have shown it was skipped to protect the machine, and the live system was
+still serving an older, unsealed record from the previous iteration. Every sealed record anyone
+actually saw was made by the manual "regenerate" button, which by design is never marked
+"prospective-eligible" — so the flagship promise of J-05 has no live proof. The engine's own automatic
+gate reached the same conclusion and stopped the iteration. On top of that, the independent auditor
+proved one promise the product cannot keep: J-06 says that after you delete a day's data the page must
+say "the underlying run is unavailable", and it can never say that, because merely opening the page
+quietly rebuilds the deleted day. Two other things are worth stating plainly. The auditor caught a
+genuine breach of the "a sealed record is never changed" rule — the file writer could overwrite a
+sealed file — and fixed it before any real file was harmed. And five of this run's fourteen
+screenshots are literally the same blank frame, so five test claims have no picture behind them; I
+used the QA agent's own full-page captures instead. Nothing broke: all four working journeys still
+work, the structure check passed, and the security scan was clean.
+
+**Next-step recommendation:** Build J-09 "The backend fits the host" next, alone, in the light "lean"
+mode. The owner added it this morning after the machine froze and the goal file says it jumps the
+queue. It is one number in `config.yaml` (each database connection keeps 64 MB of pages instead of
+256 MB), then measure the backend's peak memory and prove it is under 2.5 GB (it was 4.8 GB), append
+the dated figure beside the old one, re-run the burst-of-requests check, and show a stored day's
+numbers did not move. Do not touch the connection-pool sizes. This has to come first because finishing
+J-05 and J-06 means running real data rebuilds — exactly the heavy jobs that helped freeze the machine.
+The iteration after that should be the make-up run for J-05 and J-06: remove and re-add the last two
+trading days and actually watch the close seal the record ("at ingest", version 1,
+"prospective-eligible"), then delete a day, restore it, and watch the "where this came from" line
+change — and re-take the missing pictures plus the four short walkthroughs that are now two runs
+overdue. TWO THINGS NEED THE OWNER: (1) a decision on the "unavailable" wording — either the compass
+page must look up the sealed record before it resolves the date (a change to how every dated page
+behaves) or that sentence in J-06 should be reworded; (2) still unanswered from last time — approval to
+reword J-01's first two test steps, and whether an empty "next-session focus" on the newest date is an
+acceptable honest result (the rules forbid moving the cut-offs to make names appear).

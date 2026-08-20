@@ -129,6 +129,38 @@ _ADDITIVE_COLUMNS: tuple[tuple[str, str, str], ...] = (
     # rebuild repopulates them (mirrors the max_drawdown / J-86 precedent directly above).
     ("forward_returns", "underwater_days", "ALTER TABLE forward_returns ADD COLUMN underwater_days INTEGER"),
     ("forward_returns", "time_to_recover_days", "ALTER TABLE forward_returns ADD COLUMN time_to_recover_days INTEGER"),
+    # goal-market-compass iter-3 (J-05/J-06): the engine-identity stamp on newly created scanner_runs rows
+    # only. NULLABLE VARCHAR (matches `engine_identity: Optional[str] = Field(default=None)`) — an
+    # existing live DB gains the column in place; every pre-iter-3 row reads NULL forever ("pre-stamping
+    # era" — never backfilled).
+    ("scanner_runs", "engine_identity", "ALTER TABLE scanner_runs ADD COLUMN engine_identity VARCHAR"),
+    # goal-market-compass iter-3 (J-05/J-06): the freeze/integrity block on next_session_manifests, all
+    # ADDITIVE and NULLABLE/DEFAULTED so an existing live DB's pre-iter-3 rows backfill the documented
+    # "pre-freeze era" honesty marker (version=1, frozen=False, prospective_eligible=False, every hash /
+    # JSON block NULL) — never retroactively marked frozen or eligible. `version` NOT NULL DEFAULT 1
+    # satisfies "existing pre-iter-3 rows backfill version=1" directly at the DDL level; `frozen` and
+    # `prospective_eligible` NOT NULL DEFAULT 0 satisfy the fail-closed "absent field reads false" rule
+    # even before any Python-level default is consulted.
+    ("next_session_manifests", "version", "ALTER TABLE next_session_manifests ADD COLUMN version INTEGER NOT NULL DEFAULT 1"),
+    ("next_session_manifests", "mode", "ALTER TABLE next_session_manifests ADD COLUMN mode VARCHAR"),
+    ("next_session_manifests", "frozen", "ALTER TABLE next_session_manifests ADD COLUMN frozen BOOLEAN NOT NULL DEFAULT 0"),
+    ("next_session_manifests", "generation_json", "ALTER TABLE next_session_manifests ADD COLUMN generation_json VARCHAR"),
+    ("next_session_manifests", "engine_identity", "ALTER TABLE next_session_manifests ADD COLUMN engine_identity VARCHAR"),
+    ("next_session_manifests", "candidate_rule_hash", "ALTER TABLE next_session_manifests ADD COLUMN candidate_rule_hash VARCHAR"),
+    ("next_session_manifests", "candidate_rule_config_json", "ALTER TABLE next_session_manifests ADD COLUMN candidate_rule_config_json VARCHAR"),
+    ("next_session_manifests", "cohort_rule_hash", "ALTER TABLE next_session_manifests ADD COLUMN cohort_rule_hash VARCHAR"),
+    ("next_session_manifests", "cohort_rule_config_json", "ALTER TABLE next_session_manifests ADD COLUMN cohort_rule_config_json VARCHAR"),
+    ("next_session_manifests", "manifest_config_hash", "ALTER TABLE next_session_manifests ADD COLUMN manifest_config_hash VARCHAR"),
+    ("next_session_manifests", "manifest_config_subset_json", "ALTER TABLE next_session_manifests ADD COLUMN manifest_config_subset_json VARCHAR"),
+    ("next_session_manifests", "dataset_json", "ALTER TABLE next_session_manifests ADD COLUMN dataset_json VARCHAR"),
+    ("next_session_manifests", "universe_json", "ALTER TABLE next_session_manifests ADD COLUMN universe_json VARCHAR"),
+    ("next_session_manifests", "comparison_cohort_json", "ALTER TABLE next_session_manifests ADD COLUMN comparison_cohort_json VARCHAR"),
+    ("next_session_manifests", "near_threshold_shadow_json", "ALTER TABLE next_session_manifests ADD COLUMN near_threshold_shadow_json VARCHAR"),
+    ("next_session_manifests", "caveats_json", "ALTER TABLE next_session_manifests ADD COLUMN caveats_json VARCHAR"),
+    ("next_session_manifests", "prospective_eligible", "ALTER TABLE next_session_manifests ADD COLUMN prospective_eligible BOOLEAN NOT NULL DEFAULT 0"),
+    ("next_session_manifests", "available_at_utc", "ALTER TABLE next_session_manifests ADD COLUMN available_at_utc DATETIME"),
+    ("next_session_manifests", "manifest_hash", "ALTER TABLE next_session_manifests ADD COLUMN manifest_hash VARCHAR"),
+    ("next_session_manifests", "export_path", "ALTER TABLE next_session_manifests ADD COLUMN export_path VARCHAR"),
 )
 
 
@@ -162,14 +194,22 @@ def _ensure_additive_columns(engine: Engine) -> None:
 #   - `ix_daily_prices_date` (ADDED) — `func.max(DailyPrice.date)` (read on ~every request) and the
 #     availability/coverage `group_by(date)` scans walk the whole table without a `date`-only index; this
 #     one lets SQLite's MIN/MAX optimization + the group-by resolve straight from the index.
+#   - `ix_next_session_manifests_as_of` (DROPPED, goal-market-compass iter-3) — the OLD single-column
+#     UNIQUE index (one manifest per `as_of`, no versioning). iter-3 allows a confirm-gated regenerate to
+#     mint version N+1 for the SAME `as_of`, so the uniqueness constraint must widen to the composite
+#     `(as_of, version)` — `uq_next_session_manifests_as_of_version` (ADDED) below. This is the idempotent
+#     guarded swap pattern (never a destructive table rewrite): an existing live DB's stored manifest rows
+#     are untouched — only the index changes.
 #
 # Dropping a redundant index changes ONLY the query plan, never a result (No canonical value affected).
 _INDEX_DROPS: tuple[str, ...] = (
     "DROP INDEX IF EXISTS ix_daily_prices_symbol_date",
     "DROP INDEX IF EXISTS ix_forward_returns_run_symbol",
+    "DROP INDEX IF EXISTS ix_next_session_manifests_as_of",
 )
 _INDEX_ADDS: tuple[str, ...] = (
     "CREATE INDEX IF NOT EXISTS ix_daily_prices_date ON daily_prices (date)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS uq_next_session_manifests_as_of_version ON next_session_manifests (as_of, version)",
 )
 
 

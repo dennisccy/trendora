@@ -2669,16 +2669,52 @@ class CompassVocabularyCfg(BaseModel):
         return self
 
 
+class CompassManifestCfg(BaseModel):
+    """goal-market-compass iter-3 (J-05/J-06) — the next-session manifest freeze/export tunables.
+    `schema_version` is versioned in lockstep with the committed JSON Schema file at `schema_path` (a
+    schema change is always a NEW versioned file, never an in-place edit). `export_dir` is where the
+    at-ingest-mode export writer places the byte-identical JSON artifact (a `TRENDORA_COMPASS_EXPORT_DIR`
+    env override exists for tests — name only, never a value in files). `availability_margin_seconds` is
+    a conservative PUBLICATION-LATENCY allowance added to the canonical-serialization instant to compute
+    `available_at_utc` — never a research threshold; tuning it from outcomes is forbidden like any other
+    threshold (AG-15)."""
+
+    model_config = ConfigDict(extra="allow")
+    schema_version: str
+    export_dir: str
+    availability_margin_seconds: int = 60
+    schema_path: str
+
+    @model_validator(mode="after")
+    def _validate(self) -> "CompassManifestCfg":
+        if self.availability_margin_seconds < 0:
+            raise ValueError("compass.manifest.availability_margin_seconds must be >= 0")
+        return self
+
+
+def _default_compass_manifest() -> "CompassManifestCfg":
+    """The built-in default `compass.manifest` config — used when a config predating this block (or an
+    inline test fixture) omits it. The real `config.yaml` restates it explicitly as the single documented
+    source."""
+    return CompassManifestCfg(
+        schema_version="v1",
+        export_dir="apps/backend/data/exports/next_session_manifests",
+        availability_margin_seconds=60,
+        schema_path="docs/handoffs/trendora-next-session-manifest-v1.schema.json",
+    )
+
+
 class CompassCfg(BaseModel):
-    """goal-market-compass iter-2 (J-02/J-03/J-04) — the Today-page decision-surface config consumed by
-    `app.engine.session_delta` and `app.engine.compass`. Default-populated so a config / inline test
-    fixture predating this block still loads unchanged; the real `config.yaml` restates it explicitly as
-    the single documented source (see `_default_compass`)."""
+    """goal-market-compass iter-2/iter-3 (J-02/J-03/J-04/J-05/J-06) — the Today-page decision-surface
+    config consumed by `app.engine.session_delta` and `app.engine.compass`. Default-populated so a config
+    / inline test fixture predating this block still loads unchanged; the real `config.yaml` restates it
+    explicitly as the single documented source (see `_default_compass`)."""
 
     model_config = ConfigDict(extra="allow")
     delta: CompassDeltaCfg
     selection: CompassSelectionCfg
     vocabulary: CompassVocabularyCfg
+    manifest: CompassManifestCfg = Field(default_factory=_default_compass_manifest)
 
 
 def _default_compass() -> "CompassCfg":
@@ -2731,6 +2767,32 @@ def _default_compass() -> "CompassCfg":
                 "target price", "guaranteed", "recommend", "act now", "because of", "caused by",
             ],
         ),
+    )
+
+
+class ProvenanceCfg(BaseModel):
+    """goal-market-compass iter-3 (J-05/J-06) — the engine-identity stamp's own inputs:
+    `engine_files` (repo-root-relative paths whose CONTENT is hashed) and `config_keys` (dotted config
+    paths whose VALUES are hashed) — see `app.engine.engine_identity.compute_engine_identity`. Both are
+    the single documented source for what the identity stamp is sensitive to; changing either list is
+    itself an engine-identity-affecting change."""
+
+    model_config = ConfigDict(extra="allow")
+    engine_files: list[str] = Field(min_length=1)
+    config_keys: list[str] = Field(min_length=1)
+
+
+def _default_provenance() -> "ProvenanceCfg":
+    """The built-in default `provenance` config — used when a config predating this block (or an inline
+    test fixture) omits it. The real `config.yaml` restates it explicitly as the single documented
+    source."""
+    return ProvenanceCfg(
+        engine_files=[
+            "apps/backend/app/engine/compass.py",
+            "apps/backend/app/engine/session_delta.py",
+            "apps/backend/app/engine/engine_identity.py",
+        ],
+        config_keys=["compass.selection", "compass.delta", "compass.manifest"],
     )
 
 
@@ -2803,6 +2865,11 @@ class Config(BaseModel):
     # test fixture predating this block still loads unchanged; the real `config.yaml` restates it
     # explicitly as the single documented source.
     compass: CompassCfg = Field(default_factory=_default_compass)
+    # goal-market-compass iter-3 (J-05/J-06) — the engine-identity stamp's inputs (which files' content +
+    # which config subset feed `app.engine.engine_identity.compute_engine_identity`). Default-populated so
+    # a config / inline test fixture predating this block still loads unchanged; the real `config.yaml`
+    # restates it explicitly as the single documented source.
+    provenance: ProvenanceCfg = Field(default_factory=_default_provenance)
 
     @field_validator("themes")
     @classmethod
