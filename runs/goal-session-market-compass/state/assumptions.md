@@ -493,3 +493,43 @@ diagnosis detail the next iteration needs; this follows the precedent already se
 (iter-3's J-06, iter-4's J-09).
 **Reversible:** yes — the label can be moved to `failing` with no effect on any gate; only the
 recorded diagnosis detail would change.
+
+## iter-7 — goal-decomposer
+
+**Ambiguity:** project-template.md's architecture principle says every threshold/tunable lives in
+`config.yaml` (no magic numbers). J-10 step 2a's fail-closed adjustment-convention check needs a
+numeric tolerance plus a sample size / comparison-window size to decide "agree" vs "mismatch" vs
+"inconclusive". goal.md does not say whether this check's own tuning literals count as a
+`config.yaml` threshold or as single-use incident-response constants like `RECOVERY_DATES` /
+`RECOVERY_SYMBOLS` (whose config-vs-literal question iter-6's decomposer already resolved the same
+way, accepted without objection by the iter-6 coherence-auditor).
+**We chose:** Directed the developer to keep the tolerance, sample size, and comparison-window
+size as inline literals scoped to the convention-check function in `j10_recovery.py`, not new
+`config.yaml` keys — same reasoning as the iter-6 precedent: this check exists only to gate one
+single-use, self-closing AG-9 exception, and promoting its tuning value to a standing
+`config.yaml` entry would misrepresent a one-time incident-response check as a reusable, tunable
+feature.
+**Reversible:** yes — if the reviewer/coherence-auditor judges this differently, moving the values
+into a config block is a small, low-risk follow-up edit that changes no behavior.
+
+## iter-7 — goal-decomposer
+
+**Ambiguity:** J-10 step 5(f) requires proving "J-01/J-02/J-03 replay clean" before closing the
+exception, and the prior evaluator's next-step recommendation suggested re-checking J-01-J-04 with
+the browser lane in the SAME turn once the days are back. goal.md does not say whether step 5(f)'s
+"replay clean" must be satisfied by the pipeline's browser-QA/deterministic-replay lane
+specifically, or may be satisfied by the developer's own direct, deterministic checks (read-only DB
+queries + direct API calls) - the same method iteration 6 already used successfully for its own
+step 5 table.
+**We chose:** Read step 5(f) as satisfiable by the developer's own direct checks this iteration
+(two `GET /api/compass` calls + DB queries), and explicitly deferred ALL browser-QA/replay
+re-verification of J-01-J-04 to iteration 8, regardless of whether this iteration's recovery
+succeeds - deviating from the prior evaluator's suggestion to bundle the browser recheck into this
+same turn. Reasoning: this session has hit "a QA lane ran against a database whose damage status
+was still being resolved" twice already (iter-2, iter-6); making the browser-QA lane's
+participation in THIS iteration strictly zero (rather than conditional on this iteration's own
+live-fetch outcome) removes that entire risk class from this iteration's blast radius at the cost
+of one extra iteration of delay on four already-overdue walkthroughs.
+**Reversible:** yes - a future iteration (iteration 8, or this one re-planned) can still run the
+browser lane against J-01-J-04 at any time once the owner/evaluator is satisfied recovery held;
+nothing here forecloses that, and no code or data decision depends on this scoping choice.
