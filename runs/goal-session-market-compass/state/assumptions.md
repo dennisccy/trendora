@@ -533,3 +533,58 @@ of one extra iteration of delay on four already-overdue walkthroughs.
 **Reversible:** yes - a future iteration (iteration 8, or this one re-planned) can still run the
 browser lane against J-01-J-04 at any time once the owner/evaluator is satisfied recovery held;
 nothing here forecloses that, and no code or data decision depends on this scoping choice.
+
+## iter-7 — developer (convention check returned a borderline mismatch; tolerance NOT adjusted after seeing it)
+
+**Finding (not an ambiguity — an evidentiary result requiring a stop/proceed judgment):** The real
+convention check (20 sample symbols x the 5 most recent surviving days, 2026-08-04..2026-08-10, 88
+pairs total) against the live DB with a real `YahooProvider.get_adjusted_close` returned
+**mismatch**: 76/88 pairs matched exactly (delta 0.0), XOM's 4 pairs all showed a uniform ~0.6433%
+delta (within the 0.75% tolerance), and CVX's 5 pairs all showed a uniform ~0.8652% delta — just
+over the 0.75% tolerance. Within each symbol, the delta's spread across its own pairs is
+~0.00004 percentage points (five independent trading days), which is the signature of one real,
+proportionally-applied dividend adjustment, not cross-vendor noise or a data error — i.e.,
+technically persuasive evidence that Yahoo's `adjclose` convention IS the same back-adjustment
+convention as Stooq's, and that 0.75% is simply tighter than CVX's actual quarterly-dividend
+magnitude for this window.
+**We chose:** Did NOT widen the tolerance after seeing this result. `CONVENTION_CHECK_TOLERANCE`
+(0.75%) was fixed in code BEFORE any real-DB run, matching goal.md's own proposed default, per its
+explicit instruction: "must NOT iteratively loosen it after seeing a borderline or failing result
+just to force a pass." Regardless of how well-reasoned the dividend-signature explanation is,
+changing the tolerance NOW would be indistinguishable in process terms from the exact anti-pattern
+the spec names — the discipline has to hold even when the post-hoc justification looks solid, or
+it is not a real discipline. Treated the result as a genuine `mismatch` verdict: made zero writes
+(`run_bounded_recovery_fetch`/`run_bounded_recovery_backfill` never called —
+`run_gated_recovery`'s own textual/causal gate enforces this structurally, not just by
+convention), recorded the honest stop in the dev handoff with every sampled pair's observed delta,
+and did not attempt Stooq or a third vendor. This is exactly the "insert nothing and STOP for
+owner review" outcome J-10 step 2a and the dispatching coordinator's instruction #8 both call for.
+**Reversible:** yes — an owner-reviewed, dated tolerance change (e.g., to a value comfortably above
+CVX's observed ~0.865% while still far below a genuine methodology error like a missed split, or a
+larger/differently-composed sample) would let a future retry of this SAME idempotent, still-fully-
+missing 587-symbol/2-date scope pass the gate; nothing this iteration does forecloses that, and no
+code beyond the single `CONVENTION_CHECK_TOLERANCE` literal (or the sample) would need to change.
+
+## iter-7 — goal-evaluator (which goal text J-10 is scored against, and which hash is stamped)
+
+**Ambiguity:** The owner rewrote J-10 step 2a in `docs/goal.md` *during* this iteration (uncommitted
+working-tree edit, made in response to this iteration's own measurement): the absolute-level tolerance
+was replaced by a precommitted path-agreement + stable multiplicative-bridge test, plus three new binding
+rules (apply the bridge before insertion; one series end to end; persisted per-pair evidence as the sole
+calibration input; zero usable pairs can never produce `agree`). The iteration-7 code predates all of it.
+No `journeys-changed.md` was produced — that note only covers recorded-*passing* journeys, and J-10 is
+`partial` — so nothing told me which text governs. My instructions say `spec_hash` asserts "this status
+was verified against exactly this goal text", while the dispatching coordinator told me to judge the
+implementation against the text as it stood for this iteration. Those two pull in opposite directions.
+**We chose:** Judged the developer's *conduct and implementation* against the OLD text (they built what
+was specified, and the honest fail-closed stop is a correct outcome under it), but recorded the status
+against the CURRENT text and stamped the CURRENT hash
+(`95e93e724d4d9ec81117fec6a2bd08c6b517db8c777a202bc998b1f7016bf395`). This is safe because J-10 is
+`partial` under BOTH wordings — the new text only adds unmet requirements — so the stamp asserts nothing
+the evidence does not support, and the four still-unimplemented new requirements are written out verbatim
+in the journey's `gap` field so iteration 8 inherits them explicitly. I also verified with
+`goal_gate.py hash-journeys` that J-01..J-09 are byte-identical to their recorded hashes, so no other
+journey's prior pass was silently voided by the amendment.
+**Reversible:** yes — if the owner disagrees, J-10's `spec_hash` can be reverted to the old value or
+cleared with no effect on any gate (`partial` blocks GOAL_ACHIEVED either way); only the recorded
+"verified against which text" annotation would change.

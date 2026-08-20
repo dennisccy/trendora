@@ -9,6 +9,11 @@ real-data-only). A row whose price fields are null (a provider gap) is SKIPPED, 
 
 Resolved ONLY by the on-demand Data Manager fetch path via the provider factory from the config
 `data_manager.providers` catalog; the default boot/runtime provider stays the offline `SeedProvider`.
+
+`get_adjusted_close` (iter-7, J-10 step 2a) is an additive, read-only capability alongside `get_daily`:
+it returns Yahoo's split/dividend-ADJUSTED close series (`indicators.adjclose`), not `get_daily`'s
+plain `quote.close` — used ONLY by `app.engine.j10_recovery.check_adjustment_convention`'s fail-closed
+gate, never by the ordinary fetch/import path. See that method's own docstring.
 """
 from __future__ import annotations
 
@@ -87,6 +92,84 @@ class YahooProvider(PriceProvider):
             timeout=self._timeout,
         )
         return self._parse(symbol, data, start, end)
+
+    def get_adjusted_close(
+        self,
+        symbol: str,
+        start: Optional[date_cls] = None,
+        end: Optional[date_cls] = None,
+    ) -> dict[date_cls, float]:
+        """J-10 step 2a's additive capability (goal-market-compass iter-7): the split/dividend-ADJUSTED
+        close series (Yahoo's `indicators.adjclose[0].adjclose`), keyed by date — NOT `get_daily`'s
+        plain/raw `quote.close` above. Live-confirmed (2026-08-20): the SAME chart endpoint and request
+        shape `get_daily` already uses returns `indicators.quote` AND `indicators.adjclose` side by side
+        in one response with no extra query parameter — so this is a parallel, read-only, additive
+        method for the J-10 convention-check gate only; it does NOT change `get_daily`'s own contract,
+        request shape, or callers.
+
+        Raises `ProviderUnavailableError` (never a fabricated series) on ANY failure — a network/HTTP
+        error, a chart `error` payload, a missing/empty result, or a response whose `indicators` block
+        carries no `adjclose` at all. This method deliberately does NOT fall back to the raw `quote.close`
+        in that last case — a caller comparing this against an adjusted series must know when it could
+        not get one, not silently receive the wrong field (the exact silent-mismatch risk
+        `app.engine.j10_recovery`'s module docstring documents). A date whose adjusted close is null (a
+        provider gap) is omitted from the returned dict, exactly like `get_daily` skips a null-priced bar.
+        """
+        params: dict[str, object] = {"interval": "1d"}
+        if start is not None and end is not None:
+            params["period1"] = int(datetime(start.year, start.month, start.day, tzinfo=timezone.utc).timestamp())
+            params["period2"] = int(datetime(end.year, end.month, end.day, 23, 59, 59, tzinfo=timezone.utc).timestamp())
+        else:
+            params["range"] = "1y"
+        data = fetch_json(
+            _YAHOO_CHART_URL + symbol,
+            symbol=symbol,
+            label="yahoo",
+            params=params,
+            headers=_HEADERS,
+            client=self._client,
+            timeout=self._timeout,
+        )
+        return self._parse_adjusted_close(symbol, data, start, end)
+
+    def _parse_adjusted_close(
+        self, symbol: str, data: object, start: Optional[date_cls], end: Optional[date_cls]
+    ) -> dict[date_cls, float]:
+        try:
+            chart = data["chart"]  # type: ignore[index]
+            if chart.get("error"):
+                raise ProviderUnavailableError(f"yahoo returned an error for {symbol!r}: {chart['error']}")
+            result = chart["result"]
+            if not result:
+                raise ProviderUnavailableError(f"yahoo returned no result for {symbol!r}")
+            block = result[0]
+            if not block.get("timestamp"):
+                return {}  # a well-formed empty range (see get_daily._parse) — honest zero rows, not a fault
+            timestamps = block["timestamp"]
+            adjclose_blocks = block["indicators"].get("adjclose")
+            if not adjclose_blocks:
+                raise ProviderUnavailableError(
+                    f"yahoo response for {symbol!r} carries no adjclose series — cannot verify the "
+                    f"adjustment convention from this response"
+                )
+            closes = adjclose_blocks[0]["adjclose"]
+        except (KeyError, IndexError, TypeError) as exc:  # unexpected shape — surface, never fabricate
+            raise ProviderUnavailableError(f"yahoo adjclose response unparseable for {symbol!r}: {exc}") from exc
+
+        out: dict[date_cls, float] = {}
+        try:
+            for ts, c in zip(timestamps, closes):
+                if c is None:
+                    continue  # a provider gap (null adjusted close) is skipped — never back-filled
+                d = datetime.fromtimestamp(ts, tz=timezone.utc).date()
+                if start is not None and d < start:
+                    continue
+                if end is not None and d > end:
+                    continue
+                out[d] = float(c)
+        except (ValueError, TypeError) as exc:  # malformed cell — surface, never fabricate
+            raise ProviderUnavailableError(f"yahoo adjclose response unparseable for {symbol!r}: {exc}") from exc
+        return out
 
     def get_market_cap(self, symbol: str) -> Optional[float]:
         """REAL market-cap reference for ONE symbol (J-35 expand capability, behind the same abstraction;

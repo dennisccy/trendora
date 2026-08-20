@@ -1,0 +1,145 @@
+{
+  "journeys": {
+    "J-01": {
+      "id": "J-01",
+      "name": "Sector labels are honest and nearly complete on new runs",
+      "status": "passing",
+      "last_verified_iter": "goal-market-compass-iter-4",
+      "last_passing_iter": "goal-market-compass-iter-4",
+      "first_seen_iter": "goal-market-compass-iter-0",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-4-evidence/J-01-verify.png",
+      "spec_hash": "5217f3fe85d2a05c2f436d3ec6d140f2b7539b8798c161925a2e9e76ddab61f9",
+      "gap": "NOT VALIDLY RE-VERIFIED IN ITER-6 -- status carried from iter-4 under evidence durability (methodology A.6), not re-earned. The merged results file carries a UT-J-01 PASS row, but it was produced by the browser-QA replay lane that goal.md's Loop-mechanics owner insert #2 forbade from running against the knowingly damaged database, so AG-17 makes it unusable as evidence in BOTH directions -- I did not count it as a pass. Durability basis, verified by me directly: this iteration's entire product diff is 3 files (docs/goal.md + the two new apps/backend j10_recovery files), `grep -rn j10_recovery apps/backend/app` shows the new module is imported by NOTHING, and my own read-only DB query confirms zero rows changed -- so the surfaces this journey asserts are byte-unchanged since iter-4. SUBSTANTIVE OUTLOOK: unlike J-02/J-03, this journey's acceptance (>=95% sector attribution on new runs) does not depend on the deleted 2026-08-11/2026-08-12 window; the invalid-lane frame I opened for diagnosis shows /stocks at the surviving as-of 2026-08-10 with 539 rows, GRMN labelled 'Consumer Discretionary' and every score chip reading 'Not yet proven'. CAPTURE GAP unchanged (evidence_makeup): the [NEW]-flagged walkthrough (TC-32) is now FOUR iterations overdue. OWNER ACTION still open: J-01 step 1's destructive Remove+backfill precondition and step 2's 'Unassigned filter option' are both unexecutable as written.",
+      "evidence_makeup": true,
+      "note": "iter-6: status unchanged (passing), NOT re-verified. Required-still-passing set, but the only lane that produced a row for it was contract-forbidden. Re-verify after J-10's recovery lands, and fix the stale golden that has now cried wolf twice (iter-3, iter-4) on the wrapped 'Consumer Discretionary' cell."
+    },
+    "J-02": {
+      "id": "J-02",
+      "name": "What changed since the previous session",
+      "status": "partial",
+      "last_verified_iter": "goal-market-compass-iter-6",
+      "last_passing_iter": "goal-market-compass-iter-4",
+      "first_seen_iter": "goal-market-compass-iter-0",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-4-evidence/J-02-verify.png",
+      "spec_hash": "4a55fbb172e17090c2d095af6a36d95e08edadeda2ed05941cbe3ce9476eb993",
+      "gap": "DOWNGRADED passing -> partial on MY OWN first-hand evidence, NOT on the forbidden lane's output. The producer half is intact and unchanged (app.engine.session_delta.compute_delta, served only by GET /api/compass; zero frontend/API files in this iteration's 3-file diff). The DATA half is provably unsatisfiable right now: my own read-only query against apps/backend/data/trendora.db returns MAX(daily_prices.date) = 2026-08-10, COUNT(*) for date IN (2026-08-11, 2026-08-12) = 0, and MAX(scanner_runs.asof_date) = 2026-08-10. This journey's iter-4-verified assertion is literally 'the What-changed card at as-of 2026-08-12 is headed \"vs 2026-08-11 (1 day ago)\"' -- the 2026-08-11 run no longer exists, so that assertion cannot hold until J-10 restores the two dates. goal.md's own J-10 'Why' section (owner-written) states the same: 'J-01/J-02/J-03 -- previously passing -- fail a live replay.' NOT re-tested this iteration: the authoritative merged row reads SKIP because the Loop-mechanics gate correctly forbade the lane. Scored partial (not failing/regressed) because the break was caused by the iter-5 drill, is already owner-acknowledged, and is the explicit subject of the in-flight J-10 recovery -- and because partial still blocks GOAL_ACHIEVED, so nothing is hidden at the gate. CAPTURE GAP also unchanged (evidence_makeup): no [NEW]-flagged walkthrough (TC-32), four iterations overdue.",
+      "evidence_makeup": true,
+      "note": "iter-6: passing -> partial. Cause is the iter-5 data deletion, not this iteration and not a product defect; no code change touched this journey. Expect restoration to `passing` in the same iteration J-10's recovery verification passes. The raw replay lane's FAIL ('step 01 expected \"vs 2026-08-11 (1 day ago)\" did not appear') was reconciled to SKIP in the merged file and is recorded here as corroboration only -- NOT as the basis for this status."
+    },
+    "J-03": {
+      "id": "J-03",
+      "name": "Plain-English summary with cited facts",
+      "status": "partial",
+      "last_verified_iter": "goal-market-compass-iter-6",
+      "last_passing_iter": "goal-market-compass-iter-4",
+      "first_seen_iter": "goal-market-compass-iter-0",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-4-evidence/J-03-verify.png",
+      "spec_hash": "81cd6c9267c0d734cd88b19f43baf53bcab70c7b60d60cd5b2018a76425e87e7",
+      "gap": "DOWNGRADED passing -> partial on the same first-hand basis as J-02, NOT on the forbidden lane's output. The narrative producer, template ids, cited-facts payload and the committed banned-language guard are all byte-unchanged (zero engine/config/frontend files in this iteration's 3-file diff). The data substrate is gone: this journey's iter-4-verified assertion cites the summary sentence at as-of 2026-08-12 ('73.24 / 25.84'), and the dev handoff plus my own query confirm GET /api/compass?as_of=2026-08-12 now returns HTTP 400 ('as_of 2026-08-12 is after the latest data date 2026-08-10'). NOT re-tested this iteration: the authoritative merged row reads SKIP (Loop-mechanics gate). Scored partial rather than failing/regressed for the same reason as J-02 -- iter-5-caused, owner-acknowledged, J-10 in flight, and partial still blocks GOAL_ACHIEVED. CAPTURE GAP unchanged (evidence_makeup): no [NEW]-flagged walkthrough (TC-32), four iterations overdue.",
+      "evidence_makeup": true,
+      "note": "iter-6: passing -> partial. Same cause and same expected recovery path as J-02. The raw replay FAIL ('step 01 expected the 73.2/25.8 summary sentence did not appear') was reconciled to SKIP in the merged file and is corroboration only, never the basis."
+    },
+    "J-04": {
+      "id": "J-04",
+      "name": "Each next-session candidate explains why and why-not",
+      "status": "passing",
+      "last_verified_iter": "goal-market-compass-iter-4",
+      "last_passing_iter": "goal-market-compass-iter-4",
+      "first_seen_iter": "goal-market-compass-iter-0",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-4-evidence/J-04-verify.png",
+      "spec_hash": "d1521389ca8fcf3fd1b7ac60e53bdb9608112247219ccbbea2ae66e99bff8ad0",
+      "gap": "NOT VALIDLY RE-VERIFIED IN ITER-6 -- carried from iter-4 under evidence durability (methodology A.6), on the same reasoning as J-01: the merged UT-J-04 PASS row came from the contract-forbidden damaged-DB lane and AG-17 makes it unusable in both directions, so I neither counted it as a pass nor let it disturb the recorded status. Durability basis verified directly (3-file diff; the new module is imported by nothing; zero DB rows changed). SUBSTANTIVE OUTLOOK: this journey's verified evidence is anchored at historical as-of dates (2026-07-23 GWW card; the frame I opened for diagnosis this iteration shows as-of 2026-03-30 with its summary, cited facts and retrospective disclosure), all of which sit well before the deleted window -- so unlike J-02/J-03 it is not structurally broken by the iter-5 deletion. CAPTURE GAP unchanged (evidence_makeup): no [NEW]-flagged walkthrough (TC-32), four iterations overdue. PRODUCT-QUALITY FLAG for the owner (not a defect, unchanged): zero names clear the three-qualifier rule on the current frontier date, so the headline section is honestly empty; any threshold change must be owner-sanctioned and never tuned from realized returns (AG-15).",
+      "evidence_makeup": true,
+      "note": "iter-6: status unchanged (passing), NOT re-verified. Re-verify alongside J-01/J-02/J-03 in the iteration where J-10's recovery verification passes."
+    },
+    "J-05": {
+      "id": "J-05",
+      "name": "Each close freezes one next-session manifest, exported byte-consistently",
+      "status": "partial",
+      "last_verified_iter": "goal-market-compass-iter-3",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-market-compass-iter-0",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-3-evidence/UT-02-manifest-historical-badges.png",
+      "spec_hash": "de33a9d149ebefe4f8cf0ffb9fe86243e3f9fa9d83850c890848f268e5c54c4f",
+      "gap": "Not re-tested this iteration -- explicitly OUT OF SCOPE in the iter-6 spec, and additionally gated by goal.md's Loop-mechanics owner insert #2 (the J-05/J-06 make-up may not run before J-10's recovery verification passes). Carried from iter-3 unchanged: the Manifest card, the four provenance hashes, the dataset/universe stamps, 539 members and the 539-row comparison-cohort audit table are image-verified, but step 1 (the ingest-finalize 'next-session manifest' disclosure) and step 2's flagship state (a real close producing mode at_ingest / version 1 / producer ingest_finalize / prospective_eligible TRUE) have NEVER been observed live. Step 3's export byte-equality still has no automated test (iter-3 auditor B3); steps 5-6 rest on unit tests alone. NEW CONSTRAINT since iter-4: the make-up drill needs a real frontier close, which is impossible until J-10 restores 2026-08-11/2026-08-12 -- so this journey is now hard-blocked behind J-10.",
+      "note": "iter-6: NOT TESTED - out of scope and contract-gated. Status and spec_hash carried unchanged from iter-3. Also relevant: the iter-6 dev handoff's Known Issue #2 records a PRE-EXISTING export-file gap (only 2 of 6 versions of the 2026-08-12 manifest have a file on disk while export_path is recorded for versions 2/3/4) -- verified byte-identical before/after this iteration, so it predates this work, but it is directly adjacent to this journey's step-3 byte-equality claim and should be examined when J-05 is next targeted."
+    },
+    "J-06": {
+      "id": "J-06",
+      "name": "A frozen manifest never changes",
+      "status": "partial",
+      "last_verified_iter": "goal-market-compass-iter-3",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-market-compass-iter-0",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-3-evidence/UT-02-manifest-historical-badges.png",
+      "spec_hash": "4934b178e966fdb05cfb68537e861e0f34f961f630a57e4098f9fb69be2cdda8",
+      "gap": "Not re-tested this iteration -- OUT OF SCOPE in the iter-6 spec and contract-gated behind J-10. Carried from iter-3 unchanged. MET: step 4 (regenerate -> version 2 with its own stamps and 'not prospective-eligible', version 1 still byte-identical, both versions listed) and step 5's 37 invariant tests. UNMET AND OWNER-BLOCKED: step 2's 'the underlying run is unavailable' basis disclosure is demonstrably unreachable -- the iter-3 auditor reproduced that merely opening the page re-creates the removed source run (finding B2). NOT RUN: steps 1 and 3 (backfill-after-freeze; remove/restore basis flip). NOTE: this journey's own core claim was independently RE-CONFIRMED as an incidental side effect of iter-6 -- a destructive event (the iter-5 drill) plus a failed live fetch left all 24 next_session_manifests rows and their export files hash-identical, which is exactly what AG-12/step-5 'rebuild survival' asserts.",
+      "note": "iter-6: NOT TESTED - out of scope and contract-gated. Status and spec_hash carried unchanged from iter-3. Still needs an owner decision on the step-2 wording (reword the sentence, or change how every dated page resolves its as-of) before it can ever be scored passing."
+    },
+    "J-07": {
+      "id": "J-07",
+      "name": "The Today page answers the ten-second read",
+      "status": "failing",
+      "last_verified_iter": "goal-market-compass-iter-0",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-market-compass-iter-0",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-0-evidence/UT-J-07-fail.png",
+      "spec_hash": "3277c326632d90b5aa5d4331f051b419d2e71d022b640c5851acd9f105d57b72",
+      "gap": "Not re-tested this iteration -- explicitly OUT OF SCOPE in the iter-6 spec. Carried unchanged. Materially advanced: three of the six required body sections (summary, what-changed, next-session focus) render on / above the unmodified dashboard body. Still owed: the page heading is still 'Dashboard' (visible again in this iteration's own frames), the market-state band is not composed per the spec, readiness/preflight chrome is not separated, the leadership-rotation section and manifest strip do not exist on /, perf-budget instrumentation for / is absent, and the old dashboard body still sits on / because /market does not exist.",
+      "note": "iter-6: NOT TESTED - out of scope per the iter-6 spec (J-10 only; Frontend Present: no). Status and spec_hash carried unchanged from iter-0."
+    },
+    "J-08": {
+      "id": "J-08",
+      "name": "Market page moves over intact and history stays honest",
+      "status": "failing",
+      "last_verified_iter": "goal-market-compass-iter-1",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-market-compass-iter-0",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-1-evidence/UT-J-08-fail.png",
+      "spec_hash": "621deda83bfbe069b3899a9860d352ac2ef7f6e7f80acf0630cd39acbb2ce860",
+      "gap": "Not re-tested this iteration -- explicitly OUT OF SCOPE in the iter-6 spec. Unchanged from the iter-1 measurement (NOT a regression -- this journey has never passed): /market returns a Next.js 404 and the sidebar has no 'Today'/'Market' entries. Independently re-confirmed this iteration by the coherence audit (zero apps/frontend/* files in the 3-file diff) and visible in this iteration's own J-01/J-04 frames, whose sidebars still read 'Dashboard' first.",
+      "note": "iter-6: NOT TESTED - out of scope per the iter-6 spec (backend-only iteration). Status and spec_hash carried unchanged from iter-1."
+    },
+    "J-09": {
+      "id": "J-09",
+      "name": "The backend fits the host - standing memory halves with zero behavior change",
+      "status": "partial",
+      "last_verified_iter": "goal-market-compass-iter-4",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-market-compass-iter-3",
+      "last_evidence_path": "reports/perf-budgets.md:12114-12236",
+      "spec_hash": "a067a11b356f9d24bf56963bac5bee35a616b5c4af06479c92c0ae900fca9551",
+      "gap": "Not re-measured this iteration -- explicitly OUT OF SCOPE in the iter-6 spec (its open owner decision and Constraint (c) both listed under OUT OF SCOPE). Carried unchanged from iter-4: four of five steps MET, the headline step UNMET -- measured standing-warm VmPeak 3,439,100 kB against a <=2,621,440 kB (2.5 GB) target, +31.2% over, after a real and honestly-recorded 28.9% reduction from the 4,837,420 kB baseline. Both figures keep comfortable margin against memory_cap_mb 8192 MB, so this is a miss of J-09's own tighter bar, not an AG-10 hard-cap risk. OWNER DECISION STILL REQUIRED per J-09's own acceptance text: accept 3,439,100 kB, or keep 2.5 GB and authorise the _BarCache.prefill re-bound (Constraints (c)) as the one remaining lever, or set a different measured target. EVIDENCE THE TARGET MAY HAVE BEEN MIS-SIZED: config.yaml:1377's own comment records this project measuring 2,691,600 kB (iter-32) and 3,688,916 kB (iter-38) VmPeak on the 30y basis long before any pool-cache consideration.",
+      "note": "iter-6: NOT TESTED - out of scope. Status and spec_hash carried unchanged from iter-4. The iter-6 developer's host-safety discipline is corroborating (not scoring) evidence that the config half is holding: `free -h` checked before each targeted test run, available memory stayed >=19 GB and swap <=250 MB throughout an iteration that started a live backend."
+    },
+    "J-10": {
+      "id": "J-10",
+      "name": "Bounded recovery of the two trading days the iter-5 drill deleted",
+      "status": "partial",
+      "last_verified_iter": "goal-market-compass-iter-6",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-market-compass-iter-6",
+      "last_evidence_path": "docs/handoffs/goal-market-compass-iter-6-dev.md (Step 5 verification table; data_provider_runs id=541)",
+      "spec_hash": "3a756595f131646952f8a6162f261a375be009cf39253b6e6dd5ce3dbfedd706",
+      "gap": "FIRST MEASUREMENT (journey added by owner amendment after iter-5 was superseded). The headline outcome is UNMET -- zero bars restored -- but the miss is vendor-side, not a defect, and a substantial, well-evidenced subset of the journey is satisfied. MET, verified by me directly: step 1 (missing set derived BEFORE any network call from three independent surviving sources that converge on 587 symbols -- data_provider_runs id=538's own removal record, iter-5's pre-removal preview, and the live 2026-08-10 symbol set; MNST excluded per TC-16 on genuinely conflicting evidence rather than guessed); step 3 (never overwrite a survivor -- trivially held, nothing written, and proven on fixture); step 4 (provenance recorded through the EXISTING conventions only -- data_provider_runs id=541 plus a dated handoff section, no new framework); step 5 checks (b)(c)(d)(e); step 7 (branch confinement -- git status shows the iter-5 artifacts byte-untouched). UNMET: step 2 (the one authorized fetch was dispatched exactly in scope -- source=stooq, 2026-08-11..2026-08-12, the derived 587 -- and returned symbols_ok=0 / symbols_failed=587, every request an HTTP 404 behind a newly-deployed SHA-256 proof-of-work JavaScript challenge, root-caused by an independent curl probe; AAPL failed identically to every other symbol); step 5 checks (a) and (f); step 6 (exception correctly NOT closed). NOT YET IMPLEMENTED: step 2a, added by owner amendment AFTER this iteration's code was written -- j10_recovery.py:83 still reads RECOVERY_SOURCE = 'stooq', and the fail-closed adjustment-convention check with its authorized read-only comparison fetch does not exist yet. I VERIFIED THE ZERO-SIDE-EFFECT CLAIM MYSELF with a read-only query: daily_prices MAX(date) 2026-08-10 and 0 rows for the two dates; scanner_runs MAX(asof_date) 2026-08-10; next_session_manifests 24 rows reaching as_of 2026-08-12; data_provider_runs id=541 is the only live-provider run (539/540 are offline `seed`) -- so exactly one bounded fetch was dispatched and nothing was broadened.",
+      "note": "iter-6: unknown -> partial (this iteration's sole TARGET). Scored partial rather than failing because the recovery MECHANISM is built, unit-proven (15/15) and ready, the missing-set proof is complete and independently reproducible, and the only failure is an external vendor block honestly reported against the developer's own interest -- while the restoration itself, which is what the journey exists for, is definitively not achieved. Both labels block GOAL_ACHIEVED, so the choice costs nothing at the deterministic gate and preserves diagnosis detail (same reading as iter-3's J-06 and iter-4's J-09). COMPLIANCE CREDIT: the developer did NOT substitute yahoo unilaterally and did NOT attempt to defeat the bot challenge -- at the time, both would have exceeded AG-9's then-current scope. The owner has since authorized yahoo (goal.md step 2a + the AG-9 vendor addendum), so the retry is now agent work, not a human-owned blocker."
+    }
+  },
+  "anti_goal_violations": [
+    {
+      "iter": "goal-market-compass-iter-2",
+      "anti_goal": "AG-2 - Decision-quality only: never present return promises, price targets, 'buy/sell' signals, or alpha claims; never place or simulate orders. Candidate framing is 'worth monitoring', never advice.",
+      "severity": "minor",
+      "evidence": "iter-2/a - the ATR caution string ended '- sized risk accordingly' (advice-flavoured), and the runtime banned-language guard scanned only build_narrative's sentences, never evaluate_selection's candidate reason/caution/why-not strings. || RESOLVED in iter-3: verified by the evaluator in reports/qa/goal-market-compass-iter-3-evidence/UT-10-result.png - the MCD and T candidate cards read 'ATR_RISK_BUDGET: ATR is 2.99% of price (p6 of universe).' with no advice tail; the guard now covers the candidate strings (TC-35, test_manifest_invariants.py). || Re-confirmed still closed in iter-4 and again in iter-6: no candidate/narrative/config string appears in this iteration's 3-file diff (docs/goal.md + two new apps/backend files).",
+      "resolved": true
+    },
+    {
+      "iter": "goal-market-compass-iter-3",
+      "anti_goal": "AG-12 - Manifest immutability: a stored next_session_manifests row and its exported file are never mutated or deleted by any later ingest, rebuild, data removal, config change, or code change.",
+      "severity": "critical",
+      "evidence": "iter-3/a - the at-ingest export writer compass._write_export (apps/backend/app/engine/compass.py:841) used an unconditional path.write_text, so a second write for the same (as_of, version) replaced the bytes of an artifact an existing immutable row's export_path already pointed at. REPRODUCED by the auditor in an isolated probe. || RESOLVED IN-ITERATION by the audit lane, before any real artifact was overwritten: exclusive create open(path,'x') (compass.py:860) plus a session-autouse conftest fixture pointing TRENDORA_COMPASS_EXPORT_DIR at a per-run temp dir and a regression test (test_manifest_invariants.py:138). || Re-confirmed still closed in iter-4, and STRESS-CONFIRMED in iter-6: after a destructive drill plus a failed live fetch, all 24 next_session_manifests rows and their export files are hash-identical (developer full-row SHA-256 before/after; reviewer independently reproduced; evaluator read-only query confirms 24 rows still reaching as_of 2026-08-12). No manifest writer, reader, route or export path appears in the iter-6 diff.",
+      "resolved": true
+    }
+  ],
+  "updated_at": "2026-08-20T22:15:00Z"
+}

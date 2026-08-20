@@ -585,33 +585,6 @@ manifest artifact (it must be self-describing and self-caveating).
          it is recorded in the "requested but not restored" provenance list (step 4) rather than
          inserted on a guessed factor. If no symbol passes, or the comparison cannot run at all,
          **insert nothing and STOP for owner review.**
-         **Zero usable pairs can NEVER produce agreement.** An empty or below-floor comparison set is
-         `inconclusive`, never `agree` — "all 0 pairs were within tolerance" is not evidence, it is
-         the absence of evidence. A minimum count of genuinely compared pairs (both sides present and
-         numeric) MUST be required per symbol before any verdict of agreement, and that floor is
-         evaluated **after** the disagreement branch so a real out-of-tolerance pair can never be
-         downgraded to `inconclusive` by it. This is contract, not merely implementation: iteration 7
-         shipped a gate that returned `agree` on an empty pair list — a sampled row whose *stored*
-         side was missing was silently skipped — and the audit reproduced it writing rows on a proof
-         of nothing. The trigger condition is "rows are unexpectedly missing", which is precisely the
-         condition this journey exists to repair. It must not recur.
-         **One series, end to end.** The bridge MUST be measured on, and applied to, the **same
-         provider series that is actually inserted** — one field, one code path, no crossover. A
-         bridge calibrated on an adjusted series and applied to a raw series (or vice versa) silently
-         encodes the raw-vs-adjusted difference as if it were the bridge factor; iteration 7's gate
-         compared `adjclose` while its restore path would have written `get_daily`'s raw close, and
-         the developer's own probe measured those two quantities differing by ~0.086% on AAPL. If the
-         restore path cannot read the same series the check validated, fix that before restoring —
-         do not bridge across the gap.
-         **Persisted evidence is the only admissible calibration input.** Every comparison run MUST
-         persist its **per-pair** record (symbol, date, stored value, fallback value, computed ratio
-         or delta) as a run artifact — not a summary. **That persisted artifact is the sole auditable
-         input to bridge calibration:** a bridge factor may be derived only from pairs recorded in
-         it, and any tolerance, floor, or bound cited in a handoff must be traceable to rows within
-         it. Numbers that survive only as prose in a handoff are not calibration evidence and may not
-         be used as such — iteration 7's 88 deltas were never persisted, its surviving summary does
-         not reconcile (4+4+5+76 = 89 ≠ 88), and the figures behind the tolerance decision are now
-         unrecoverable without a re-run.
        - **No interchangeability claim.** A successful cross-vendor restoration is evidence that a
          stable scale relationship held for those symbols over one short overlap window, and that the
          restored bars were transformed onto the existing scale — **it is NOT evidence that Yahoo and

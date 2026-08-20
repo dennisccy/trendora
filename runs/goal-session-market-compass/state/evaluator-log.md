@@ -301,3 +301,71 @@ blocking: whether 3.44 GB is acceptable for J-09, J-06's "underlying run unavail
 rewording of J-01's first two test steps, and whether an empty "next-session focus" is acceptable.
 ONE NEW OWNER QUESTION: the company MNST was deliberately left out of the 587 because the surviving
 records disagree about it — decide whether to include it in the retry.
+
+## Iteration 7 — goal-market-compass-iter-7
+
+**Date:** 2026-08-21T01:05:00Z
+**Verdict:** CONTINUE
+**Depth dispatched:** full (`iter-7/depth-dispatched` reads `full`, matching the spec's own
+`**Depth:** full` line — the silent full→lean demotion behind iter-6's ESCALATE did NOT recur, and the
+audit lane that the demotion had skipped did run this time)
+
+**Journey deltas:**
+- Newly passing: none
+- Newly failing: none. **Regressed: none.**
+- Still partial, advanced (this iteration's sole TARGET): J-10 — the gate was built, exercised live on
+  88 real comparisons, correctly refused to write, and a critical fail-open inside it was found and
+  fixed before it ever touched real data
+- Carried, NOT re-tested (out of scope by design; the browser lane never ran at all): J-01, J-04 stay
+  `passing` under evidence durability; J-02, J-03 stay `partial` (their blocker is unmoved — I
+  re-confirmed the data is still missing with my own read-only query); J-05, J-06, J-09 stay `partial`;
+  J-07, J-08 stay `failing`
+- Anti-goal violations: ONE CRITICAL, found and FIXED inside this iteration (AG-9 / J-10 step 2a — the
+  fail-closed gate returned "agree" on zero compared pairs; the auditor reproduced it writing rows on a
+  fixture DB; fixed with a minimum-evidence floor plus 4 regression tests, 27/27 passing, and I verified
+  it never reached the real database). Ledger: 3 total, 0 unresolved.
+
+**Reasoning:** The safety check the owner asked for was built, and then it did the one thing that
+matters: it refused. On a real run it compared 88 real prices — twenty companies across the five most
+recent surviving days — and found that on one company, Chevron, the gap was 0.865% against a 0.75% bar
+fixed in the code beforehand. It wrote nothing. The developer did not move the bar after seeing a near
+miss, which is exactly the discipline the goal file demands. I did not take the "nothing was written"
+claim on trust: I queried the database read-only myself and found the latest price date still
+2026-08-10, zero rows on the two missing days, the download record still ending at the same failed
+attempt from last time, and all 24 sealed briefing records intact — and, decisively, the database file
+has not been modified since before this iteration even started, with an empty write log. So why is this
+not a success? Two reasons. First, the two days are still missing, so the four journeys that depend on
+them are no better off. Second, and more serious, the independent auditor found that the new safety
+check would have said "these prices agree" in the case where it had compared **nothing at all** — and
+proved it, on a copy, by watching the repair tool then write rows on that empty proof. The trigger for
+that hole is a database with rows unexpectedly missing, which is the exact situation this whole repair
+exists to fix. It was fixed inside this iteration with four new tests, and the fix is ordered so a real
+disagreement can never be downgraded to "cannot tell" — I read the code myself. Why CONTINUE and not a
+halt? Nothing that worked stopped working, the critical fault was closed before it touched real data,
+the structure check passed, and the security scan was clean. Why not ESCALATE again? The process
+failure that caused last time's escalation — the engine quietly running the light pipeline — did not
+happen; this ran at full depth and the heavy lanes did their job. And why not STALLED? Because the
+owner already answered this iteration's open question during the run: they rewrote the check's design
+in the goal file, so the next step is engineering work, not a decision waiting on a person.
+
+**Next-step recommendation:** Build the owner's redesigned check and then run the repair, alone, at FULL
+depth. In plain terms it must do four things together: compare how the two price series move day to day
+instead of comparing price levels (the near miss was measuring a dividend, not a disagreement — both
+flagged companies were high-dividend oil names and their gap was identical on every day); multiply a
+passing company's new prices onto the scale of the prices already stored, across all four price fields,
+and never store raw values; measure and store the *same* version of the supplier's price through one
+code path (today the check reads one version and the restore would have saved another, and the auditor
+measured those differing by about 0.086% on Apple); and save every comparison to a file before anyone
+reads the verdict, because this run's 88 comparisons were never written down and the summary in the
+handoff does not even add up. Two cheap extras ride along: make the pass marks impossible for a caller
+to override, and add the small missing tests for the new price-reading code. Full depth is required
+because the auditor caught a hole this iteration that both the reviewer and QA missed, and because the
+next turn is the first time this session writes into the main price table. Only after the days are back
+should iteration 9 re-check J-01 "Sector labels are honest and nearly complete", J-02 "What changed
+since the previous session", J-03 "Plain-English summary with cited facts" and J-04 "Each candidate
+explains why and why-not" in the browser, record the four short walkthroughs now five turns overdue, and
+fix the J-01 test script that has wrongly failed twice on a sector name that wraps onto two lines. FIVE
+OLDER OWNER QUESTIONS still open and still not blocking: whether 3.44 GB is acceptable for J-09; J-06's
+"underlying run unavailable" wording; the rewording of J-01's first two test steps; whether an empty
+"next-session focus" is acceptable; and whether MNST should join the 587 names. ONE HOUSEKEEPING NOTE:
+the `docs/goal.md` amendment is still uncommitted in the working tree.

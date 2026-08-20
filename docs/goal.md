@@ -626,21 +626,77 @@ manifest artifact (it must be self-describing and self-caveating).
          existing per-row/per-run vendor fields — never relabelled, back-dated, or blended into the
          surrounding `stooq` history. The dataset after recovery is honestly mixed-vendor at exactly
          two dates, and the handoff and `data_provider_runs` must both say so.
-       - **Fail closed on adjustment-convention mismatch.** Stooq's bars are split/dividend-adjusted
+       - **Fail closed: precommitted path-agreement + stable multiplicative bridge (owner, 2026-08-20
+         — supersedes the earlier absolute-level tolerance).** Stooq's bars are split/dividend-adjusted
          (seed manifest: "REAL split/dividend-adjusted EOD OHLCV"). Before inserting anything, the
-         implementation MUST demonstrate that the Yahoo series it is about to write follows the same
-         adjustment convention as the surrounding stored bars. To make that check possible — and for
-         no other purpose — a **read-only comparison fetch** of a small overlap window of already-
-         surviving trading days (≤ 2026-08-10) for a sample of the proven-missing symbols is
-         authorized; its rows are held in memory or a temp file, compared against the stored bars,
-         and **never written to the database, never cached, never used to repair anything**. If the
-         conventions do not demonstrably agree within a stated tolerance — or if the comparison
-         cannot be performed at all — **insert nothing and STOP for owner review**. A silent
-         convention mismatch would corrupt every downstream return, gap and score at those dates,
-         which is worse than the missing days.
-       - **No interchangeability claim.** A successful cross-vendor restoration is evidence that two
-         specific dates were repaired under a stated tolerance — **it is NOT evidence that Yahoo and
-         Stooq bars are interchangeable**, not for these symbols, not generally. No surface,
+         implementation MUST demonstrate agreement using the two-part test below. To make it possible —
+         and for no other purpose — a **read-only comparison fetch** of a small overlap window of
+         already-surviving trading days (≤ 2026-08-10) for a sample of the proven-missing symbols is
+         authorized; its rows are held in memory or a temp file, compared against the stored bars, and
+         **never written to the database, never cached, never used to repair anything**.
+         *Why the earlier absolute-level test was wrong:* an "adjusted close" for a fixed past date is
+         not a stable number — vendors recompute it retroactively on every later corporate action. A
+         single intervening ex-dividend makes a freshly fetched series sit uniformly below a stale
+         stored one **even when both vendors use an identical convention**, which is exactly what
+         iteration 7 measured (CVX ~0.865%, XOM ~0.643%, both near-zero spread *within* the symbol,
+         both high-yield energy names). A level tolerance therefore tests dividend timing, not
+         convention, in both directions: it fails clean data and could pass a real level-shift bug.
+         The replacement tests the relationship instead:
+         1. **Path agreement (precommitted).** Compare the *shape* of the two series over the overlap
+            window — day-over-day returns, or each series rebased to 1.0 at the window's earliest
+            date — which is invariant to any uniform multiplicative offset. The acceptance criteria
+            and every threshold MUST be fixed in code **before** the comparison runs and MUST NOT be
+            adjusted after seeing a result; loosening a threshold to convert a failure into a pass is
+            forbidden, and doing so is itself a reportable violation.
+         2. **Stable multiplicative bridge.** For each symbol compute the per-day ratio of the stored
+            value to the fallback value across the overlap window. The bridge is the ratio itself, and
+            it passes **only if it is stable** — its dispersion across the window within a precommitted
+            bound. That stability IS the convention-agreement evidence; a drifting or erratic ratio
+            means the two series are not on one consistent scale and the symbol fails.
+         **A passing bridge MUST then be applied.** Restored values are the fallback provider's fields
+         **transformed by that symbol's bridge factor onto the existing Stooq historical scale** —
+         applied consistently to every price field (open/high/low/close, not close alone, or the bar
+         becomes internally inconsistent; volume is not a price and is not scaled). **Passing the gate
+         does NOT authorize inserting raw Yahoo adjusted-close values unchanged** — an untransformed
+         insert would leave a scale discontinuity at exactly these two dates, corrupting every
+         downstream return, gap and score that spans them.
+         **Fail closed, per symbol.** Path disagreement, an unstable bridge, too few comparable pairs
+         to judge, or a comparison that cannot be performed at all ⇒ that symbol is **not restored**;
+         it is recorded in the "requested but not restored" provenance list (step 4) rather than
+         inserted on a guessed factor. If no symbol passes, or the comparison cannot run at all,
+         **insert nothing and STOP for owner review.**
+         **Zero usable pairs can NEVER produce agreement.** An empty or below-floor comparison set is
+         `inconclusive`, never `agree` — "all 0 pairs were within tolerance" is not evidence, it is
+         the absence of evidence. A minimum count of genuinely compared pairs (both sides present and
+         numeric) MUST be required per symbol before any verdict of agreement, and that floor is
+         evaluated **after** the disagreement branch so a real out-of-tolerance pair can never be
+         downgraded to `inconclusive` by it. This is contract, not merely implementation: iteration 7
+         shipped a gate that returned `agree` on an empty pair list — a sampled row whose *stored*
+         side was missing was silently skipped — and the audit reproduced it writing rows on a proof
+         of nothing. The trigger condition is "rows are unexpectedly missing", which is precisely the
+         condition this journey exists to repair. It must not recur.
+         **One series, end to end.** The bridge MUST be measured on, and applied to, the **same
+         provider series that is actually inserted** — one field, one code path, no crossover. A
+         bridge calibrated on an adjusted series and applied to a raw series (or vice versa) silently
+         encodes the raw-vs-adjusted difference as if it were the bridge factor; iteration 7's gate
+         compared `adjclose` while its restore path would have written `get_daily`'s raw close, and
+         the developer's own probe measured those two quantities differing by ~0.086% on AAPL. If the
+         restore path cannot read the same series the check validated, fix that before restoring —
+         do not bridge across the gap.
+         **Persisted evidence is the only admissible calibration input.** Every comparison run MUST
+         persist its **per-pair** record (symbol, date, stored value, fallback value, computed ratio
+         or delta) as a run artifact — not a summary. **That persisted artifact is the sole auditable
+         input to bridge calibration:** a bridge factor may be derived only from pairs recorded in
+         it, and any tolerance, floor, or bound cited in a handoff must be traceable to rows within
+         it. Numbers that survive only as prose in a handoff are not calibration evidence and may not
+         be used as such — iteration 7's 88 deltas were never persisted, its surviving summary does
+         not reconcile (4+4+5+76 = 89 ≠ 88), and the figures behind the tolerance decision are now
+         unrecoverable without a re-run.
+       - **No interchangeability claim.** A successful cross-vendor restoration is evidence that a
+         stable scale relationship held for those symbols over one short overlap window, and that the
+         restored bars were transformed onto the existing scale — **it is NOT evidence that Yahoo and
+         Stooq bars are interchangeable**, not for these symbols, not generally. A passing bridge is a
+         measured conversion factor, never a statement of vendor equivalence. No surface,
          artifact, narrative, methodology page, or future study may cite this recovery as
          vendor-equivalence evidence, and no vendor-comparison claim may be derived from it; such a
          claim would need its own pre-registered experiment (AG-4/AG-15). If Yahoo also proves
@@ -677,8 +733,10 @@ manifest artifact (it must be self-describing and self-caveating).
       set is computed once and is the sole input to the fetch.
     - **Correctness:** the two dates are restored, no third date is touched, no surviving row is
       overwritten, the frontier is unchanged at 2026-08-12, and J-01/J-02/J-03 pass a live replay
-      again. If the restoration is cross-vendor (step 2a), the adjustment-convention check passed on
-      stated evidence and every restored row carries its true `yahoo` provenance.
+      again. If the restoration is cross-vendor (step 2a), the path-agreement test passed on
+      precommitted criteria, every restored symbol had a stable bridge that was actually applied to
+      all four price fields (no raw fallback value inserted unchanged), any symbol without one is
+      listed as not-restored, and every restored row carries its true `yahoo` provenance.
     - **Honest status & anti-goals:** the incident is preserved, not rewritten — iter-5's drill
       result, its handoff, and any reviewer/QA evidence already produced remain in place, alongside
       an explicit incident/recovery record stating that the committed seed (window ending
