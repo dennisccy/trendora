@@ -368,10 +368,10 @@ def test_sqlite_pragmas_applied_on_connect(tmp_path):
     assert journal_mode.lower() == "wal"
     assert synchronous == 1  # SQLite's own PRAGMA synchronous vocabulary: 0=OFF,1=NORMAL,2=FULL,3=EXTRA
     assert busy_timeout == 30000
-    assert cache_size == -262144
+    assert cache_size == -65536  # iter-4/J-09: was -262144 (256 MB); halved to 64 MB, see reports/perf-budgets.md
     # mmap DISABLED (0): a non-zero mmap_size reserves that many bytes of VIRTUAL address space per pooled
     # connection; at 1 GB x the pool it exhausted the 6144 MB ulimit -v cap and crashed the cold /api/data
-    # load (iter-24 audit / browser-qa UT-16). The 256 MB page cache above keeps reads fast without it.
+    # load (iter-24 audit / browser-qa UT-16). The page cache above keeps reads fast without it.
     assert mmap_size == 0
     assert temp_store == 2  # SQLite's own PRAGMA temp_store vocabulary: 0=DEFAULT,1=FILE,2=MEMORY
 

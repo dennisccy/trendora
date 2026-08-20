@@ -12110,3 +12110,126 @@ Addendum 38's "What was built" section stated "72 tests in this module's non-hea
 tests collected**, of which the same `-k` filter Addendum 38's own Tests Run section used selects 13 (5
 deselected), yielding **12 passed, 1 skipped** — not 72. (`test_config.py`'s 75-passed figure was correct
 and is unaffected.) See the correction applied directly to Addendum 38's text above.
+
+## Addendum 40 (2026-08-20, market-compass iter-4 developer pass) — J-09: `cache_size` 256 MB -> 64 MB per pooled connection; standing-warm VmPeak re-measured via a LIGHTER concurrent-burst path (no `backfill`/`rebuild` job, no throwaway DB copy); the <=2.5 GB target is HONESTLY MISSED, a real ~29% reduction is measured, flagged for owner review per TC-6 (no cap value widened)
+
+### Why this round
+
+The 2026-08-20 desktop-freeze incident (goal.md J-09's own "Why") traced the dominant standing-memory
+block to `database.pragmas.cache_size: -262144` (256 MB SQLite page cache PER pooled connection) times
+`pool_size 24 + max_overflow 44` — Addendum 39 above measured **4,837,420 kB** VmPeak at standing warm
+for the OLD value, "the pool's own connection warm-up IS the peak," and full-depth goal-mode iterations
+run TWO backends concurrently on this shared 26.7 GB host. J-09's own Steps changed ONLY
+`database.pragmas.cache_size` (`-262144` -> `-65536`, i.e. 256 MB -> 64 MB) — `pool_size`/`max_overflow`
+(24/44, sized by ops-hardening iter-72 to clear `server.limit_concurrency` 64) are byte-unchanged, per
+`git diff -- config.yaml` (see the dev handoff for the full diff).
+
+### Method: the LIGHTER pool-warm-up burst, not the heavy live drill — a logged, reversible assumption
+
+Per this iteration's own coordinator note and the iter-4 spec's own NOTES ("Assumption logged"), the
+~31-minute opt-in `backfill`+finalize-tail live drill Addendum 39 used
+(`test_start_backend_phase_by_phase_vmpeak_profile_under_pool_pressure`, `TRENDORA_RUN_HEAVY_INGEST_TEST=1`,
+copies the 7.8 GB `apps/backend/data/trendora.db` to a throwaway DB) was NOT run this round: this host was
+shared with a SECOND concurrent goal-mode engine (a different project) throughout this iteration, and the
+DB-copy sites are the exact resource-heavy pattern J-09's own "Host resource-fit" constraints (goal.md)
+target for removal. Instead, TWO independent concurrent-read bursts were driven against a backend started
+via `bash scripts/start-backend.sh` (host-guard caps applied, confirmed in `logs/backend.log`) with the
+NEW `cache_size`, reading the REAL committed dev DB in place (never copied, never opened for write outside
+the app's own normal connection pool) — `/proc/<pid>/status` VmPeak read after each burst (the SAME kernel
+monotonic-high-water-mark instrument Addendum 32/38/39 used):
+
+1. **Original-methodology replica** — 5 workers, the SAME 6-endpoint mix as
+   `test_start_backend_script.py`'s `_POOL_PRESSURE_ENDPOINTS` (`/api/backtest`, `/api/watchlist`,
+   `/api/sectors`, `/api/themes`, `/api/stocks`, `/api/data/availability`), the SAME 1.0-2.0s jittered
+   per-worker pacing, sustained 150s. VmPeak climbed to a plateau by t+40s (2,861,948 -> 3,439,100 kB) and
+   held EXACTLY flat through t+140s (5 samples, all 3,439,100 kB) — the same plateau signature Addendum 39
+   itself reports for the old-config peak. 465 requests, **zero errors**.
+   **Result: 3,439,100 kB (3,358.5 MB).**
+2. **Stress variant** — 24 workers (~= `pool_size`), a broader 10-endpoint mix (adds `/api/dashboard`,
+   `/api/market-phase`, `/api/compass`, `/api/health` to the 6 above — never `/api/data`, the one endpoint
+   `test_data_manager_concurrency_load.py`'s own docstring says must never be concurrently probed), tighter
+   0.1-0.4s pacing, 90s. 4,240 requests, **zero errors**. **Result: 4,493,232 kB (4,388.7 MB).**
+
+Host safety was monitored throughout both bursts (`/proc/meminfo` polled every 15-20s against this
+iteration's own abort rule: available < ~3 GB or swap used > ~2 GB): available memory never dropped below
+17.8 GB and swap held flat at ~200 MB across both drills — no abort fired, comfortable margin the whole
+time. Neither burst copied or opened-for-write `apps/backend/data/trendora.db`.
+
+### Result vs the <=2.5 GB target: HONEST MISS on both measurements
+
+| Measurement | VmPeak (kB) | VmPeak (MB) | vs 2,621,440 kB (2.5 GB) target | Margin vs `memory_cap_mb` (8192 MB) |
+|---|---|---|---|---|
+| Addendum 39 (old `cache_size` -262144, heavy backfill+pool-pressure drill) | 4,837,420 | 4,724.0 | +2,215,980 kB over | 42.3% margin (57.7% of cap used) |
+| **This pass — original-methodology replica (new `cache_size` -65536)** | **3,439,100** | **3,358.5** | **+817,660 kB over (+31.2%)** | **59.0% margin (41.0% of cap used)** |
+| This pass — stress variant, 24 workers (new `cache_size` -65536) | 4,493,232 | 4,388.7 | +1,871,792 kB over | 46.4% margin (53.6% of cap used) |
+| Target (DEFINITION OF DONE) | <=2,621,440 | <=2,560.0 | -- | -- |
+
+**Neither measurement meets the <=2.5 GB standing-warm target.** The original-methodology replica — the
+more faithful reproduction of Addendum 39's own drill shape (same worker count, same endpoints, same
+pacing, just without the concurrent `backfill` job) — is reported as the primary figure: **3,439,100 kB**,
+817,660 kB (31.2%) over the 2,621,440 kB target. A real, honestly-measured reduction from the OLD
+`cache_size` figure WAS achieved: 4,837,420 -> 3,439,100 kB, a **1,398,320 kB (28.9%) reduction** — but the
+config change ALONE does not close the remaining gap to <=2.5 GB.
+
+**Per TC-6 / DEFINITION OF DONE: recorded here honestly, flagged for owner review. `memory_cap_mb`
+(8192), `malloc_arena_max` (2), `pool_size` (24), and `max_overflow` (44) are UNCHANGED — none were
+widened or tuned to force the target (AG-10 governs; these are owner-only values).** Both measurements
+carry comfortable margin against `memory_cap_mb` itself (41-59%) — this is a miss of this iteration's own
+tighter 2.5 GB standing-warm bar, NOT a `memory_cap_mb`/AG-10 risk.
+
+### Engineering note: `cache_size` is a soft ceiling, not a pre-allocation — it is not the only standing-memory factor
+
+SQLite's `cache_size` (negative = KiB) is a page-cache CEILING the connection grows into on demand as
+distinct pages are touched, never eagerly reserved at connect time. J-09's own "Why" cites a THEORETICAL
+worst case (256 MB x 24 pooled connections = 6,144 MB "steady") — but Addendum 39's own MEASURED old-config
+peak (4,837,420 kB = 4,724 MB) already sat below that theoretical ceiling, meaning even the old, larger
+`cache_size` was not fully saturated by every pooled connection in that drill. Consistent with that: a
+freshly-booted backend (before any burst) with the NEW `cache_size` peaked at 837,860-1,423,852 kB across
+two independent cold boots (interpreter + uvicorn + anyio + warmup baseline, no pool pressure at all) — a
+non-trivial floor unrelated to `cache_size`. This means a chunk of standing-warm VmPeak (base process
+footprint, response-buffer spikes for large JSON payloads like `/api/stocks`' ~2.5 MB body, and the
+existing `_BarCache.prefill` warmup — the last of which is EXPLICITLY OUT OF SCOPE for J-09, carried
+forward as an unassigned Host resource-fit constraint per goal.md's own text) is not reachable by
+`cache_size` alone. This is offered as an honest explanation for the gap, not an excuse to widen the
+target.
+
+### TC-4 — concurrent-load burst: zero `QueuePool` TimeoutError
+
+Both bursts above completed 100% clean: 465 + 4,240 = **4,705 total concurrent read requests, ZERO
+errors, ZERO non-2xx** (the 24-worker variant deliberately approached `pool_size` (24) simultaneous
+in-flight connections). `apps/backend/tests/test_data_manager_concurrency_load.py` (the file this
+iteration's own IN SCOPE names as "the existing pool-pressure / concurrent-load burst check") was
+additionally re-run targeted against the new `cache_size`: **3 passed in 1.08s**
+(`test_concurrent_coverage_single_flight_byte_identical_and_bounded`,
+`test_concurrent_coverage_warm_cache_zero_recompute`,
+`test_membership_stamp_decouples_coverage_cache_from_forward_returns`) — zero failures, zero
+`QueuePool` errors.
+
+### TC-5 — byte-identity spot check: zero diff
+
+`GET /api/dashboard`, `GET /api/stocks`, `GET /api/market-phase`, `GET /api/compass`, all at
+`as_of=2026-08-10` (a stored historical run, chosen to avoid the frontier date's `ManifestNotYetFrozen`
+path so `/api/compass` serves a real payload), captured before AND after the `cache_size` edit against two
+separate backend boots. Every one of the 4 response bodies is BYTE-IDENTICAL (`cmp` zero-diff, matching
+md5): dashboard 915 bytes, stocks 2,503,015 bytes, market-phase 15,064 bytes, compass 333,578 bytes — see
+the dev handoff for the four md5 pairs.
+
+### TC-7 — `cache_size` single-source confirmation
+
+Repo-wide grep confirms `apps/backend/app/db.py:61` (`cursor.execute(f"PRAGMA cache_size={pragmas.cache_size}")`)
+remains the ONLY site that determines the effective pragma value. `apps/backend/app/config.py:1999`'s
+`cache_size: int = -262144` is the typed loader's documented Python-side FALLBACK for a missing config
+key — left unchanged per this iteration's own OUT OF SCOPE (`config.yaml` is present and authoritative, so
+this default is never the effective value). `apps/backend/tests/test_db.py:371`'s
+`test_sqlite_pragmas_applied_on_connect` hardcoded `assert cache_size == -262144` — updated to `-65536` to
+match (otherwise this pass would have self-inflicted a regression on its own assertion); no other file
+reads or asserts a `cache_size` number.
+
+### AG-9 / AG-10 for this pass
+
+AG-9 — both bursts are pure local HTTP GETs against the already-running backend and the committed seed DB;
+zero external network calls. AG-10 — the backend was launched only via `scripts/start-backend.sh`
+(HOST-GUARD block intact, confirmed by reading the script before use); `memory_cap_mb`/`malloc_arena_max`/
+`pool_size`/`max_overflow`/every host-guard value is byte-unchanged (`git diff` shows only the one
+`cache_size` line in `config.yaml`) — the miss above is recorded, not compensated for by touching any of
+these owner-only values.

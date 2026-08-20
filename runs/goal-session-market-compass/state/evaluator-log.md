@@ -170,3 +170,59 @@ page must look up the sealed record before it resolves the date (a change to how
 behaves) or that sentence in J-06 should be reworded; (2) still unanswered from last time — approval to
 reword J-01's first two test steps, and whether an empty "next-session focus" on the newest date is an
 acceptable honest result (the rules forbid moving the cut-offs to make names appear).
+
+## Iteration 4 — goal-market-compass-iter-4
+
+**Date:** 2026-08-20T15:05:00Z
+**Verdict:** CONTINUE
+**Depth dispatched:** lean (`iter-4/depth-dispatched` reads `lean`, matching the spec's own
+`**Depth:** lean` line — no escape condition held: last verdict CONTINUE, last coherence PASS,
+consecutive-lean counter not due, and the change is one config scalar)
+
+**Journey deltas:**
+- Newly passing: none
+- Advanced unknown -> partial: J-09 (this iteration's sole TARGET — first measurement ever; four of
+  five steps met, the headline memory step MISSED at 3,439,100 kB vs a 2,621,440 kB target)
+- Re-verified, unchanged: J-01, J-02, J-03, J-04 all still passing (Required-still-passing set,
+  merged 4/4; the replay lane's J-01 FAIL was overturned for the SECOND consecutive iteration as a
+  stale golden and I confirmed the overturn from the frame myself)
+- Newly failing: none. Regressed: none.
+- Not tested (out of scope, carried): J-05, J-06 still partial; J-07, J-08 still failing
+- Anti-goal violations: NONE new. Ledger unchanged at 2 entries, both resolved. AG-10 was the one
+  at real risk and it held: `memory_cap_mb` 8192, `malloc_arena_max` 2, `pool_size` 24,
+  `max_overflow` 44 and `limit_concurrency` 64 are all byte-unchanged — I read each value in
+  `config.yaml` myself. The over-budget result was recorded, not compensated for.
+
+**Reasoning:** This iteration changed one number: each database connection now keeps 64 MB of pages
+in memory instead of 256 MB. The memory really did drop — from 4,837,420 kB to 3,439,100 kB, a
+28.9% cut — but the goal asked for 2.5 GB or less, and 3.44 GB is 31% above that. I did not take
+that from the reports alone: I read the new dated measurement in `reports/perf-budgets.md` in full,
+checked that the file gained 123 lines and lost zero so the old figure is still there, and read the
+five owner-only limit values in `config.yaml` to confirm none had been quietly widened to make the
+number pass. Nothing the user sees changed, and that is proven the strongest way possible: four
+pages were captured before and after and every byte matched. The four working journeys were
+re-checked and still work. The stored test script for J-01 "Sector labels are honest and nearly
+complete" failed again with the same wrong complaint as last time; I opened the picture and the
+GRMN row plainly shows "Consumer Discretionary", just wrapped onto two lines — so the script is
+broken, not the product. Why CONTINUE and not a halt? Because J-09's own text says to "stop for
+owner review" on a miss, and I read that as "stop tuning and report", not "stop the session" — the
+sentence ends "never widen the target to pass", which is a warning against fiddling with numbers.
+Stopping everything would also freeze four other journeys that do not depend on this figure.
+
+**Next-step recommendation:** One thing needs the owner first: decide whether 3.44 GB is good
+enough. There is a real reason to think the 2.5 GB figure was aimed at the wrong cause — this
+project's own older records show the backend peaking between 2.69 GB and 3.69 GB on the 30-year
+data long before anyone looked at connection caches, so a floor near 2.5 GB probably already
+existed. Please pick one: accept 3.44 GB and call J-09 "The backend fits the host" done; or keep
+2.5 GB and approve re-bounding the `_BarCache.prefill` warm-up, which is the one lever left; or set
+a different measured target. Then build the make-up run for J-05 "Each close freezes one
+next-session manifest" and J-06 "A frozen manifest never changes" at FULL depth — remove and re-add
+the last two trading days and actually watch a real close seal the record, then delete a day,
+restore it, and watch the "where this came from" line change. Full depth is needed because the
+independent auditor found a real breach in this exact feature last time it ran, and because the
+short walkthrough recordings for J-01 to J-04 are now three turns overdue and only the full
+pipeline records them. That run starts two backends at once, so carry two small safety jobs with
+it: cap the frontend build at 4 workers, and stop the three memory-pressure test files from copying
+the 7.8 GB database. Also fix the stored J-01 test script that has now cried wolf twice. Three
+older owner questions are still open and still not blocking: the J-01 test-step rewording, whether
+an empty "next-session focus" is acceptable, and the J-06 "underlying run unavailable" wording.
