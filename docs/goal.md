@@ -145,6 +145,15 @@ manifest artifact (it must be self-describing and self-caveating).
   restored) — read the iter-43 handoff FIRST and preserve whatever correctness reason
   motivated its unbounding; if that reason conflicts with the bound, stop and surface it
   for owner review instead of guessing.
+- **Destructive-drill isolation (owner, 2026-08-20 — recorded defect + future direction, NOT this
+  cycle's build):** iter-5 proved that a destructive QA drill can permanently mutate the canonical
+  working dataset when the committed seed cannot completely restore it (the drill removed
+  2026-08-11/2026-08-12; the seed window ends 2026-07-01, so nothing local could put them back).
+  Destructive drills must not be able to do that. Preferred future direction: a disposable/sandbox
+  DB, a transaction rollback, a snapshot/restore, a drill-specific fixture copy, or equivalent
+  isolation. This is recorded as **evidence that drill isolation and recovery need hardening** — do
+  NOT build that infrastructure as part of the J-10 recovery and do not expand scope to it, unless
+  it is already trivial and explicitly inside a current slice.
 
 ## Design Direction
 
@@ -577,6 +586,76 @@ manifest artifact (it must be self-describing and self-caveating).
       demo requirement is replaced by the dated VmPeak measurement and drill citations in
       the dev handoff.
 
+- **J-10: Bounded recovery of the two trading days the iter-5 drill deleted
+  (owner, 2026-08-20 — incident response; state restoration only, never dataset advancement)**
+  - Why: iter-5's remove+backfill drill ran against **2026-08-11 and 2026-08-12** believing them
+    seed-safe. They were not: `apps/backend/data/seed/meta.json` ends at **2026-07-01**, so those
+    two days came from earlier live fetches and "backfill" has nothing local to read back. Verified
+    post-drill state — `daily_prices` maximum date is now 2026-08-10 (NVDA/AAPL/GRMN spot-checked);
+    `scanner_runs` maximum `asof_date` is now 2026-08-10 (the 08-11 and 08-12 runs are gone);
+    `next_session_manifests` still holds 24 rows reaching as_of 2026-08-12 with their export files
+    byte-intact, so **AG-12 held at the storage layer** — the manifests survived, their source data
+    did not. Consequence: `GET /api/compass?as_of=2026-08-12` now 400s, and J-01/J-02/J-03 —
+    previously passing — fail a live replay. This journey restores exactly what was deleted and
+    nothing else.
+  - Steps:
+    1. **Prove the missing set BEFORE any network call (fail-closed).** Derive, from surviving
+       evidence only, the exact rows the drill removed: the frozen `next_session_manifests`
+       payloads for as_of 2026-08-11/2026-08-12 (they carry the sealed member/candidate/cohort
+       lists), `docs/handoffs/goal-market-compass-iter-5-dev.md` and
+       `runs/goal-market-compass-iter-5/status.json`, the surviving coverage/availability tables,
+       `data_provider_runs`, and the universe membership in force on those dates. Record a
+       pre-recovery missing-row count per date and per symbol. If that set cannot be established
+       from evidence, **STOP and surface it for owner review** — never fetch a guess.
+    2. **Fetch only that set.** Use the project's existing provider path and the same vendor the
+       affected rows came from (`stooq`, per the seed manifest). Request **only 2026-08-11 and
+       2026-08-12**, and only the symbols in the proven missing set. A request that would touch any
+       other date — in particular anything on or after **2026-08-13** — or any row that still
+       exists, is a bug: the implementation must refuse it in code, not by convention. The
+       operation must be **idempotent**: re-running it after a partial or failed attempt restores
+       only what is still missing.
+    3. **Never overwrite a survivor.** Insert only missing rows; every surviving row stays
+       byte-unchanged. Derived state for those two dates (`scanner_runs` and their snapshots) is
+       rebuilt through the normal ingest path once the bars are present, and must not touch any
+       other date's stored run. AG-12 continues to govern: no stored manifest row or export file is
+       mutated or deleted by this recovery.
+    4. **Record provenance** using the existing conventions (`data_provider_runs` plus a dated
+       section in the iteration's dev handoff — do NOT introduce a new provenance framework):
+       why the fetch was authorized (this amendment), exactly which dates were fetched, which
+       symbols/rows were restored, the provider used, recovery start and completion timestamps,
+       the pre-recovery missing-row count, the post-recovery restored-row count, any row requested
+       but not restored, and the resulting dataset/frontier state.
+    5. **Verify before any normal lane resumes**, using deterministic checks where they already
+       exist (row counts, coverage summaries, hashes): (a) expected coverage for 2026-08-11 and
+       2026-08-12 is restored; (b) no other historical date was modified — compare against the
+       recorded pre-recovery state; (c) surviving rows were not overwritten unnecessarily;
+       (d) the dataset frontier did **not** advance past 2026-08-12 as a result of the repair;
+       (e) the project's data/DB-integrity checks pass; (f) the original destructive condition is
+       gone — `GET /api/compass?as_of=2026-08-12` serves again and J-01/J-02/J-03 replay clean.
+       If byte-for-byte restoration cannot be demonstrated because the vendor archive is not itself
+       immutable, **state that limitation plainly** and verify the strongest practical invariants
+       instead (per-symbol row presence, OHLCV shape, expected session count, no gap against the
+       surrounding trading days).
+    6. **Close the exception.** Once verification passes, record in the handoff that AG-9's dated
+       exception is **exhausted**; normal offline-deterministic ingest applies again automatically.
+    7. All recovery work stays on the session branch `goal/market-compass`; `main` is not touched.
+  - Acceptance:
+    - **Consistency (single source):** restored rows enter through the existing ingest/provider
+      path — no second write path, no hand-edited rows, no new provenance framework; the missing
+      set is computed once and is the sole input to the fetch.
+    - **Correctness:** the two dates are restored, no third date is touched, no surviving row is
+      overwritten, the frontier is unchanged at 2026-08-12, and J-01/J-02/J-03 pass a live replay
+      again.
+    - **Honest status & anti-goals:** the incident is preserved, not rewritten — iter-5's drill
+      result, its handoff, and any reviewer/QA evidence already produced remain in place, alongside
+      an explicit incident/recovery record stating that the committed seed (window ending
+      2026-07-01) could not restore these dates. AG-17 governs what the repair may NOT do to
+      provenance. If any part of the recovery cannot be proven to stay inside the authorized scope,
+      the iteration stops for owner review rather than broadening the fetch.
+    - **Walkthrough:** waived — data-layer repair with no UI surface change of its own; the demo
+      requirement is replaced by the provenance record, the verification evidence, and the
+      J-01/J-02/J-03 live replay that proves the damage is gone.
+
 <!-- Continuous-improvement auto-journeys: the goal-proposer appends NEW Must-have journeys ONLY
      between the two markers below (see the goal-self-extension skill). The human-authored journeys
      above and the Anti-goals below are never machine-edited. An empty block = nothing auto-proposed yet. -->
@@ -605,6 +684,20 @@ manifest artifact (it must be self-describing and self-caveating).
   engine reads column-projected selects, never full record_json sweeps). *(critical)*
 - **AG-9 — Offline-deterministic ingest:** ingest jobs run only against the committed seed / local provider
   fixtures — no live external network calls or paid data services without an explicit goal.md amendment. *(critical)*
+  - **Dated exception (owner, 2026-08-20 — single-use, self-closing, incident response):** the bounded
+    recovery fetch defined by **J-10** is authorized for exactly two calendar dates, **2026-08-11 and
+    2026-08-12**, and only for the symbol/row scope proven missing as a consequence of the iter-5 drill.
+    It authorizes **nothing else**: no other date (in particular nothing on or after 2026-08-13), no
+    refresh of unaffected historical data, no replacement of valid existing rows, no broad backfill, no
+    advancement of the dataset to a newer market-data frontier, no change to candidate thresholds or
+    research logic, and no unrelated data repair. The intent is **state restoration only, not dataset
+    advancement**. If the implementation cannot prove a request stays inside this scope, it MUST stop
+    rather than broaden the fetch. The exception is **exhausted** the moment J-10's post-recovery
+    verification passes — normal AG-9 then applies again automatically, and any later live fetch,
+    **including of these same two dates**, requires a new dated goal.md amendment. The only retry
+    permitted under this exception is a re-run of the same bounded, idempotent recovery after a failed
+    or partial attempt, still confined to the proven missing set. This is not a standing
+    "recovery fetch allowed" path.
 - **AG-10 — Host resource ceiling (hardware protection), carried from ops-hardening:** heavy compute MUST be
   launched only via the project launch scripts, which MUST apply the host caps declared in
   `project-extensions/host-guard/host-guard.env` whenever present (CPU-affinity mask, BLAS/OMP thread caps)
@@ -638,6 +731,19 @@ manifest artifact (it must be self-describing and self-caveating).
   and treating an individual downstream observation as prospective only when its event timestamp is
   strictly later than the manifest's `available_at_utc` — `prospective_eligible: true` is necessary but
   not sufficient per observation. *(critical)*
+- **AG-17 — Repair never rewrites provenance (owner, 2026-08-20):** restoring deleted historical data MUST
+  NOT retroactively change research provenance. A manifest that was retrospective or ineligible stays that
+  way; **`prospective_eligible` is never upgraded merely because historical data was later repaired**;
+  `available_at_utc`, manifest versions, `content_hash`/`manifest_hash`, and prior eligibility
+  classifications remain immutable (AG-12 governs the rows and files themselves). Any manifest or artifact
+  produced while the database was known to be damaged — everything dated from the iter-5 drill until J-10's
+  post-recovery verification passes — **remains marked unusable as prospective/out-of-sample evidence**;
+  only a separately regenerated artifact, minted after verified recovery under the existing create-once and
+  version rules, may carry eligibility, and it remains subject to the same version and
+  `prospective_eligible` contract as any other artifact. The incident record itself is evidence: the iter-5
+  drill result, its handoff, the reviewer/QA evidence already produced, and the explicit statement that the
+  committed seed could not restore these dates MUST NOT be deleted, rewritten, or silently superseded.
+  Repairing the database never rewrites historical causality. *(critical)*
 
 ## Loop mechanics (for the iteration planner)
 
@@ -650,7 +756,17 @@ manifest artifact (it must be self-describing and self-caveating).
   continuing J-05/J-06: it is small (one config value + measurements), and it is what lets full-depth
   iterations (two backends) fit this host without freezing it. The Constraints "Host resource-fit" rules
   (memory-pressure test gating, `next build` worker bound, prefill re-bound) ride the nearest applicable
-  slices after it.
+  slices after it. *(J-09's config half landed in iter-4 as an honest miss — VmPeak 3,439,100 kB against a
+  ≤ 2.5 GB target, −28.9% from baseline, no owner-only cap touched; (a) and (b) landed in iter-5.)*
+- **2026-08-20 owner insert #2 (incident response): J-10 (bounded recovery) jumps the queue ahead of
+  everything, including the J-05/J-06 make-up.** The iter-5 drill left the canonical database damaged.
+  **No developer, reviewer, QA, browser-QA, evaluator, coherence, research or proposer lane may run
+  against the knowingly damaged database before J-10's post-recovery verification passes** — the only
+  work that proceeds is the recovery itself and its verification. Artifacts already produced from the
+  damaged state (iter-5's dev handoff, its `status.json`, and any reviewer/QA output) are preserved as
+  incident evidence and are never treated as clean research evidence (AG-17). If the recovery cannot be
+  completed inside AG-9's authorized scope, stop and surface it for owner review rather than resuming
+  normal evaluation on damaged data.
 - Depth: lean by default; full when an iteration first lands user-visible UI changes.
 - Backlog cards partially pulled forward (mark `IN-GOAL.MD (scoped, market-compass)` in
   `docs/improvement-backlog.md`): B-306 (engine-identity stamping — scoped to manifests + new runs),
