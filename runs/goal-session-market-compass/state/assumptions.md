@@ -588,3 +588,62 @@ journey's prior pass was silently voided by the amendment.
 **Reversible:** yes — if the owner disagrees, J-10's `spec_hash` can be reverted to the old value or
 cleared with no effect on any gate (`partial` blocks GOAL_ACHIEVED either way); only the recorded
 "verified against which text" annotation would change.
+
+## iter-8 — goal-decomposer (no precommitted numeric default for the redesigned two-part test)
+
+**Ambiguity:** J-10 step 2a's redesigned two-part test (path agreement + stable multiplicative
+bridge) requires precommitted numeric thresholds — a path-agreement tolerance and a
+bridge-dispersion bound (plus, if the developer uses one, a minimum-comparable-pairs-per-symbol
+floor) — fixed in code before any comparison runs. Unlike the superseded absolute-level test, whose
+0.75% figure goal.md explicitly called "goal.md's OWN proposed default," the current step 2a text
+states the discipline (fix thresholds before running; never loosen after seeing a result) but
+proposes no specific numeric value for either new test.
+**We chose:** Directed the developer (not the goal-decomposer) to choose and precommit the specific
+numeric values, documenting the empirical/engineering basis BEFORE the live comparison runs
+(mirroring how the developer chose 0.75% last iteration) rather than the goal-decomposer inventing
+untested numbers now with no data behind them. This keeps the "never adjusted after seeing a
+result" discipline intact — the precommit happens before the developer's own run, which is what the
+discipline actually requires — while keeping the goal-decomposer out of a numeric call it has no
+evidence to ground.
+**Reversible:** yes — if the evaluator or a future iteration judges the chosen thresholds wrong,
+they can be revisited via a documented, dated change for the NEXT live run; nothing about this
+iteration's structure depends on the specific numbers chosen.
+
+## iter-8 — goal-decomposer (sample-based comparison vs. per-symbol fail-closed restoration)
+
+**Ambiguity:** AG-9's vendor addendum authorizes the comparison fetch for "a SAMPLE of the
+proven-missing symbols," while J-10 step 2a's redesigned text is fail-closed "per symbol" (a symbol
+without path agreement or a stable bridge is not restored; if no symbol passes, insert nothing).
+Read together, these leave open whether this iteration is expected to widen the comparison sample
+toward all 587 `RECOVERY_SYMBOLS` (so every symbol gets its own restore/no-restore decision on
+direct evidence) or may keep a smaller sample (as iter-7 did, 20 symbols), in which case every
+un-sampled symbol is automatically "not restored" for lack of evidence, not because it failed a
+test.
+**We chose:** Directed the developer to keep the comparison sample-based (not necessarily all 587),
+consistent with AG-9's own "small overlap window... for a SAMPLE" framing and this host's
+post-freeze network/resource caution, and treated a resulting PARTIAL restoration (only the
+sampled-and-passing symbols restored; everything else honestly on the "requested but not restored"
+list for lack of evidence) as a fully acceptable, non-blocking outcome for this iteration — not a
+shortfall to fix by force-widening the sample after seeing results. The developer retains
+discretion to choose a larger sample UP FRONT if they judge it cheap and safe.
+**Reversible:** yes — a future iteration can widen the sample to cover more/all of
+`RECOVERY_SYMBOLS` and restore additional symbols under the same idempotent, still-fully-missing
+scope; nothing this iteration does forecloses that.
+
+## iter-8 — goal-decomposer (J-01–J-04 browser verification deferred unconditionally, deviating from a literal reading of the dispatch context)
+
+**Ambiguity:** This iteration's dispatching coordinator context permits planning browser-QA/replay
+for J-01–J-04 "unless the recovery actually completes and verifies first" — i.e., conditionally, on
+THIS iteration's own outcome. But a goal-mode iteration spec is fixed before dispatch, and the
+pipeline's browser-QA/replay lane is driven mechanically by the spec's Target/Required-still-passing/
+TESTING REQUIREMENTS fields, with no mechanism to make a named journey's lane execution conditional
+on an earlier step's runtime result within the same spec.
+**We chose:** Kept Required-still-passing empty and named zero browser/replay targets for J-01–J-04
+in this spec, deferring their verification to iteration 9 UNCONDITIONALLY (regardless of whether
+this iteration's recovery succeeds), rather than attempting a conditional inclusion the spec format
+cannot express safely. This repeats iter-7's own decomposer reasoning (`assumptions.md` iter-7
+entry) and is the only way to guarantee the forbidden-lane risk (iter-2, iter-6) cannot recur
+through this spec, at the cost of one iteration's delay if recovery verifies cleanly this time.
+**Reversible:** yes — if recovery verifies clean this iteration, iteration 9 can immediately plan
+the J-01–J-04 browser/replay check as its primary scope with no lost work; nothing here forecloses
+that or re-does any settled work.
