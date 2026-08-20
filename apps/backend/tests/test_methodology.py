@@ -167,6 +167,43 @@ def test_universe_selection_thresholds_are_live_refs(tmp_path):
     assert by_label["Minimum share price"]["value"] == 25
 
 
+# --- J-01 (goal-market-compass iter-1): the two-source sector-basis disclosure ---------------
+
+def test_sector_basis_present_and_matches_config():
+    """TC-5: the catalog carries `sector_basis` verbatim from config (plain prose resolved live, like
+    `membership_rule` — never re-typed), naming both sources (curated first, pool-CSV fallback second)
+    and the current-only limitation (B-114 stays open, referenced)."""
+    config = load_config()
+    catalog = build_catalog(config)
+    assert catalog["sector_basis"] == config.methodology.universe_selection.sector_basis
+    text = catalog["sector_basis"]
+    assert isinstance(text, str) and text.strip()
+    lowered = text.lower()
+    assert "stock_sectors" in text or "curated" in lowered  # names the curated source first
+    assert "pool" in lowered  # names the pool-CSV fallback source
+    assert "current" in lowered  # states the current-only limitation
+    assert "b-114" in lowered  # references the still-open backlog item
+
+
+def test_sector_basis_is_a_sibling_of_universe_selection_not_nested_in_it():
+    """Audit fix (iter-1): the disclosure is a TOP-LEVEL sibling, never nested inside
+    `universe_selection`. The API/MCP honest-universe gate (J-22) pops `universe_selection` wholesale
+    until `data/seed/universe.json` exists; nesting the disclosure there hid it from every user in
+    this environment. One home only — it must NOT be duplicated back into the section."""
+    catalog = build_catalog(load_config())
+    assert "sector_basis" in catalog  # served as its own top-level key
+    assert "sector_basis" not in catalog["universe_selection"]  # exactly one home, never duplicated
+
+
+def test_sector_basis_is_config_only_no_hard_coded_copy(tmp_path):
+    """Changing `methodology.universe_selection.sector_basis` in config moves the served disclosure
+    with no code change (anti-goal: config-driven UI — the matching-config keystone)."""
+    raw = _committed_raw()
+    raw["methodology"]["universe_selection"]["sector_basis"] = "A distinctive test-only sector basis sentence."
+    config = load_config(_write(tmp_path, raw))
+    assert build_catalog(config)["sector_basis"] == "A distinctive test-only sector basis sentence."
+
+
 def test_universe_selection_is_not_a_setup_or_pattern_entry():
     """The Universe Selection section is SEPARATE from the setup/pattern catalog — it must not appear as
     a glossary entry (which would break the completeness assertion / setup-filter vocabulary)."""

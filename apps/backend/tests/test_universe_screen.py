@@ -13,6 +13,7 @@ Two layers:
 """
 from __future__ import annotations
 
+import csv
 import json
 
 import pytest
@@ -21,7 +22,7 @@ from sqlmodel import Session, select
 from app.config import load_config
 from app.engine.data_manager import compute_coverage
 from app.engine.methodology import build_catalog
-from app.engine.universe_screen import read_pool
+from app.engine.universe_screen import pool_sector_map, read_pool, resolve_pool_sector
 from app.models import Stock
 from app.seed_loader import DEFAULT_SEED_DIR, load_universe_screen_record
 from scripts.screen_universe import screen_reasons
@@ -143,3 +144,103 @@ def test_stock_market_cap_read_from_committed_record(loaded_engine):
             assert stock.market_cap == expected_cap, (
                 f"{ticker} stored market_cap {stock.market_cap} != committed record {expected_cap}"
             )
+
+
+# --- J-01 (goal-market-compass iter-1): the pool-CSV sector fallback ------------------------------
+# `resolve_pool_sector` (one raw name -> a validated sector or None) and `pool_sector_map` (the whole
+# pool, ticker -> resolved sector) are the SINGLE normalization seam `scoring.score_stocks` reads
+# AFTER the curated `config.stock_sectors` map (curated always wins — see test_scoring.py's
+# byte-identity fixture for proof the fallback never touches a score/bucket/setup_status).
+
+def _write_pool_csv(tmp_path, rows: list[dict]):
+    """A synthetic `universe_pool.csv` under `tmp_path`, in the same shape `read_pool` parses
+    (header `symbol,sector,source`; comment lines stripped by `read_pool` itself, not needed here)."""
+    path = tmp_path / "universe_pool.csv"
+    with path.open("w", newline="") as fh:
+        writer = csv.DictWriter(fh, fieldnames=["symbol", "sector", "source"])
+        writer.writeheader()
+        writer.writerows(rows)
+    return tmp_path
+
+
+def test_resolve_pool_sector_identity_when_no_alias_configured():
+    """TC-6: with no alias entry for a raw pool sector name, the resolved value equals the raw value
+    unchanged — today's REAL behavior (the pool's 11 sector names already equal `etfs.sector`'s 11
+    names verbatim, so `universe.pool_sector_aliases` stays a legitimate empty/no-op map)."""
+    valid = set(load_config().etfs.sector.values())
+    assert "Technology" in valid
+    assert resolve_pool_sector("Technology", aliases={}, valid_sectors=valid) == "Technology"
+
+
+def test_resolve_pool_sector_applies_a_configured_alias():
+    """A configured alias DOES substitute (proving the normalization seam works even though today's
+    real config leaves it empty) — the ALIASED name still has to pass the valid-sectors check."""
+    assert (
+        resolve_pool_sector("Tech", aliases={"Tech": "Technology"}, valid_sectors={"Technology"})
+        == "Technology"
+    )
+
+
+def test_resolve_pool_sector_unresolvable_name_degrades_to_none():
+    """TC-7 (AG-8 resilience): a pool sector name (after alias normalization) that is not a member of
+    `etfs.sector`'s valid set degrades to None — never raises, never serves an unrecognized string."""
+    assert resolve_pool_sector("Not A Real Sector", aliases={}, valid_sectors={"Technology"}) is None
+    # an alias that itself points at an invalid name degrades the same way (never a stray string)
+    assert (
+        resolve_pool_sector("Tech", aliases={"Tech": "Not Real Either"}, valid_sectors={"Technology"})
+        is None
+    )
+
+
+def test_resolve_pool_sector_missing_or_blank_raw_value_is_none():
+    """TC-3 (unit half): a missing/blank raw sector value is honestly None, never fabricated."""
+    assert resolve_pool_sector(None, aliases={}, valid_sectors={"Technology"}) is None
+    assert resolve_pool_sector("", aliases={}, valid_sectors={"Technology"}) is None
+
+
+def test_pool_sector_map_covers_the_real_committed_pool_with_identity_aliases():
+    """TC-6 (map-level, real data): with the REAL config's default-empty `pool_sector_aliases`, every
+    one of the committed pool's 548 rows resolves — the map is a straight, un-aliased read of
+    `universe_pool.csv`'s `sector` column (the pool's 11 sector names already equal `etfs.sector`'s 11
+    verbatim)."""
+    cfg = load_config()
+    assert cfg.universe.pool_sector_aliases == {}  # today's committed config: a genuine no-op default
+    mapping = pool_sector_map(aliases=cfg.universe.pool_sector_aliases, valid_sectors=cfg.etfs.sector.values())
+    pool = read_pool()
+    assert len(pool) == 548
+    assert len(mapping) == len(pool)
+    by_symbol = {row["symbol"]: row["sector"] for row in pool}
+    for symbol, sector in mapping.items():
+        assert sector == by_symbol[symbol]  # identity — no alias substitution applied (TC-6)
+
+
+def test_pool_sector_map_degrades_unresolvable_row_gracefully(tmp_path):
+    """TC-7: a synthetic pool with one row whose sector is outside the valid set is simply absent from
+    the resolved map (never raises, never a stray/unrecognized string) — a normal row alongside it
+    still resolves fine (AG-8: the bad row doesn't take down the whole map)."""
+    seed_dir = _write_pool_csv(
+        tmp_path,
+        [
+            {"symbol": "ZZZFAKE", "sector": "Not A Real Sector", "source": "test"},
+            {"symbol": "ZZZOK", "sector": "Technology", "source": "test"},
+            {"symbol": "ZZZBLANK", "sector": "", "source": "test"},
+        ],
+    )
+    mapping = pool_sector_map(aliases={}, valid_sectors={"Technology"}, seed_dir=seed_dir)
+    assert mapping == {"ZZZOK": "Technology"}
+    assert "ZZZFAKE" not in mapping
+    assert "ZZZBLANK" not in mapping
+
+
+def test_pool_sector_map_ticker_outside_the_pool_is_simply_absent(tmp_path):
+    """TC-3 (map-level): a ticker not present in the pool at all is not a key in the map — the
+    caller's `.get(ticker)` then honestly returns None (never fabricated)."""
+    seed_dir = _write_pool_csv(tmp_path, [{"symbol": "ZZZOK", "sector": "Technology", "source": "test"}])
+    mapping = pool_sector_map(aliases={}, valid_sectors={"Technology"}, seed_dir=seed_dir)
+    assert mapping.get("SOME_UNKNOWN_TICKER") is None
+
+
+def test_pool_sector_map_missing_pool_file_degrades_to_empty_map(tmp_path):
+    """A not-yet-built pool file degrades to an empty map (never a crash) — the same honest-empty
+    contract `read_pool`'s other callers already tolerate for a missing `universe_pool.csv`."""
+    assert pool_sector_map(aliases={}, valid_sectors={"Technology"}, seed_dir=tmp_path) == {}

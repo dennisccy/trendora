@@ -9,6 +9,8 @@ deterministic; and the as-of date bounds the computation (no lookahead).
 """
 from __future__ import annotations
 
+import json
+
 import pytest
 from sqlmodel import Session, select
 
@@ -19,9 +21,10 @@ from app.engine.indicators import sma
 from app.engine.prices import bars_asof, bars_asof_window, closes, latest_data_date, opens
 from app.engine.scoring import score_stocks
 from app.engine.setups import ALL_STATUSES
-from app.engine.universe_screen import read_pool
+from app.engine.snapshot_serving import resolved_run, stocks_payload
+from app.engine.universe_screen import pool_sector_map, read_pool
 from app.engine.themes import theme_name
-from app.models import DailyPrice
+from app.models import DailyPrice, ScannerResult
 
 SCORE_KEYS = ("leadership", "entry_quality", "risk")
 
@@ -65,9 +68,10 @@ def test_each_stock_has_three_bucketed_explainable_scores(loaded_engine):
         # setup status + reason ride on the same row (single composition path)
         assert row["setup"]["status"] in ALL_STATUSES
         assert isinstance(row["setup"]["reason"], str) and row["setup"]["reason"].strip()
-        # iter-18: broadened-pool names have no `cfg.stock_sectors` mapping, so sector is honestly None
-        # (never a fabricated sector — pool-sector surfacing is J-13/J-14, out of scope). Config-universe
-        # names still carry a valid mapped sector.
+        # J-01 (goal-market-compass iter-1): broadened-pool names with no `cfg.stock_sectors` mapping
+        # now resolve their sector via the pool-CSV fallback (see
+        # test_pool_sector_fallback_lifts_coverage_at_or_above_95_percent below) — a name absent from
+        # BOTH sources still serves an honest None, never a fabricated sector.
         assert row["sector"] is None or row["sector"] in set(cfg.etfs.sector.values())
 
 
@@ -495,3 +499,112 @@ def test_asof_bounds_the_computation_no_lookahead(loaded_engine):
     assert late_result["asof_date"] == latest.isoformat()
     # a different as-of window yields a different canonical result (the as-of bound is wired in)
     assert early_result["rows"] != late_result["rows"]
+
+
+# --- J-01 (goal-market-compass iter-1): the pool-CSV sector fallback --------------------------
+
+def _score_snapshot(rows):
+    """The score-path signature EXCLUDING `sector` — leadership/entry_quality/risk score+bucket and
+    setup_status. Mirrors the proven `test_risk_budget_values_ride_the_row_but_enter_no_score` /
+    `test_volatility_values_ride_the_row_but_enter_no_score` invariance-proof shape."""
+    return {
+        r["ticker"]: (
+            r["leadership"]["score"], r["leadership"]["bucket"],
+            r["entry_quality"]["score"], r["entry_quality"]["bucket"],
+            r["risk"]["score"], r["risk"]["bucket"],
+            r["setup"]["status"],
+        )
+        for r in rows
+    }
+
+
+def test_pool_sector_fallback_never_changes_any_score_bucket_or_setup(loaded_engine, monkeypatch):
+    """TC-4 (byte-identity fixture): the pool-CSV sector fallback is DESCRIPTIVE ONLY. Force it off
+    (`app.engine.scoring.pool_sector_map` -> empty, the pre-iteration `cfg.stock_sectors`-only
+    resolution) and assert every row's leadership/entry_quality/risk score+bucket and setup_status are
+    BYTE-IDENTICAL to the real (fallback-on) run. `Stock.sector_id` / `stock_sector_etf` / `rs_sector`
+    (scoring.py:296-331) are a completely separate machinery this change never touches."""
+    cfg = load_config()
+    with Session(loaded_engine) as session:
+        asof = latest_data_date(session)
+        with_fallback_rows = score_stocks(session, asof, cfg)["rows"]
+        with_fallback = _score_snapshot(with_fallback_rows)
+
+        # force the pool-CSV fallback off — the pre-iteration cfg.stock_sectors-only resolution
+        monkeypatch.setattr("app.engine.scoring.pool_sector_map", lambda *a, **k: {})
+        without_fallback_rows = score_stocks(session, asof, cfg)["rows"]
+        without_fallback = _score_snapshot(without_fallback_rows)
+
+    assert with_fallback == without_fallback  # the fallback moved not one score/bucket/setup_status
+
+    # the fallback DID change sector coverage (proving the monkeypatch and the real code both ran)
+    with_fallback_sectors = {r["ticker"]: r["sector"] for r in with_fallback_rows}
+    without_fallback_sectors = {r["ticker"]: r["sector"] for r in without_fallback_rows}
+    assert with_fallback_sectors != without_fallback_sectors
+    newly_covered = [
+        t for t in with_fallback_sectors
+        if with_fallback_sectors[t] is not None and without_fallback_sectors[t] is None
+    ]
+    assert newly_covered, "expected at least one pool-only ticker to gain a sector under the fallback"
+
+
+def test_pool_sector_fallback_lifts_coverage_at_or_above_95_percent(loaded_engine):
+    """TC-1 (engine-level companion to the browser-level check): on a freshly-scored run under this
+    iteration's code, at most 5% of resolved members serve `sector: None` (down from the
+    pre-iteration 78.4%)."""
+    cfg = load_config()
+    with Session(loaded_engine) as session:
+        asof = latest_data_date(session)
+        rows = score_stocks(session, asof, cfg)["rows"]
+    assert rows
+    unassigned = sum(1 for r in rows if r["sector"] is None)
+    share = unassigned / len(rows)
+    assert share <= 0.05, f"{unassigned}/{len(rows)} rows Unassigned ({share:.1%}) — expected <= 5%"
+
+
+def test_pool_sector_fallback_prefers_curated_map_when_both_resolve(loaded_engine):
+    """Curated `config.stock_sectors` wins over the pool-CSV fallback for every curated ticker (the
+    plan's ordering: curated first, pool-CSV fallback second) — spot-checked against a real curated
+    universe member."""
+    cfg = load_config()
+    with Session(loaded_engine) as session:
+        asof = latest_data_date(session)
+        rows = score_stocks(session, asof, cfg)["rows"]
+    curated_ticker = next(t for t in cfg.stock_sectors if t in {r["ticker"] for r in rows})
+    row = _row(rows, curated_ticker)
+    assert row["sector"] == cfg.stock_sectors[curated_ticker]
+
+
+def test_historical_row_sector_not_rewritten_by_pool_fallback(loaded_engine):
+    """TC-8: a `ScannerResult` row already persisted keeps its STORED sector forever — the read path
+    (`stocks_payload`, GET /api/stocks) serves `record_json` verbatim and never recomputes
+    `score_stocks` (anti-goal: Snapshots immutable). Simulated by rewinding one ALREADY-STORED
+    pool-only row to its honest pre-iteration value (`sector: None`) even though the pool-CSV
+    fallback would now resolve it to a real sector — the served row must still read the STORED None,
+    proving storage (not live recompute) is what /api/stocks serves."""
+    cfg = load_config()
+    with Session(loaded_engine) as session:
+        run = resolved_run(session, None)
+        pool_sectors = pool_sector_map(
+            aliases=cfg.universe.pool_sector_aliases, valid_sectors=cfg.etfs.sector.values()
+        )
+        results = session.exec(select(ScannerResult).where(ScannerResult.run_id == run.id)).all()
+        # a pool-only ticker (uncurated) the fallback resolves to a real sector TODAY
+        target = next(
+            r for r in results
+            if r.ticker not in cfg.stock_sectors and pool_sectors.get(r.ticker) is not None
+        )
+        assert target.sector is not None  # sanity: currently stored WITH the fallback applied
+
+        # rewind this ALREADY-STORED row to the honest pre-iteration value
+        record = json.loads(target.record_json)
+        record["sector"] = None
+        target.record_json = json.dumps(record)
+        target.sector = None
+        session.add(target)
+        session.commit()
+
+        served = stocks_payload(session, run)
+        served_row = next(r for r in served["rows"] if r["ticker"] == target.ticker)
+
+    assert served_row["sector"] is None  # served exactly as stored, never re-resolved

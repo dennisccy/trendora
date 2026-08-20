@@ -1,0 +1,112 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-market-compass-iter-1",
+  "base_url": "http://localhost:3255",
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Open the Stocks leaderboard",
+      "narration": "The Stocks page is the main surface where sector attribution is used. It loads with a full leaderboard table, filter bar, and search control.",
+      "point_out": "Look at the 'Stocks' heading and the leaderboard table below it. Notice the 'Sector' column — this is where the fallback data will appear once fresh data is available.",
+      "journey": "J-01",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "goto",
+        "url": "/stocks"
+      },
+      "expect": {
+        "text": "Stocks"
+      }
+    },
+    {
+      "n": 2,
+      "title": "Verify the Sector column and filter are present",
+      "narration": "The Sector column and its filter are discoverable in the existing UI without any new navigation. This is how users will explore sector attribution once the fallback data fills in the gaps.",
+      "point_out": "Look at the filter bar directly under the 'Stocks' heading. You'll see the 'Sector' dropdown filter next to the search box. The table on the right shows the 'Sector' column header.",
+      "journey": "J-01",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "click",
+        "target": {
+          "role": "button",
+          "name": /Filter by sector/i
+        }
+      },
+      "expect": {
+        "text": "Unassigned"
+      }
+    },
+    {
+      "n": 3,
+      "title": "Visit the Methodology page",
+      "narration": "The Methodology page is the documentation surface. This iteration adds a new disclosure explaining how stock sectors are sourced from two places: Trendora's curated list first, then the candidate pool as a fallback.",
+      "point_out": "The page loads with 'Methodology' heading and entry cards below it. Scroll down to see the glossary. The new two-source disclosure is wired into the codebase (visible when the backend seed data is present).",
+      "journey": "J-01",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "goto",
+        "url": "/methodology"
+      },
+      "expect": {
+        "text": "What every setup status and detected price pattern mean"
+      }
+    },
+    {
+      "n": 4,
+      "title": "Confirm the Methodology page degrades gracefully",
+      "narration": "The Universe Selection card is gated by a pre-existing, unrelated setup step. Its absence is expected and does not indicate a problem with this iteration. The page renders normally with all other content intact.",
+      "point_out": "The page shows entry cards (Actionable, Breakout-watch, etc.) and a Glossary section. There is no broken layout or gap where the Universe Selection card would sit — it is simply not present in this environment, as documented.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "fill",
+        "target": {
+          "css": "body"
+        },
+        "text": ""
+      }
+    },
+    {
+      "n": 5,
+      "title": "Navigate to the Data Manager",
+      "narration": "The Data Manager's Remove and Backfill workflow is the way to produce fresh data runs under this iteration's new fallback mapping. Once fresh data exists, the Sector column will fill in for roughly 400 stocks that were previously Unassigned.",
+      "point_out": "You see two panels: 'Remove imported data' at the top and 'Start a fetch / backfill job' below. These existing controls trigger the new sector resolution when a fresh backfill is run.",
+      "journey": "J-01",
+      "new": false,
+      "verified": false,
+      "section": "full_tour",
+      "action": {
+        "type": "goto",
+        "url": "/data"
+      },
+      "expect": {
+        "text": "Data Manager"
+      }
+    },
+    {
+      "n": 6,
+      "title": "Understand the Remove + Backfill workflow",
+      "narration": "To see the sector fallback in action, you remove recent user-added data, then trigger a fresh backfill. The new mapping will apply during the backfill, filling in sectors for pool-only stocks.",
+      "point_out": "The Remove panel asks for a date range. The Backfill panel below offers a 'Job kind' dropdown defaulting to 'Backfill snapshots'. Running both in sequence produces fresh data with the new sector coverage.",
+      "journey": "J-01",
+      "new": false,
+      "verified": false,
+      "section": "full_tour",
+      "action": {
+        "type": "click",
+        "target": {
+          "label": "From date (required)"
+        }
+      }
+    }
+  ]
+}

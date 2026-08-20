@@ -1,37 +1,40 @@
 # Iteration State — market-compass
 
-**After iteration:** 0 · **Date:** 2026-08-19 · **Verdict:** CONTINUE
+**After iteration:** 1 · **Date:** 2026-08-20 · **Verdict:** CONTINUE
 
 ## Journeys
 
-0 passing · 1 partial (J-01) · 7 failing (J-02 J-03 J-04 J-05 J-06 J-07 J-08) — 8 total
+1 partial (J-01 — substance verified, capture missing) · 7 failing (J-02..J-08) — 8 total
 
 ## Active blockers
 
-- none — every gap is ordinary build work; no human-owned blocker, no infra failure.
-- J-06 is not testable until J-05's manifest producer/store exists (owner: dev, sequencing only).
+- **dev (passenger task, NOT an iteration goal):** J-01 capture gap — no screenshot of `/stocks` at
+  as-of 2026-08-12 showing 0 "Unassigned" / GRMN = Consumer Discretionary, and no `[NEW]` walkthrough
+  (demo recorder JSON parse error). Run 3081 already exists — no data prep needed.
+- **human (owner):** `docs/goal.md` J-01 step 1's Remove+backfill precondition is destructive and
+  unrecoverable here (audit T2 — it destroyed 2026-08-13/14 bars this run); step 2's "select the
+  Unassigned filter option" is unexecutable at 0% (option honestly disappears, F1). Needs rewording.
+- **infra:** restart backend/frontend before browser-qa — this run's QA hit a stale uvicorn process.
 
 ## Last 2 verdicts
 
-- iter 0: CONTINUE — baseline confirmed the compass feature set does not exist yet
-  (no /api/compass route, no /market page, / is still the legacy Dashboard); no anti-goal broken
-  because the product diff is documentation-only.
-- iter -1: n/a — first evaluated iteration
+- iter 1: CONTINUE — J-01's fallback + disclosure work and were verified live (0/539 Unassigned;
+  disclosure card screenshotted), but the browser lane FAILed on a destructive precondition and a
+  stale backend, so J-01 stays `partial` on evidence, not on behavior.
+- iter 0: CONTINUE — baseline only, no code changed; 0 passing / 1 partial / 7 failing measured.
 
 ## Do not redo
 
-- Baseline measurement of J-01..J-08 — done and recorded in
-  `runs/goal-session-market-compass/state/journey-history.json` with per-journey gap notes; do
-  not re-run a verify-only pass over the same unchanged code.
-- J-01's honesty half already holds: `ScannerResult.sector` is the single stored source
-  (`apps/backend/app/engine/scoring.py:445`), unknown serves `null`/"Unassigned", and
-  leaderboard / stock detail / `GET /api/stocks` already agree (DELL, GRMN spot-checked). Only
-  the pool-CSV fallback wiring, the `/methodology` two-source disclosure, and the score
-  byte-identity fixture remain.
-- Confirmed absent — do not re-grep before planning: `compass` engine module,
-  `next_session_manifests` table, `/api/compass` route, `apps/frontend/app/market/`, and a
-  "Market" entry in `apps/frontend/components/sidebar.tsx` NAV.
-- localStorage keys the future `/market` relocation must preserve are confirmed present today:
-  `trendora.dashboard.moreDetail`, `trendora.dashboard.phaseCrossView`.
-- Zero code changed in iteration 0 (`git status --porcelain apps/` empty) — the non-empty diff
-  is the owner's `docs/goal.md` authoring commits, not iteration output.
+- **J-01 backend fallback — DONE, live-verified.** `scoring.py:453-458` (`cfg.stock_sectors.get(t) or
+  pool_sectors.get(t)`, computed once at `:303`) + `universe_screen.pool_sector_map`. 0/539
+  Unassigned on run 3081 (as-of 2026-08-12), was 78.4%. No second reader.
+- **J-01 methodology disclosure — DONE, visible.** `_sector_basis()` (`engine/methodology.py:79`)
+  emits a SIBLING top-level `sector_basis`; `SectorBasisCard` (`app/methodology/page.tsx:303`); prose
+  in `config.methodology.universe_selection.sector_basis`. Never re-nest it inside
+  `universe_selection` — the J-22 gate pops that section and would hide it again. Evidence:
+  `reports/qa/goal-market-compass-iter-1-evidence/AUDIT-01-methodology-sector-basis-visible.png`
+- **J-01 honesty half — settled** (iter-0, re-confirmed iter-1): single stored source, unknown →
+  null/"Unassigned", leaderboard + detail + API agree.
+- **TC-4 byte-identity + TC-8 immutability — proven** (fixtures + production rows 3049 vs 3081).
+- **`universe.pool_sector_aliases` stays empty** (TC-6 no-op); do not re-run J-01's Remove+backfill
+  precondition as written — use run 3081.

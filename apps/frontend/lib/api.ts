@@ -1283,9 +1283,13 @@ export interface MethodologyEntry {
  *  the per-as-of-date membership rule: `per_date_rule` is the prose for the per-date resolver (the same
  *  candidate pool screened from bars ≤ D only on price + ADV + `per_date_min_history_bars` trailing bars,
  *  market-cap dropped per-date), `candidate_pool_size` is the full candidate-pool denominator, and
- *  `per_date_min_history_bars` is the warm-up bar count. All three are produced by the single canonical
- *  module `methodology._universe_selection` and served by the single `GET /api/methodology`; the frontend
- *  re-formats them only — it never recomputes membership. */
+ *  `per_date_min_history_bars` is the warm-up bar count. All are produced by the single canonical module
+ *  `methodology._universe_selection` and served by the single `GET /api/methodology`; the frontend
+ *  re-formats them only — it never recomputes membership.
+ *
+ *  NOTE: the J-01 two-source sector-label disclosure is NOT here — it is the sibling top-level
+ *  `MethodologyCatalog.sector_basis`, because this whole section is suppressed by the backend's J-22
+ *  honest-universe gate until the committed screen record exists. */
 export interface UniverseSelection {
   membership_rule: string;
   thresholds: MethodologyThresholdRow[];
@@ -1330,6 +1334,12 @@ export interface MethodologyGlossary {
 export interface MethodologyCatalog {
   intro?: string;
   universe_selection?: UniverseSelection;
+  /** J-01 (goal-market-compass iter-1): the two-source stock-sector-label disclosure — curated
+   *  `config.stock_sectors` first, the committed `universe_pool.csv` fallback second, plus the
+   *  current-only limitation (no point-in-time sector history; B-114 stays open). A sibling of
+   *  `universe_selection`, NOT nested inside it, so the J-22 honest-universe gate cannot hide it.
+   *  Config prose served verbatim — the frontend never resolves a sector itself. */
+  sector_basis?: string;
   entries: MethodologyEntry[];
   glossary?: MethodologyGlossary;
 }

@@ -30,3 +30,40 @@ module exists. Absence-of-feature claims need a text sweep or a code citation, n
 screenshot of a page that lacks the feature.
 **Applies to:** any iteration scoring journeys as failing because a section/page is missing,
 especially baselines where several journeys share one page.
+
+## iter-1 — 2026-08-20T05:04:26Z
+
+**Verdict:** CONTINUE
+**Lesson:** Browser QA tested a STALE backend: the dev/audit code was on disk but the running
+uvicorn process (:8255) predated it, so UT-07/UT-J-01 reported `sector_basis` "absent from
+`GET /api/methodology`" when the same call returns it correctly once the process is restarted
+(verified by the evaluator post-run). A whole P1 journey step was scored "not observable" against a
+process, not against the product.
+**Applies to:** any iteration whose deliverable is a new API field or new served payload key —
+restart backend + frontend after the dev/audit steps and BEFORE browser-qa, and treat "key absent
+from the API" as an environment hypothesis until the process start time is checked.
+
+## iter-1 — 2026-08-20T05:04:26Z
+
+**Verdict:** CONTINUE
+**Lesson:** A test that `pytest.skip()`s in the only environment that exists is not coverage. TC-5's
+API test guarded itself on the same `data/seed/universe.json` gate that was hiding the feature, so a
+green "22 passed, 1 skipped" run concealed an undelivered, user-invisible deliverable
+(`apps/backend/app/engine/methodology.py` emitted `sector_basis` inside the section the J-22 gate
+pops). The audit caught it only by fetching the live endpoint.
+**Applies to:** any iteration adding content behind an existing feature gate — assert the new value
+at the layer the spec words its acceptance against (the served response), and never let the
+acceptance test skip on the gate it is meant to prove independence from.
+
+## iter-1 — 2026-08-20T05:04:26Z
+
+**Verdict:** CONTINUE
+**Lesson:** J-01's own written precondition ("Remove the last two trading days, then backfill the
+same range") is destructive in this environment: 2026-08-13/14 were user-added bars with no
+committed seed beneath them (`seed_latest_date` = 2026-08-12), so the Remove permanently destroyed
+1,174 bars / 18 snapshots / 30,439 forward returns and the offline bars-only Backfill correctly
+refused to fabricate them back. The fresh run the journey needed appeared anyway — the backend's own
+boot created run 3081 for 2026-08-12 from seed bars.
+**Applies to:** any journey step that instructs a data Remove — check `seed_latest_date` covers the
+range first, and prefer the backend's own boot/persist path over a destructive remove+rebuild cycle
+to obtain a fresh run.

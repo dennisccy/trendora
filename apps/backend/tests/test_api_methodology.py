@@ -110,3 +110,38 @@ def test_universe_selection_gated_on_committed_screen_record():
         assert data["universe_selection"]["resolved_size"] >= 1
     else:
         assert "universe_selection" not in data
+
+
+# --- J-01 (goal-market-compass iter-1): the two-source sector-basis disclosure ---------------
+
+def test_sector_basis_served_and_names_both_sources():
+    """TC-5 at the API layer, exactly as the spec words it: fetch `GET /api/methodology` and assert the
+    response carries the two-source disclosure naming both sources and the current-only limitation.
+
+    Audit fix (iter-1): this assertion runs UNCONDITIONALLY. It used to be nested under
+    `universe_selection` and therefore `pytest.skip()`ped whenever `data/seed/universe.json` was absent
+    — which is this repo's actual state, so TC-5 was never verified at the layer it is specified
+    against, and no user could read the disclosure. `sector_basis` is now a sibling top-level key that
+    the J-22 gate does not touch (that gate suppresses the *screen* claim; this prose makes none)."""
+    with _client() as client:
+        data = client.get("/api/methodology").json()
+    sector_basis = data["sector_basis"]
+    assert isinstance(sector_basis, str) and sector_basis.strip()
+    lowered = sector_basis.lower()
+    assert "stock_sectors" in sector_basis or "curated" in lowered
+    assert "pool" in lowered
+    assert "current" in lowered
+    assert "b-114" in lowered
+
+
+def test_sector_basis_survives_the_honest_universe_gate():
+    """The J-22 gate must scope itself to the screen claim only: with the committed screen record
+    ABSENT (this repo's state), `universe_selection` is correctly suppressed while `sector_basis`
+    is still served — the regression guard for the audit fix above."""
+    record_present = bool(load_universe_screen_record(DEFAULT_SEED_DIR))
+    with _client() as client:
+        data = client.get("/api/methodology").json()
+    assert ("universe_selection" in data) == record_present  # gate still enforced for the screen claim
+    assert data.get("sector_basis")  # ...but never for the sector disclosure
+    if record_present:
+        assert "sector_basis" not in data["universe_selection"]  # one home, never duplicated

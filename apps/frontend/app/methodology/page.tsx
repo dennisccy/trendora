@@ -61,6 +61,10 @@ export default function MethodologyPage() {
         <UniverseSelectionCard selection={state.data.universe_selection} />
       ) : null}
 
+      {state.kind === "ok" && state.data.sector_basis ? (
+        <SectorBasisCard sectorBasis={state.data.sector_basis} />
+      ) : null}
+
       {state.kind === "loading" ? <MethodologySkeleton /> : null}
 
       {state.kind === "error" ? (
@@ -233,7 +237,9 @@ function fmtMoney(value: number): string {
  *  thresholds (read live from config) + the resolved universe size, plus the J-93 per-as-of-date
  *  membership rule (the `per_date_rule` prose, the `candidate_pool_size` full-pool denominator, and the
  *  `per_date_min_history_bars` warm-up bar count). Mirrors the EntryCard config-backed pattern; no
- *  hard-coded copy or numbers — every value is read verbatim from the GET /api/methodology payload. */
+ *  hard-coded copy or numbers — every value is read verbatim from the GET /api/methodology payload.
+ *  (The J-01 sector-basis disclosure is its own `SectorBasisCard` — this card is gated off until the
+ *  committed screen record exists, and that disclosure must stay readable regardless.) */
 function UniverseSelectionCard({ selection }: { selection: UniverseSelection }) {
   return (
     <Card className="space-y-3 p-4" data-testid="universe-selection">
@@ -284,6 +290,25 @@ function UniverseSelectionCard({ selection }: { selection: UniverseSelection }) 
           trailing bars
         </p>
       </div>
+    </Card>
+  );
+}
+
+/** The J-01 (goal-market-compass iter-1) two-source stock-sector-label disclosure: curated
+ *  `config.stock_sectors` first, the committed `universe_pool.csv` fallback second, plus the
+ *  current-only limitation. Rendered as its OWN card, NOT inside UniverseSelectionCard, because that
+ *  card is suppressed by the backend's J-22 honest-universe gate until the committed screen record
+ *  exists — this disclosure makes no screen claim and stays readable either way. Config prose shown
+ *  verbatim; the frontend never resolves or derives a sector. */
+function SectorBasisCard({ sectorBasis }: { sectorBasis: string }) {
+  return (
+    <Card className="space-y-1.5 p-4" data-testid="universe-sector-basis">
+      <div className="flex flex-wrap items-center gap-2">
+        <Filter className="h-4 w-4 text-accent" aria-hidden />
+        <h2 className="text-base font-semibold text-text">Stock sector labels</h2>
+        <Badge variant="default">Data basis</Badge>
+      </div>
+      <p className="text-sm text-text-muted">{sectorBasis}</p>
     </Card>
   );
 }

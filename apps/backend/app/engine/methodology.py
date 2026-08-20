@@ -66,9 +66,29 @@ def build_catalog(config: Config) -> dict:
         payload["intro"] = catalog.intro
     if catalog.universe_selection is not None:
         payload["universe_selection"] = _universe_selection(config)
+        # J-01 (goal-market-compass iter-1): a SIBLING top-level section, deliberately NOT nested inside
+        # `universe_selection` — that section is suppressed by the J-22 honest-universe gate until the
+        # offline screen record exists, and the sector basis must stay readable regardless (see
+        # `_sector_basis`). Same producer, same endpoint, one home — never recomputed elsewhere.
+        payload["sector_basis"] = _sector_basis(config)
     if catalog.categories:
         payload["glossary"] = _glossary(config)
     return payload
+
+
+def _sector_basis(config: Config) -> str:
+    """The two-source stock-sector-label disclosure (J-01, goal-market-compass iter-1): the curated
+    `config.stock_sectors` mapping first, the committed `universe_pool.csv` sector column second, plus
+    the current-only limitation (no point-in-time sector history; B-114 stays open). Plain config prose
+    resolved live, exactly like `membership_rule` — never re-typed in the engine or the frontend.
+
+    Served as its OWN top-level key rather than inside `universe_selection` because that section is
+    suppressed by the J-22 honest-universe gate (`app.api.methodology`) until `data/seed/universe.json`
+    exists. That gate suppresses the claim *the universe is a reproducible screen result*; this prose
+    makes no such claim — it describes how a descriptive sector LABEL is resolved from two sources that
+    both exist today (the curated config map and the committed candidate-pool CSV) — so gating it would
+    hide an honest disclosure for an unrelated reason."""
+    return config.methodology.universe_selection.sector_basis
 
 
 # The category key the Setups & Patterns glossary rows are DERIVED into (J-47). The category itself is
@@ -139,7 +159,12 @@ def _universe_selection(config: Config) -> dict:
     pool, NOT date-scoped, since methodology describes the rule, not a snapshot); `candidate_pool_size`
     is the same read for clarity. The as-of-DEPENDENT resolved member count (members-resolved-at-D) is
     served on `GET /api/data` (`universe_count` / `universe_diagnostic`) — pointed to via `per_date_note`.
-    The API/frontend reads this verbatim; neither recomputes membership."""
+    The API/frontend reads this verbatim; neither recomputes membership.
+
+    NOTE (J-01): the two-source sector-basis disclosure is deliberately NOT part of this section — it is
+    served as the sibling top-level `sector_basis` key by `build_catalog`, because this whole section is
+    suppressed by the J-22 honest-universe gate until the offline screen record exists, and the sector
+    basis makes no screen claim (see `_sector_basis` below)."""
     section = config.methodology.universe_selection
     candidate_size = len(config.universe.symbols)
     return {

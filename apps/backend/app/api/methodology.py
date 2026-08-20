@@ -12,6 +12,11 @@ record (`data/seed/universe.json`). Until then the universe is the prior curated
 present it as a screen — that would be a hand-curated list masquerading as a screen (anti-goal:
 *Universe screen is reproducible & honest*). So the section is served ONLY when the committed screen
 record exists; it reappears automatically, with the real screened members, the moment the screen runs.
+
+The gate is scoped to that screen CLAIM alone: the sibling top-level `sector_basis` disclosure (J-01)
+is served unconditionally, because it describes how a descriptive sector LABEL is resolved from two
+sources that exist today (the curated config map + the committed `universe_pool.csv`) and asserts
+nothing about the screen having run. Do NOT pop it alongside `universe_selection`.
 """
 from __future__ import annotations
 

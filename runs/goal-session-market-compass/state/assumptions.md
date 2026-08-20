@@ -48,3 +48,32 @@ descriptive-only/isolated from every score input, and disclosure rendering) has 
 test today. Trigger 3 and trigger 4 were checked and do not hold (last verdict CONTINUE;
 consecutive-lean counter 0/6).
 **Reversible:** yes
+
+## iter-1 — goal-evaluator
+
+**Ambiguity:** The browser-QA lane returned FAIL for J-01 (its precondition step died and it ran
+against a stale backend), while the auditor — after fixing the shipped-hidden disclosure — verified
+the journey's substance live (fresh run 3081 at as-of 2026-08-12: 0/539 Unassigned via API and a
+full 539-row DOM sweep; DELL/GRMN consistent across all three surfaces). goal.md does not say how to
+score a journey whose asserted behavior is confirmed live but whose browser-lane capture never
+reached the acceptance state.
+**We chose:** Scored J-01 `partial` (unchanged label, materially advanced) with
+`evidence_makeup: true` and the gap recorded as `capture-defect`, per methodology A.7 — NOT `passing`
+(the no-screenshot rail is absolute and no screenshot of the /stocks coverage state exists from any
+iteration, nor does the acceptance-required `[NEW]` walkthrough), and NOT `failing` (the behavior is
+demonstrably met — I re-measured `GET /api/stocks` myself at 0/539 null). The consequence is that the
+make-up capture rides the next iteration as a passenger task, never as its goal.
+**Reversible:** yes
+
+## iter-1 — goal-evaluator
+
+**Ambiguity:** The browser-QA run permanently destroyed 1,174 bars, 18 snapshots and 30,439 forward
+returns for 2026-08-13/14, recoverable only via a live network fetch that AG-9 forbids without an
+amendment. No anti-goal names data destruction, and the decision tree's REGRESSION rule fires only
+on a passing→failing journey or a critical anti-goal violation.
+**We chose:** Did not treat the loss as a REGRESSION or an anti-goal violation — the destroyed bars
+were user-added (outside the committed seed, which is intact through 2026-08-12), the product
+behaved correctly and refused to fabricate replacements, and no journey depended on those dates.
+Recorded it instead as a prominent owner-facing flag in eval.md plus a binding goal.md-amendment
+request for J-01 step 1.
+**Reversible:** yes

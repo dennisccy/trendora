@@ -15,6 +15,7 @@ NOT a hand-picked list).
 from __future__ import annotations
 
 import csv
+from collections.abc import Iterable, Mapping
 from pathlib import Path
 
 # app/engine/universe_screen.py -> app/engine -> app -> backend ; the committed pool lives under data/seed.
@@ -99,4 +100,46 @@ def read_pool(seed_dir: Path | None = None) -> list[dict]:
         for row in csv.DictReader(line for line in fh if not line.startswith("#")):
             if row.get("symbol"):
                 out.append({"symbol": row["symbol"], "sector": row.get("sector"), "source": row.get("source")})
+    return out
+
+
+# --- J-01 (goal-market-compass iter-1): the pool-CSV sector fallback ------------------------------
+# `scoring.score_stocks` reads `cfg.stock_sectors` FIRST (the curated 122-name mapping — untouched by
+# this module) and falls back to `pool_sector_map`'s result only when a resolved-at-D member has no
+# curated entry. Both helpers read NO config of their own (mirrors `screen_reasons` above) — the
+# caller passes the resolved `universe.pool_sector_aliases` / `etfs.sector` values, so this module
+# stays a pure normalization seam, never a second config reader.
+
+def resolve_pool_sector(
+    raw_sector: str | None, *, aliases: Mapping[str, str], valid_sectors: Iterable[str]
+) -> str | None:
+    """Normalize ONE `universe_pool.csv` raw sector name through the caller's alias map (identity
+    today — no alias entry resolves anything yet) and validate the normalized name is a member of the
+    caller's valid sector set (`etfs.sector`'s values). A missing/blank raw sector, or one that fails
+    alias+validity resolution, returns `None` — never raises, never a fabricated or stray sector
+    string (AG-8 resilience; honesty: NA over fabrication)."""
+    if not raw_sector:
+        return None
+    normalized = aliases.get(raw_sector, raw_sector)
+    return normalized if normalized in set(valid_sectors) else None
+
+
+def pool_sector_map(
+    *, aliases: Mapping[str, str], valid_sectors: Iterable[str], seed_dir: Path | None = None
+) -> dict[str, str]:
+    """Ticker -> resolved pool-CSV sector, built ONCE from the SAME `read_pool()` parser (never a
+    second CSV reader) — the pool-CSV fallback half of J-01's two-source sector basis. Only tickers
+    that resolve to a valid sector are present; an unresolvable or missing pool sector is simply
+    absent (the caller's `.get(ticker)` then honestly returns `None` — never a fabricated value). A
+    not-yet-built pool (`FileNotFoundError`) degrades to an empty map, the same honest-empty contract
+    `read_pool`'s other callers already tolerate."""
+    try:
+        pool = read_pool(seed_dir)
+    except FileNotFoundError:
+        return {}
+    out: dict[str, str] = {}
+    for row in pool:
+        resolved = resolve_pool_sector(row.get("sector"), aliases=aliases, valid_sectors=valid_sectors)
+        if resolved is not None:
+            out[row["symbol"]] = resolved
     return out

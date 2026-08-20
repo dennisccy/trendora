@@ -57,6 +57,13 @@ class UniverseCfg(BaseModel):
     model_config = ConfigDict(extra="allow")
     symbols: list[str] = Field(min_length=1)
     filters: UniverseFilters
+    # goal-market-compass iter-1 (J-01): RAW `universe_pool.csv` sector name -> a valid `etfs.sector`
+    # name — a normalization seam for the pool-CSV sector fallback
+    # (`app.engine.universe_screen.resolve_pool_sector`), for a future pool refresh whose sector
+    # spelling doesn't match one of `etfs.sector`'s 11 names. Default empty: today's 11 pool sector
+    # names already equal `etfs.sector`'s 11 names verbatim, so the fallback starts as a straight,
+    # un-aliased read (TC-6 proves the no-op) — never populated speculatively.
+    pool_sector_aliases: dict[str, str] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def _validate(self) -> "UniverseCfg":
@@ -1793,6 +1800,11 @@ class UniverseSelectionCfg(BaseModel):
 
     model_config = ConfigDict(extra="allow")
     membership_rule: str
+    # goal-market-compass iter-1 (J-01): the two-source stock-sector-label disclosure — curated
+    # `config.stock_sectors` first, the `universe_pool.csv` fallback second, and the current-only
+    # limitation (no point-in-time sector history; B-114 stays open). Plain prose resolved live, like
+    # `membership_rule` — never re-typed in the engine/frontend.
+    sector_basis: str
     thresholds: list[MethodologyThreshold] = Field(min_length=1)
 
 

@@ -270,6 +270,13 @@ universe:
     - GS
     - ABNB
 
+  # goal-market-compass iter-1 (J-01): RAW `universe_pool.csv` sector name -> a valid `etfs.sector`
+  # name — a normalization seam for a future pool refresh whose sector spelling doesn't match
+  # `etfs.sector`'s 11 names. Empty today: the pool's 11 distinct sector names already equal
+  # `etfs.sector`'s 11 names verbatim, so the pool-CSV sector fallback (`scoring.score_stocks`) is a
+  # straight, un-aliased read of `universe_pool.csv`'s `sector` column (TC-6 proves the no-op).
+  pool_sector_aliases: {}
+
 # ----------------------------------------------------------------------------------------
 # ETFs + the volatility index. Loaded into reference tables + daily_prices.
 etfs:
@@ -1404,6 +1411,9 @@ methodology:
   # one canonical `universe.symbols` by build_catalog (a read, not a literal). No hard-coded copy/number.
   universe_selection:
     membership_rule: "The universe is a transparent, reproducible screen — not a hand-picked list. Its candidate pool is the union of the S&P 500 and Nasdaq-100 index constituents (real index memberships) together with Trendora's prior curated names; every candidate is then screened against the liquidity, price, and market-cap filters below from real committed end-of-day data. Only names that pass all three thresholds are members; candidates that fail to fetch or fall below a threshold are omitted, never fabricated. Breadth and walk-forward evidence remain universe-relative and survivorship-biased to the current membership."
+    # goal-market-compass iter-1 (J-01): the two-source stock-sector-label disclosure. Curated first,
+    # pool-CSV fallback second, current-only limitation stated, B-114 referenced as still open.
+    sector_basis: "Each stock's sector label is resolved from two sources, in order: the curated `config.stock_sectors` mapping (Trendora's original universe) first, then — for any name the curated map does not cover — a fallback to the sector recorded in the committed candidate pool (universe_pool.csv). A name present in neither source serves no sector ('Unassigned') — never a fabricated value. Both sources describe the CURRENT sector only: there is no point-in-time sector history, so a stock's sector label at a historical as-of date reflects today's mapping, not necessarily what its sector was on that date (tracked open as backlog item B-114)."
     thresholds:
       - { label: "Minimum market cap", cmp: ">=", ref: "universe.filters.min_market_cap", unit: "$" }
       - { label: "Minimum average daily dollar volume", cmp: ">=", ref: "universe.filters.min_dollar_vol", unit: "$" }

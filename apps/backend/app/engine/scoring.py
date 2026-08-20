@@ -46,6 +46,7 @@ from app.engine.prices import bars_asof, bars_asof_window, closes, highs, lows, 
 from app.engine.regime import score_regime
 from app.engine.sectors import score_sectors
 from app.engine.universe_resolver import resolve_members
+from app.engine.universe_screen import pool_sector_map
 from app.engine.setups import classify_setup
 from app.engine.themes import basket_return, theme_name, total_return
 from app.models import Sector, Stock
@@ -293,6 +294,16 @@ def score_stocks(session: Session, asof: date_cls, config: Optional[Config] = No
     sector_result = score_sectors(session, asof, cfg)
     sector_score_by_etf = {row["ticker"]: row["score"] for row in sector_result["rows"]}
 
+    # J-01 (goal-market-compass iter-1): the DESCRIPTIVE pool-CSV sector fallback — computed ONCE
+    # here, never per-stock. Completely separate from `stock_sector_etf` below (which feeds
+    # `rs_sector` / sector_strength scoring) and from `sector_score_by_etf` above (the sector ETF's
+    # own score) — this map only fills the row's display-only `"sector"` field below when
+    # `cfg.stock_sectors` has no entry for the ticker (curated map always wins; TC-4 proves this
+    # touches no score/bucket/setup_status).
+    pool_sectors = pool_sector_map(
+        aliases=cfg.universe.pool_sector_aliases, valid_sectors=cfg.etfs.sector.values()
+    )
+
     # resolve each stock's sector ETF (Stock.sector_id -> Sector.etf_ticker) for rs_sector / sector_strength
     sector_etf_by_id = {s.id: s.etf_ticker for s in session.exec(select(Sector)).all()}
     stock_sector_etf = {
@@ -442,7 +453,9 @@ def score_stocks(session: Session, asof: date_cls, config: Optional[Config] = No
         rows.append({
             "ticker": ticker,
             "name": ticker,
-            "sector": cfg.stock_sectors.get(ticker),
+            # J-01: curated map first, the pool-CSV fallback second — descriptive only, never a score
+            # input; a name absent from both stays None (renders "Unassigned"), never fabricated.
+            "sector": cfg.stock_sectors.get(ticker) or pool_sectors.get(ticker),
             "leadership": leadership,
             "entry_quality": entry_quality,
             "risk": risk,
