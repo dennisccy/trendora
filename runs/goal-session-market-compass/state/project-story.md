@@ -4,16 +4,18 @@ Trendora is a research tool for a stock-market investor, and this chapter is tea
 
 ## How it has grown
 
-Before this chapter began, Trendora was already a solid research platform: a stock scanner, sector and theme views, backtesting, an evidence ledger, and a methodology page that explains how every score is built. That platform was finished in an earlier round of work and is left untouched here.
+Before this chapter began, Trendora was already a solid research platform: a stock scanner, sector and theme views, backtesting, an evidence ledger, and a methodology page explaining every score. That platform was finished earlier and stays untouched here.
 
-This chapter's goal is to add a new "Today" page — a short briefing that tells the owner, in about ten seconds, what kind of market this is, what meaningfully changed since the last check-in, where leadership is rotating, and which stocks deserve a second look before the next session, always with the reasons and the cautions spelled out. Each evening's briefing is meant to be frozen and saved so it can never quietly change later.
+The first check-in was an honest inventory, not a build: none of the eight pieces the new evening briefing needs existed yet, and about 78 of every 100 stocks were still unlabeled by sector — far more than the plan allows.
 
-The first step was not to build anything, but to look honestly at where things stand today. The team checked every screen the new Today page will need and confirmed that none of it exists yet: there is no daily briefing, no "what changed" summary, no list of next-session candidates, and no saved snapshot. The one piece already partly in place is the stock sector labels behind the scenes — the rule that never guesses a stock's sector when it does not know one already works, but today about 78 out of every 100 stocks are left unlabeled, far more than the 5 the plan allows.
+The second round closed that sector gap. Stocks that used to fall into a catch-all "Unassigned" bucket now pick up a real sector from a second, broader list Trendora already had on file. Checked against the live app, not just a report: all 539 stocks now carry a real sector, down from roughly 420 unlabeled before. The Methodology page gained a short explanation of where that label comes from — it first shipped hidden behind a page section that doesn't display in this setup, caught and fixed the same day. One honesty rule stayed intact: a stock nobody has information for still honestly says "Unassigned", never guessed.
 
-Nothing from this new chapter is working yet, but nothing is broken either — this was a fair, honest starting photograph, not a setback. The next step is to start filling in those missing sector labels and explain on the Methodology page where they come from.
+The round wasn't quite clean: a safety check meant to refresh two days of test data instead permanently deleted them (not protected historical data, so nothing important was lost, but it could not be undone offline), and the picture-proof of the new stock list was never captured as a result. Both are flagged for a quick fix, alongside one wording decision that needs the owner's sign-off before the sector check is safely re-run.
+
+Next up: the cards that will show what changed since the last check-in, a plain-English market summary, and a list of stocks worth a second look — the first pieces of the actual evening briefing.
 
 ## What it can do today
 
-The rest of Trendora — the stock scanner, sector and theme views, backtesting, and methodology reference — works exactly as it did before and is untouched by this chapter. The new "Today" briefing itself does not exist yet: there is no daily summary, no what-changed list, no next-session candidate list, and no saved market snapshot. The only head start is the sector-labeling rule behind it, which already refuses to guess when it does not know a stock's sector.
+The rest of Trendora — the stock scanner, sector and theme views, backtesting, and methodology reference — works exactly as before and is untouched by this chapter. On the Stocks page, most stocks now show their real industry sector instead of "Unassigned", and the Methodology page explains in plain language where that label comes from. The evening "Today" briefing itself — this chapter's actual goal — does not exist yet: no daily summary, no what-changed list, no candidate list, no saved market snapshot.
 
-_Last updated: 2026-08-19 after iteration 0._
+_Last updated: 2026-08-20 after iteration 1._

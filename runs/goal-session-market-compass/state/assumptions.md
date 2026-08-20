@@ -77,3 +77,40 @@ behaved correctly and refused to fabricate replacements, and no journey depended
 Recorded it instead as a prominent owner-facing flag in eval.md plus a binding goal.md-amendment
 request for J-01 step 1.
 **Reversible:** yes
+
+## iter-2 — goal-decomposer
+
+**Ambiguity:** The Data Contract's baseline row treats the "Next-session manifest" as one document
+with ONE producer (`build_manifest_payload`) covering both the content this iteration targets
+(session delta, narrative, candidate selection + why-not) and the freeze/integrity fields goal.md
+assigns to J-05/J-06 (mode, version, hashes, provenance, frozen cohort storage,
+`prospective_eligible`, `available_at_utc`, export). goal.md's own suggested build order sequences
+J-02+J-03+J-04 ("engine cluster... one manifest producer") strictly before J-05+J-06 ("freeze/integrity
+pair"), but does not say which manifest fields the engine-cluster iteration must actually persist and
+serve versus which stay unbuilt until the freeze iteration — and J-03's own acceptance step 3 names
+`content_hash` explicitly ("via the manifest `content_hash`") while the Improvement-direction section
+defines `content_hash` as covering exactly "the content block" (session delta + narrative +
+candidates/trace), which is exactly the field set this iteration owns.
+**We chose:** This iteration builds `build_manifest_payload`'s content-computation logic (session
+delta, narrative, `evaluate_selection`'s candidates/why-not/disposition tally) plus `content_hash`
+over that block, persisted in a new, minimally-shaped `next_session_manifests` table and served via
+`GET /api/compass` (compute-once, serve-from-storage — no per-request recompute). Freeze/versioning/
+mode, `manifest_hash`, engine-identity/rule-hash provenance, the frozen `comparison_cohort` /
+`near_threshold_shadow` storage and their audit-view rendering, `prospective_eligible`,
+`available_at_utc`, and export stay explicitly OUT OF SCOPE, deferred to J-05/J-06, which will extend
+the same table with additive columns only.
+**Reversible:** yes
+
+## iter-2 — goal-decomposer
+
+**Ambiguity:** The blueprint's Information Architecture already names `/` as the canonical home for
+J-02/J-03/J-04's new cards, but `/` is still the unmodified legacy Dashboard (confirmed live:
+`sidebar.tsx`'s NAV still labels it "Dashboard", `page.tsx` is the old dashboard component) — goal.md's
+full Today-page ordering/chrome (state band above these cards, readiness/preflight separated into
+chrome) is J-07's acceptance target and the old dashboard body's relocation to `/market` is J-08's,
+both explicitly out of this iteration's targeted journeys per the evaluator's own recommendation.
+**We chose:** Add the three new cards (Summary, What-changed, Next-session focus) to the existing `/`
+page, above the current unmodified dashboard body, reading only the new `GET /api/compass` endpoint;
+leave final section ordering, chrome/readiness separation, and the old body's removal to J-07 and
+J-08's own iterations rather than attempting the full page recomposition now.
+**Reversible:** yes
