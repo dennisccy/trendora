@@ -1,0 +1,95 @@
+{
+  "journeys": {
+    "J-01": {
+      "id": "J-01",
+      "name": "Sector labels are honest and nearly complete on new runs",
+      "status": "partial",
+      "last_verified_iter": "goal-market-compass-iter-1",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-market-compass-iter-0",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-1-evidence/AUDIT-01-methodology-sector-basis-visible.png",
+      "spec_hash": "5217f3fe85d2a05c2f436d3ec6d140f2b7539b8798c161925a2e9e76ddab61f9",
+      "gap": "Substance verified, capture missing (capture-defect). VERIFIED: /methodology two-source disclosure renders (screenshot AUDIT-01-methodology-sector-basis-visible.png, content matches config.methodology.universe_selection.sector_basis incl. current-only limitation + B-114); coverage 0/539 Unassigned (0.00% vs 78.4% baseline, target <=5%) on fresh run 3081 at as-of 2026-08-12 -- auditor's live API + full 539-row DOM sweep (audit handoff \u00a73) and independently re-measured by the evaluator via GET /api/stocks; DELL=Technology (curated) and GRMN=Consumer Discretionary (pool fallback) agree across leaderboard/detail/API; TC-4 byte-identity + TC-8 historical-immutability cited and passing; dev handoff cites the fixture by name (step 6). MISSING (capture only): no browser screenshot of /stocks at as-of 2026-08-12 showing the shrunken Unassigned share or GRMN's new label (UT-08's screenshot is the OLD 2026-08-11 pre-fallback run), and no [NEW]-flagged walkthrough (demo verdict SKIPPED, JSON parse error at line 37 col 19 -- reports/phase-goal-market-compass-iter-1-demo-results.md). OWNER ACTION: goal.md J-01 step 1's Remove+backfill precondition is destructive and unexecutable here (audit T2) and step 2's 'select the Unassigned filter option' is unexecutable at 0% because the option honestly disappears (audit F1) -- both need a goal.md wording amendment before J-01 is re-run as written.",
+      "evidence_makeup": true
+    },
+    "J-02": {
+      "id": "J-02",
+      "name": "What changed since the previous session",
+      "status": "failing",
+      "last_verified_iter": "goal-market-compass-iter-0",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-market-compass-iter-0",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-0-evidence/UT-J-02-fail.png",
+      "spec_hash": "4a55fbb172e17090c2d095af6a36d95e08edadeda2ed05941cbe3ce9476eb993",
+      "gap": "No What-changed card, delta list, or session-comparison UI on / (full-page-text regex false); no session_delta producer in the backend. [iter-1: not re-tested -- explicitly out of scope; iter-0 failing evidence stays valid, no file in the iter-1 diff (sector fallback + methodology disclosure only) touches this journey's surfaces.]"
+    },
+    "J-03": {
+      "id": "J-03",
+      "name": "Plain-English summary with cited facts",
+      "status": "failing",
+      "last_verified_iter": "goal-market-compass-iter-0",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-market-compass-iter-0",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-0-evidence/UT-J-03-fail.png",
+      "spec_hash": "81cd6c9267c0d734cd88b19f43baf53bcab70c7b60d60cd5b2018a76425e87e7",
+      "gap": "No summary card and no 'Show cited facts' disclosure on / ; no narrative producer module; existing market-phase reason strings are the pre-compass feature, not compass sentences. [iter-1: not re-tested -- explicitly out of scope; iter-0 failing evidence stays valid, no file in the iter-1 diff (sector fallback + methodology disclosure only) touches this journey's surfaces.]"
+    },
+    "J-04": {
+      "id": "J-04",
+      "name": "Each next-session candidate explains why and why-not",
+      "status": "failing",
+      "last_verified_iter": "goal-market-compass-iter-0",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-market-compass-iter-0",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-0-evidence/UT-J-04-fail.png",
+      "spec_hash": "d1521389ca8fcf3fd1b7ac60e53bdb9608112247219ccbbea2ae66e99bff8ad0",
+      "gap": "No 'Next-session focus' section, candidate cards, eligibility checklist, or why-not list on / ; no compass.evaluate_selection producer. [iter-1: not re-tested -- explicitly out of scope; iter-0 failing evidence stays valid, no file in the iter-1 diff (sector fallback + methodology disclosure only) touches this journey's surfaces.]"
+    },
+    "J-05": {
+      "id": "J-05",
+      "name": "Each close freezes one next-session manifest, exported byte-consistently",
+      "status": "failing",
+      "last_verified_iter": "goal-market-compass-iter-0",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-market-compass-iter-0",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-0-evidence/UT-J-05-fail.png",
+      "spec_hash": "de33a9d149ebefe4f8cf0ffb9fe86243e3f9fa9d83850c890848f268e5c54c4f",
+      "gap": "GET /api/compass returns HTTP 404 and is absent from openapi.json; no compass engine module, no next_session_manifests table, no 'next-session manifest' phase in any ingest 'Refreshed:' line. [iter-1: not re-tested -- explicitly out of scope; iter-0 failing evidence stays valid, no file in the iter-1 diff (sector fallback + methodology disclosure only) touches this journey's surfaces.]"
+    },
+    "J-06": {
+      "id": "J-06",
+      "name": "A frozen manifest never changes",
+      "status": "failing",
+      "last_verified_iter": "goal-market-compass-iter-0",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-market-compass-iter-0",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-0-evidence/UT-J-06-fail.png",
+      "spec_hash": "4934b178e966fdb05cfb68537e861e0f34f961f630a57e4098f9fb69be2cdda8",
+      "gap": "Not exercisable: gated entirely on J-05's absent manifest producer/store; /scanner-runs shows no manifest or engine_identity text. [iter-1: not re-tested -- explicitly out of scope; iter-0 failing evidence stays valid, no file in the iter-1 diff (sector fallback + methodology disclosure only) touches this journey's surfaces.]"
+    },
+    "J-07": {
+      "id": "J-07",
+      "name": "The Today page answers the ten-second read",
+      "status": "failing",
+      "last_verified_iter": "goal-market-compass-iter-0",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-market-compass-iter-0",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-0-evidence/UT-J-07-fail.png",
+      "spec_hash": "3277c326632d90b5aa5d4331f051b419d2e71d022b640c5851acd9f105d57b72",
+      "gap": "Zero of the six required body sections present on / (heading is still 'Dashboard'); the regime x phase cross-view chart is still on / because /market does not exist. Readiness vocabulary is correctly confined to chrome, but only vacuously (no market-state prose exists yet). [iter-1: not re-tested -- explicitly out of scope; iter-0 failing evidence stays valid, no file in the iter-1 diff (sector fallback + methodology disclosure only) touches this journey's surfaces.]"
+    },
+    "J-08": {
+      "id": "J-08",
+      "name": "Market page moves over intact and history stays honest",
+      "status": "failing",
+      "last_verified_iter": "goal-market-compass-iter-1",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-market-compass-iter-0",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-1-evidence/UT-J-08-fail.png",
+      "spec_hash": "621deda83bfbe069b3899a9860d352ac2ef7f6e7f80acf0630cd39acbb2ce860",
+      "gap": "Re-tested this iteration and unchanged from baseline (NOT a regression -- never passed): /market still returns a Next.js 404 and the sidebar still opens with 'Dashboard' with no 'Today'/'Market' entries (UT-J-08, reports/phase-goal-market-compass-iter-1-ui-test-results.md). Explicitly deferred by this iteration's OUT OF SCOPE; no file in the iter-1 diff touches /market, the sidebar, or routing."
+    }
+  },
+  "anti_goal_violations": [],
+  "updated_at": "2026-08-20T05:02:51Z"
+}

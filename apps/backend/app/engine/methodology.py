@@ -71,6 +71,10 @@ def build_catalog(config: Config) -> dict:
         # offline screen record exists, and the sector basis must stay readable regardless (see
         # `_sector_basis`). Same producer, same endpoint, one home — never recomputed elsewhere.
         payload["sector_basis"] = _sector_basis(config)
+    if catalog.compass_selection is not None:
+        # J-04 (goal-market-compass iter-2): same sibling-key reasoning as `sector_basis` above — this
+        # disclosure makes no universe-screen claim, so the J-22 gate must not hide it either.
+        payload["compass_selection"] = _compass_selection(config)
     if catalog.categories:
         payload["glossary"] = _glossary(config)
     return payload
@@ -89,6 +93,18 @@ def _sector_basis(config: Config) -> str:
     both exist today (the curated config map and the committed candidate-pool CSV) — so gating it would
     hide an honest disclosure for an unrelated reason."""
     return config.methodology.universe_selection.sector_basis
+
+
+def _compass_selection(config: Config) -> dict:
+    """The J-04 (goal-market-compass iter-2) "Next-session focus" disclosure: the selection-rule prose
+    + its live `compass.selection.*` thresholds, resolved via the SAME `ref` mechanism as
+    `_universe_selection` (matching-config keystone — never re-typed). Served as its own top-level
+    sibling key for the same reason `_sector_basis` is a sibling (see its docstring)."""
+    basis = config.methodology.compass_selection
+    return {
+        "text": basis.text,
+        "thresholds": [_threshold_row(threshold, config) for threshold in basis.thresholds],
+    }
 
 
 # The category key the Setups & Patterns glossary rows are DERIVED into (J-47). The category itself is

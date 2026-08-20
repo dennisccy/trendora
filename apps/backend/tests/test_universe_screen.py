@@ -244,3 +244,23 @@ def test_pool_sector_map_missing_pool_file_degrades_to_empty_map(tmp_path):
     """A not-yet-built pool file degrades to an empty map (never a crash) — the same honest-empty
     contract `read_pool`'s other callers already tolerate for a missing `universe_pool.csv`."""
     assert pool_sector_map(aliases={}, valid_sectors={"Technology"}, seed_dir=tmp_path) == {}
+
+
+def test_pool_sector_map_builds_valid_set_once_survives_a_one_shot_iterable(tmp_path):
+    """B2 (goal-market-compass iter-1 audit, fixed iter-2): before the fix, `valid_sectors` was
+    re-`set(...)`-ed INSIDE `resolve_pool_sector` on every row, so a one-shot iterable (e.g. a
+    generator) would be exhausted by the FIRST row and every later row would silently resolve to
+    `None` — a whole-pool coverage collapse with no exception. `pool_sector_map` now materializes the
+    set ONCE up front, so passing a generator here — which can be iterated exactly once — must still
+    resolve every one of several rows, not just the first."""
+    seed_dir = _write_pool_csv(
+        tmp_path,
+        [
+            {"symbol": "ZZZ1", "sector": "Technology", "source": "test"},
+            {"symbol": "ZZZ2", "sector": "Financials", "source": "test"},
+            {"symbol": "ZZZ3", "sector": "Technology", "source": "test"},
+        ],
+    )
+    one_shot_valid_sectors = (name for name in ("Technology", "Financials"))  # a generator: exhausts after ONE full iteration
+    mapping = pool_sector_map(aliases={}, valid_sectors=one_shot_valid_sectors, seed_dir=seed_dir)
+    assert mapping == {"ZZZ1": "Technology", "ZZZ2": "Financials", "ZZZ3": "Technology"}

@@ -21,6 +21,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api import (
     backtest,
     budget,
+    compass,
     dashboard,
     data,
     evidence,
@@ -188,6 +189,7 @@ def create_app() -> FastAPI:
     application.include_router(regime_history.router, prefix="/api")
     application.include_router(indexes.router, prefix="/api")
     application.include_router(market_phase.router, prefix="/api")
+    application.include_router(compass.router, prefix="/api")
     # goal-mcp-loop iter-1 — the read-only certified-claims ledger surface (GET /api/evidence).
     application.include_router(evidence.router, prefix="/api")
     # goal-mcp-loop iter-30 (J-18) — the read-only pre-registration registry (GET /api/research/registry).

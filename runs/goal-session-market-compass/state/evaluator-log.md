@@ -58,3 +58,52 @@ cards on the home page for the first time. Carry J-01's missing screenshots and 
 along as a side task, not as an iteration of its own. One thing needs the owner: J-01's written test
 steps tell the tester to delete and rebuild the last two trading days, which in this setup destroys
 data that cannot be rebuilt offline — please approve rewording that step before J-01 is re-tested.
+
+## Iteration 2 — goal-market-compass-iter-2
+
+**Date:** 2026-08-20T09:05:00Z
+**Verdict:** ESCALATE
+**Depth dispatched:** lean
+**Journey deltas:**
+- Newly passing: J-02, J-03, J-04 (all three with `evidence_makeup: true` — walkthrough not recorded)
+- Promoted partial → passing: J-01 (screenshot now exists; `evidence_makeup: true` for the walkthrough)
+- Newly failing: none
+- Regressed: none
+- Not re-tested (carried, out of scope): J-05, J-06, J-07, J-08 — all still failing
+- Anti-goal violations: none critical. One MINOR wording note (AG-2): the ATR caution ends
+  "— sized risk accordingly", which reads as advice; and the automatic banned-word check only
+  scans the summary sentences, not the candidate reason and caution lines.
+
+**Reasoning:** This iteration built the heart of the Today page and it works. The home page now
+shows a plain-English summary, a "what changed since the previous session" list, and a
+"next-session focus" section. I did not take this from the reports. I opened all four pictures
+myself. The best proof is inside the pictures: the summary says the market score is 73.24 and the
+severity is 25.84, and the older, separate tiles further down the SAME page show 73.24 and 25.84
+too — so the new text is quoting the same numbers the rest of the site already served. The same
+check passes on the 23 July page (57.9 and 36.6 in the text, 57.87 and 36.61 in the tiles). The
+"what changed" card correctly names the previous session and the one-day gap, and the candidate
+card for GWW shows why it was chosen, what would change that, and twenty names that were not
+chosen with the exact distance each one missed by. The sector work from last iteration is now
+picture-backed too, so J-01 is finished apart from its recording. Nothing broke: no journey that
+was working stopped working, the structure check passed, and the security scan was clean. So why
+ESCALATE and not CONTINUE? Because the engine ran this iteration in the light "lean" mode even
+though its own plan asked for the full mode. That means three safety lanes never ran — the
+independent auditor (which caught a real hidden-feature bug only one iteration ago), the
+visual-regression check, and the walkthrough recorder that four journeys need for their evidence.
+On top of that the developer raised a real product question the missing lanes were meant to
+settle: on today's date not a single stock passes all three selection rules, so the headline
+section is honestly empty.
+
+**Next-step recommendation:** Run the next iteration in FULL mode and build J-05 "Each close
+freezes one next-session manifest" together with J-06 "A frozen manifest never changes". These
+two lock the daily briefing into a sealed, dated, tamper-evident file that can never change
+afterwards, which is the riskiest part of the whole plan and needs the auditor watching. Carry
+three small jobs along with it, none of them big enough to deserve their own turn: record the
+missing walkthroughs for J-01 to J-04, take one picture of the "Risk-off" warning state, and
+reword the ATR caution so it stops sounding like advice. Two things need the owner, not the
+robot: please approve rewording J-01's first test step (it currently tells the tester to delete
+and rebuild two days of data, which cannot be undone offline) and its second step (it asks the
+tester to pick an "Unassigned" filter option that no longer exists now that every stock has a
+sector); and please say whether the empty "next-session focus" on the newest date is acceptable
+as an honest result, or whether the three cut-off numbers should be revisited — noting that the
+rules forbid changing them just because past prices would have looked better.

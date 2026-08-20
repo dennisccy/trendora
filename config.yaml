@@ -1390,6 +1390,63 @@ watchlist:
     min_overlap_days: 60         # a member's own return series shorter than this renders NA throughout
 
 # ----------------------------------------------------------------------------------------
+# goal-market-compass iter-2 (J-02/J-03/J-04) — the Today-page decision surface: session-over-session
+# deltas, the deterministic plain-English narrative, and the next-session candidate-selection trace.
+# EVERY threshold/word map the three new `app.engine.session_delta` / `app.engine.compass` producers read
+# lives here (anti-goal: No magic numbers) — computed once at ingest finalize (or once on first
+# GET /api/compass for a not-yet-computed as-of) and served from the `next_session_manifests` table
+# thereafter. `selection.shadow.min_score` is reserved now for J-05/J-06's near-threshold shadow cohort —
+# unused by any code this iteration.
+compass:
+  delta:
+    rule_version: "v1"
+    market_score_min_change: 5.0     # regime-score points to report a "market" change
+    breadth_min_change_pts: 5.0      # breadth percentage points (above-50DMA / above-200DMA) to report a "breadth" change
+    rank_move_min: 2                 # sector/theme rank positions moved to report a change
+    stock_score_min_change: 8.0      # leadership-score points a bucket-crossing stock must move to report a "stock" change
+    top_k: 5                         # max sector-kind and max theme-kind change entries shown (most-moved first; mirrors the existing Top-Sectors/Top-Themes "top 5" convention)
+    max_stock_items: 10              # max stock-kind change entries evaluated/shown (bounds both compute and display — AG-8)
+    velocity_flat_band: 2.0          # |regime-score delta| below this reads as "little changed" in the narrative's direction sentence
+    pbear_bands:                     # filtered P(bear) -> narrative state word (ascending min, like market_phase.phase_edges)
+      - { min: 0.0, label: "calm" }
+      - { min: 0.20, label: "cautious" }
+      - { min: 0.40, label: "tense" }
+      - { min: 0.60, label: "stressed" }
+  selection:
+    rule_version: "v1"
+    leadership_min_score: 80.0       # the ONLY candidacy gate on Leadership (never the Actionable/A-bucket setup status)
+    entry_min_score: 70.0            # candidacy qualifier: Entry Quality score floor
+    risk_max_score: 60.0             # candidacy qualifier: Risk score ceiling (risk is a danger score — lower is safer)
+    max_candidates: 10               # cap on the Next-session focus section's candidate list
+    why_not_floor: 75.0              # a non-candidate at/above this Leadership score gets an individual why-not entry
+    why_not_cap: 20                  # max why-not entries returned (the disposition tally stays a full, uncapped count)
+    shadow:
+      min_score: 75.0                # RESERVED for J-05/J-06's near-threshold shadow cohort — not read by any iter-2 code
+  vocabulary:
+    direction_words:
+      up: "improving"
+      down: "deteriorating"
+      flat: "little changed"
+    leadership_words: { A: "Elite leader", B: "Strong leader", C: "Average leader", D: "Weak leader", E: "Laggard" }
+    entry_words: { A: "Ideal entry", B: "Good entry", C: "Fair entry", D: "Poor entry", E: "Weak entry" }
+    risk_words: { A: "Very high risk", B: "High risk", C: "Moderate risk", D: "Low risk", E: "Very low risk" }
+    # TC-11's committed banned-language list: imperative trade verbs, forecast terms, causal-attribution
+    # phrases (AG-2). Every rendered narrative sentence is scanned against this list, case-insensitively.
+    banned_terms:
+      - "buy"
+      - "sell"
+      - "should buy"
+      - "should sell"
+      - "will rise"
+      - "will fall"
+      - "target price"
+      - "guaranteed"
+      - "recommend"
+      - "act now"
+      - "because of"
+      - "caused by"
+
+# ----------------------------------------------------------------------------------------
 # iter-12 CONSUMED — Methodology / Glossary catalog (J-12). The SINGLE config-backed source that
 # EXPLAINS every setup status + the VCP pattern: a plain-language meaning, the exact thresholds that
 # define each (referenced LIVE from the canonical config blocks above — never re-typed, so they always
@@ -1418,6 +1475,18 @@ methodology:
       - { label: "Minimum market cap", cmp: ">=", ref: "universe.filters.min_market_cap", unit: "$" }
       - { label: "Minimum average daily dollar volume", cmp: ">=", ref: "universe.filters.min_dollar_vol", unit: "$" }
       - { label: "Minimum share price", cmp: ">=", ref: "universe.filters.min_price", unit: "$" }
+  # goal-market-compass iter-2 (J-04): the /methodology "Next-session focus" disclosure — the
+  # candidate-selection rule prose + its live `compass.selection.*` thresholds, resolved via the SAME
+  # `ref` mechanism as Universe Selection above (never re-typed — the matching-config keystone). Served
+  # as its OWN top-level sibling key (same reasoning as sector_basis below) so the J-22 universe gate
+  # never hides it — this disclosure makes no universe-screen claim.
+  compass_selection:
+    text: "The Today page's Next-session focus list is a transparent rule over stored scores, not a prediction: a name qualifies when its Leadership score clears the floor below and its Entry Quality and Risk scores clear their own qualifiers, ranked and capped at the list size. No new blended number is computed for this — every value shown is one of the existing Leadership / Entry Quality / Risk scores plus the existing config word maps. Non-candidates at or above the floor are shown too, in a 'Not priority' list naming exactly which condition they missed and by how much."
+    thresholds:
+      - { label: "Leadership score", cmp: ">=", ref: "compass.selection.leadership_min_score" }
+      - { label: "Entry Quality score", cmp: ">=", ref: "compass.selection.entry_min_score" }
+      - { label: "Risk score", cmp: "<=", ref: "compass.selection.risk_max_score" }
+      - { label: "Focus list size", cmp: "<=", ref: "compass.selection.max_candidates" }
   entries:
     - key: Actionable
       kind: setup
@@ -1521,6 +1590,7 @@ methodology:
     - { key: universe_data,     label: "Universe & Data" }
     - { key: forward_evidence,  label: "Forward-testing & Evidence" }
     - { key: factor_stats,      label: "Factor Lab & Statistics" }
+    - { key: today_compass,     label: "Today & Next-Session Focus" }
   terms:
     # --- Scores & Buckets -----------------------------------------------------------------
     - term: "Leadership Score"
@@ -2026,3 +2096,22 @@ methodology:
       category: factor_stats
       definition: "The trailing window of bars a measure is computed over (e.g. a 63-bar 3-month RS lookback). Longer lookbacks capture structural trend; shorter ones capture recent momentum."
       where: "Indicators, factors."
+    # --- Today & Next-Session Focus (goal-market-compass iter-2, J-02/J-03/J-04) --------------
+    - term: "session delta"
+      category: today_compass
+      definition: "The set of stored market/breadth/sector/theme/stock changes between the current session and the immediately preceding stored session, each shown only when its magnitude clears a config threshold — smaller moves are counted as suppressed, never silently dropped."
+      where: "Today page — What-changed card."
+    - term: "next-session candidate"
+      category: today_compass
+      definition: "A name whose stored Leadership score clears the selection floor and whose Entry Quality and Risk scores clear their own qualifiers, as of the latest session — framed as worth monitoring next session, never as advice to buy or a return prediction."
+      where: "Today page — Next-session focus section."
+      thresholds:
+        - { label: "Leadership score", cmp: ">=", ref: "compass.selection.leadership_min_score" }
+    - term: "why-not"
+      category: today_compass
+      definition: "The explicit list of non-candidates near the selection floor, each naming which condition it missed and by how much (a distance), so absence from the focus list is as explainable as presence on it."
+      where: "Today page — Next-session focus section."
+    - term: "retrospective stamp"
+      category: today_compass
+      definition: "A visible note on a historical Today-page view stating that its summary was reconstructed under the CURRENT rule/config rather than generated live on that date — historical reads never silently pass off a rebuilt view as the original."
+      where: "Today page — summary card (historical as-of only)."

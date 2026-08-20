@@ -50,6 +50,11 @@ CALC_FILES = [
     # min_dollar_vol, adv_window_days) is sourced from config; the only numbers in the resolver are
     # structural (0/1 indexing, the empty-shortcut). The market-cap criterion is dropped (no literal).
     "universe_resolver.py",
+    # goal-market-compass iter-2 (J-02/J-03/J-04) — the session-delta and compass producers. EVERY
+    # threshold/cap (market/breadth/rank/stock-score change minimums, top_k, max_stock_items,
+    # leadership/entry/risk selection cutoffs, max_candidates, why-not floor/cap) comes from
+    # config.compass.*; the only numbers in these two modules are structural (0/1 indexing, comparisons).
+    "session_delta.py", "compass.py",
 ]
 
 # The union of every NUMERIC tunable currently in config.yaml (periods, windows, bucket edges,

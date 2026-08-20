@@ -1,40 +1,27 @@
 # Iteration State — market-compass
 
-**After iteration:** 1 · **Date:** 2026-08-20 · **Verdict:** CONTINUE
+**After iteration:** 2 · **Date:** 2026-08-20 · **Verdict:** ESCALATE
 
 ## Journeys
 
-1 partial (J-01 — substance verified, capture missing) · 7 failing (J-02..J-08) — 8 total
+4 passing (J-01 J-02 J-03 J-04, all with evidence_makeup) · 4 failing (J-05 J-06 J-07 J-08) — 8 total
 
 ## Active blockers
 
-- **dev (passenger task, NOT an iteration goal):** J-01 capture gap — no screenshot of `/stocks` at
-  as-of 2026-08-12 showing 0 "Unassigned" / GRMN = Consumer Discretionary, and no `[NEW]` walkthrough
-  (demo recorder JSON parse error). Run 3081 already exists — no data prep needed.
-- **human (owner):** `docs/goal.md` J-01 step 1's Remove+backfill precondition is destructive and
-  unrecoverable here (audit T2 — it destroyed 2026-08-13/14 bars this run); step 2's "select the
-  Unassigned filter option" is unexecutable at 0% (option honestly disappears, F1). Needs rewording.
-- **infra:** restart backend/frontend before browser-qa — this run's QA hit a stale uvicorn process.
+- **human (owner):** `docs/goal.md` J-01 steps 1+2 need rewording — step 1 orders a destructive Remove+backfill that permanently destroyed data in iter-1; step 2 says "select the Unassigned filter option", which no longer renders now that coverage is 100%.
+- **human (owner):** decide whether the empty next-session focus on the frontier date (zero members clear leadership 80 AND entry 70 AND risk 60, `config.yaml:1417-1419`) is an accepted honest result. AG-15 forbids retuning from realized returns.
+- **dev (next iter, passenger):** no `[NEW]` walkthrough for J-01..J-04, no screenshot of the Risk-off caution state — the lean dispatch ran no demo lane.
 
 ## Last 2 verdicts
 
-- iter 1: CONTINUE — J-01's fallback + disclosure work and were verified live (0/539 Unassigned;
-  disclosure card screenshotted), but the browser lane FAILed on a destructive precondition and a
-  stale backend, so J-01 stays `partial` on evidence, not on behavior.
-- iter 0: CONTINUE — baseline only, no code changed; 0 passing / 1 partial / 7 failing measured.
+- iter 2: ESCALATE — J-02/J-03/J-04 built and verified (screenshots + in-image AG-3 cross-check), J-01 promoted to passing; but the engine dispatched LEAN against a spec saying `Depth: full`, so the auditor, ux-regression and walkthrough lanes never ran on the session's largest change.
+- iter 1: CONTINUE — J-01's sector wiring landed and verified live (0/539 Unassigned), but the browser lane died on a destructive precondition, leaving a capture-only gap.
 
 ## Do not redo
 
-- **J-01 backend fallback — DONE, live-verified.** `scoring.py:453-458` (`cfg.stock_sectors.get(t) or
-  pool_sectors.get(t)`, computed once at `:303`) + `universe_screen.pool_sector_map`. 0/539
-  Unassigned on run 3081 (as-of 2026-08-12), was 78.4%. No second reader.
-- **J-01 methodology disclosure — DONE, visible.** `_sector_basis()` (`engine/methodology.py:79`)
-  emits a SIBLING top-level `sector_basis`; `SectorBasisCard` (`app/methodology/page.tsx:303`); prose
-  in `config.methodology.universe_selection.sector_basis`. Never re-nest it inside
-  `universe_selection` — the J-22 gate pops that section and would hide it again. Evidence:
-  `reports/qa/goal-market-compass-iter-1-evidence/AUDIT-01-methodology-sector-basis-visible.png`
-- **J-01 honesty half — settled** (iter-0, re-confirmed iter-1): single stored source, unknown →
-  null/"Unassigned", leaderboard + detail + API agree.
-- **TC-4 byte-identity + TC-8 immutability — proven** (fixtures + production rows 3049 vs 3081).
-- **`universe.pool_sector_aliases` stays empty** (TC-6 no-op); do not re-run J-01's Remove+backfill
-  precondition as written — use run 3081.
+- **J-01 sector attribution is DONE** — 0/539 Unassigned on run 3081, two-source disclosure at `config.yaml:1473`, honest NULL path proven. Only its recording is owed.
+- **The engine cluster is DONE** — `app/engine/session_delta.py`, `app/engine/compass.py` (`build_narrative`, `evaluate_selection`, `build_manifest_payload`, `content_hash`), `app/api/compass.py`, the `next_session_manifests` table (`app/models.py:763`), the "compass content" finalize phase (`data_manager.py:4523-4548`), and the three cards on `apps/frontend/app/page.tsx:709-711`. J-05/J-06 EXTEND that table, additive columns only.
+- **Settled:** `universe.pool_sector_aliases` stays empty; the sidebar keeps "Dashboard" until J-08; `compass.selection.shadow.min_score` is reserved for J-05/J-06 and read by no iter-2 code.
+- **Demo-narrator regex-literal bug FIXED at source** — `incredible_auto_dev/agents/demo-narrator/body.md`, mirror re-rendered via `sync-cli-assets.py`.
+- **Not a new bug:** `test_no_magic_numbers.py` fails on `indicators.py`, `forward_testing.py`, `research.py` — pre-existing, confirmed via `git stash` against `a58f2c2f`.
+- **Next up:** J-05 + J-06 (freeze / integrity pair) at FULL depth.

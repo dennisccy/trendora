@@ -1808,6 +1808,17 @@ class UniverseSelectionCfg(BaseModel):
     thresholds: list[MethodologyThreshold] = Field(min_length=1)
 
 
+class CompassSelectionBasisCfg(BaseModel):
+    """goal-market-compass iter-2 (J-04) — the /methodology "Next-session focus" disclosure: plain-
+    language selection-rule prose + the live `compass.selection.*` thresholds it names, resolved via the
+    SAME `ref` mechanism `UniverseSelectionCfg.thresholds` uses (never re-typed — the matching-config
+    keystone)."""
+
+    model_config = ConfigDict(extra="allow")
+    text: str
+    thresholds: list[MethodologyThreshold] = Field(min_length=1)
+
+
 class GlossaryCategory(BaseModel):
     """One ordered glossary category (iter-4 goal-mode, J-47) — a group of terms shown together on
     /methodology and the lookup namespace tooltips read. `key` is the stable identifier a term's
@@ -1866,6 +1877,10 @@ class MethodologyCfg(BaseModel):
     model_config = ConfigDict(extra="allow")
     intro: Optional[str] = None
     universe_selection: Optional[UniverseSelectionCfg] = None
+    # goal-market-compass iter-2 (J-04) — the Next-session focus disclosure, a SIBLING of
+    # `universe_selection` (not nested inside it) for the same reason `sector_basis` is a sibling: it
+    # makes no universe-screen claim, so the J-22 honest-universe gate must not hide it.
+    compass_selection: Optional[CompassSelectionBasisCfg] = None
     entries: list[MethodologyEntry] = Field(min_length=1)
     categories: list[GlossaryCategory] = Field(default_factory=list)
     terms: list[GlossaryTerm] = Field(default_factory=list)
@@ -2535,6 +2550,190 @@ def _default_watchlist() -> "WatchlistCfg":
     return WatchlistCfg()
 
 
+class CompassDeltaCfg(BaseModel):
+    """goal-market-compass iter-2 (J-02) — `app.engine.session_delta.compute_delta`'s session-over-
+    session change thresholds. EVERY number the producer reads lives here (anti-goal: No magic numbers;
+    `session_delta.py` joins `CALC_FILES` in `test_no_magic_numbers.py`). `top_k` bounds the sector-kind
+    and theme-kind change lists (mirrors the existing "top 5" Top-Sectors/Top-Themes convention);
+    `max_stock_items` additionally bounds how many stock-kind bucket-crossing candidates are evaluated
+    at all (AG-8 — the delta producer never sweeps the full universe's `record_json`)."""
+
+    model_config = ConfigDict(extra="allow")
+    rule_version: str
+    market_score_min_change: float
+    breadth_min_change_pts: float
+    rank_move_min: int
+    stock_score_min_change: float
+    top_k: int
+    max_stock_items: int
+    velocity_flat_band: float
+    pbear_bands: list[LabelEdge] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _validate(self) -> "CompassDeltaCfg":
+        for name, value in (
+            ("market_score_min_change", self.market_score_min_change),
+            ("breadth_min_change_pts", self.breadth_min_change_pts),
+            ("stock_score_min_change", self.stock_score_min_change),
+            ("velocity_flat_band", self.velocity_flat_band),
+        ):
+            if value < 0:
+                raise ValueError(f"compass.delta.{name} must be >= 0, got {value}")
+        if self.rank_move_min <= 0:
+            raise ValueError("compass.delta.rank_move_min must be positive")
+        if self.top_k <= 0:
+            raise ValueError("compass.delta.top_k must be positive")
+        if self.max_stock_items <= 0:
+            raise ValueError("compass.delta.max_stock_items must be positive")
+        return self
+
+
+class CompassSelectionShadowCfg(BaseModel):
+    """The J-05/J-06 near-threshold shadow-cohort floor. The key is RESERVED from iter-2 onward but read
+    by no code this iteration — the shadow cohort itself is neither computed nor stored/rendered until
+    J-05/J-06 (OUT OF SCOPE, docs/phases/goal-market-compass-iter-2.md)."""
+
+    model_config = ConfigDict(extra="allow")
+    min_score: float
+
+
+class CompassSelectionCfg(BaseModel):
+    """goal-market-compass iter-2 (J-04) — `app.engine.compass.evaluate_selection`'s transparent
+    candidate-selection rule. `leadership_min_score` is the ONLY leadership gate the rule may use — never
+    the Actionable / A-bucket setup status (today's seed data yields zero A-bucket / Actionable names
+    while still clearing a raw leadership-score floor; see the iter-2 spec BACKGROUND). No field here
+    ever feeds a new blended/composite number (anti-goal AG-11) — each is used standalone against one of
+    the three existing per-stock scores."""
+
+    model_config = ConfigDict(extra="allow")
+    rule_version: str
+    leadership_min_score: float
+    entry_min_score: float
+    risk_max_score: float
+    max_candidates: int
+    why_not_floor: float
+    why_not_cap: int
+    shadow: CompassSelectionShadowCfg
+
+    @model_validator(mode="after")
+    def _validate(self) -> "CompassSelectionCfg":
+        for name, value in (
+            ("leadership_min_score", self.leadership_min_score),
+            ("entry_min_score", self.entry_min_score),
+            ("risk_max_score", self.risk_max_score),
+            ("why_not_floor", self.why_not_floor),
+        ):
+            if not (0 <= value <= 100):
+                raise ValueError(f"compass.selection.{name} must be in [0, 100], got {value}")
+        if self.max_candidates <= 0:
+            raise ValueError("compass.selection.max_candidates must be positive")
+        if self.why_not_cap <= 0:
+            raise ValueError("compass.selection.why_not_cap must be positive")
+        if self.why_not_floor > self.leadership_min_score:
+            raise ValueError(
+                "compass.selection.why_not_floor must be <= leadership_min_score "
+                f"({self.why_not_floor} > {self.leadership_min_score})"
+            )
+        return self
+
+
+_COMPASS_BUCKETS = {"A", "B", "C", "D", "E"}
+
+
+class CompassVocabularyCfg(BaseModel):
+    """goal-market-compass iter-2 (J-03/J-04) — word maps ONLY (never a new score, anti-goal AG-11).
+    `leadership_words` / `entry_words` / `risk_words` must each cover every A-E bucket (completeness,
+    like `SECTOR_WEIGHT_KEYS` elsewhere in this file); `banned_terms` backs the TC-11 narrative
+    banned-language scan (imperative trade verbs, forecast terms, causal-attribution phrases — AG-2)."""
+
+    model_config = ConfigDict(extra="allow")
+    direction_words: dict[str, str]
+    leadership_words: dict[str, str]
+    entry_words: dict[str, str]
+    risk_words: dict[str, str]
+    banned_terms: list[str] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _validate(self) -> "CompassVocabularyCfg":
+        missing_dir = {"up", "down", "flat"} - set(self.direction_words)
+        if missing_dir:
+            raise ValueError(f"compass.vocabulary.direction_words missing: {sorted(missing_dir)}")
+        for field_name, mapping in (
+            ("leadership_words", self.leadership_words),
+            ("entry_words", self.entry_words),
+            ("risk_words", self.risk_words),
+        ):
+            missing = _COMPASS_BUCKETS - set(mapping)
+            if missing:
+                raise ValueError(f"compass.vocabulary.{field_name} missing buckets: {sorted(missing)}")
+        return self
+
+
+class CompassCfg(BaseModel):
+    """goal-market-compass iter-2 (J-02/J-03/J-04) — the Today-page decision-surface config consumed by
+    `app.engine.session_delta` and `app.engine.compass`. Default-populated so a config / inline test
+    fixture predating this block still loads unchanged; the real `config.yaml` restates it explicitly as
+    the single documented source (see `_default_compass`)."""
+
+    model_config = ConfigDict(extra="allow")
+    delta: CompassDeltaCfg
+    selection: CompassSelectionCfg
+    vocabulary: CompassVocabularyCfg
+
+
+def _default_compass() -> "CompassCfg":
+    """The built-in default compass config — used when a config predating this block (or an inline test
+    fixture) omits `compass`. The real `config.yaml` restates it explicitly as the single documented
+    source; kept byte-for-byte in sync with it by `test_config_engine.py`."""
+    return CompassCfg(
+        delta=CompassDeltaCfg(
+            rule_version="v1",
+            market_score_min_change=5.0,
+            breadth_min_change_pts=5.0,
+            rank_move_min=2,
+            stock_score_min_change=8.0,
+            top_k=5,
+            max_stock_items=10,
+            velocity_flat_band=2.0,
+            pbear_bands=[
+                LabelEdge(min=0.0, label="calm"),
+                LabelEdge(min=0.20, label="cautious"),
+                LabelEdge(min=0.40, label="tense"),
+                LabelEdge(min=0.60, label="stressed"),
+            ],
+        ),
+        selection=CompassSelectionCfg(
+            rule_version="v1",
+            leadership_min_score=80.0,
+            entry_min_score=70.0,
+            risk_max_score=60.0,
+            max_candidates=10,
+            why_not_floor=75.0,
+            why_not_cap=20,
+            shadow=CompassSelectionShadowCfg(min_score=75.0),
+        ),
+        vocabulary=CompassVocabularyCfg(
+            direction_words={"up": "improving", "down": "deteriorating", "flat": "little changed"},
+            leadership_words={
+                "A": "Elite leader", "B": "Strong leader", "C": "Average leader",
+                "D": "Weak leader", "E": "Laggard",
+            },
+            entry_words={
+                "A": "Ideal entry", "B": "Good entry", "C": "Fair entry",
+                "D": "Poor entry", "E": "Weak entry",
+            },
+            risk_words={
+                "A": "Very high risk", "B": "High risk", "C": "Moderate risk",
+                "D": "Low risk", "E": "Very low risk",
+            },
+            banned_terms=[
+                "buy", "sell", "should buy", "should sell", "will rise", "will fall",
+                "target price", "guaranteed", "recommend", "act now", "because of", "caused by",
+            ],
+        ),
+    )
+
+
 class Config(BaseModel):
     """Validated view of config.yaml. Only the iter-1-consumed sections are typed/validated;
     scaffolded sections ride along via extra="allow" so they can be tuned without code edits."""
@@ -2599,6 +2798,11 @@ class Config(BaseModel):
     # config / inline test fixture predating this block still loads unchanged; the real `config.yaml`
     # restates it explicitly as the single documented source.
     watchlist: WatchlistCfg = Field(default_factory=_default_watchlist)
+    # goal-market-compass iter-2 (J-02/J-03/J-04) — the Today-page decision-surface config: delta
+    # thresholds, the candidate-selection rule, and word maps. Default-populated so a config / inline
+    # test fixture predating this block still loads unchanged; the real `config.yaml` restates it
+    # explicitly as the single documented source.
+    compass: CompassCfg = Field(default_factory=_default_compass)
 
     @field_validator("themes")
     @classmethod
@@ -2773,6 +2977,10 @@ class Config(BaseModel):
         threshold_lists = [entry.thresholds for entry in self.methodology.entries]
         if self.methodology.universe_selection is not None:
             threshold_lists.append(self.methodology.universe_selection.thresholds)
+        # goal-market-compass iter-2 (J-04): the Next-session focus disclosure's thresholds resolve the
+        # SAME way as Universe Selection's above.
+        if self.methodology.compass_selection is not None:
+            threshold_lists.append(self.methodology.compass_selection.thresholds)
         # J-47: glossary terms may cite config thresholds via the same `ref` mechanism — resolve them too.
         threshold_lists.extend(term.thresholds for term in self.methodology.terms)
         for thresholds in threshold_lists:

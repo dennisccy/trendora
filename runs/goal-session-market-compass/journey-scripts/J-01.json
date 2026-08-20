@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "journey": "J-01",
+  "name": "Sector attribution is honest and near-complete on new runs",
+  "default_timeout_ms": 8000,
+  "steps": [
+    {"n": 1, "journey": "J-01", "action": {"type": "goto", "url": "/stocks?asof=2026-08-12"}, "expect": {"text": "Stock Leaderboard"}},
+    {"n": 2, "journey": "J-01", "action": {"type": "click", "target": {"testid": "stocks-search"}}},
+    {"n": 3, "journey": "J-01", "action": {"type": "fill", "target": {"testid": "stocks-search"}, "text": "GRMN"}, "expect": {"text": "Consumer Discretionary"}}
+  ]
+}

@@ -581,7 +581,11 @@ def test_historical_row_sector_not_rewritten_by_pool_fallback(loaded_engine):
     `score_stocks` (anti-goal: Snapshots immutable). Simulated by rewinding one ALREADY-STORED
     pool-only row to its honest pre-iteration value (`sector: None`) even though the pool-CSV
     fallback would now resolve it to a real sector — the served row must still read the STORED None,
-    proving storage (not live recompute) is what /api/stocks serves."""
+    proving storage (not live recompute) is what /api/stocks serves.
+
+    T1 (goal-market-compass iter-1 audit, fixed iter-2): the mutation is restored in a `finally` —
+    `loaded_engine` is `scope="session"`, so an unrestored mutation would otherwise leak into every
+    later test in the file sort order that reads this same row's `sector`/`record_json`."""
     cfg = load_config()
     with Session(loaded_engine) as session:
         run = resolved_run(session, None)
@@ -596,15 +600,22 @@ def test_historical_row_sector_not_rewritten_by_pool_fallback(loaded_engine):
         )
         assert target.sector is not None  # sanity: currently stored WITH the fallback applied
 
-        # rewind this ALREADY-STORED row to the honest pre-iteration value
-        record = json.loads(target.record_json)
-        record["sector"] = None
-        target.record_json = json.dumps(record)
-        target.sector = None
-        session.add(target)
-        session.commit()
+        original_sector = target.sector
+        original_record_json = target.record_json
+        try:
+            # rewind this ALREADY-STORED row to the honest pre-iteration value
+            record = json.loads(target.record_json)
+            record["sector"] = None
+            target.record_json = json.dumps(record)
+            target.sector = None
+            session.add(target)
+            session.commit()
 
-        served = stocks_payload(session, run)
-        served_row = next(r for r in served["rows"] if r["ticker"] == target.ticker)
-
-    assert served_row["sector"] is None  # served exactly as stored, never re-resolved
+            served = stocks_payload(session, run)
+            served_row = next(r for r in served["rows"] if r["ticker"] == target.ticker)
+            assert served_row["sector"] is None  # served exactly as stored, never re-resolved
+        finally:
+            target.sector = original_sector
+            target.record_json = original_record_json
+            session.add(target)
+            session.commit()

@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "journey": "J-02",
+  "name": "\"What changed\" reports meaningful session-over-session deltas with honest empties",
+  "default_timeout_ms": 8000,
+  "steps": [
+    {"n": 1, "journey": "J-02", "action": {"type": "goto", "url": "/"}, "expect": {"text": "vs 2026-08-11 (1 day ago)"}},
+    {"n": 2, "journey": "J-02", "action": {"type": "goto", "url": "/?asof=1996-02-01"}, "expect": {"text": "This is the earliest stored session — there is no prior session to compare against."}}
+  ]
+}

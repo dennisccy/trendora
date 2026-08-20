@@ -6,10 +6,14 @@ import { AlertTriangle, Clock, ChevronDown } from "lucide-react";
 
 import { useAsOf } from "@/components/asof-provider";
 import { ComponentBreakdown } from "@/components/component-breakdown";
+import { CompassSummaryCard } from "@/components/compass-summary-card";
+import { CompassWhatChangedCard } from "@/components/compass-whatchanged-card";
+import { CompassFocusSection } from "@/components/compass-focus-section";
 import { MarketPhaseCard } from "@/components/market-phase-card";
 import { PhaseCrossViewCard } from "@/components/phase-cross-view-card";
 import { PageHeading } from "@/components/page-heading";
 import { ScoreBadge } from "@/components/score-badge";
+import { Disclosure } from "@/components/ui/disclosure";
 import { TermInfo } from "@/components/ui/term-info";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,10 +23,12 @@ import { phaseColor } from "@/lib/phase";
 import { regimeVariant } from "@/lib/regime-variant";
 import { cn } from "@/lib/utils";
 import {
+  fetchCompass,
   fetchDashboard,
   fetchMarketPhase,
   fetchSectors,
   fetchThemes,
+  type CompassResponse,
   type DashboardResponse,
   type MarketPhaseComponent,
   type MarketPhaseResponse,
@@ -38,6 +44,7 @@ type State =
       phase: MarketPhaseResponse | null;
       sectors: SectorsResponse | null;
       themes: ThemesResponse | null;
+      compass: CompassResponse | null;
     }
   | { kind: "error" };
 
@@ -61,14 +68,15 @@ export default function DashboardPage() {
     const controller = new AbortController();
     const asof = asOf ?? undefined; // historical date or latest
     // Dashboard (regime + candidate counts) is critical; the market-phase summary + Top Sectors + Top
-    // Themes read their own canonical endpoints and may fail independently. All fetch the SAME as-of date
-    // so the snapshot view is coherent across the page.
+    // Themes + compass (goal-market-compass iter-2) read their own canonical endpoints and may fail
+    // independently. All fetch the SAME as-of date so the snapshot view is coherent across the page.
     setState({ kind: "loading" });
     fetchDashboard(asof, controller.signal)
       .then(async (dashboard) => {
         let phase: MarketPhaseResponse | null = null;
         let sectors: SectorsResponse | null = null;
         let themes: ThemesResponse | null = null;
+        let compass: CompassResponse | null = null;
         try {
           phase = await fetchMarketPhase(asof, controller.signal);
         } catch {
@@ -84,7 +92,12 @@ export default function DashboardPage() {
         } catch {
           themes = null;
         }
-        setState({ kind: "ok", dashboard, phase, sectors, themes });
+        try {
+          compass = await fetchCompass(asof, controller.signal);
+        } catch {
+          compass = null;
+        }
+        setState({ kind: "ok", dashboard, phase, sectors, themes, compass });
       })
       .catch(() => {
         if (!controller.signal.aborted) setState({ kind: "error" });
@@ -120,12 +133,21 @@ export default function DashboardPage() {
       ) : null}
 
       {state.kind === "ok" ? (
-        <DashboardBody
-          dashboard={state.dashboard}
-          phase={state.phase}
-          sectors={state.sectors}
-          themes={state.themes}
-        />
+        <>
+          {/* goal-market-compass iter-2 (J-02/J-03/J-04): three new Today-page sections, each reading
+              ONLY GET /api/compass, rendered ABOVE the existing dashboard body below. That body
+              (DashboardBody and everything it renders) is UNCHANGED by this iteration — final section
+              ordering/chrome placement is J-07's job, and removing it from `/` is J-08's job. */}
+          <CompassSummaryCard compass={state.compass} />
+          <CompassWhatChangedCard compass={state.compass} />
+          <CompassFocusSection compass={state.compass} />
+          <DashboardBody
+            dashboard={state.dashboard}
+            phase={state.phase}
+            sectors={state.sectors}
+            themes={state.themes}
+          />
+        </>
       ) : null}
     </div>
   );
@@ -293,25 +315,6 @@ function SeverityBreakdown({ components }: { components: MarketPhaseComponent[] 
         </div>
       ))}
     </div>
-  );
-}
-
-/** A lightweight inline disclosure (native `<details>`) — keeps a figure's named breakdown REACHABLE
- *  (one click) without crowding the at-a-glance summary. Pure presentation, no business logic. */
-function Disclosure({ summary, children }: { summary: string; children: React.ReactNode }) {
-  return (
-    <details className="group rounded border border-border bg-surface-2/40">
-      <summary
-        className={cn(
-          "flex cursor-pointer list-none items-center justify-between gap-2 px-2.5 py-1.5 text-xs text-text-muted",
-          "transition-colors hover:text-text focus:outline-none focus-visible:ring-1 focus-visible:ring-accent",
-        )}
-      >
-        {summary}
-        <ChevronDown className="h-3.5 w-3.5 transition-transform group-open:rotate-180" aria-hidden />
-      </summary>
-      <div className="border-t border-border px-2.5 pb-2.5">{children}</div>
-    </details>
   );
 }
 

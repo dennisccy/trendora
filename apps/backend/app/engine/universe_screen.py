@@ -137,9 +137,14 @@ def pool_sector_map(
         pool = read_pool(seed_dir)
     except FileNotFoundError:
         return {}
+    # B2 (goal-market-compass iter-1 audit, fixed iter-2): materialize the valid-sector set ONCE here
+    # (not once per row inside `resolve_pool_sector`) — both a per-row `set(...)` rebuild cost across the
+    # full pool, and the latent trap that a one-shot iterable (e.g. a generator) passed as `valid_sectors`
+    # would otherwise be exhausted by the FIRST row, silently resolving every later row to `None`.
+    valid = set(valid_sectors)
     out: dict[str, str] = {}
     for row in pool:
-        resolved = resolve_pool_sector(row.get("sector"), aliases=aliases, valid_sectors=valid_sectors)
+        resolved = resolve_pool_sector(row.get("sector"), aliases=aliases, valid_sectors=valid)
         if resolved is not None:
             out[row["symbol"]] = resolved
     return out

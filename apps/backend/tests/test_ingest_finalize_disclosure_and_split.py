@@ -47,8 +47,11 @@ SPY_DAYS = [
 ]
 
 # The categories each half owns. `/data` reads every essential one; none of the deferred three.
+# goal-market-compass iter-2: "next_session_manifest" runs between "market_phase" and
+# "forward_aggregates" in the SAME essential half (a bounded per-date compute, not a long aggregate warm
+# — see data_manager.py's finalize-tail comment at the insertion point).
 ESSENTIAL = {"availability_heatmap", "coverage", "membership_timeline", "market_phase",
-             "forward_aggregates", "index_series", "latest_snapshot"}
+             "next_session_manifest", "forward_aggregates", "index_series", "latest_snapshot"}
 DEFERRED = {"research_hot_keys", "factor_lab_all", "drawdown_expectations"}
 
 

@@ -114,3 +114,47 @@ page, above the current unmodified dashboard body, reading only the new `GET /ap
 leave final section ordering, chrome/readiness separation, and the old body's removal to J-07 and
 J-08's own iterations rather than attempting the full page recomposition now.
 **Reversible:** yes
+
+## iter-2 — goal-evaluator
+
+**Ambiguity:** J-02, J-03 and J-04 each carry a `Walkthrough` acceptance bullet requiring a
+`[NEW]`-flagged walkthrough viewable via `demo.sh market-compass --session-live`, and J-01 carries
+the same. The pipeline ran at lean depth, so no demo lane executed and no walkthrough exists for any
+of the four. goal.md does not say whether a missing walkthrough blocks a journey whose behaviour is
+otherwise fully demonstrated by a screenshot.
+**We chose:** Scored all four `passing` and recorded `evidence_makeup: true` with the gap noted as
+`capture-defect`, per methodology A.7, which names a missing walkthrough recording as a capture defect
+that must NOT downgrade an evidence-confirmed status. The no-screenshot rail (A.3) is separately
+satisfied: each of the four has its own cited screenshot showing acceptance state. The consequence is
+that the make-up recording rides the next iteration as a passenger task, never as its goal.
+**Reversible:** yes
+
+## iter-2 — goal-evaluator
+
+**Ambiguity:** J-04's steps 2 through 6 read "On `/` at the latest as-of..." and then require opening
+a candidate card. On the latest stored as-of (2026-08-12) zero members clear the three-qualifier rule,
+so no candidate card exists to open. goal.md's own step 8 requires the honest-empty state and step 7
+requires stepping `?asof` to a historical Risk-off date, but it never says which date steps 2-6 should
+use when the frontier date is legitimately empty.
+**We chose:** Accepted the browser lane's approach — step 1 and step 8 verified live at the latest
+as-of (0 candidates, explicit `candidates_empty_reason`), and steps 2-6 verified at the stored
+historical as-of 2026-07-23 (1 real candidate, GWW) using genuine stored data rather than a synthetic
+fixture. Treated this as satisfying the journey, because the assertions are about the card's content
+being traceable to stored rows, not about a particular calendar date.
+**Reversible:** yes
+
+## iter-2 — goal-evaluator
+
+**Ambiguity:** J-01 step 1 (destructive Remove + backfill) was deliberately not executed this
+iteration, and step 2 as written ("select the Sector filter's 'Unassigned' option") is literally
+unexecutable now that coverage is 100% and the option no longer renders. goal.md does not say whether
+a journey can pass when a precondition step is skipped and an assertion step is unexecutable as
+worded.
+**We chose:** Scored J-01 `passing`. The Acceptance block — not the Steps list — is the bar, and every
+acceptance clause is met with evidence (coverage 100% vs the >=95% requirement, single stored source,
+honest NULL/"Unassigned" for unknowns, disclosure on /methodology, byte-identity fixture cited).
+Step 1's purpose (prove the mapping applies to a NEWLY produced run) was already achieved in iter-1 by
+run 3081, and step 2's intent was met more strongly than its literal wording — the browser lane read
+`select.options` directly and confirmed the Unassigned option does not exist at all. The owner-facing
+request to reword both steps stays open and is repeated in this iteration's evaluation.
+**Reversible:** yes

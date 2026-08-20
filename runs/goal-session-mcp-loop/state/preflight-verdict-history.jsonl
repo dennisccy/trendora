@@ -262,3 +262,9 @@
 {"reasons": [], "reference": "2026-08-14", "verdict": "GO"}
 {"reasons": ["Data freshness could not be determined: no price data is loaded."], "reference": null, "verdict": "DEGRADED"}
 {"reasons": [], "reference": "2026-08-14", "verdict": "GO"}
+{"reasons": ["Data freshness could not be determined: no price data is loaded."], "reference": null, "verdict": "DEGRADED"}
+{"reasons": [], "reference": "2024-01-08", "verdict": "GO"}
+{"reasons": ["Data freshness could not be determined: no price data is loaded."], "reference": null, "verdict": "DEGRADED"}
+{"reasons": [], "reference": "2024-07-08", "verdict": "GO"}
+{"reasons": ["Data freshness could not be determined: no price data is loaded."], "reference": null, "verdict": "DEGRADED"}
+{"reasons": [], "reference": "2024-07-08", "verdict": "GO"}

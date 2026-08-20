@@ -760,6 +760,39 @@ class AvailabilityCache(SQLModel, table=True):
     created_at: datetime
 
 
+class NextSessionManifest(SQLModel, table=True):
+    """One next-session manifest row for one `as_of` date (goal-market-compass iter-2, J-02/J-03/J-04 —
+    the CONTENT block only; J-05/J-06 add `mode`/`version`/`frozen`/`generation.*`/hashes/provenance/
+    cohort-storage/export columns ADDITIVELY in a later iteration — this iteration's five columns below
+    never change shape, per `docs/phases/goal-market-compass-iter-2.md` OUT OF SCOPE).
+
+    UNLIKE the `*Cache` tables above (`MarketPhaseCache` et al.), this is NOT a cache of a re-derivable
+    read — it is a first-class IMMUTABLE record, like `ScannerRun`: computed ONCE per `as_of` (at ingest
+    finalize, or on the first `GET /api/compass` for a not-yet-computed `as_of` — create-once-on-GET) and
+    NEVER updated or deleted afterward (anti-goal AG-12 — manifest immutability binds from this iteration
+    on, even though the `frozen`/`version` columns that make that explicit are still J-05/J-06). `as_of`
+    is unique — exactly one row per date, mirroring `ScannerRun.asof_date`. A concurrent create-once race
+    is resolved the SAME way `scanner.persist_run_payload` resolves a `ScannerRun` race: roll back the
+    losing INSERT and return the already-committed row (never raise, never duplicate, never overwrite).
+
+    The three CONTENT blocks (`session_delta`, `narrative`, `selection` — see `app.engine.compass`'s
+    Data-contract shapes) are stored as their OWN JSON columns rather than one combined blob so a future
+    column-projected read never has to deserialize a block it does not need (AG-8 posture). `content_hash`
+    is the sha256 hex digest of the sorted-key JSON of exactly these three blocks (see
+    `app.engine.compass.build_manifest_payload`) — NOT of this row's other columns."""
+
+    __tablename__ = "next_session_manifests"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    as_of: date = Field(index=True, unique=True)
+    source_run_id: int = Field(foreign_key="scanner_runs.id", index=True)
+    session_delta_json: str
+    narrative_json: str
+    selection_json: str
+    content_hash: str = Field(index=True)
+    created_at: datetime
+
+
 # --- ops-hardening iter-2 (J-05) coverage derived-aggregate snapshot (a PERFORMANCE cache, not a
 # snapshot) -----------------------------------------------------------------------------------
 class CoverageSnapshot(SQLModel, table=True):

@@ -873,6 +873,135 @@ export async function fetchThemes(asof?: string, signal?: AbortSignal): Promise<
   return getJSON<ThemesResponse>(withAsOf("/api/themes", asof), signal);
 }
 
+// --- compass (goal-market-compass iter-2, J-02/J-03/J-04) -----------------------------------
+/** One session-over-session change entry (J-02) — already threshold-gated server-side; the
+ *  frontend renders it verbatim and evaluates no threshold itself. */
+export interface SessionDeltaChange {
+  kind: "market" | "breadth" | "sector" | "theme" | "stock";
+  label: string;
+  from: number | string;
+  to: number | string;
+  magnitude: number;
+  threshold: number;
+  drill_href: string;
+}
+
+/** One BELOW-threshold entry, shown only inside the "suppressed moves" disclosure. */
+export interface SessionDeltaSuppressed {
+  kind: string;
+  magnitude: number;
+  threshold: number;
+}
+
+/** The `session_delta` CONTENT block (J-02). `prior_as_of`/`gap_days` are both `null` for the
+ *  earliest stored run — the explicit no-prior-run state; never a fabricated comparison. */
+export interface SessionDelta {
+  prior_as_of: string | null;
+  gap_days: number | null;
+  changes: SessionDeltaChange[];
+  suppressed: SessionDeltaSuppressed[];
+  suppressed_count: number;
+}
+
+/** One cited fact backing a narrative sentence (J-03) — spot-checkable against the canonical
+ *  endpoint (e.g. GET /api/dashboard, GET /api/market-phase) it was read from. */
+export interface NarrativeFact {
+  name: string;
+  value: string | number | boolean | null;
+}
+
+/** One deterministic template sentence (J-03). `text` is rendered VERBATIM — the frontend
+ *  assembles no wording of its own. */
+export interface NarrativeSentence {
+  template_id: string;
+  text: string;
+  facts: NarrativeFact[];
+}
+
+/** The `narrative` CONTENT block (J-03) — the Summary card's ordered sentence list. */
+export interface Narrative {
+  sentences: NarrativeSentence[];
+}
+
+/** The fixed eligibility-checklist verdict vocabulary (J-04). */
+export type ChecklistVerdict = "Pass" | "Miss" | "Supportive" | "Neutral" | "Unknown" | "NA";
+
+export interface ChecklistRow {
+  condition: string;
+  threshold: number;
+  actual: number;
+  verdict: ChecklistVerdict;
+}
+
+export interface WhatWouldChangeRow {
+  condition: string;
+  threshold: number;
+  actual: number;
+  met: boolean;
+}
+
+/** One next-session candidate (J-04) — `leadership_word`/`entry_word`/`risk_word` are the config
+ *  word-map values for the SAME three existing scores/buckets `GET /api/stocks` serves; no new
+ *  blended/composite number is ever present here (anti-goal AG-11). */
+export interface CompassCandidate {
+  ticker: string;
+  leadership_word: string;
+  leadership_score: number;
+  entry_word: string;
+  entry_quality_score: number;
+  risk_word: string;
+  risk_score: number;
+  reasons: string[];
+  cautions: string[];
+  checklist: ChecklistRow[];
+  what_would_change: WhatWouldChangeRow[];
+  invalidation: string;
+}
+
+export interface WhyNotFailedCondition {
+  condition: string;
+  threshold: number;
+  actual: number;
+  distance: number;
+}
+
+/** One non-candidate near the selection floor (J-04) — an EMPTY `failed_conditions` means the
+ *  member passed every qualifier and was excluded only by the focus-list cap, never a fabricated
+ *  reason. */
+export interface WhyNotEntry {
+  ticker: string;
+  failed_conditions: WhyNotFailedCondition[];
+}
+
+/** The `selection` CONTENT block (J-04) — the Next-session focus section's full trace.
+ *  `disposition_tally.below_selection_floor + excluded_by_cap` partitions every non-candidate
+ *  member; `candidates_empty_reason` is set (never a bare empty list) whenever `candidates` is
+ *  empty. The near-threshold shadow cohort (J-05/J-06) appears nowhere in this shape. */
+export interface CompassSelection {
+  candidates: CompassCandidate[];
+  why_not: WhyNotEntry[];
+  disposition_tally: { below_selection_floor: number; excluded_by_cap: number };
+  candidates_empty_reason: string | null;
+}
+
+/** GET /api/compass payload (goal-market-compass iter-2) — the next-session manifest CONTENT
+ *  block: what changed (J-02), the plain-English summary (J-03), and the next-session candidates
+ *  (J-04), all computed ONCE per `as_of` and served from storage thereafter. `content_hash` is the
+ *  sha256 of the sorted-key JSON of exactly these three blocks. */
+export interface CompassResponse {
+  as_of: string;
+  session_delta: SessionDelta;
+  narrative: Narrative;
+  selection: CompassSelection;
+  content_hash: string;
+}
+
+/** Canonical next-session-manifest CONTENT source: GET /api/compass. `asof` time-travels to that
+ *  date's stored (or create-once-computed) manifest — never recomputed client-side. */
+export async function fetchCompass(asof?: string, signal?: AbortSignal): Promise<CompassResponse> {
+  return getJSON<CompassResponse>(withAsOf("/api/compass", asof), signal);
+}
+
 // --- scanner runs (iter-5) -----------------------------------------------------------------
 /** One row in the immutable scan-run history (GET /api/runs). `regime` carries the stored as-of
  *  label+score; `candidate_counts` are the stored counts of the canonical setup statuses. */
@@ -1327,6 +1456,13 @@ export interface MethodologyGlossary {
   categories: GlossaryCategory[];
 }
 
+/** J-04 (goal-market-compass iter-2): the "Next-session focus" disclosure — the selection-rule prose
+ *  + the live `compass.selection.*` thresholds it names (resolved on the backend, never re-typed). */
+export interface CompassSelectionBasis {
+  text: string;
+  thresholds: MethodologyThresholdRow[];
+}
+
 /** The config-backed Setup & Pattern catalog served by GET /api/methodology. The ONE source for the
  *  /methodology page, the /stocks badge tooltips, the /stocks setup-filter vocabulary, AND (J-47) the
  *  full terminology glossary + every inline term tooltip. `universe_selection` (J-22) carries the
@@ -1340,6 +1476,9 @@ export interface MethodologyCatalog {
    *  `universe_selection`, NOT nested inside it, so the J-22 honest-universe gate cannot hide it.
    *  Config prose served verbatim — the frontend never resolves a sector itself. */
   sector_basis?: string;
+  /** J-04 (goal-market-compass iter-2): the Next-session focus disclosure — a sibling of
+   *  `universe_selection` for the same reason `sector_basis` is a sibling (see above). */
+  compass_selection?: CompassSelectionBasis;
   entries: MethodologyEntry[];
   glossary?: MethodologyGlossary;
 }

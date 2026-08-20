@@ -67,3 +67,43 @@ boot created run 3081 for 2026-08-12 from seed bars.
 **Applies to:** any journey step that instructs a data Remove — check `seed_latest_date` covers the
 range first, and prefer the backend's own boot/persist path over a destructive remove+rebuild cycle
 to obtain a fresh run.
+
+## iter-2 — 2026-08-20T09:05:00Z
+
+**Verdict:** ESCALATE
+**Lesson:** The engine dispatched this iteration LEAN even though the spec's own metadata said
+`Depth: full` and the iter-1 evaluator's recommendation was binding-full. Nothing warned anyone —
+the depth divergence is only visible by comparing `runs/goal-session-market-compass/iter-2/depth-dispatched`
+("lean") against the spec's `**Depth:** full` line. The cost was silent: the auditor, ux-regression,
+closure and demo/walkthrough lanes never ran, so four journeys inherited a `[NEW]`-walkthrough gap
+they did not need to have, and the developer's explicit "this is a product-quality question for
+review/audit/the evaluator to triage" (zero candidates on the frontier date) reached no auditor.
+**Applies to:** any iteration whose spec metadata says `Depth: full` — the evaluator should diff
+`depth-dispatched` against the spec's Depth line during the evidence walk and treat a downgrade as
+an ESCALATE trigger, not just note it.
+
+## iter-2 — 2026-08-20T09:05:00Z
+
+**Verdict:** ESCALATE
+**Lesson:** The strongest AG-3 ("displayed numbers are correct") evidence in this iteration cost
+nothing extra: because the three new compass cards were placed ABOVE the untouched legacy dashboard
+body on the same page, one full-page screenshot contains both the new cited fact (regime_score 73.24,
+severity 25.84, breadth 59.84/66.39) and the pre-existing canonical tile serving the same value.
+Cross-checking within a single image is stronger than any prose claim and needs no running backend —
+worth preserving deliberately until J-08 relocates the dashboard body to `/market`, after which the
+two surfaces separate and this free cross-check disappears.
+**Applies to:** any iter touching `apps/frontend/app/page.tsx` layout, and specifically J-07/J-08's
+Today-page recomposition and `/market` relocation.
+
+## iter-2 — 2026-08-20T09:05:00Z
+
+**Verdict:** ESCALATE
+**Lesson:** The runtime banned-language guard (`_assert_no_banned_language`,
+`apps/backend/app/engine/compass.py:175`) is called only from `build_narrative` (`:208`) — it never
+sees the candidate reason, caution or why-not strings produced by `evaluate_selection`. That is
+exactly where advice-flavoured wording actually appeared ("ATR is 2.23% of price — sized risk
+accordingly", `compass.py:294`), because reasons/cautions are free-form f-strings assembled in code
+rather than config templates. A guard that covers the safest text and skips the riskiest text reads
+as coverage but is not.
+**Applies to:** any iter adding user-facing generated prose under `app/engine/compass.py`, and the
+J-05/J-06 manifest work that will serialise these same strings into an exported artifact.

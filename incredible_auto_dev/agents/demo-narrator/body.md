@@ -93,6 +93,12 @@ The runner tries your hint, then auto-degrades, so prefer the most semantic one:
 Use the **exact** visible text/label from the QA artifact — that text is what
 made the QA flow pass, and the runner matches on the same accessible name.
 
+**`name`/`text`/`label`/`placeholder` values must always be plain double-quoted JSON strings** — never
+a `/regex/flags` literal (that JS/Playwright idiom is not valid JSON and breaks `json.load` on the whole
+script; the runner also has no regex matching, so it would silently never match even if it somehow
+parsed). If you're tempted to "match loosely," just use the shortest exact visible substring instead —
+e.g. write `{"role": "button", "name": "Filter by sector"}`, never `{"role": "button", "name": /Filter by sector/i}`.
+
 ### Step fields
 
 - `section`: `"highlights"` (gets a screenshot in the gallery; **cap at 8** — pick the highest-impact end-to-end smoke) or `"full_tour"` (text-only in the gallery; the live walkthrough still plays it). If everything fits in 8 steps, make them all highlights.

@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import {
   fetchMethodology,
+  type CompassSelectionBasis,
   type GlossaryTerm,
   type MethodologyCatalog,
   type MethodologyEntry,
@@ -63,6 +64,10 @@ export default function MethodologyPage() {
 
       {state.kind === "ok" && state.data.sector_basis ? (
         <SectorBasisCard sectorBasis={state.data.sector_basis} />
+      ) : null}
+
+      {state.kind === "ok" && state.data.compass_selection ? (
+        <CompassSelectionCard selection={state.data.compass_selection} />
       ) : null}
 
       {state.kind === "loading" ? <MethodologySkeleton /> : null}
@@ -309,6 +314,28 @@ function SectorBasisCard({ sectorBasis }: { sectorBasis: string }) {
         <Badge variant="default">Data basis</Badge>
       </div>
       <p className="text-sm text-text-muted">{sectorBasis}</p>
+    </Card>
+  );
+}
+
+/** The J-04 (goal-market-compass iter-2) "Next-session focus" disclosure: the candidate-selection
+ *  rule prose + its live `compass.selection.*` thresholds, reusing the SAME `ThresholdRow` renderer
+ *  as every other threshold list on this page. A sibling of `SectorBasisCard`, rendered unconditionally
+ *  for the same reason (see that card's note) — this disclosure makes no universe-screen claim. */
+function CompassSelectionCard({ selection }: { selection: CompassSelectionBasis }) {
+  return (
+    <Card className="space-y-3 p-4" data-testid="compass-selection-basis">
+      <div className="flex flex-wrap items-center gap-2">
+        <Filter className="h-4 w-4 text-accent" aria-hidden />
+        <h2 className="text-base font-semibold text-text">Next-session focus</h2>
+        <Badge variant="default">Selection rule</Badge>
+      </div>
+      <p className="text-sm text-text-muted">{selection.text}</p>
+      <ul className="space-y-1">
+        {selection.thresholds.map((row, index) => (
+          <ThresholdRow key={index} row={row} />
+        ))}
+      </ul>
     </Card>
   );
 }

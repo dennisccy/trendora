@@ -34,7 +34,7 @@
         "type": "click",
         "target": {
           "role": "button",
-          "name": /Filter by sector/i
+          "name": "Filter by sector"
         }
       },
       "expect": {

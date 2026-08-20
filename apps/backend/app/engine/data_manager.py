@@ -58,6 +58,7 @@ from app.engine import drift as drift_module
 from app.engine import evidence  # ops-hardening iter-7 (J-06): the finalize hook warms drawdown_expectations
 from app.engine import forward_testing, scanner
 from app.engine import market_phase  # ops-hardening iter-2 (J-05): the ingest finalize hook warms this
+from app.engine import compass  # goal-market-compass iter-2 (J-02/J-03/J-04): the finalize hook warms this
 from app.engine.ledger import FORWARD_WALK_TYPE, read_entries
 from app.engine.prices import (
     _BarCache,
@@ -2470,9 +2471,9 @@ class JobProgress:
     # already branches on `existed_before`), so the finalize hook knows which as-ofs to warm in
     # `MarketPhaseCache` ("for each newly-created snapshot date" — never every stored date).
     # `aggregates_refreshed` is the finalize hook's honest output — the subset of `["latest_snapshot",
-    # "coverage", "membership_timeline", "market_phase", "forward_aggregates", "research_hot_keys",
-    # "drawdown_expectations", "index_series", "factor_lab_all", "availability_heatmap"]` it actually
-    # refreshed — empty/default until the hook has actually run (never fabricated on an
+    # "coverage", "membership_timeline", "market_phase", "next_session_manifest", "forward_aggregates",
+    # "research_hot_keys", "drawdown_expectations", "index_series", "factor_lab_all",
+    # "availability_heatmap"]` it actually refreshed — empty/default until the hook has actually run (never fabricated on an
     # interrupted/failed row; gated in `_run_detail()` the SAME way `calendar_days` etc. already are).
     new_snapshot_dates: list[date_cls] = field(default_factory=list)
     aggregates_refreshed: list[str] = field(default_factory=list)
@@ -4198,10 +4199,10 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
     never raises (the caller in `_run_job` wraps the whole call in its own try/except too, mirroring
     `_warm_membership_timeline`'s non-fatal contract in warmup.py — an aggregate-refresh failure must never
     flip an otherwise-successful ingest job to failed). Returns the subset of `["latest_snapshot",
-    "coverage", "membership_timeline", "market_phase", "forward_aggregates", "research_hot_keys",
-    "drawdown_expectations", "index_series", "factor_lab_all", "availability_heatmap"]` ACTUALLY
-    refreshed — never a fabricated category (mirrors the `omitted`/`passers` honesty convention already
-    used elsewhere in this module).
+    "coverage", "membership_timeline", "market_phase", "next_session_manifest", "forward_aggregates",
+    "research_hot_keys", "drawdown_expectations", "index_series", "factor_lab_all",
+    "availability_heatmap"]` ACTUALLY refreshed — never a fabricated category (mirrors the
+    `omitted`/`passers` honesty convention already used elsewhere in this module).
 
     ops-hardening iter-4 (F1 fix): calls the bare `prog.tick()` (no `activity` argument — it stamps ONLY
     the `last_progress_at` heartbeat, never overwriting `current_activity`, so an already-pinned "scanning
@@ -4509,6 +4510,41 @@ def _refresh_ingest_aggregates(session: Session, cfg: Config, prog: JobProgress)
             logger.info(
                 "J-05 finalize-tail phase timing: job=%s phase=%s elapsed=%.2fs",
                 prog.job_id, "market_phase_warm", time.monotonic() - _phase_t0,
+            )
+
+            # goal-market-compass iter-2 (J-02/J-03/J-04): compute + store the next-session manifest
+            # CONTENT block for each newly produced frontier date, if none exists yet. Placed AFTER the
+            # market-phase warm above (the narrative's state/direction sentences read
+            # `market_phase.market_phase_cached` — already warm by this point in the SAME pass, so this
+            # phase never pays a redundant compute) and BEFORE the forward-aggregates phase below (this is
+            # a bounded, per-date compute over already-stored scores, not a long aggregate warm). Own
+            # try/except (isolate-and-continue, mirroring the market-phase loop above) so a producer
+            # failure here never blocks or crashes the rest of the finalize tail (TC-31).
+            prog.enter_finalize_phase("compass content")
+            _phase_t0 = time.monotonic()
+            compass_warmed = False
+            for d in prog.new_snapshot_dates:
+                prog.tick()
+                time.sleep(0)
+                try:
+                    run_for_date = scanner.get_run_for_date(session, d)
+                    if run_for_date is not None:
+                        compass.get_or_create_manifest(session, run_for_date, cfg)
+                        compass_warmed = True
+                except MemoryError as exc:
+                    _log_isolation_failure(
+                        "ingest compass-content warm aborted at %s — memory pressure, stopping remaining "
+                        "dates in this loop: %s", d, exc,
+                    )
+                    _release_process_memory()
+                    break
+                except Exception as exc:  # noqa: BLE001 — non-fatal: log + continue to the next date/aggregate
+                    _log_isolation_failure("ingest compass-content warm failed for %s (non-fatal): %s", d, exc)
+            if compass_warmed:
+                refreshed.append("next_session_manifest")
+            logger.info(
+                "J-05 finalize-tail phase timing: job=%s phase=%s elapsed=%.2fs",
+                prog.job_id, "compass_content_warm", time.monotonic() - _phase_t0,
             )
 
             # ops-hardening iter-5 (J-06): warm the CURRENT latest stored run's per-horizon forward-aggregate
