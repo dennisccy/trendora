@@ -158,3 +158,20 @@ run 3081, and step 2's intent was met more strongly than its literal wording —
 `select.options` directly and confirmed the Unassigned option does not exist at all. The owner-facing
 request to reword both steps stays open and is repeated in this iteration's evaluation.
 **Reversible:** yes
+
+## iter-3 — goal-decomposer
+
+**Ambiguity:** Priority-rubric rule 5 says "never bundle two risky journeys... a joint failure is
+undiagnosable," but the iter-2 evaluator's binding next-step explicitly recommends building J-05
+"Each close freezes one next-session manifest" together with J-06 "A frozen manifest never changes"
+in one iteration. Nothing in the agent instructions or goal.md says whether a journey PAIR whose
+acceptance steps are sequentially dependent (every J-06 step operates on a manifest J-05's own step 1
+already produced) counts as "two risky journeys" for rule 5's purposes.
+**We chose:** Treated J-05+J-06 as one cohesive feature examined from two acceptance angles (freeze-and-
+stamp, then prove immutability) rather than two independent risky bets, and built them together at full
+depth per the evaluator's explicit recommendation. The determining fact is dependency direction: J-06's
+five steps all require J-05's manifest/columns to already exist, so splitting them into separate
+iterations would not reduce diagnosability (a J-06-only iteration cannot even start without J-05's
+schema) — it would only mean opening the same writer path twice. This reading is consistent with, not a
+deviation from, priority-rubric rule 3 (unblocker) and rule 4 (smallest coherent spec).
+**Reversible:** yes

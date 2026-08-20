@@ -60,23 +60,54 @@ The other ten nav entries keep their route, order position, and content unchange
 
 | Value / entity | Computed by (single module/function) | Served by (single endpoint) | Notes |
 |---|---|---|---|
-| Next-session manifest — CONTENT block (`session_delta`, `narrative.sentences`, `selection.candidates`, `selection.why_not`, `selection.disposition_tally`, `content_hash`) | `app.engine.compass.build_manifest_payload` (assembles `app.engine.session_delta.compute_delta`, the narrative sentence builder, and `app.engine.compass.evaluate_selection`) — **[TARGET — iter-2 build]** | `GET /api/compass` — **[TARGET — iter-2 build]** | stored in `next_session_manifests` (iter-2 schema: `as_of`, the three content blocks, `content_hash`, `created_at`, source-run link); computed once at ingest finalize (or once on first GET for a not-yet-computed `as_of`) and served from storage thereafter — zero producer calls on a warm hit |
-| Next-session manifest — FREEZE/INTEGRITY block (`mode`, `version`, `frozen`, `generation.*`, engine identity, `candidate_rule_hash`, `cohort_rule_hash`, `manifest_config_hash`, dataset/universe stamps, `comparison_cohort` + `near_threshold_shadow` as frozen stored rows with full matching-context, `prospective_eligible`, `available_at_utc`, `manifest_hash`, exported file) | SAME `app.engine.compass.build_manifest_payload` + `persist_manifest` **[TARGET — J-05/J-06]** | SAME `GET /api/compass` (additive response fields) **[TARGET — J-05/J-06]** | additive columns onto `next_session_manifests` **[TARGET]**; export file bytes == stored `payload_json`; validates against `docs/handoffs/trendora-next-session-manifest-v1.schema.json` **[TARGET]**; append-only, never UPDATEd (AG-12) |
-| Engine identity | `app.engine.engine_identity` **[TARGET]** | embedded in `GET /api/compass` (`generation.engine_identity`) and `GET /api/runs` (`ScannerRun.engine_identity`, additive nullable column) | stamped only at manifest build / `persist_run_payload`; pre-existing rows stay NULL ("pre-stamping era") |
+| Next-session manifest — CONTENT block (`session_delta`, `narrative.sentences`, `selection.candidates`, `selection.why_not`, `selection.disposition_tally`, `content_hash`) | `app.engine.compass.build_manifest_payload` (assembles `app.engine.session_delta.compute_delta`, the narrative sentence builder, and `app.engine.compass.evaluate_selection`) — **[LIVE — iter-2 build]** | `GET /api/compass` — **[LIVE — iter-2 build]** | stored in `next_session_manifests` (iter-2 schema: `as_of`, the three content blocks, `content_hash`, `created_at`, source-run link); computed once at ingest finalize (or once on first GET for a not-yet-computed `as_of`) and served from storage thereafter — zero producer calls on a warm hit |
+| Next-session manifest — FREEZE/INTEGRITY block (`mode`, `version`, `frozen`, `generation.*`, engine identity, `candidate_rule_hash`, `cohort_rule_hash`, `manifest_config_hash`, dataset/universe stamps, `comparison_cohort` + `near_threshold_shadow` as frozen stored rows with full matching-context, `prospective_eligible`, `available_at_utc`, `manifest_hash`, `caveats`, exported file) | SAME `app.engine.compass.build_manifest_payload`/writer + `app.engine.engine_identity` for the identity value **[TARGET — iter-3 build in progress]** | SAME `GET /api/compass` (additive response fields) — plus a NEW action endpoint `POST /api/compass/regenerate` that mints a new version through the identical writer (an action route, not a second read path) **[TARGET — iter-3 build in progress]** | additive columns onto `next_session_manifests` **[TARGET]**; the iter-2 single-column `as_of` UNIQUE index is replaced by a composite `(as_of, version)` UNIQUE index (constraint/index change only — no existing row's stored values change); export file bytes == stored `payload_json` (at-ingest mode only); validates against `docs/handoffs/trendora-next-session-manifest-v1.schema.json` **[TARGET]**; append-only, never UPDATEd (AG-12) |
+| Engine identity | `app.engine.engine_identity` **[TARGET — iter-3 build in progress]** | embedded in `GET /api/compass` (`generation.engine_identity`) and `GET /api/runs` (`ScannerRun.engine_identity`, additive nullable column) | stamped only at manifest build / `persist_run_payload`; pre-existing rows stay NULL ("pre-stamping era") |
 | Stock sector label | `ScannerResult.sector`, stored once at scan time in `scoring.score_stocks` — `config.stock_sectors` first, pool-CSV fallback via `universe.pool_sector_aliases` second (**[LIVE — iter-1]**, `scoring.py:453-458`) | `GET /api/stocks`, `GET /api/stocks/{ticker}` | current-only basis (no point-in-time sector history — B-114 stays open); unknown serves `sector: null` → UI renders "Unassigned", never fabricated; new-run Unassigned coverage 0/539 as of run 3081 |
 | Regime label + score | existing engine module (unchanged this session) | `GET /api/dashboard` | compass reads this value, never recomputes it |
 | Market phase, severity, P(bear) | existing engine module (unchanged) | `GET /api/market-phase` | compass reads this value, never recomputes it |
 | Breadth level + direction | existing engine module (unchanged) | `GET /api/dashboard` | compass reads this value, never recomputes it |
 | Sector / theme scores + ranks | `sectors.score_sectors` (verified) / `themes.py` (unchanged) | `GET /api/sectors`, `GET /api/themes` | delta engine reads stored rank rows only (column-projected), never recomputes ranks (AG-8) |
 | Stock leadership/entry/risk scores, buckets, setup status | existing scoring/setups modules (unchanged) | `GET /api/stocks` | candidate cards + why-not entries re-read these rows verbatim; no composite score is ever added (AG-11) |
-| Evidence / certified-claim ledger status | existing evidence module (unchanged) | `GET /api/evidence` | today: 7 entries, all FAIL → every score reads "Not yet proven"; compass evidence chips read the same ledger, never a second status (AG-1) |
+| Evidence / certified-claim ledger status | existing evidence module (unchanged) | `GET /api/evidence` | today: 7 entries, all FAIL → every score reads "Not yet proven"; compass evidence chips read the same ledger, never a second status (AG-1); the manifest's `caveats.evidence` field (iter-3) composes this SAME status into the exported artifact, never a second computation |
 | Coverage payload | `data_manager.coverage_from_storage` (unchanged, verified) | `GET /api/data` | compass narrative may cite coverage/staleness FACTS only, never readiness/preflight tokens (AG-13) |
 | Run summary / scanner runs list | existing (unchanged, verified route at `runs.py:25`) | `GET /api/runs` | What-changed's prior-session anchor = the row immediately preceding the current as-of here |
 | Readiness / preflight state | existing readiness module (unchanged) | dashboard/health chrome (layout, above the page body) | vocabulary (Ready / GO / DEGRADED / NO-GO) never appears inside market-state surfaces, and market/regime vocabulary never appears in chrome (AG-13) |
 
-Rows marked **[TARGET]** do not exist yet as of this baseline — confirmed by direct search across
-`apps/backend/app/engine/`, `apps/backend/app/api/`, and `apps/backend/app/models.py`. All other
-rows are pre-existing canonical values this session's new work must READ from their listed
-endpoint, never re-derive or re-fetch from a second path.
+Rows marked **[TARGET]** are not yet built/verified as of this note — confirmed by direct search
+across `apps/backend/app/engine/`, `apps/backend/app/api/`, and `apps/backend/app/models.py`. Rows
+marked **[LIVE]** are built and evaluator-confirmed. All other rows are pre-existing canonical values
+this session's new work must READ from their listed endpoint, never re-derive or re-fetch from a
+second path.
 
-**iter-2 update (2026-08-20):** the Next-session manifest row above is split into its CONTENT block (this iteration's build target) and its FREEZE/INTEGRITY block (a later target, J-05/J-06) — both blocks are fields of the SAME document, built by the SAME `build_manifest_payload` function and served by the SAME `GET /api/compass` endpoint; the split records phased delivery, not a second producer or a second endpoint. J-05/J-06 extend `next_session_manifests` with additive columns only (mode, version, frozen, hashes, provenance, cohort storage, `prospective_eligible`, `available_at_utc`) — never a schema change to the iter-2 columns. The Stock sector label row is updated to reflect J-01's pool-CSV fallback, which shipped live in iter-1.
+**iter-2 update (2026-08-20):** the Next-session manifest row above is split into its CONTENT block
+(this iteration's build target) and its FREEZE/INTEGRITY block (a later target, J-05/J-06) — both
+blocks are fields of the SAME document, built by the SAME `build_manifest_payload` function and served
+by the SAME `GET /api/compass` endpoint; the split records phased delivery, not a second producer or a
+second endpoint. J-05/J-06 extend `next_session_manifests` with additive columns only (mode, version,
+frozen, hashes, provenance, cohort storage, `prospective_eligible`, `available_at_utc`) — never a
+schema change to the iter-2 columns. The Stock sector label row is updated to reflect J-01's pool-CSV
+fallback, which shipped live in iter-1.
+
+**iter-3 update (2026-08-20):** the FREEZE/INTEGRITY block row now has its concrete field set locked
+for build: `mode`, `version`, `frozen`, `generation.{producer, frontier_bar_date, generated_at,
+preflight_verdict, engine_identity}`, `candidate_rule_hash` + config subset, `cohort_rule_hash` +
+config subset, `manifest_config_hash` + config subset, `dataset` stamp, `universe.{pool_hash,
+resolver_gate, member_count, profile}`, `comparison_cohort[]` (every non-candidate member + frozen
+matching-context + `selection_disposition`), `near_threshold_shadow[]` (same frozen context,
+leadership-banded), `prospective_eligible`, `available_at_utc`, `manifest_hash`, `caveats.{evidence,
+survivorship, sector_basis, cohort_semantics}` — still the SAME producer (the extended
+`app.engine.compass` freeze writer, plus `app.engine.engine_identity` for the identity value alone)
+and the SAME read endpoint `GET /api/compass`. A NEW action endpoint,
+`POST /api/compass/regenerate?as_of=<date>` (confirm-gated), mints an explicit new version through the
+IDENTICAL writer — this is an action route, not a second read path, so "one serving endpoint" still
+holds for reads. Storage stays the SAME `next_session_manifests` table via additive columns; its
+single-column `as_of` UNIQUE index is replaced by a composite `(as_of, version)` UNIQUE index via the
+existing idempotent `_INDEX_DROPS`/`_INDEX_ADDS` pattern (`app/db.py`) so multiple versions per date can
+coexist — a constraint/index change only, no existing row's stored VALUES change, so this stays
+additive per goal.md's own framing of J-05/J-06 as extending iter-2's table. Existing pre-iter-3 rows
+backfill `version=1` with `mode`/`frozen`/hashes NULL/false (a "pre-freeze era" marker, never
+retroactively marked frozen), mirroring the `ScannerRun.engine_identity` NULL-legacy-row precedent.
+`[TARGET]` tags on the FREEZE/INTEGRITY and Engine identity rows flip to `[LIVE]` only once the
+goal-evaluator confirms J-05/J-06 passing with evidence — this note records the iter-3 PLAN, not a
+delivered/verified state.
