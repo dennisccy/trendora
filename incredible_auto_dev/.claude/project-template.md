@@ -1,7 +1,8 @@
-# Project Configuration Template
+# Project Configuration — Trendora
 
-Copy this file into your project's `.claude/` directory and fill in every section.
-Agents read this file to understand your project's stack, conventions, and constraints.
+Filled 2026-08-20 (was the unfilled framework template; agents previously had no
+authoritative commands and improvised — including resource-heavy test runs).
+Agents read this file to understand the stack, conventions, and constraints.
 
 ---
 
@@ -11,91 +12,80 @@ Agents read this file to understand your project's stack, conventions, and const
 Goal document: docs/goal.md
 ```
 
-Fill in `docs/goal.md` (use `templates/project-goal.md` as a starting point).
-The goal doc defines the project's vision, target users, success criteria, key capabilities, and non-goals/scope boundaries.
-All agents read this before starting any phase to ensure alignment.
+`docs/goal.md` is the binding product contract (vision, Must-have journeys J-01…,
+anti-goals AG-1…, binding traps). All agents read it before any phase/iteration.
 
 ---
 
 ## PROJECT
 
 ```
-Name:        <your project name>
-Description: <one-line description of what this project does>
-Repository:  <git remote URL>
+Name:        Trendora
+Description: Deterministic US-equity market scanner — 30 years of daily history,
+             append-only scanner snapshots, evidence-gated signals, and a
+             next-session "market compass" UI.
+Repository:  git@github.com:dennisccy/trendora.git
 ```
 
 ---
 
 ## STACK
 
-Define your technology stack. Agents use this to know which commands to run and which files to touch.
-
 ```
 Backend:
-  Language:   <e.g., Python 3.12>
-  Framework:  <e.g., FastAPI, Django, Express, Rails>
-  ORM/DB lib: <e.g., SQLAlchemy 2.0, Prisma, ActiveRecord>
-  Migrations: <e.g., Alembic, Flyway, Prisma Migrate, rake db:migrate>
-  Test runner: <e.g., pytest, jest, rspec>
-  Package mgr: <e.g., pip + uv, npm, cargo, bundler>
-  Venv/env:   <e.g., apps/backend/.venv/, node_modules/ (auto)>
+  Language:   Python 3.12 (venv pinned 3.12.13)
+  Framework:  FastAPI 0.115.6 + uvicorn 0.34.0 (entry: apps/backend/main.py)
+  ORM/DB lib: SQLModel 0.0.22 (SQLAlchemy 2.x) — tables in app/models.py
+  Migrations: NONE (no Alembic). Schema evolves via additive ALTER TABLE in
+              app/db.py at startup — add-column only, never destructive.
+  Test runner: pytest 8.3.4 + pytest-asyncio 0.25.0 (single-process; xdist NOT installed)
+  Package mgr: pip (apps/backend/requirements.txt, pinned)
+  Venv/env:   apps/backend/.venv/
 
 Frontend:
-  Enabled:    yes/no
-  Framework:  <e.g., Next.js 15 App Router, Vue 3, SvelteKit> (or "N/A")
-  Language:   <e.g., TypeScript>
-  Styling:    <e.g., CSS modules, Tailwind, styled-components>
-  Package mgr: <e.g., npm, pnpm, yarn>
+  Enabled:    yes
+  Framework:  Next.js 15.1.3 App Router (apps/frontend/app/)
+  Language:   TypeScript
+  Styling:    Tailwind (class-based dark mode) + shadcn-style components in
+              apps/frontend/components/ui/
+  Package mgr: npm
 
 Database:
-  Type:       <e.g., SQLite, PostgreSQL, MySQL, MongoDB>
-  Location:   <e.g., apps/backend/app.db, postgresql://localhost:5432/mydb>
+  Type:       SQLite (WAL). All pragmas/pool sizing come from root config.yaml
+              `database:` — the ONLY place tunables live (anti-goal: no magic numbers).
+  Location:   apps/backend/data/trendora.db  (~7.8 GB, gitignored — see NOTES)
 
 Services:
-  Backend URL:  http://localhost:<port>
-  Frontend URL: http://localhost:<port>  (or "N/A")
-  Health check: <e.g., http://localhost:8000/health>
+  Backend URL:  http://localhost:8000   (CHAIN_BACKEND_PORT overrides)
+  Frontend URL: http://localhost:3000   (CHAIN_FRONTEND_PORT overrides)
+  Health check: http://localhost:8000/api/health
 ```
 
 ---
 
 ## DESIGN SYSTEM
 
-Define your project's visual identity. Agents use this to ensure consistent, polished UI output.
-
 ```
-Component library: <e.g., shadcn/ui, Radix + Tailwind, Material UI, Chakra UI>
-Icon library:      <e.g., Lucide, Heroicons, Phosphor>
+Component library: shadcn-style primitives in apps/frontend/components/ui/
+                   (Card, Badge, Disclosure, …) — reuse these, do not add a new library
+Icon library:      lucide-react
 
-Visual style:      <e.g., cyber-dark, minimal-light, corporate-clean>
-Color mode:        <dark / light / system>
+Visual style:      data-dense analytical dashboard; restrained, evidence-first
+Color mode:        class-based dark mode (tailwind.config.ts darkMode: ["class"])
 
-Color palette:
-  Background:      <e.g., #0a0a0f — deep dark base>
-  Surface:         <e.g., #12121a — card/panel background>
-  Border:          <e.g., #1e1e2e — subtle borders>
-  Primary:         <e.g., #00f0ff — neon cyan accent>
-  Secondary:       <e.g., #7c3aed — electric purple>
-  Success:         <e.g., #10b981>
-  Warning:         <e.g., #f59e0b>
-  Danger:          <e.g., #ef4444>
-  Text primary:    <e.g., #e2e8f0 — high contrast on dark>
-  Text muted:      <e.g., #64748b>
+Color palette:     Defined as CSS custom properties in apps/frontend/app/globals.css
+                   and mapped in tailwind.config.ts — extend THOSE tokens; never
+                   hard-code new hex values in components.
 
-Typography:
-  Font family:     <e.g., Inter for body, JetBrains Mono for code/data>
-  Scale:           <e.g., Tailwind default: text-sm/base/lg/xl/2xl>
+Typography:        Font families defined in tailwind.config.ts fontFamily; Tailwind
+                   default type scale (text-sm/base/lg/xl/2xl).
 
-Spacing:           <e.g., Tailwind default 4px grid: p-1/p-2/p-3/p-4/p-6/p-8>
+Spacing:           Tailwind default 4px grid.
 
-Effects (use sparingly):
-  - <e.g., glassmorphism on cards: backdrop-blur-md bg-white/5 border border-white/10>
-  - <e.g., glow on primary actions: shadow-[0_0_15px_rgba(0,240,255,0.3)]>
-  - <e.g., subtle gradient borders on hero sections>
-  - <e.g., smooth transitions: transition-all duration-200>
+Effects:           Subtle only (existing transitions/borders). No new glows/gradients
+                   without a journey that asks for them.
 
-Responsive breakpoints: <e.g., sm:640px md:768px lg:1024px xl:1280px>
+Responsive:        Tailwind defaults (sm 640 / md 768 / lg 1024 / xl 1280).
 ```
 
 ---
@@ -105,11 +95,28 @@ Responsive breakpoints: <e.g., sm:640px md:768px lg:1024px xl:1280px>
 Agents will run these to validate their work. Be exact.
 
 ```
-Backend tests:  <e.g., cd apps/backend && .venv/bin/python -m pytest tests/ -v>
-Frontend tests: <e.g., cd apps/frontend && npm test -- --passWithNoTests> (or "N/A")
-Migrations:     <e.g., cd apps/backend && .venv/bin/alembic upgrade head> (or "N/A")
-Lint:           <e.g., cd apps/backend && .venv/bin/ruff check .> (or "N/A")
+Backend tests (TARGETED ONLY — the only sanctioned form):
+    cd apps/backend && .venv/bin/python -m pytest tests/test_<module>.py -v
+  Run ONLY the test files for the modules you touched (plus any new test files).
+  New tests must be file-scoped with small synthetic fixtures (docs/goal.md:
+  "the full suite takes hours and is never run by pipeline agents").
+
+Frontend "tests" = the production compile + typecheck:
+    cd apps/frontend && npm run build
+Migrations:     N/A (additive ALTERs run automatically at backend startup)
+Lint:           frontend: cd apps/frontend && npm run lint
+                backend:  N/A (no linter pinned; the post-edit hook py_compiles)
 ```
+
+**NEVER (resource contract — a 26.7 GB host; violations have frozen the machine):**
+- NEVER run the full backend suite (`pytest tests/`, `pytest` bare, or `-k`-wide
+  sweeps). It builds the 30-year `loaded_engine` fixture — multi-GB resident,
+  multi-hour wall — and is run only by the owner via `scripts/run_iter18_fullsuite.sh`.
+- NEVER run two pytest processes concurrently (each can hold a multi-GB fixture).
+- NEVER copy, move, or open-for-write `apps/backend/data/trendora.db` (7.8 GB).
+  The memory-pressure test modules that copy it are owner-run only.
+- NEVER start a second backend/frontend when the canonical ports (8000/3000 or
+  the CHAIN_* pins) already answer — reuse the running service.
 
 ---
 
@@ -118,9 +125,13 @@ Lint:           <e.g., cd apps/backend && .venv/bin/ruff check .> (or "N/A")
 Used by qa-phase.sh to auto-start services during QA validation.
 
 ```
-Start backend:  <e.g., bash scripts/start-backend.sh> (or set CHAIN_START_BACKEND_CMD env var)
-Start frontend: <e.g., bash scripts/start-frontend.sh> (or set CHAIN_START_FRONTEND_CMD env var)
+Start backend:  bash scripts/start-backend.sh    (applies config.yaml server caps:
+                ulimit -v memory_cap_mb, MALLOC_ARENA_MAX, uvicorn limit-concurrency)
+Start frontend: bash scripts/start-frontend.sh   (builds only when stale, then next start)
 ```
+
+Always start services through these scripts — they carry the HOST-GUARD cap blocks
+(stripping those blocks is a REGRESSION per docs/goal.md AG-10).
 
 ---
 
@@ -128,49 +139,49 @@ Start frontend: <e.g., bash scripts/start-frontend.sh> (or set CHAIN_START_FRONT
 
 ```
 Phase spec directory:   docs/phases/
-Phase spec naming:      <phase-id>.md  OR  <phase-id>-<name>.md
-                        Example: phase-3.md  OR  phase-3-user-auth.md
+Phase spec naming:      goal-<session>-iter-<N>.md (goal mode) / <phase-id>-<name>.md
 ```
 
 ---
 
 ## ROADMAP
 
+Goal-mode project — the roadmap IS `docs/goal.md`'s Must-have journeys plus
+`runs/goal-session-<sid>/journey-history.json`. This table is not used.
+
 | Phase | Name | Status |
 |-------|------|--------|
-| phase-1 | ... | ✅ Complete / 🔄 In Progress / Future |
-| phase-2 | ... | Future |
+| goal: market-compass | see docs/goal.md journeys | 🔄 In Progress |
 
 ---
 
 ## ARCHITECTURE PRINCIPLES
 
-List project-specific rules ALL agents must follow when writing code.
-Example:
-- Keep API routes thin — business logic lives in services, not routers
-- All database access goes through the repository layer
-- Frontend never contains business logic — calls backend APIs only
-- Every resource has explicit status transitions; invalid transitions are rejected
-
 ```
-- <principle 1>
-- <principle 2>
-- <principle 3>
+- No magic numbers: every threshold/weight/tunable lives in root config.yaml and is
+  loaded through the typed loader in app/config.py (tests/test_no_magic_numbers.py
+  enforces this). Never inline a numeric decision value in engine code.
+- Single producer / canonical values: displayed values are served from stored
+  snapshots (app/engine/snapshot_serving.py) or the evidence resolver
+  (app/engine/evidence.py, which RECOMPUTES NOTHING). Never recompute a Data
+  Contract value in a new code path — the coherence audit hard-fails it.
+- Scanner snapshots are append-only; a resolved ScannerRun is immutable.
+- Evidence gating: an unbacked signal renders "Not yet proven", never a confident
+  number (docs/goal.md anti-goal).
+- Frontend contains no business logic — it calls the backend via
+  apps/frontend/lib/api.ts typed fetchers only.
+- Keep API routes thin: engine logic lives in app/engine/*, routes in app/api/*.
 ```
 
 ---
 
 ## DATA MODEL RULES
 
-Project-specific conventions for data modeling.
-Example:
-- Use UUID string primary keys (not auto-increment integers)
-- All timestamps are UTC ISO 8601 strings
-- JSON fields only where schema flexibility is explicitly required
-
 ```
-- <rule 1>
-- <rule 2>
+- SQLModel tables in app/models.py; schema changes are additive-only ALTERs wired
+  in app/db.py (add nullable columns; index changes use explicit named ix_/uq_).
+- Dates are trading-day ISO strings (YYYY-MM-DD); "as-of" semantics everywhere.
+- JSON columns only where the spec explicitly calls for schema flexibility.
 ```
 
 ---
@@ -178,23 +189,31 @@ Example:
 ## GIT WORKFLOW
 
 ```
-Branch naming:      phase/<phase-id>
-PR title format:    feat: <phase-id> — <one-line summary>
+Branch naming:      goal/<session-id> (goal mode) / phase/<phase-id>
+PR title format:    feat: <iter/phase id> — <one-line summary>
 Main branch:        main
 Never commit:
-  - .env
-  - *.db  (or your specific database file)
-  - credentials.json
-  - <any other project-specific secrets or large binaries>
+  - .env, credentials.json, any secrets
+  - *.db / apps/backend/data/ (7.8 GB live database — gitignored; keep it that way)
+  - node_modules/, .venv/, .next*/ build output
+  - seed CSVs beyond the committed seed set
 ```
 
 ---
 
 ## NOTES FOR AGENTS
 
-Any additional context that doesn't fit the above categories:
-
 ```
-- <note 1>
-- <note 2>
+- RESOURCE BUDGET IS BINDING (docs/goal.md AG-10): this is a 26.7 GB / 16-thread
+  host shared with a desktop session and a sibling project. The backend runs under
+  ulimit -v memory_cap_mb (config.yaml server:) — treat OOM/MemoryError inside the
+  backend as a real product bug, not an environment nuisance.
+- 2026-08-20 incident: goal-mode runs froze the desktop via memory overcommit +
+  swap-thrash. The mitigations are the TEST COMMANDS never-list above and the
+  resource-fit work in docs/goal.md — do not undo either.
+- The full 30-year dataset is the committed seed (docs/goal.md AG-9: no network
+  ingest). Product boots fast; only the full test suite is slow — do not conflate.
+- Long-running commands: prefer targeted work; anything expected to exceed ~10
+  minutes belongs to the owner, not a pipeline agent, unless the iteration spec
+  says otherwise.
 ```

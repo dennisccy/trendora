@@ -129,6 +129,22 @@ manifest artifact (it must be self-describing and self-caveating).
 - New tests are synthetic-fixture, file-scoped (the full suite takes hours and is never run
   by pipeline agents); frontend logic tests are plain node scripts under
   `apps/frontend/lib/*.test.ts`.
+- **Host resource-fit (owner, 2026-08-20 — binding, after the desktop-freeze incident)**:
+  this is a 26.7 GB host shared with a desktop session and a sibling project; a goal-mode
+  run froze it via memory overcommit + swap-thrash. Standing rules, to land in the nearest
+  applicable slices (J-09 carries the config half):
+  (a) the three `*_memory_pressure` test modules (`test_evidence_drawdown_memory_pressure.py`,
+  `test_samples_memory_pressure.py`, `test_ingest_finalize_memory_pressure.py`) skip by
+  default behind an explicit `TRENDORA_MEMORY_PRESSURE=1` opt-in, and — like
+  `test_start_backend_script.py`'s three copy sites — must stop copying the live 7.8 GB
+  `data/trendora.db` (synthesize or subset a small DB instead); a targeted run without the
+  env completes in seconds as skips;
+  (b) the production `next build` is bounded to ≤ 4 workers (`experimental.cpus` or the
+  Next-15 equivalent in `next.config.mjs`) — today it fans out 16-way;
+  (c) `_BarCache.prefill`'s cold path is re-bounded to a configured memory budget (AG-8
+  restored) — read the iter-43 handoff FIRST and preserve whatever correctness reason
+  motivated its unbounding; if that reason conflicts with the bound, stop and surface it
+  for owner review instead of guessing.
 
 ## Design Direction
 
@@ -521,6 +537,46 @@ manifest artifact (it must be self-describing and self-caveating).
       historical Today with that date's manifest, viewable via
       `demo.sh market-compass --session-live`.
 
+- **J-09: The backend fits the host — standing memory halves with zero behavior change
+  (owner, 2026-08-20)**
+  - Why: on 2026-08-20 a goal-mode run froze this 26.7 GB host into swap-thrash and killed
+    the desktop session. The single biggest measured block is the SQLite pool page cache:
+    `database.pragmas.cache_size: -262144` (256 MB **per connection**) × `pool_size 24 +
+    max_overflow 44` ⇒ 6.1 GB steady / 17.4 GB worst in ONE backend — measured 4,837,420 kB
+    VmPeak at standing warm (`reports/perf-budgets.md`: the pool's own connection warm-up IS
+    the peak) — and full-depth iterations run TWO backends.
+  - Steps:
+    1. In `config.yaml`, change `database.pragmas.cache_size` from `-262144` to `-65536`
+       (256 MB → 64 MB page cache per connection). Change NOTHING else in the `database:`
+       block: `pool_size 24` / `max_overflow 44` stay exactly as they are — ops-hardening
+       iter-72 sized the pool sum (68) to clear `server.limit_concurrency` (64) after a real
+       pool-starvation outage; do not "helpfully" shrink the pool while touching the file
+    2. Re-run the standing-warm measurement that recorded 4,837,420 kB VmPeak (the
+       perf-budget drill's pool warm-up path) against a backend started via
+       `bash scripts/start-backend.sh`; read the backend's `VmPeak` from `/proc/<pid>/status`
+       and assert it is ≤ 2.5 GB
+    3. Append a dated re-measurement line to `reports/perf-budgets.md` (append beside the
+       old figure — never overwrite the recorded history)
+    4. Re-run the iter-71-class concurrent-load check: a request burst at
+       `server.limit_concurrency` completes with zero `QueuePool` TimeoutError (the pool
+       arithmetic is untouched; only the per-connection cache shrank)
+    5. Cite in the dev handoff a same-as-of spot-check that served values are byte-identical
+       before and after the change (`cache_size` is performance-only; no displayed value may
+       move)
+  - Acceptance:
+    - **Consistency (single source):** the value changes only in `config.yaml`
+      (`database.pragmas.cache_size`); no code path overrides or re-states it (anti-goal:
+      no magic numbers).
+    - **Correctness:** measured backend VmPeak at standing warm ≤ 2.5 GB (was 4,837,420 kB);
+      the concurrent-load check passes; the byte-identity spot-check holds.
+    - **Honest status & anti-goals:** the new measurement is appended dated next to the old
+      one; if the ≤ 2.5 GB target is missed, record the honest measured figure and stop for
+      owner review — never widen the target to pass. AG-10's resource contract is the
+      governing rule.
+    - **Walkthrough:** waived — deliberately backend-only (no UI surface changes); the
+      demo requirement is replaced by the dated VmPeak measurement and drill citations in
+      the dev handoff.
+
 <!-- Continuous-improvement auto-journeys: the goal-proposer appends NEW Must-have journeys ONLY
      between the two markers below (see the goal-self-extension skill). The human-authored journeys
      above and the Anti-goals below are never machine-edited. An empty block = nothing auto-proposed yet. -->
@@ -590,6 +646,11 @@ manifest artifact (it must be self-describing and self-caveating).
 - Suggested build order: J-01 (sector wiring — unblocks candidate sector context), then the engine cluster
   (J-02 delta + J-03 narrative + J-04 selection — one manifest producer), then the freeze/integrity pair
   (J-05, J-06), then the surface pair (J-07 Today, J-08 relocation). The decomposer may re-order with reasons.
+- **2026-08-20 owner insert: J-09 (host resource-fit) jumps the queue — build it as the NEXT slice** before
+  continuing J-05/J-06: it is small (one config value + measurements), and it is what lets full-depth
+  iterations (two backends) fit this host without freezing it. The Constraints "Host resource-fit" rules
+  (memory-pressure test gating, `next build` worker bound, prefill re-bound) ride the nearest applicable
+  slices after it.
 - Depth: lean by default; full when an iteration first lands user-visible UI changes.
 - Backlog cards partially pulled forward (mark `IN-GOAL.MD (scoped, market-compass)` in
   `docs/improvement-backlog.md`): B-306 (engine-identity stamping — scoped to manifests + new runs),
