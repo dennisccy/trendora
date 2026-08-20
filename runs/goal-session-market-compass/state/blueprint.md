@@ -111,3 +111,17 @@ retroactively marked frozen), mirroring the `ScannerRun.engine_identity` NULL-le
 `[TARGET]` tags on the FREEZE/INTEGRITY and Engine identity rows flip to `[LIVE]` only once the
 goal-evaluator confirms J-05/J-06 passing with evidence — this note records the iter-3 PLAN, not a
 delivered/verified state.
+
+**iter-5 note (2026-08-20 — informational, no contract change):** direct read-only inspection of the
+live DB found the production database's only possible manifest "frontier" date (2026-08-12, the
+current `daily_prices`/`scanner_runs` max) already carries 5 `next_session_manifests` rows from prior
+schema-migration and dev-testing activity, so the append-only, skip-if-exists writer can never mint a
+fresh version-1 `at_ingest`/`prospective_eligible: true` row there again — this slot is permanently
+burned independent of any future remove+backfill. Only 14 as-of dates total carry any manifest row;
+every other scanner_run date remains untouched and safe to use for non-frontier steps. iter-5 routes
+the flagship at-ingest-eligibility proof to the already-built fixture-scoped test suite
+(`test_manifest_invariants.py`, `test_ingest_finalize_compass.py`, each using its own isolated DB via
+`app.db.make_engine`) instead of a live drill against this burned slot. See
+`docs/phases/goal-market-compass-iter-5.md` BACKGROUND and
+`runs/goal-session-market-compass/state/assumptions.md` (iter-5 entry) for full detail. No Data
+Contract row, endpoint, or IA entry changes as a result of this note.
