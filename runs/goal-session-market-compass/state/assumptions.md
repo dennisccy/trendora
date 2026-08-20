@@ -214,3 +214,29 @@ eval.md and in the journey note so nothing is hidden. `partial` records the real
 versioning, immutability and the confirm gate all verified; one step unmet, two steps unrun); neither
 label supports GOAL_ACHIEVED, so the choice costs nothing at the gate and preserves diagnosis detail.
 **Reversible:** yes
+
+## iter-4 — goal-decomposer
+
+**Ambiguity:** J-09 step 2 says "Re-run the standing-warm measurement that recorded 4,837,420 kB
+VmPeak (the perf-budget drill's pool warm-up path) against a backend started via
+`bash scripts/start-backend.sh`". The original 4,837,420 kB figure (`reports/perf-budgets.md:12018-
+12055`) came from a ~31-minute, opt-in-gated live drill
+(`test_start_backend_phase_by_phase_vmpeak_profile_under_pool_pressure`,
+`TRENDORA_RUN_HEAVY_INGEST_TEST=1`) that triggered a real `backfill` + finalize tail under 5
+concurrent pressure workers — but that same source explicitly found "the peak was driven by the
+pool's own connection warm-up... plus the backfill's own brief scan, not by any individual
+finalize-tail phase," and J-09's own "Why" section states "the pool's own connection warm-up IS the
+peak." goal.md does not say whether "re-run the standing-warm measurement" requires repeating the
+FULL heavy drill (backfill + finalize tail, ~31 min wall time) or just the lighter pool-connection-
+warm-up mechanism the original drill itself identified as the actual driver.
+**We chose:** Directed the developer toward the LIGHTER path: start the backend fresh, drive enough
+concurrent read traffic to open the pool's persistent connections (reusing the existing pool-
+pressure/concurrent-load harness that the concurrent-load check already exercises), and read VmPeak
+at that standing-warm point — without requiring the full ~31-minute backfill+finalize-tail drill.
+This is grounded in the drill's own finding (pool warm-up, not finalize-tail compute, drove the
+peak) and reduces the chance of a repeat host incident from a heavy, long-running live job on a host
+that froze once already today — exactly the risk J-09 exists to reduce. The heavier drill remains an
+explicit fallback if the lighter path under-measures.
+**Reversible:** yes — if the reviewer/evaluator finds the lighter measurement doesn't reproduce a
+comparable peak, the full heavy drill remains available (still opt-in-gated, still host-guard-
+protected) as the fallback named in the iteration spec.
