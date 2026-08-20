@@ -1,0 +1,133 @@
+{
+  "journeys": {
+    "J-01": {
+      "id": "J-01",
+      "name": "Sector labels are honest and nearly complete on new runs",
+      "status": "passing",
+      "last_verified_iter": "goal-market-compass-iter-4",
+      "last_passing_iter": "goal-market-compass-iter-4",
+      "first_seen_iter": "goal-market-compass-iter-0",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-4-evidence/J-01-verify.png",
+      "spec_hash": "5217f3fe85d2a05c2f436d3ec6d140f2b7539b8798c161925a2e9e76ddab61f9",
+      "gap": "Acceptance met. RE-VERIFIED in iter-4 as a Required-still-passing regression check after the cache_size change (merged row UT-J-01 PASS): GET /api/stocks at the latest as-of (2026-08-12, 539 rows) returns 0 rows with sector null (0.0% Unassigned, against the <=5% bar); the Sector filter renders no 'Unassigned' option because zero rows qualify; NVDA ('Technology', config.stock_sectors) and GRMN ('Consumer Discretionary', pool-CSV fallback) agree across the leaderboard cell, the detail header badge and the API; /methodology's 'Stock sector labels' card discloses the two-source basis and the current-only limitation citing B-114. CAPTURE GAP ONLY (evidence_makeup): the [NEW]-flagged walkthrough (TC-32) is STILL missing and is now THREE iterations overdue -- iter-2 and iter-4 ran lean (no demo lane at all) and iter-3's demo run recorded 8 iter-3 steps with an empty Journey column. OWNER ACTION still open: goal.md J-01 step 1's destructive Remove+backfill precondition and step 2's 'select the Unassigned filter option' are both unexecutable as written (the option honestly disappears at 0% Unassigned) -- a wording amendment is needed before J-01 is ever re-run verbatim.",
+      "evidence_makeup": true,
+      "note": "iter-4: PASSING, re-verified. The deterministic replay lane FAILED this journey for the SECOND consecutive iteration with the identical message ('step 03 expected \"Consumer Discretionary\" did not appear') and the LLM lane again OVERTURNED it as a stale golden-script false positive; the merged file is authoritative and carries the dated reconciliation footer. I did not take that on trust: I opened J-01-verify.png myself and the /stocks row plainly shows GRMN with Sector 'Consumer Discretionary' rendered WRAPPED across two lines ('Consumer' / 'Discretionary'), at as-of 2026-08-12, filtered 1/539, with every score chip reading 'Not yet proven' (AG-1 honest). The wrap is the likely cause of the stored script's contiguous-text match failing -- the golden needs fixing, the product does not. I also opened UT-J-01-result.png (full-page /methodology) and confirmed the sector-basis disclosure card verbatim. Product code for this journey is byte-unchanged this iteration (diff = config.yaml + test_db.py only), so prior evidence stays valid under evidence durability. evidence_makeup KEPT: the outstanding capture KIND is a walkthrough recording, and no demo lane ran at lean depth."
+    },
+    "J-02": {
+      "id": "J-02",
+      "name": "What changed since the previous session",
+      "status": "passing",
+      "last_verified_iter": "goal-market-compass-iter-4",
+      "last_passing_iter": "goal-market-compass-iter-4",
+      "first_seen_iter": "goal-market-compass-iter-0",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-4-evidence/J-02-verify.png",
+      "spec_hash": "4a55fbb172e17090c2d095af6a36d95e08edadeda2ed05941cbe3ce9476eb993",
+      "gap": "Acceptance met. RE-VERIFIED in iter-4 by deterministic replay end-to-end (merged row UT-J-02 PASS) as a Required-still-passing check after the cache_size change. Substance verified in iter-2/iter-3 and unchanged since: the What-changed card at as-of 2026-08-12 is headed 'vs 2026-08-11 (1 day ago)', lists 17 threshold-clearing entries in kind order with from -> to values and ?asof-carrying drill links, and its 'Suppressed moves (28)' disclosure count equals its 28 listed sub-threshold entries; sole producer app.engine.session_delta.compute_delta served only by GET /api/compass; the UI evaluates no threshold. CAPTURE GAP ONLY (evidence_makeup): no [NEW]-flagged walkthrough (TC-32), three iterations overdue.",
+      "evidence_makeup": true,
+      "note": "iter-4: PASSING. Deterministic replay PASS, merged row PASS. Evaluator spot-check (methodology A.4): I opened J-02-verify.png -- the page at as-of 1996-02-01 (earliest stored session) with 'What changed -> This is the earliest stored session - there is no prior session to compare against' and 'Suppressed moves (0)', which is this journey's own honest-empty assertion. Consistent with the recorded status; no contradiction, so no widening to a full walk. Product code byte-unchanged this iteration. evidence_makeup KEPT (no demo lane at lean depth)."
+    },
+    "J-03": {
+      "id": "J-03",
+      "name": "Plain-English summary with cited facts",
+      "status": "passing",
+      "last_verified_iter": "goal-market-compass-iter-4",
+      "last_passing_iter": "goal-market-compass-iter-4",
+      "first_seen_iter": "goal-market-compass-iter-0",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-4-evidence/J-03-verify.png",
+      "spec_hash": "81cd6c9267c0d734cd88b19f43baf53bcab70c7b60d60cd5b2018a76425e87e7",
+      "gap": "Acceptance met. RE-VERIFIED in iter-4 by deterministic replay end-to-end (merged row UT-J-03 PASS) as a Required-still-passing check after the cache_size change. Substance verified in iter-2/iter-3 and unchanged since: all four sentences (state, direction, breadth, focus_count) render as served text each carrying its template_id and cited facts; the cited numbers equal the canonical tiles rendered lower on the SAME page at both dates tested (73.24 / 25.84 at 2026-08-12; 57.9 / 36.6 at 2026-07-23); banned-language guard committed at config.yaml:1435-1447 with a runtime check; content_hash byte-identical across repeated API calls. CAPTURE GAP ONLY (evidence_makeup): no [NEW]-flagged walkthrough (TC-32), three iterations overdue.",
+      "evidence_makeup": true,
+      "note": "iter-4: PASSING. Deterministic replay PASS ('journey replayed end-to-end; all expects held'), merged row PASS, own byte-distinct frame (md5 d6e44d7d, all five iter-4 screenshots md5-checked and distinct -- iter-3's duplicate/blank-frame problem did not recur). Product code byte-unchanged this iteration (diff = config.yaml + test_db.py), and the byte-identity spot check on GET /api/compass proves this journey's served payload did not move. evidence_makeup KEPT (no demo lane at lean depth)."
+    },
+    "J-04": {
+      "id": "J-04",
+      "name": "Each next-session candidate explains why and why-not",
+      "status": "passing",
+      "last_verified_iter": "goal-market-compass-iter-4",
+      "last_passing_iter": "goal-market-compass-iter-4",
+      "first_seen_iter": "goal-market-compass-iter-0",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-4-evidence/J-04-verify.png",
+      "spec_hash": "d1521389ca8fcf3fd1b7ac60e53bdb9608112247219ccbbea2ae66e99bff8ad0",
+      "gap": "Acceptance met. RE-VERIFIED in iter-4 by deterministic replay end-to-end (merged row UT-J-04 PASS) as a Required-still-passing check after the cache_size change. Substance verified in iter-2/iter-3 and unchanged since: the GWW candidate card at as-of 2026-07-23 shows the three existing scores with config word maps, three WHY lines citing threshold + actual, the ATR_RISK_BUDGET caution, an Eligibility checklist that reproduces inclusion, a 'What would change this' panel and a 'Not priority (20)' list naming each failed condition with its distance; disposition tallies partition exactly at both dates tested. CAPTURE GAP ONLY (evidence_makeup): no [NEW]-flagged walkthrough (TC-32), three iterations overdue. PRODUCT-QUALITY FLAG for the owner (not a defect, unchanged): zero names clear the three-qualifier rule on the current frontier date, so the headline section is honestly empty today; any threshold change must be owner-sanctioned and must never be tuned from realized returns (AG-15).",
+      "evidence_makeup": true,
+      "note": "iter-4: PASSING. Deterministic replay PASS, merged row PASS, own byte-distinct frame (md5 9bb874a2). Product code byte-unchanged this iteration; the byte-identity spot check on GET /api/compass at a fixed as-of proves the candidate payload did not move. evidence_makeup KEPT (no demo lane at lean depth)."
+    },
+    "J-05": {
+      "id": "J-05",
+      "name": "Each close freezes one next-session manifest, exported byte-consistently",
+      "status": "partial",
+      "last_verified_iter": "goal-market-compass-iter-3",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-market-compass-iter-0",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-3-evidence/UT-02-manifest-historical-badges.png",
+      "spec_hash": "de33a9d149ebefe4f8cf0ffb9fe86243e3f9fa9d83850c890848f268e5c54c4f",
+      "gap": "Not re-tested this iteration -- explicitly OUT OF SCOPE in the iter-4 spec (deferred to the next iteration's freeze-drill make-up). Carried from iter-3 unchanged: the Manifest card, the four provenance hashes, the dataset/universe stamps, 539 members and the 539-row comparison-cohort audit table are all image-verified, but step 1 (the ingest-finalize 'next-session manifest' disclosure) and step 2's flagship state (a real close producing mode at_ingest / version 1 / producer ingest_finalize / prospective_eligible TRUE) have NEVER been observed live -- every at_ingest manifest seen so far came from the manual regenerate path, which by design is never prospective-eligible. Step 3's export byte-equality still has no automated test (iter-3 auditor B3); steps 5-6 rest on unit tests alone.",
+      "note": "iter-4: NOT TESTED - out of scope per the iter-4 spec's OUT OF SCOPE list (J-09 host resource-fit was the sole target). Status carried unchanged from iter-3; spec_hash carried forward, not re-stamped. This journey is the next iteration's primary target and needs FULL depth."
+    },
+    "J-06": {
+      "id": "J-06",
+      "name": "A frozen manifest never changes",
+      "status": "partial",
+      "last_verified_iter": "goal-market-compass-iter-3",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-market-compass-iter-0",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-3-evidence/UT-02-manifest-historical-badges.png",
+      "spec_hash": "4934b178e966fdb05cfb68537e861e0f34f961f630a57e4098f9fb69be2cdda8",
+      "gap": "Not re-tested this iteration -- explicitly OUT OF SCOPE in the iter-4 spec. Carried from iter-3 unchanged. MET: step 4 (regenerate -> version 2 with its own stamps and 'not prospective-eligible', version 1 still byte-identical, both versions listed) and step 5's 37 invariant tests. UNMET AND OWNER-BLOCKED: step 2's 'the underlying run is unavailable' basis disclosure is demonstrably unreachable -- the iter-3 auditor reproduced that merely opening the page re-creates the removed source run (finding B2), so the sentence can never render as written. NOT RUN: steps 1 and 3 (backfill-after-freeze; remove/restore basis flip).",
+      "note": "iter-4: NOT TESTED - out of scope per the iter-4 spec. Status carried unchanged from iter-3; spec_hash carried forward, not re-stamped. Needs an owner decision on the step-2 wording (reword the sentence, or change how every dated page resolves its as-of) before it can ever be scored passing."
+    },
+    "J-07": {
+      "id": "J-07",
+      "name": "The Today page answers the ten-second read",
+      "status": "failing",
+      "last_verified_iter": "goal-market-compass-iter-0",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-market-compass-iter-0",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-0-evidence/UT-J-07-fail.png",
+      "spec_hash": "3277c326632d90b5aa5d4331f051b419d2e71d022b640c5851acd9f105d57b72",
+      "gap": "Not re-tested this iteration -- explicitly OUT OF SCOPE in the iter-4 spec. Carried unchanged. Materially advanced: three of the six required body sections (summary, what-changed, next-session focus) render on / above the unmodified dashboard body. Still owed: the page heading is still 'Dashboard' (confirmed again in this iteration's own J-01/J-02 frames, which show the sidebar's first entry as 'Dashboard'), the market-state band is not composed per the spec, readiness/preflight chrome is not separated, the leadership-rotation section and manifest strip do not exist on /, perf-budget instrumentation for / is absent, and the old dashboard body still sits on / because /market does not exist.",
+      "note": "iter-4: NOT TESTED - out of scope per the iter-4 spec (backend-only iteration, Frontend Present: no). Status carried unchanged from iter-0; spec_hash carried forward, not re-stamped."
+    },
+    "J-08": {
+      "id": "J-08",
+      "name": "Market page moves over intact and history stays honest",
+      "status": "failing",
+      "last_verified_iter": "goal-market-compass-iter-1",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-market-compass-iter-0",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-1-evidence/UT-J-08-fail.png",
+      "spec_hash": "621deda83bfbe069b3899a9860d352ac2ef7f6e7f80acf0630cd39acbb2ce860",
+      "gap": "Not re-tested this iteration -- explicitly OUT OF SCOPE in the iter-4 spec. Unchanged from the iter-1 measurement (NOT a regression -- this journey has never passed): /market returns a Next.js 404 and the sidebar has no 'Today'/'Market' entries. Independently re-confirmed this iteration by the coherence audit (zero apps/frontend/* files in the 2-file diff; sidebar.tsx not touched) and visible in this iteration's own J-01-verify.png / J-02-verify.png frames, whose sidebars still read 'Dashboard' first.",
+      "note": "iter-4: NOT TESTED - out of scope per the iter-4 spec (backend-only iteration). Status carried unchanged from iter-1; spec_hash carried forward, not re-stamped."
+    },
+    "J-09": {
+      "id": "J-09",
+      "name": "The backend fits the host - standing memory halves with zero behavior change",
+      "status": "partial",
+      "last_verified_iter": "goal-market-compass-iter-4",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-market-compass-iter-3",
+      "last_evidence_path": "reports/perf-budgets.md:12114-12236",
+      "spec_hash": "a067a11b356f9d24bf56963bac5bee35a616b5c4af06479c92c0ae900fca9551",
+      "gap": "FIRST MEASUREMENT (was unknown). Four of five steps MET, one UNMET -- the headline one. MET: step 1 (config.yaml's database.pragmas.cache_size -262144 -> -65536 and NOTHING else; I confirmed from iter-4/iter-diff.md that the entire product diff is 2 files and config.yaml's only hunk is that line, with pool_size 24 / max_overflow 44 untouched at config.yaml:126-127); step 3 (Addendum 40 appended to reports/perf-budgets.md, git diff = 123 insertions / 0 DELETIONS, and the 4,837,420 kB baseline is still intact at reports/perf-budgets.md:12018-12025); step 4 (4,705 concurrent burst requests with zero errors, plus test_data_manager_concurrency_load.py 3 passed -- zero QueuePool TimeoutError); step 5 (byte-identity spot check at as_of=2026-08-10 across GET /api/dashboard 915 B, /api/stocks 2,503,015 B, /api/market-phase 15,064 B and /api/compass 333,578 B -- four matching md5 pairs, cmp zero-diff). UNMET: step 2 -- measured standing-warm VmPeak is 3,439,100 kB (primary, original-methodology replica: 5 workers, the same 6-endpoint mix and pacing as the Addendum 39 drill, plateau flat across 5 samples t+40s to t+140s, 465 requests, 0 errors) against a <=2,621,440 kB (2.5 GB) target -- +817,660 kB / +31.2% OVER. The 24-worker stress variant read 4,493,232 kB. A REAL reduction was measured (4,837,420 -> 3,439,100 kB = 28.9% off the baseline) and both figures keep comfortable margin against memory_cap_mb 8192 MB (41.0% / 53.6% of cap used), so this is a miss of J-09's own tighter bar, not an AG-10 hard-cap risk.",
+      "note": "iter-4: PARTIAL (was unknown, this iteration's sole target). Scored partial rather than failing because four of five steps are demonstrably met and a real, honestly-measured 28.9% reduction landed; the single unmet step is written out verbatim above and in eval.md so nothing is hidden. Neither label supports GOAL_ACHIEVED, so the choice costs nothing at the gate and preserves diagnosis detail (same reading as iter-3's J-06 call). NOT scored from a screenshot: goal.md explicitly WAIVES this journey's walkthrough ('deliberately backend-only (no UI surface changes); the demo requirement is replaced by the dated VmPeak measurement and drill citations in the dev handoff'), so the merged results row correctly reads SKIPPED and the evidence is documentary by the goal's own design -- reports/perf-budgets.md Addendum 40 (:12114-12236), which I read in full. HONESTY CREDIT: the developer recorded the over-budget figure verbatim and left memory_cap_mb (8192), malloc_arena_max (2), pool_size (24) and max_overflow (44) byte-unchanged rather than widening any of them to force a pass -- I verified all five values directly in config.yaml. OWNER DECISION REQUIRED, per J-09's own acceptance text ('if the <= 2.5 GB target is missed, record the honest measured figure and stop for owner review -- never widen the target to pass'): accept 3,439,100 kB, or keep 2.5 GB and authorise the _BarCache.prefill re-bound (goal.md Constraints (c)) as the one remaining lever, or set a different measured target. EVIDENCE THE TARGET MAY HAVE BEEN MIS-SIZED: config.yaml:1377's own memory_cap_mb comment records this project measuring 2,691,600 kB (iter-32) and 3,688,916 kB (iter-38) VmPeak for an isolated full historical warm on the 30y basis -- i.e. a >2.5 GB floor predates any pool-cache consideration, and two independent cold boots with the NEW cache_size already peaked at 837,860-1,423,852 kB before any load."
+    }
+  },
+  "anti_goal_violations": [
+    {
+      "iter": "goal-market-compass-iter-2",
+      "anti_goal": "AG-2 - Decision-quality only: never present return promises, price targets, 'buy/sell' signals, or alpha claims; never place or simulate orders. Candidate framing is 'worth monitoring', never advice.",
+      "severity": "minor",
+      "evidence": "iter-2/a - the ATR caution string ended '- sized risk accordingly' (advice-flavoured), and the runtime banned-language guard scanned only build_narrative's sentences, never evaluate_selection's candidate reason/caution/why-not strings. || RESOLVED in iter-3: verified by the evaluator in reports/qa/goal-market-compass-iter-3-evidence/UT-10-result.png (as-of 2025-04-15, Risk-off) - the MCD and T candidate cards read 'ATR_RISK_BUDGET: ATR is 2.99% of price (p6 of universe).' with no advice tail; merged row UT-10 confirms the phrase 'sized risk accordingly' is absent from the card, and the guard now covers the candidate strings (TC-35, test_manifest_invariants.py). || Re-confirmed still closed in iter-4: no candidate/narrative string is in this iteration's 2-file diff.",
+      "resolved": true
+    },
+    {
+      "iter": "goal-market-compass-iter-3",
+      "anti_goal": "AG-12 - Manifest immutability: a stored next_session_manifests row and its exported file are never mutated or deleted by any later ingest, rebuild, data removal, config change, or code change.",
+      "severity": "critical",
+      "evidence": "iter-3/a - the at-ingest export writer compass._write_export (apps/backend/app/engine/compass.py:841) used an unconditional path.write_text, so a second write for the same (as_of, version) replaced the bytes of an artifact an existing immutable row's export_path already pointed at. REPRODUCED by the auditor in an isolated probe (2024-06-03_v1.json: d2547fb2eb17 -> 72b8e03a339f, same path, bytes changed) with two reachable triggers (a lost create-once/regenerate race; unit tests inheriting the product export dir - four synthetic artifacts were found written into apps/backend/data/exports/next_session_manifests/ at 12:10 beside the real 2026-08-12_v5.json). || RESOLVED IN-ITERATION by the audit lane, before any real artifact was overwritten: exclusive create open(path,'x') (compass.py:860) - identical bytes return idempotently, differing bytes log and leave export_path NULL (an honest gap, never a mutated artifact) - plus a session-autouse conftest fixture pointing TRENDORA_COMPASS_EXPORT_DIR at a per-run temp dir (apps/backend/tests/conftest.py:31-45) and a regression test (test_manifest_invariants.py:138 test_tc15_export_writer_never_rewrites_an_existing_artifact). Verification: 37 passed in test_manifest_invariants.py, 46 passed across the other four files, and the product export dir was byte-for-byte unchanged afterwards. Recorded as critical-but-resolved: no REGRESSION verdict, because decision-tree C.1 fires only on an UNRESOLVED critical violation. || Re-confirmed still closed in iter-4: no manifest writer, reader, route or export path appears in this iteration's 2-file diff (config.yaml + apps/backend/tests/test_db.py).",
+      "resolved": true
+    }
+  ],
+  "updated_at": "2026-08-20T15:05:00Z"
+}

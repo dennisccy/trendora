@@ -1,0 +1,25 @@
+{
+  "phase": "goal-market-compass-iter-6",
+  "status": "in_progress",
+  "current_step": "dev_complete",
+  "updated_at": "2026-08-20T18:11:41.000Z",
+  "started_at": "2026-08-20T17:50:00.000Z",
+  "cli": "claude",
+  "blockers": [
+    "CRITICAL: J-10's bounded live fetch was correctly derived and correctly dispatched (exactly the proven 587-symbol missing set, exactly [2026-08-11, 2026-08-12], source=stooq, via the existing data_manager fetch engine) but FAILED CLEANLY -- all 587 requests returned HTTP 404 from stooq.com. Root cause confirmed via an independent diagnostic curl: stooq now serves a JavaScript proof-of-work bot-verification challenge that no non-browser HTTP client can solve. This is a vendor-side access block, not a code defect. Zero bars restored; zero database side effects (verified byte-for-byte: all 24 next_session_manifests rows + existing export files hash-identical before/after, full scanner_runs date list identical, daily_prices count/min/max identical). See docs/handoffs/goal-market-compass-iter-6-dev.md 'READ THIS FIRST' for full evidence.",
+    "AG-9's dated exception is NOT exhausted (verification did not pass) but also does not authorize a different vendor -- that needs a new owner decision. Three honest paths are laid out in the dev handoff's 'Recommendation for owner review': authorize an alternate vendor (yahoo has recent proof of working from this environment, data_provider_runs ids 527-533), accept 2026-08-10 as the frontier and re-baseline affected goldens later, or an out-of-band manual restore. This iteration does not pick one -- that is the owner's call.",
+    "Definition of Done items that depend on successful restoration are NOT met this iteration: daily_prices max date is still 2026-08-10 (not 2026-08-12); GET /api/compass?as_of=2026-08-12 still returns HTTP 400; J-01/J-02/J-03 were not replayed (the Loop-mechanics gate correctly forbids running any lane against the still-damaged database until verification passes, and it did not pass).",
+    "MNST was deliberately excluded from the derived 587-symbol missing set on conflicting evidence (appears in the frozen manifest cohort for both recovery dates with real but price-discontinuous values, but is absent from both contemporaneous removal-time measurements). Recorded for owner review, not resolved unilaterally -- see the dev handoff and the two new runs/goal-session-market-compass/state/assumptions.md entries."
+  ],
+  "changed_files": [
+    "apps/backend/app/engine/j10_recovery.py",
+    "apps/backend/tests/test_j10_recovery.py",
+    "runs/goal-session-market-compass/state/assumptions.md",
+    "docs/handoffs/goal-market-compass-iter-6-dev.md",
+    "runs/goal-session-ops-hardening/state/drift-report.json (benign boot-time cache refresh from starting the backend for verification -- not a canonical value, see dev handoff Known Issues #4)"
+  ],
+  "tests_run": true,
+  "browser_checks_run": false,
+  "next_action": "review",
+  "notes": "The scope guard + missing-set derivation + fetch dispatch + verification suite were all executed exactly as J-10 specifies, and the guard's own unit tests (15/15) plus a targeted regression check (test_manifest_invariants.py 37/37, test_api_compass.py 8/8) all pass. The recovery itself is an HONEST MISS: the authorized vendor (stooq) is currently gated behind a JS bot-verification challenge from this environment, confirmed by an independent curl probe showing the actual challenge page (not just the app's own error). No workaround was attempted (substituting a vendor or building anti-bot tooling would both exceed this iteration's narrow authorization). Recommend the reviewer/coordinator treat this as an owner-decision point (see the dev handoff's three recommended paths) rather than a routine pass-through -- the code and tests are ready to run the instant the owner picks a path forward; nothing further should be attempted against the live vendor without that decision."
+}

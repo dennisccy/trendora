@@ -226,3 +226,78 @@ it: cap the frontend build at 4 workers, and stop the three memory-pressure test
 the 7.8 GB database. Also fix the stored J-01 test script that has now cried wolf twice. Three
 older owner questions are still open and still not blocking: the J-01 test-step rewording, whether
 an empty "next-session focus" is acceptable, and the J-06 "underlying run unavailable" wording.
+
+## Iteration 6 — goal-market-compass-iter-6
+
+**Date:** 2026-08-20T22:15:00Z
+**Verdict:** ESCALATE
+**Depth dispatched:** lean (`iter-6/depth-dispatched` reads `lean`, CONTRADICTING the spec's own
+`**Depth:** full` line and its documented Full trigger 1 — a silent full→lean demotion, the second
+time this session, and this time it caused a contract violation; see Reasoning)
+
+**Journey deltas:**
+- Newly passing: none
+- Advanced unknown -> partial: J-10 (this iteration's sole TARGET — first measurement; the recovery
+  MECHANISM is built and unit-proven, the missing-set proof is complete, but zero bars were restored)
+- Downgraded passing -> partial: J-02, J-03 (NOT on this iteration's evidence and NOT this
+  iteration's fault — the iter-5 drill deleted the data their verified assertions name; I confirmed
+  the loss myself with a read-only query, and goal.md's own J-10 "Why" says the same)
+- Carried, NOT validly re-verified: J-01, J-04 — both stay `passing` under evidence durability
+  (product code byte-unchanged; the new module is imported by nothing). Their iter-6 PASS rows came
+  from the contract-forbidden damaged-DB lane and I discarded them in BOTH directions.
+- Newly failing: none. **Regressed: none** — see Reasoning for why the J-02/J-03 break is not
+  scored as a regression.
+- Not tested (out of scope / contract-gated, carried): J-05, J-06 partial; J-07, J-08 failing;
+  J-09 partial
+- Anti-goal violations: NONE new. Ledger unchanged at 2, both resolved. AG-9, AG-12 and AG-17 were
+  the three at real risk and all three held, verified by my own read-only queries. One informational
+  scan warn (`api_key="test-only"`, a test placeholder). One MINOR evidence-hygiene note under
+  AG-17: the merged results file demoted the damaged-DB FAILs to SKIP but left the damaged-DB PASSes
+  standing as clean rows — a one-sided use of evidence the goal contract calls unusable.
+
+**Reasoning:** The developer built the repair tool exactly as specified and then honestly reported
+that it did not work. The one permitted download asked Stooq for precisely the two missing days and
+precisely the 587 missing company codes, and all 587 came back "not found" — Stooq now serves a
+robot-puzzle page instead of data, proven by a separate direct probe in which even AAPL failed. I did
+not take the "no harm done" claim on trust: I queried the database read-only myself and confirmed the
+latest price date is still 2026-08-10, there are still zero rows for the two missing days, all 24
+sealed briefing records still reach 2026-08-12, and exactly one live download attempt exists in the
+records (id 541) — so nothing was quietly broadened. Why not a REGRESSION halt, when two working
+journeys just went backwards? Because nothing in this iteration broke them; the earlier drill did,
+the owner already knows, already wrote the repair journey, already granted the permission, and — in
+the middle of this very iteration — amended the goal file again to allow a second supplier. Halting
+to ask a question the owner has already answered twice would only block the repair they just
+authorised. I recorded the honest degradation as "partial" instead, which still prevents any
+"goal achieved" claim, and I based that downgrade on my own database check rather than on the
+forbidden lane's output. So why ESCALATE rather than CONTINUE? Because the plan asked for the
+careful full mode and the engine silently ran the light one. That cost two things: the independent
+auditor — which caught a real critical fault in this same manifest area only three iterations ago —
+never looked at the one piece of code whose whole job is preventing a repeat of the accident that
+caused this mess; and the light mode switched on a browser test lane that the goal file expressly
+forbids while the data is broken, so that lane ran against the damaged database and its results had
+to be quarantined. The next turn is a live cross-supplier write into the real dataset, where a
+silent mismatch in how prices are adjusted would, in the owner's own words, be worse than the
+missing days. That turn needs the auditor watching.
+
+**Next-step recommendation:** Retry the two-day repair with Yahoo, alone, in FULL mode. The owner
+already lifted the blocker: the goal file now allows Yahoo for these two dates and nothing else.
+Concretely: change the supplier name in the recovery module (one line — the guard already checks the
+name), then build the new safety check the owner added — download a few already-surviving days for a
+sample of companies, keep them in memory only, and prove Yahoo's prices follow the same
+split-and-dividend adjustment rule as the prices already stored; if they do not agree, or the check
+cannot be done, write nothing and stop. Label every restored row honestly as Yahoo-sourced, say
+plainly that the data is now mixed-supplier at exactly two dates, and let no wording anywhere claim
+this proves the two suppliers are interchangeable. Once the days are back, re-check J-01 "Sector
+labels are honest and nearly complete", J-02 "What changed since the previous session", J-03
+"Plain-English summary with cited facts" and J-04 "Each candidate explains why and why-not" with the
+browser lane — which is finally allowed to run — record the four short walkthrough videos that are
+now four turns overdue, and fix the J-01 test script that has wrongly failed twice on a sector name
+that just wraps onto two lines. TWO SAFETY POINTS: this machine froze once from running two backends
+at once and a second automated session is running on it right now, so start the repair backend,
+finish, stop it, and only then start anything the browser tests need; and if Yahoo is also
+unreachable or fails the adjustment check, stop and report it — do not try a third supplier, the
+owner says that needs new written permission. FOUR OLDER OWNER QUESTIONS still open and still not
+blocking: whether 3.44 GB is acceptable for J-09, J-06's "underlying run unavailable" wording, the
+rewording of J-01's first two test steps, and whether an empty "next-session focus" is acceptable.
+ONE NEW OWNER QUESTION: the company MNST was deliberately left out of the 587 because the surviving
+records disagree about it — decide whether to include it in the retry.
