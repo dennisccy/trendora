@@ -477,3 +477,5 @@
 {"requirement":"hard-full-required","overridden_cost_rung":"budget-breach","prior_verdict":"CONTINUE","prior_depth":"full","ts":"2026-08-21T13:08:16Z","session_id":"market-compass","iter":9,"event":"depth_cost_overridden","cli":"claude"}
 {"reason":"hard-full-required","prior_verdict":"CONTINUE","prior_depth":"full","ts":"2026-08-21T13:08:16Z","session_id":"market-compass","iter":9,"event":"depth_full_granted","cli":"claude"}
 {"depth":"full","target_journeys":"J-10","ts":"2026-08-21T13:08:16Z","session_id":"market-compass","iter":9,"event":"iter_dispatch","cli":"claude"}
+{"step":"showcase-join","duration_seconds":4,"ts":"2026-08-21T13:08:20Z","session_id":"market-compass","iter":9,"event":"engine_step","cli":"claude"}
+{"agent":"orchestrator","ts":"2026-08-21T13:08:20Z","session_id":"market-compass","iter":9,"event":"agent_invocation_start","cli":"claude"}
