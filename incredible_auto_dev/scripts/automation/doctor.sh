@@ -70,7 +70,7 @@ fi
 
 CHECKS=(python3 node playwright chrome-mcp gh-auth git-remote disk timeout jq
         pump-heartbeat engine-lock tmp-health chrome-exclusive mcp-affinity
-        host-guard cpu-boost reset-reason ras-logging ambient-env)
+        host-guard cpu-boost reset-reason ras-logging ambient-env output-styles)
 
 # Run a command under GNU/uutils timeout when available (network probes must
 # degrade, never hang). $1 = seconds, rest = command.
@@ -569,11 +569,10 @@ check_reset_reason() {
     RESET\|*)
       local hex cause streak prev
       IFS='|' read -r _ hex cause streak prev <<< "$verdict"
-      : "$prev"
       pm="$(_bounded 30 bash "$script" ensure-postmortem 2>/dev/null)"
       path="${pm#POSTMORTEM|}"; path="${path%|*}"
       [[ "$pm" == POSTMORTEM\|* ]] || path="(bundle unavailable: ${pm})"
-      echo "FAIL|the previous boot ended in a HARDWARE-asserted reset: $cause ($hex); $streak recent boots. No CPU mask or memory ceiling can prevent this — postmortem: $path (docs/host-guard.md § After a hardware reset)"
+      echo "FAIL|boot ${prev:-unknown} ended in a HARDWARE-asserted reset: $cause ($hex); $streak recent boots. No CPU mask or memory ceiling can prevent this — postmortem: $path (docs/host-guard.md § After a hardware reset)"
       ;;
     CLEAN\|*)  echo "PASS|${verdict#CLEAN|}" ;;
     UNKNOWN\|*) echo "WARN|${verdict#UNKNOWN|}" ;;
@@ -592,8 +591,18 @@ check_reset_reason() {
 # must not nag hosts that never had the incident.
 check_ras_logging() {
   local script="$SCRIPT_DIR/host-guard/reset-forensics.sh" hist=0 jdir ras missing=""
-  if [[ -f "$script" ]] && [[ "$(_bounded 20 bash "$script" check 2>/dev/null)" == RESET\|* ]]; then
-    hist=1
+  # "History" must mean fault boots in the recent window, not "an unprocessed
+  # fault right now": once ensure-postmortem has frozen the bundles and advanced
+  # the watermark, `check` reads CLEAN — on a host that faulted 16 times.
+  if [[ -f "$script" ]]; then
+    if [[ "$(_bounded 20 bash "$script" check 2>/dev/null)" == RESET\|* ]]; then
+      hist=1
+    else
+      case "$(_bounded 20 bash "$script" streak 2>/dev/null)" in
+        STREAK\|0/*) ;;
+        STREAK\|*)   hist=1 ;;
+      esac
+    fi
   fi
   jdir="${CHAIN_DOCTOR_JOURNALD_DIR:-/etc/systemd/journald.conf.d}"
   if ! grep -rqs 'SyncIntervalSec' "$jdir" 2>/dev/null; then
@@ -611,7 +620,7 @@ check_ras_logging() {
     return
   fi
   if (( hist == 0 )); then
-    echo "PASS|no hardware-reset history on this host — journald/rasdaemon hardening is optional (missing: ${missing%; })"
+    echo "PASS|no hardware-fault reset in this host's recent boot history — journald/rasdaemon hardening is optional (missing: ${missing%; })"
     return
   fi
   echo "WARN|this host HAS hardware-reset history but the next postmortem will be poorer: ${missing%; }— see docs/host-guard.md § After a hardware reset (both need one sudo command)"
@@ -649,6 +658,126 @@ check_ambient_env() {
   done
   [[ $# -gt 4 ]] && list="$list+$(($# - 4)) more "
   echo "WARN|$# ambient CHAIN_* var(s): ${list}— they silently alter engine behavior; measurement runs demand a clean env"
+}
+
+# STYLE-1 (2026-08-20): the output-style experiment is default-OFF and fully
+# offline-checkable — validate whatever IS configured (env knobs + the wave-1
+# table, the latter only when CHAIN_OUTPUT_STYLES=true) and warn on an ambient
+# `outputStyle` pin in settings.json, which would silently style EVERY
+# headless dispatch even with every knob off (a contaminated "knob-off" arm).
+# Never FAILs on drift or a pin — only a resolver crash or an invalid name is
+# a real config error; a name missing from the installed binary just means
+# Claude Code will silently run that agent as Default (see agent_permissions.py).
+check_output_styles() {
+  local conf rc=0
+  conf="$(cd "$ROOT" 2>/dev/null && python3 "$SCRIPT_DIR/lib/agent_permissions.py" output-styles-configured 2>&1)" || rc=$?
+  if [[ "$rc" -ne 0 ]]; then
+    # Collapse to one physical line BEFORE truncating: an embedded newline
+    # here would survive %.140s and split this FAIL row across lines, so
+    # run_check's "last line" parser would miss the "|" and report a generic
+    # "check crashed" instead of this diagnostic.
+    echo "FAIL|output-styles-configured crashed (rc=$rc): $(printf '%.140s' "$(printf '%s' "$conf" | tr '\n' ' ')")"
+    return
+  fi
+
+  # "armed" mirrors run-goal.sh's OWN gate (STYLE-1 boot check) exactly: the
+  # knob is engaged whether or not it currently resolves to anything.
+  local arm_word="dormant"
+  if [[ "${CHAIN_OUTPUT_STYLES:-false}" == "true" || -n "${CHAIN_AGENT_OUTPUT_STYLE:-}" \
+        || -n "${CHAIN_OUTPUT_STYLE_OVERRIDE:-}" ]]; then
+    arm_word="armed"
+  fi
+
+  local pins="" sf
+  for sf in "$HOME/.claude/settings.json" "$ROOT/.claude/settings.json" "$ROOT/.claude/settings.local.json"; do
+    [[ -f "$sf" ]] && grep -a -q -F -- '"outputStyle"' "$sf" 2>/dev/null && pins+="$sf, "
+  done
+  pins="${pins%, }"
+
+  if [[ -z "$conf" ]]; then
+    if [[ -z "$pins" ]]; then
+      echo "PASS|no output styles configured — $arm_word (CHAIN_OUTPUT_STYLES=${CHAIN_OUTPUT_STYLES-unset})"
+    else
+      echo "WARN|no output styles configured via the engine knobs — $arm_word, but outputStyle is pinned in: $pins — applies to EVERY headless dispatch (knob-off arm contaminated)"
+    fi
+    return
+  fi
+
+  local check_out
+  check_out="$(cd "$ROOT" 2>/dev/null && python3 "$SCRIPT_DIR/lib/agent_permissions.py" output-style-check 2>&1)" || rc=$?
+  if [[ "$rc" -ne 0 ]]; then
+    # output-style-check prints one WARNING line per judge entry (harmless —
+    # judges refuse at dispatch) ahead of the ERROR line(s) that actually
+    # explain the rc!=0. Prefer the ERROR line(s) so a judge WARNING can't
+    # crowd the real invalid-name diagnostic out of the 140-char budget; fall
+    # back to the full text if somehow no ERROR line is present (e.g. a raw
+    # traceback). Collapse to one physical line before truncating — same
+    # "last line" hazard as the step-1 crash branch above.
+    local err_lines
+    err_lines="$(printf '%s\n' "$check_out" | grep -F 'ERROR' || true)"
+    [[ -n "$err_lines" ]] || err_lines="$check_out"
+    echo "FAIL|invalid output style configured: $(printf '%.140s' "$(printf '%s' "$err_lines" | tr '\n' ' ')")"
+    return
+  fi
+
+  local claude_cmd bin ver
+  claude_cmd="$(command -v claude 2>/dev/null || true)"
+  bin=""
+  [[ -n "$claude_cmd" ]] && bin="$(readlink -f "$claude_cmd" 2>/dev/null || true)"
+  if [[ -z "$bin" || ! -r "$bin" ]]; then
+    echo "WARN|output style(s) configured ($arm_word) but no readable claude binary to verify against"
+    return
+  fi
+  ver="$(claude --version 2>/dev/null | head -n1)"
+  [[ -n "$ver" ]] || ver="unknown version"
+
+  # Dedupe configured names (the wave-1 table maps six agents to one style
+  # name) and drop "default" — it carries no binary marker to verify: the
+  # binary has no `# Default Style Active` literal.
+  local -a names=() missing=()
+  local name src already existing found
+  while IFS=$'\t' read -r name src; do
+    [[ -z "$name" ]] && continue
+    [[ "${name,,}" == "default" ]] && continue
+    already=false
+    for existing in "${names[@]}"; do
+      [[ "$existing" == "$name" ]] && { already=true; break; }
+    done
+    $already || names+=("$name")
+  done <<< "$conf"
+
+  for name in "${names[@]}"; do
+    found=false
+    if _bounded 10 grep -a -q -F -- "# $name Style Active" "$bin" 2>/dev/null; then
+      found=true
+    elif [[ -f "$ROOT/.claude/output-styles/$name.md" ]]; then
+      found=true
+    fi
+    $found || missing+=("$name")
+  done
+
+  if [[ "${#missing[@]}" -gt 0 ]]; then
+    local list="" m
+    for m in "${missing[@]}"; do
+      [[ -n "$list" ]] && list+=", "
+      list+="$m"
+    done
+    echo "WARN|built-in style(s) not found in claude $ver: $list — Claude Code ignores unknown names silently; the experiment would run as Default"
+    return
+  fi
+
+  local detail="${#names[@]} configured style(s) present in claude $ver ($arm_word)"
+  if [[ -n "$pins" ]]; then
+    # The engine's per-dispatch --settings is a session-level override that
+    # OUTRANKS a settings.json pin (verified via a Step-0 probe, CLI 2.1.237,
+    # 2026-08-20) — the pin never overrides a requested style. It only
+    # reaches dispatches the engine leaves unstyled: judges, Default-arm
+    # agents, and (see the empty-conf branch above) every dispatch when the
+    # knob itself is off.
+    echo "WARN|$detail but outputStyle is pinned in: $pins — the pin applies to every dispatch the engine leaves unstyled (judges, Default-arm agents), contaminating the control arm; the engine's --settings wins only where a style is requested"
+  else
+    echo "PASS|$detail"
+  fi
 }
 
 # ── Harness ─────────────────────────────────────────────────────────────────

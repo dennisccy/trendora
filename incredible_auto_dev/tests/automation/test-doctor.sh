@@ -141,7 +141,8 @@ run_doctor() {
   # (and therefore ras-logging, which keys off reset history) to the clean case;
   # the postmortem dir is redirected so the row's sanctioned write cannot escape
   # into the real cache.
-  env "PATH=$SHIMS:$FARM" "HOME=$FHOME" \
+  env -u CHAIN_OUTPUT_STYLES -u CHAIN_AGENT_OUTPUT_STYLE -u CHAIN_OUTPUT_STYLE_OVERRIDE \
+      "PATH=$SHIMS:$FARM" "HOME=$FHOME" \
       "CHAIN_DOCTOR_REPO_ROOT=$FREPO" "CHAIN_TMP_ROOT=$FTMP" \
       "PLAYWRIGHT_BROWSERS_PATH=$TMP_DIR/browsers" "PYTHONPATH=$PYDIR" \
       "HOST_GUARD_RESET_KLOG_FILE=$TMP_DIR/klog-clean" \
@@ -167,7 +168,8 @@ echo "$out" | grep -Eq 'PASS +chrome-mcp +.*settings\.json' \
   && assert "chrome-mcp PASS says HOW it detected (settings.json)" "pass" \
   || assert "chrome-mcp detection detail" "fail"
 for key in python3 node playwright gh-auth git-remote disk timeout jq \
-           pump-heartbeat engine-lock tmp-health chrome-exclusive ambient-env; do
+           pump-heartbeat engine-lock tmp-health chrome-exclusive ambient-env \
+           output-styles; do
   echo "$out" | grep -Eq "PASS +$key " \
     && assert "row $key PASS on healthy fixture" "pass" \
     || assert "row $key PASS on healthy fixture" "fail"
@@ -184,9 +186,9 @@ echo ""
 
 rc=0; out=$(run_doctor -- --list 2>&1) || rc=$?
 n=$(echo "$out" | grep -c '^[a-z0-9-]*$' || true)
-{ [[ $rc -eq 0 && $n -eq 19 ]]; } \
-  && assert "--list prints the 19 check keys" "pass" \
-  || assert "--list prints the 19 check keys (rc=$rc n=$n)" "fail"
+{ [[ $rc -eq 0 && $n -eq 20 ]]; } \
+  && assert "--list prints the 20 check keys" "pass" \
+  || assert "--list prints the 20 check keys (rc=$rc n=$n)" "fail"
 echo "$out" | grep -qx "tmp-health" && echo "$out" | grep -qx "chrome-exclusive" \
   && assert "--list includes the evidence-born checks" "pass" \
   || assert "--list includes the evidence-born checks" "fail"
@@ -208,7 +210,8 @@ echo ""
 echo "=== doctor.sh: a missing tool FAILs its row, everything else runs ==="
 echo ""
 
-rc=0; out=$(env "PATH=$SHIMS_NOJQ:$FARM" "HOME=$FHOME" \
+rc=0; out=$(env -u CHAIN_OUTPUT_STYLES -u CHAIN_AGENT_OUTPUT_STYLE -u CHAIN_OUTPUT_STYLE_OVERRIDE \
+    "PATH=$SHIMS_NOJQ:$FARM" "HOME=$FHOME" \
     "CHAIN_DOCTOR_REPO_ROOT=$FREPO" "CHAIN_TMP_ROOT=$FTMP" \
     "PLAYWRIGHT_BROWSERS_PATH=$TMP_DIR/browsers" "PYTHONPATH=$PYDIR" \
     "HOST_GUARD_RESET_KLOG_FILE=$TMP_DIR/klog-clean" \
@@ -226,7 +229,8 @@ echo "$out" | grep -Eq '\[doctor\] summary: pass=[0-9]+ warn=0 fail=1 skip=0' \
   && assert "missing jq: summary counts exactly one FAIL" "pass" \
   || assert "missing jq: summary counts exactly one FAIL" "fail"
 
-rc=0; env "PATH=$SHIMS_NOJQ:$FARM" "HOME=$FHOME" \
+rc=0; env -u CHAIN_OUTPUT_STYLES -u CHAIN_AGENT_OUTPUT_STYLE -u CHAIN_OUTPUT_STYLE_OVERRIDE \
+    "PATH=$SHIMS_NOJQ:$FARM" "HOME=$FHOME" \
     "CHAIN_DOCTOR_REPO_ROOT=$FREPO" "CHAIN_TMP_ROOT=$FTMP" \
     "PLAYWRIGHT_BROWSERS_PATH=$TMP_DIR/browsers" "PYTHONPATH=$PYDIR" \
     "HOST_GUARD_RESET_KLOG_FILE=$TMP_DIR/klog-clean" \

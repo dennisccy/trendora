@@ -195,7 +195,24 @@ rc="$(run_gate "$ROOT")"
   && assert "backend-only N/A stubs: CLOSURE-PASS" "pass" \
   || assert "backend-only N/A stubs: CLOSURE-PASS (got exit $rc)" "fail"
 
-# ── (e) vague what-to-click -> CLOSURE-FAIL ──────────────────────────────────
+# ── (e) product vocabulary "todo"/"Todo" in the UI artifacts is NOT a placeholder
+make_fixture "$ROOT" yes
+for a in implementation-summary user-visible-changes ui-surface-map ui-test-plan; do
+  printf -- '- Add a todo via the form; the heading Todo is visible; state lives in todo.json\n' >> "$ROOT/reports/phase-p1-$a.md"
+done
+rc="$(run_gate "$ROOT")"
+head -1 "$(VERDICT_FILE "$ROOT")" | grep -q '^\*\*Verdict:\*\* CLOSURE-PASS$' \
+  && assert "product noun 'todo' in artifacts: CLOSURE-PASS" "pass" \
+  || assert "product noun 'todo' in artifacts: CLOSURE-PASS (got exit $rc: $(grep -m3 -i 'todo' "$(VERDICT_FILE "$ROOT")" | tr '\n' ' '))" "fail"
+# ── (f) a real marker still fails
+make_fixture "$ROOT" yes
+printf -- '- TODO: wire the filter control\n' >> "$ROOT/reports/phase-p1-ui-test-plan.md"
+rc="$(run_gate "$ROOT")"
+head -1 "$(VERDICT_FILE "$ROOT")" | grep -q '^\*\*Verdict:\*\* CLOSURE-FAIL$' \
+  && assert "uppercase TODO marker: CLOSURE-FAIL" "pass" \
+  || assert "uppercase TODO marker: CLOSURE-FAIL (got exit $rc)" "fail"
+
+# ── (g) vague what-to-click -> CLOSURE-FAIL ──────────────────────────────────
 ROOT="$WORK/vague"
 make_fixture "$ROOT" yes
 cat > "$ROOT/reports/phase-p1-what-to-click.md" <<'EOF'
@@ -217,7 +234,7 @@ rc="$(run_gate "$ROOT")"
   && assert "vague what-to-click (Test the form class): CLOSURE-FAIL" "pass" \
   || assert "vague what-to-click (Test the form class): CLOSURE-FAIL" "fail"
 
-# ── (e2) FAILed upstream verdict -> CLOSURE-FAIL naming the report ───────────
+# ── (g2) FAILed upstream verdict -> CLOSURE-FAIL naming the report ───────────
 ROOT="$WORK/failgate"
 make_fixture "$ROOT" yes
 printf '**Verdict:** FAIL\n' > "$ROOT/reports/qa/p1-qa.md"
@@ -226,7 +243,99 @@ rc="$(run_gate "$ROOT")"
   && assert "FAILed QA verdict: CLOSURE-FAIL names the QA report" "pass" \
   || assert "FAILed QA verdict: CLOSURE-FAIL names the QA report" "fail"
 
-# ── (f) escape-hatch wiring in phase-closure-check.sh ────────────────────────
+# ── (i) maintenance-isolation SKIPPED stub (real producer) -> CLOSURE-PASS ───
+# An isolated iteration withholds the browser lane by contract, and run-phase.sh
+# writes the stub through write_na_ui_artifacts (lib/common.sh). Generated here by
+# the REAL producer so the artifact and this gate cannot drift apart: it must
+# carry a documented reason AND enough content to clear the frontend-phase
+# content floor, since the gate reads the plan text and cannot see the contract.
+ROOT="$WORK/isolation"
+make_fixture "$ROOT" yes
+rm -f "$ROOT/reports/phase-p1-ui-test-results.md"
+( REPO_ROOT="$ROOT"; CHAIN_MAINTENANCE_ISOLATION=true
+  write_na_ui_artifacts p1 ui-test-results >/dev/null 2>&1 )
+rc="$(run_gate "$ROOT")"
+[[ "$rc" == "0" ]] \
+  && assert "maintenance-isolation SKIPPED stub: exit 0" "pass" \
+  || assert "maintenance-isolation SKIPPED stub: exit 0 (got $rc: $(grep -m2 '^[0-9]\. \*\*' "$(VERDICT_FILE "$ROOT")" | tr '\n' ' '))" "fail"
+head -1 "$(VERDICT_FILE "$ROOT")" | grep -q '^\*\*Verdict:\*\* CLOSURE-PASS$' \
+  && assert "maintenance-isolation SKIPPED stub: first line is CLOSURE-PASS" "pass" \
+  || assert "maintenance-isolation SKIPPED stub: first line is CLOSURE-PASS" "fail"
+grep -q '^- WARN:.*all-SKIPPED' "$(VERDICT_FILE "$ROOT")" \
+  && assert "maintenance-isolation SKIPPED stub: recorded as a documented skip (WARN, not blocking)" "pass" \
+  || assert "maintenance-isolation SKIPPED stub: recorded as a documented skip (WARN, not blocking)" "fail"
+
+# ── (ii)/(iii)/(iv) all six N/A stubs under maintenance isolation ────────────
+# The gate iterates all SIX UI artifacts (UI_ARTIFACTS), and under isolation
+# run-phase.sh writes N/A stubs for every one of them — detect_frontend_in_plan
+# refuses, so Steps 5/6 take their backend-only branches. The plan itself still
+# says "Frontend Present: yes" (a maintenance iteration legitimately names
+# journeys), so the gate must learn the same carve-out the bash predicate has,
+# from the way the feature actually propagates: the exported env var, or the
+# spec/plan marker line.
+regen_na_stubs() {  # regen_na_stubs <root> <isolation yes|no>
+  local root="$1" iso="$2" a
+  for a in implementation-summary user-visible-changes ui-surface-map \
+           ui-test-plan ui-test-results what-to-click; do
+    rm -f "$root/reports/phase-p1-$a.md"
+  done
+  if [[ "$iso" == "yes" ]]; then
+    ( REPO_ROOT="$root"; CHAIN_MAINTENANCE_ISOLATION=true
+      write_na_ui_artifacts p1 >/dev/null 2>&1 )
+  else
+    ( REPO_ROOT="$root"; unset CHAIN_MAINTENANCE_ISOLATION
+      write_na_ui_artifacts p1 >/dev/null 2>&1 )
+  fi
+}
+_blockers() { grep -cE '^[0-9]+\. \*\*' "$(VERDICT_FILE "$1")" 2>/dev/null || echo "?"; }
+
+# (ii) isolation declared through the environment the engine exports
+ROOT="$WORK/iso-six-env"
+make_fixture "$ROOT" yes
+regen_na_stubs "$ROOT" yes
+rc="$( CHAIN_MAINTENANCE_ISOLATION=true run_gate "$ROOT" )"
+[[ "$rc" == "0" ]] \
+  && assert "isolation (env): all six N/A stubs under a 'Frontend Present: yes' plan -> exit 0" "pass" \
+  || assert "isolation (env): all six N/A stubs under a 'Frontend Present: yes' plan -> exit 0 (got $rc, $(_blockers "$ROOT") blockers)" "fail"
+head -1 "$(VERDICT_FILE "$ROOT")" | grep -q '^\*\*Verdict:\*\* CLOSURE-PASS$' \
+  && assert "isolation (env): first line is CLOSURE-PASS" "pass" \
+  || assert "isolation (env): first line is CLOSURE-PASS" "fail"
+
+# (iii) control — the same six stubs with NO declaration the gate can see must
+# still block: today's protection against a pipeline that silently skipped the
+# UI chain under a frontend plan is preserved, and the carve-out follows the
+# DECLARATION, not the artifact prose.
+ROOT="$WORK/iso-six-nodecl"
+make_fixture "$ROOT" yes
+regen_na_stubs "$ROOT" yes
+rc="$(run_gate "$ROOT")"
+[[ "$rc" != "0" ]] \
+  && grep -q '^\*\*Verdict:\*\* CLOSURE-FAIL$' "$(VERDICT_FILE "$ROOT")" \
+  && assert "control: isolation-worded stubs with no declaration still CLOSURE-FAIL" "pass" \
+  || assert "control: isolation-worded stubs with no declaration still CLOSURE-FAIL" "fail"
+ROOT="$WORK/ordinary-six"
+make_fixture "$ROOT" yes
+regen_na_stubs "$ROOT" no
+rc="$(run_gate "$ROOT")"
+[[ "$rc" != "0" ]] && grep -q 'N/A/backend-only stub' "$(VERDICT_FILE "$ROOT")" \
+  && assert "control: ordinary N/A stubs under a frontend plan still CLOSURE-FAIL (unchanged)" "pass" \
+  || assert "control: ordinary N/A stubs under a frontend plan still CLOSURE-FAIL (unchanged)" "fail"
+
+# (iv) isolation declared in the plan text only — a hand re-run of closure, or
+# any consumer that never inherited the engine's environment.
+ROOT="$WORK/iso-six-plan"
+make_fixture "$ROOT" yes
+printf -- '- **Maintenance isolation:** required\n' >> "$ROOT/runs/p1/plan.md"
+regen_na_stubs "$ROOT" yes
+rc="$(run_gate "$ROOT")"
+[[ "$rc" == "0" ]] \
+  && assert "isolation (plan marker, env unset): all six N/A stubs -> exit 0" "pass" \
+  || assert "isolation (plan marker, env unset): all six N/A stubs -> exit 0 (got $rc, $(_blockers "$ROOT") blockers)" "fail"
+head -1 "$(VERDICT_FILE "$ROOT")" | grep -q '^\*\*Verdict:\*\* CLOSURE-PASS$' \
+  && assert "isolation (plan marker, env unset): first line is CLOSURE-PASS" "pass" \
+  || assert "isolation (plan marker, env unset): first line is CLOSURE-PASS" "fail"
+
+# ── (h) escape-hatch wiring in phase-closure-check.sh ────────────────────────
 grep -q 'CHAIN_CLOSURE_LLM:-false.*==.*true' "$CHECK_SH" \
   && assert "wiring: CHAIN_CLOSURE_LLM=true routes to the LLM dispatch branch" "pass" \
   || assert "wiring: CHAIN_CLOSURE_LLM=true routes to the LLM dispatch branch" "fail"

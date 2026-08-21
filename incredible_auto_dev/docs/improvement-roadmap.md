@@ -88,10 +88,12 @@ do not resurrect them without new evidence):
 - **D5** Do not cap thinking/effort to cut cost — on ANY agent, not only judges (D4).
   Superpowers 6 measured the failure mode: capping thinking increased turn count and
   ~doubled output tokens (cost went UP, not down). Judges are hardcoded-refused
-  (`JUDGE_AGENTS`, `scripts/automation/lib/agent_permissions.py:262-264`); for
+  (`JUDGE_AGENTS`, `scripts/automation/lib/agent_permissions.py:296-298`); for
   non-judges the `CHAIN_AGENT_EFFORT` knob stays opt-in and must carry a COST tripwire
-  (REL-8) — the current quality-only tripwire (`lib/analyze_telemetry.py:441-466`)
-  cannot see this failure mode.
+  (REL-8) — the quality tripwire (`lib/analyze_telemetry.py:497-527`) cannot see the D5
+  failure mode; the STYLE-1 cost dimension (`evaluate_cost_tripwire`,
+  `lib/analyze_telemetry.py:550-581`) keys on `output_style_requested`, so it is blind
+  to `CHAIN_AGENT_EFFORT` — REL-8 still owed.
 - **D6** Do not impose word/length budgets on specs or plans. If a spec must shrink,
   cut implementation narrative — NEVER test scenarios or interface/data-contract
   definitions (Superpowers 6: a plan word-budget cut test content −62%; tests and
@@ -1202,8 +1204,11 @@ benchmark (or a real session's telemetry) before AND after (G8).
   allowlist's `Full trigger:` arm is self-certifying — the decomposer wrote a
   qualifying line into every spec and full ran 5-of-6 (anti-pattern 25).
   SPEED-20's deterministic arbiter is now the default path; this allowlist
-  survives verbatim as the arbiter's PRIOR_DEPTH=full rung and as the
-  `CHAIN_DEPTH_ARBITER=false` escape hatch.
+  survives as the arbiter's PRIOR_DEPTH=full rung and as the
+  `CHAIN_DEPTH_ARBITER=false` escape hatch — no longer verbatim: since
+  CAND-MAINT-ISO fix 1 it carries a fail-closed pause for hard-required specs
+  (`depth-legacy-allowlist`), because skipping the arbiter used to skip the
+  requirement with it.
 
 ### SPEED-11 · Lean replay-fork default flip (off→replay)
 - **Priority:** P1 · **Effort:** S · **Risk:** LOW-MED · **Status:** IN-PROGRESS —
@@ -1411,7 +1416,9 @@ benchmark (or a real session's telemetry) before AND after (G8).
 - **Verify:** `bash tests/automation/test-depth-arbiter.sh` (29 cases) ·
   `test-depth-cadence.sh` still green · run-evals.
 - **Files:** `run-goal.sh`, `lib/common.sh`, `agents/goal-decomposer/*`, tests.
-- **Rollback:** `CHAIN_DEPTH_ARBITER=false` (legacy SPEED-10 allowlist verbatim);
+- **Rollback:** `CHAIN_DEPTH_ARBITER=false` (legacy SPEED-10 allowlist — which now
+  carries a fail-closed pause for hard-required specs, so the knob is not an escape
+  from `AWAITING_FULL_DEPTH`);
   `CHAIN_FULL_CADENCE_CAP=0` removes just the window cap.
 - **Stop-and-ask:** a demoted full producing an ESCALATE, or the full ratio
   staying >1-in-4 over the next 6 real iterations (the PRE entry grades it).
@@ -2444,7 +2451,7 @@ benchmark (or a real session's telemetry) before AND after (G8).
   and ~doubled output — a COST backfire. Our tripwire watches quality only. Anchors
   verified 2026-07-07 @ `eb5c8f9`.
 - **Problem:** the `CHAIN_AGENT_EFFORT` experiment auto-reverts on quality signals only
-  (`evaluate_tripwire()`, `lib/analyze_telemetry.py:441-466`: any REGRESSION verdict,
+  (`evaluate_tripwire()`, `lib/analyze_telemetry.py:497-527`: any REGRESSION verdict,
   any regressed journey, ≥2-of-3 first-attempt review FAILs). If lowering an agent's
   effort doubles its output tokens — the measured Superpowers failure mode — the
   tripwire never fires and the "saving" quietly costs more than baseline.
@@ -2456,7 +2463,9 @@ benchmark (or a real session's telemetry) before AND after (G8).
   (`analyze_telemetry.py` `by_agent` `:96`, `output_tokens` `:53`, per-agent rows
   `:212`, JSON `:227`). The knob is headless-only (`agent_permissions.py:272-273`)
   and headless always emits `claude_usage` events — the data is guaranteed present
-  exactly when the knob is active.
+  exactly when the knob is active. STYLE-1 (2026-08-20) landed `evaluate_cost_tripwire`
+  (`lib/analyze_telemetry.py:550-581`) for the output-style knob, keyed on
+  `output_style_requested`; REL-8 generalizes it to the effort arm.
 - **Change spec:**
   1. In `evaluate_tripwire()`: parse which agents the knob names from the `iter_config`
      event payload; per knob-active iteration compute those agents' output-token
@@ -3779,6 +3788,415 @@ but appreciated.
 - **Verify idea:** run-evals + one fixture goal-iteration dry parse with a Reference
   line present and absent.
 
+### CAND-MAINT-ISO · Hard full-depth requirement + maintenance isolation (LANDED 2026-08-21 — reverse-ported from trendora)
+- **Priority:** P1 · **Effort:** M · **Risk:** LOW · **Status:** DONE 2026-08-21 on branch
+  `port/trendora-046dd956` — `bfa3a3f` (the port), `959b5fb` + `6555446` (integration
+  guards + tests), the docs/contract commit, and fix 1 (the legacy-allowlist guard +
+  per-path resume guidance found by review). BOTH features are default-OFF: with
+  `CHAIN_REQUIRE_FULL_DEPTH` and `CHAIN_MAINTENANCE_ISOLATION` unset and no spec line, every
+  path is the pre-port path (the one deliberate exception is the jq-less `iter_dispatch`
+  fallback, which now also emits `maintenance_isolation:"false"`). NOT yet exercised live —
+  the first operator-authored isolated iteration in a real session is still owed.
+- **Source:** four framework-only commits authored inside trendora's vendored copy of this
+  framework (branch `goal/market-compass`, 2026-08-21), reverse-synced file-by-file with
+  `git merge-file --diff3` against each file's OWN pre-change blob rather than copied:
+  `046dd956` (fail closed when `Depth: full` is required but only lean can be dispatched),
+  `29e53651` (framework hunks only — the precedence rung + its cases), `8a4a3a21`
+  (maintenance isolation), `933d5f79` (propagate isolation before child dispatch; reorder
+  QA).
+- **Problem:** the depth arbiter is a COST ladder with no notion of "full depth IS the
+  safety control here", and it had THREE silent full→lean paths, not one — the arbiter
+  ladder (`full-cap` / `budget-breach` / `evaluator-requested-lean`), the full dispatch site
+  when `run-phase.sh` lacks `--no-finalize`, and the depth parser on an unparseable `Depth:`
+  line. Once lean is chosen, `goal-iter-lean.sh` defaults `CHAIN_LEAN_PARALLEL_BROWSER_QA`
+  to `replay` and forks a browser-QA service boot plus a replay lane the moment
+  `developer.done` lands: that is how market-compass iterations 6 and 8 ran an ungated
+  browser replay against a knowingly damaged database. The same defect's other half:
+  "full depth" and "boot the app" were ONE thing, so a backend-only repair iteration could
+  not keep full reviewer/audit scrutiny without also starting services and a browser against
+  the data it was repairing (backend warm-up itself writes derived rows).
+- **Landed (`bfa3a3f`):** two predicates in `lib/common.sh`, each the single place its
+  marker regex lives — `goal_full_depth_required <spec>` (`CHAIN_REQUIRE_FULL_DEPTH` truthy,
+  or a `Depth enforcement: required` spec line) and `goal_maintenance_isolation_required
+  [spec]` (`CHAIN_MAINTENANCE_ISOLATION` truthy, incl. the literal `required`, or a
+  `Maintenance isolation: required` spec line). `_full_depth_pause()` in `run-goal.sh`
+  mirrors the `_host_guard_pause` idiom: resumable `AWAITING_FULL_DEPTH` BEFORE dispatch,
+  an `iter-<N>/depth-requirement-unmet` marker, and `depth-dispatched` REMOVED so a resume
+  cannot inherit a stale lean decision — wired at the demotion sites (`depth-arbiter`,
+  `depth-parse`, `full-dispatch`; a fourth, `depth-legacy-allowlist`, was added by fix 1 —
+  see Integration deltas (10)). A precedence rung resolves a hard-required iteration to
+  full ahead of every cost rung and records the rung it overrode as `depth_cost_overridden`
+  while leaving that rung's on-disk marker untouched, so the arbiter pause is a backstop
+  against a future reordering rather than a reachable path.
+  `apply_maintenance_isolation_from_spec` materializes the spec declaration into the
+  environment before any child dispatch — at BOTH entry points (`run-goal.sh`,
+  `run-phase.sh`) — unsets on an ordinary spec so isolation cannot leak forward, and stamps
+  `CHAIN_MAINTENANCE_ISOLATION_SOURCE=spec|env` so an operator's session-level declaration is
+  never cleared. Six chokepoints: `detect_frontend_in_plan` (subordinates the
+  `CHAIN_GOAL_TARGET_JOURNEYS` browser override), plus `_boot_shared_services`,
+  `ensure_services_running`, `browser-qa-phase.sh`, `replay_lane_partition_and_verify` and
+  `demo-phase.sh`, which refuse through `maintenance_isolation_refuse` (refusals marker +
+  `maintenance_isolation_refused` telemetry). `goal-iter-lean.sh` keeps the parallel
+  browser-QA/replay lane off under a hard requirement regardless of the knob;
+  `AWAITING_FULL_DEPTH` is registered in the `run-goal.sh` status header and in
+  `lib/plain-language.sh` (keys + explainer).
+- **Integration deltas added on THIS side (`959b5fb`, `6555446`)** — each one a path an
+  isolated iteration actually reaches here, or a defect inherited from trendora HEAD:
+  (1) `browser-qa-phase.sh`'s isolation SKIPPED artifact carries a `**Reason:**` line —
+  `closure_gate.py` accepts an all-SKIPPED browser-QA file only via `**Reason:**`,
+  `## Reason` or the browser-infra taxonomy, so the ported heredoc's `## Why this lane did
+  not run` closed the phase CLOSURE-FAIL. (2) `write_na_ui_artifacts` writes isolation
+  wording for ALL SIX N/A UI stubs from one shared reason string — under isolation
+  `detect_frontend_in_plan` refuses, so `run-phase.sh` takes its backend-only branches and
+  `browser-qa-phase.sh` is never entered, and the withheld lane was being reported to the
+  evaluator as "Backend-only phase (Frontend Present: no)". (3) `closure_gate.py`'s
+  `frontend_present()` gained the carve-out the bash predicate already had:
+  `maintenance_isolation_active()` reads the exported `CHAIN_MAINTENANCE_ISOLATION` (the SAME
+  literal truthy set bash accepts, deliberately not a case-insensitive superset) or a
+  `Maintenance isolation: required` plan line, so an isolated iteration's six stubs pass even
+  when the plan says `Frontend Present: yes`. (4) `run-goal.sh`'s showcase-join REAPS the
+  previous iteration's background tail (`_join_showcase_tail --kill` + an explicit
+  `kill_phase_servers`) instead of waiting for it — the tail forked during iteration N−1 and
+  carries the PRE-isolation environment, so joining it would boot the app mid-isolation.
+  (5) `AWAITING_FULL_DEPTH` added to `run-goal.sh`'s `--resume` status allowlist (inherited
+  gap: the pause is documented resumable, but `--resume` never reset the status, so the only
+  escape was deleting the requirement). (6) `demo-phase.sh` checks isolation BEFORE its
+  self-boot block and prints exactly ONE skip line via a dedicated `_runner_rc=90` — under
+  `set -e` the refusal from `ensure_services_running` killed the script ~120 lines before the
+  ported guard, and the runner's rc 3 would otherwise have followed a contract decision with
+  "Playwright not available"; documented, not changed: `_boot_shared_services` never exports
+  `CHAIN_SHARED_SERVICES=true` under isolation, because that flag means "the caller owns a
+  running app". (7) `qa-phase.sh` no longer appends the "backend did NOT become healthy after
+  retries" warning + dependency hint under isolation — `QA_BACKEND_UP=no` there because
+  nobody was ALLOWED to start a backend, and the prompt told the agent two stories about the
+  same service. (8) `iter_dispatch` carries `maintenance_isolation` on BOTH paths — the
+  port added it to the jq payload, and this side added it to the jq-less `printf` fallback,
+  which had silently dropped the only record that an iteration ran isolated. (9) `lib/replay-lane.sh`'s isolation guard fails CLOSED — `declare -F
+  <predicate> && <predicate>` read "not isolated" when `common.sh` was never sourced, making
+  the one state in which the contract is uncheckable the state that lets the browser run.
+  (10) **Fix 1 (2026-08-21, after review):** the legacy SPEED-10 allowlist gained the same
+  `goal_full_depth_required` guard — the precedence rung and the `_full_depth_pause` backstop both
+  live inside the arbiter's `if`, so whenever the arbiter is skipped (`CHAIN_DEPTH_ARBITER=false`,
+  or iter-0, which it exempts) a hard-required spec fell through to the allowlist, which demoted it
+  to lean with no pause when it named no `Full trigger:` line — while that same knob was documented as the way OUT
+  of `AWAITING_FULL_DEPTH`. It now pauses at `depth-legacy-allowlist`, `_full_depth_pause` prints a
+  PER-PATH remedy (also stored as `remedy=` in `depth-requirement-unmet`), and every doc that
+  offered the knob as a hatch now denies it explicitly.
+  (11) **Final review (2026-08-21):** isolation now IMPLIES the full-depth requirement.
+  `goal_full_depth_required` returns true under `goal_maintenance_isolation_required`, so an
+  isolated `Depth: full` spec is protected by the existing precedence rung (previously it could be
+  cost-demoted unless the operator ALSO wrote `Depth enforcement: required`) and
+  `goal-iter-lean.sh`'s fail-closed guard forces its parallel browser-QA/replay fork off. A spec
+  that resolved to lean/evidence under isolation now PAUSES before dispatch
+  (`isolation-requires-full`) — nothing is promoted. That path mattered: `goal-iter-lean.sh` has no
+  isolation handling at all (bare `ensure_services_running` in its boot unit), so with the fork on
+  the refusal was swallowed and `ui-test-results.md` blamed "frontend not running" — no
+  `**Reason:** maintenance isolation` line, so neither the evaluator carve-out nor
+  `closure_gate.py` could fire and journeys went `unknown`; with the fork off the executor aborted
+  under `set -e` only AFTER developer and reviewer had mutated the tree. Same commit: a resume that
+  regenerates a spec carrying an operator-only line warns loudly and emits `spec_regenerated`
+  (the decomposer is forbidden to rewrite those lines, so regeneration silently dropped them), and
+  the QA brief's product-specific database claim was made generic.
+  Agent/operator contract (this commit): the goal-evaluator scores an all-SKIPPED isolation
+  `ui-test-results.md` like `DEFERRED-BUDGET` (journeys keep their prior status, and no
+  journey may be promoted TO passing on an iteration that produced no browser evidence); the
+  goal-decomposer must NEVER emit `Depth enforcement:` or `Maintenance isolation:`;
+  `goal-interactive-dispatch` 3.0.0→3.0.1 gains the `AWAITING_FULL_DEPTH` bullet.
+- **Deliberately NOT done:** the decomposer cannot arm either control — a governor reading
+  the governed agent's own prose is not a governor (anti-pattern 25), so both lines are
+  operator-authored and the decomposer states the NEED in BACKGROUND prose instead. The
+  brief's proposed `GOAL_SESSION_DIR`/`GOAL_ITER_INDEX` fallback inside
+  `maintenance_isolation_refuse` was NOT written: `lib/common.sh` sources
+  `lib/checkpoint.sh`, and `goal_iter_dir` already PREFERS those two exported vars, so it
+  would have been dead code — the behaviour is pinned by a test instead. Trendora's other
+  un-upstreamed patches stay out (see §20 "Known gaps"): `lib/replay-lane.sh`'s rc=7
+  backend-unreachable handling and `resolve_backend_health_url`. No
+  `render_iteration_summary.py` badge for the new status yet.
+- **Known steady state (record it; do not "fix" it by accident):**
+  - A hard-required iteration may breach the SPEED-15 wall budget and then override its own
+    `budget-breached` marker on the NEXT iteration. That is the design — a safety
+    requirement outranks a cost rung — and it is visible as `depth_cost_overridden
+    {overridden_cost_rung:"budget-breach"}`; the marker itself is deliberately left on disk.
+  - A showcase tail reaped under isolation returns before the join path's commit/push block
+    (which only runs with `--push-per-iter`), so iteration N−1's summary / README / renders
+    can be partial and uncommitted; iteration N's own per-iter commit sweeps them up.
+  - **Iteration 0 is the sharp edge of both session-wide knobs**, because the arbiter exempts the
+    baseline and the baseline spec is verify-only. `CHAIN_REQUIRE_FULL_DEPTH=true` plus a baseline
+    spec that says `Depth: full` and names no `Full trigger:` halts at iteration 0
+    (`depth-legacy-allowlist`) — and "re-enable the arbiter" is inert there, so only the
+    `Full trigger:` line helps. `CHAIN_MAINTENANCE_ISOLATION=true` halts an ordinary verify-only
+    baseline at `isolation-requires-full`, since that spec asks for lean. Both are fail-closed by
+    design; declare the controls from iteration 1, or write the baseline spec to match.
+  - `closure_gate.py`'s backend-only WARN channel still reads "Plan says Frontend Present:
+    no but frontend-looking files changed this phase" for an isolation-declared plan that
+    says `yes`. Wording only — no verdict effect. Follow-up.
+  - The isolation carve-out now exists in TWO implementations — the bash predicate and the
+    python gate — agreeing on the truthy set by convention and comment, not by a shared
+    constant. A parity test (bash truthy set == `_ISOLATION_ENV_TRUTHY`) is a follow-up.
+- **Follow-ups (tracked, NOT done):**
+  - Deterministic GOAL_ACHIEVED refusal on an isolated iteration (`goal_gate_filter_verdict`,
+    ~5 lines). Today the rule is agent-side only: the evaluator body and methodology forbid
+    certifying on an isolated iteration's own evidence, but no gate enforces it. Whether the
+    gate should refuse outright is a design choice for the owner.
+  - `write_session_summary` and the HTML renderer have no badge/branch for
+    `AWAITING_FULL_DEPTH`; it renders as an unknown status.
+  - `async-showcase-join` records a refusal only when `_SHOWCASE_PID` is still set, which a
+    completed-but-unjoined tail clears only at the join — so a tail that finished on its own
+    leaves no refusal record even though the reap path was the contract-relevant one.
+  - `agents/phase-closure-auditor/body.md` has no isolation carve-out, so the LLM escape hatch
+    could still read six N/A stubs as an absent frontend.
+  - No parity test pins the bash truthy set against `closure_gate.py`'s `_ISOLATION_ENV_TRUTHY`;
+    they agree by comment and convention.
+  - The developer / reviewer / auditor prompts carry no isolation note. The FORBIDDEN half binds
+    the engine's own service and browser call sites, so nothing the pipeline drives can start the
+    app — but an agent told to run it by hand would not know it must not.
+  - (final-review residuals, 2026-08-21) The `isolation-requires-full` pause exits before the
+    showcase-join step's explicit `kill_phase_servers`, so app services an earlier showcase tail
+    had already started survive that pause (the EXIT trap reaps the tail itself; the services
+    predate the isolated iteration). `tests/automation/test-maintenance-isolation.sh` still carries
+    ten `awk|grep -q`-style pipelines under `pipefail` — the SIGPIPE flake pattern removed from its
+    sibling; route slices through files before it grows. `run-goal.sh`'s
+    `apply_maintenance_isolation_from_spec … || true` is now load-bearing for the isolation guard
+    (a silent failure there would disarm a spec-declared isolation; unreachable today).
+    `goal-iter-lean.sh`'s "Full depth is REQUIRED" line fires for isolation too (reason tag
+    `full-depth-required`; behaviour correct, message imprecise). The quickstart's "let the loop
+    pause once the decomposer checkpoint exists" does not say how (`/goal-pause` or Ctrl-C).
+- **Verify:** `bash tests/automation/test-maintenance-isolation.sh` (78) · `bash
+  tests/automation/test-full-depth-required.sh` (53) · `bash
+  tests/automation/test-closure-gate.sh` (29) · `bash tests/automation/test-depth-arbiter.sh`
+  (33) · `bash tests/automation/test-replay-lane.sh` (59) · `bash
+  tests/automation/test-plain-language.sh` (63) · `python3
+  scripts/automation/lib/closure_gate.py self-test` · `./scripts/automation/run-evals.sh`
+  (155 / 0). Semantic smoke without an engine run:
+
+  ```bash
+  source scripts/automation/lib/common.sh
+  CHAIN_MAINTENANCE_ISOLATION=true goal_maintenance_isolation_required && echo isolated
+  printf -- '- **Depth enforcement:** required\n' > /tmp/spec.md
+  goal_full_depth_required /tmp/spec.md && echo required
+  ```
+- **Rollback:** both features are default-OFF, so the live rollback is to stop declaring
+  them: `unset CHAIN_REQUIRE_FULL_DEPTH CHAIN_MAINTENANCE_ISOLATION` and remove any
+  `Depth enforcement:` / `Maintenance isolation:` spec line. `CHAIN_DEPTH_ARBITER=false`
+  additionally restores the legacy SPEED-10 allowlist. To remove the mechanism itself,
+  revert this branch's six commits — `bfa3a3f` (port), `959b5fb` + `6555446` (integration
+  guards), `f9f9624` (docs/contracts), `de23d27` (fix 1) and the final-review fix on top
+  (run-evals returns to 153 / 0). Those are THIS repo's commits; the four `Source` commits
+  above are trendora's and are not present here.
+
+### CAND-STYLE · Per-agent Claude Code output style (landed default-off; experiment pending)
+- **Priority:** P2 · **Effort:** M · **Risk:** LOW-MED · **Status:** IMPLEMENTED
+  2026-08-20 behind `CHAIN_OUTPUT_STYLES` (default off, G4); G8 stage 1 (fixture A/B)
+  run 2026-08-21 — mechanism confirmed, token win indicative (−44% on the one
+  like-for-like developer cell), journey clause refuted by an orphan-Chrome
+  infrastructure defect; stage 2 (same-session real rollout) pending.
+- **Problem:** long, machine-consumed pipeline steps (developer, qa,
+  browser-qa-agent, orchestrator, ui-impact-analyst, ux-regression-reviewer) pay
+  sonnet-priced tokens narrating a transcript no human reads. Claude Code's built-in
+  `Concise` output style is a zero-app-code lever for exactly this, but applying it
+  needed: name validation (the CLI silently ignores an unknown style and falls back
+  to default), a headless invocation seam, an interactive-backend emulation path
+  (Agent-tool subagents never receive a native style at all), proof that the
+  effective style actually matched what was requested, and — per **D5**'s precedent,
+  where an output cap increased turn count and ~doubled output tokens — a dedicated
+  cost tripwire, because "should save tokens" cannot ship unmeasured.
+- **Current state:** the Step 0 probe (2026-08-20, CLI 2.1.237) confirmed
+  `init.output_style="Concise"` survives `--exclude-dynamic-system-prompt-sections`,
+  and that inline `--settings` MERGES with project/user settings rather than
+  replacing them (hooks still fired); `available_output_styles` is absent from this
+  CLI version's `init` event. The assignment lives in a python table, not
+  `agents/<name>/agent.yaml`: vendored deployments (trendora, tapeology) symlink
+  `.claude/`, `config/`, `scripts/` but not `agents/`, and Claude Code ignores an
+  `output_style` frontmatter key for subagents regardless — a yaml-based assignment
+  would be invisible in one case and inert in the other.
+- **Change spec (landed):** resolver `output_style_for` in
+  `scripts/automation/lib/agent_permissions.py` beside `EFFORT_OVERRIDES`, same
+  precedence shape as `CHAIN_AGENT_EFFORT` (`CHAIN_OUTPUT_STYLE_OVERRIDE` global
+  debug > `CHAIN_AGENT_OUTPUT_STYLE` per-agent map > `OUTPUT_STYLE_OVERRIDES` table
+  gated by `CHAIN_OUTPUT_STYLES=true` > nothing); CLI subcommands `output-style`,
+  `output-style-text`, `output-styles-configured`, `output-style-check` (commit
+  `d2b9a19`). Headless seam: `_claude_invoke` appends `--settings
+  '{"outputStyle":"<name>"}'` when a style resolves; `_codex_invoke` drops the flag;
+  `run-judgment-evals.sh` carries the same parity lines (commit `da939e5`). The
+  interactive backend has no native style channel for Agent-tool subagents, so
+  `_interactive_invoke` appends an emulation block to the prompt instead — trace
+  records `<name>(emulated)` (commit `adaf89b`). Proof per dispatch: the renderer
+  stamps the EFFECTIVE `output_style` from the stream-json `init` event into the
+  usage sidecar, landing it in both `trace.jsonl` and the `claude_usage` telemetry
+  event; telemetry also carries `output_style_requested`; a requested-vs-effective
+  mismatch (case-insensitive, `""` ≡ `"default"`) fires `WARNING: output style
+  requested=<x> effective=<y>` plus an `output_style_mismatch` telemetry event —
+  this also catches an ambient `outputStyle` pin leaking in from the operator's own
+  settings (commit `da939e5`). Engine wiring: boot preflight `output-style-check`
+  (exit 2 on any invalid configured name); `session.json` gets an `output_styles`
+  reporting stamp; `iter_config {key:"CHAIN_OUTPUT_STYLES"}` fires per knob-active
+  iteration; the tripwire revert block was generalized to one `experiment_reverted`
+  event per active knob key (commits `6295302`, `1027695`). `analyze_telemetry.py
+  --tripwire` gained a cost dimension — styled vs. unstyled `claude_usage` rows for
+  the same agent in-session, tripping when the styled median of `output_tokens` or
+  `num_turns` exceeds 1.5x the baseline median (≥3 rows each side), reason prefix
+  `cost:` — plus an unparseable `review_verdict` trip reason and three new
+  `missing_evidence` emitters (developer handoff, ui-impact, ux-regression) so every
+  wave-1 artifact carries a deterministic "went missing" signal. `doctor.sh` gained
+  an `output-styles` row (20 checks total; commits `8d78ee7`, `15d10cc`). Wave 1
+  assigns `Concise` to developer, qa, browser-qa-agent, orchestrator,
+  ui-impact-analyst, ux-regression-reviewer; judges (`JUDGE_AGENTS`) are refused by
+  a hardcoded guard (D4), `Learning` is refused outright (asks the human to write
+  code), and the whole mechanism is inert outside goal mode (`GOAL_SESSION_DIR`
+  unset), except the debug override `CHAIN_OUTPUT_STYLE_OVERRIDE`, which works in
+  any mode.
+- **DoD (experiment):** pre-register predictions in `benchmarks/experiments.md`
+  (developer `output_tokens` −20..30%, `num_turns` flat ±10%, attempt-1 review FAIL
+  rate unchanged, `cache_creation_input_tokens` ≤ +25K per wave-1 dispatch, zero
+  `output_style_mismatch`); run ≥3 knob-off iterations on one real session, then
+  `CHAIN_OUTPUT_STYLES=true` for ≥3 more on the same session (G9 confirm — this
+  spends real tokens). The full-depth-only wave-1 agents (qa, orchestrator,
+  ui-impact-analyst, ux-regression-reviewer) accrue rows only in full-depth
+  iterations, so they are measured only when each arm includes ≥3 full-depth
+  iterations. The cost guard cannot fire before the styled side has ≥3 rows per
+  agent — not before the third knob-on iteration (second if a fix-mode retry
+  occurs); the first two armed iterations rely on the quality dimension and the
+  manual read-out. Flip the default to `true` in a SEPARATE change (G4) only if
+  developer's median output tokens drop ≥15% (primary metric) AND no wave-1
+  agent with ≥3 rows per arm trips the cost guard AND every tripwire is quiet
+  AND no artifact-schema issues; agents with <3 styled rows are listed as
+  UNMEASURED in the read-out — the flip covers the whole table only if the
+  unmeasured set is empty, otherwise that separate change flips only the
+  measured agents (edit `OUTPUT_STYLE_OVERRIDES` accordingly); if artifacts
+  thinned but tokens still dropped, ship arm 2 instead; otherwise record the
+  result here and leave the knob dormant.
+- **G8 stage-1 result (2026-08-21, fixture A/B — NOT the flip decision):** two
+  `run-benchmark.sh` arms on the todo-app fixture at framework `f8c98b9` (arm A control
+  `bench-20260820-2246`, arm B `CHAIN_OUTPUT_STYLES=true` `bench-20260820-2337`; full
+  grading in `benchmarks/experiments.md` under `POST bench-20260820-2337`). Run this way
+  because both real-session repos had live engines under `HOST_GUARD_MAX_ENGINES` and
+  run an older vendored framework copy; cross-session, so the same-session cost guard
+  was not exercised. **Mechanism CONFIRMED:** every wave-1 dispatch requested and read
+  back `output_style=Concise` (developer ×2, browser-qa-agent ×2, and — iter-1 ran full
+  depth — orchestrator, ui-impact-analyst, qa, ux-regression-reviewer); judges and
+  showcase agents `default`; `iter_config` per iteration; zero `output_style_mismatch`,
+  `missing_evidence`, `experiment_reverted`; tripwire quiet; doctor PASS armed at boot.
+  **Tokens (indicative, n=1 per cell):** the one like-for-like cell, developer iter-0
+  (lean/lean): 14,967 → 8,416 output tokens (−44%), 35 → 28 turns, 184 → 109 s,
+  cache_creation +17.9K (≤ +25K budget held); iter-1 depth-confounded (A lean 29,518 /
+  45 turns vs B FULL 33,098 / 46). **Journeys 3/3 REFUTED for arm B (1/3,
+  BUDGET_EXHAUSTED) for infrastructure reasons, not the style:** arm A's browser-QA
+  Chrome outlived its engine and held the pinned chrome-mcp profile, so arm B's browser
+  lane got `ECONNREFUSED :10547` in both iterations; the evaluator graded J-02/J-03
+  partial from the Playwright demo walkthrough alone (its step 4, authored by the
+  Default-styled demo-narrator, clicked an already-done item). **Watch item:** the styled
+  QA report over-claimed its screenshot evidence once (caught by the auditor and by the
+  styled ux-regression-reviewer) — count QA over-claims per arm in stage 2. Stage 2 =
+  the same-session real rollout above, after the next vendored sync and after the
+  orphan-Chrome reap (Follow-ups) is fixed.
+- **Verify:** `./scripts/automation/run-evals.sh` · `bash
+  tests/automation/test-output-style.sh` · `bash scripts/automation/doctor.sh --only
+  output-styles` · the G8 read-out (`T=runs/goal-session-<sid>/telemetry.jsonl`):
+
+  ```bash
+  jq -r 'select(.event=="claude_usage" and (.agent|IN("developer","qa","browser-qa-agent","orchestrator","ui-impact-analyst","ux-regression-reviewer"))) | [(.iter|tostring), .agent, (.output_style_requested // "none"), (.output_style // "?"), (.usage.output_tokens|tostring), (.num_turns|tostring), (.duration_ms|tostring), (.usage.cache_creation_input_tokens|tostring)] | @tsv' "$T" | column -t
+  jq -s 'map(select(.event=="claude_usage" and .agent=="developer")) | group_by(.output_style_requested // "none") | map({arm:(.[0].output_style_requested // "none"), n:length, out_med:(map(.usage.output_tokens)|sort|.[length/2|floor]), turns_med:(map(.num_turns)|sort|.[length/2|floor]), ms_avg:(map(.duration_ms)|add/length)})' "$T"
+  python3 scripts/automation/lib/analyze_telemetry.py --wall "$T"
+  python3 scripts/automation/lib/analyze_telemetry.py --tripwire --window 3 "$T"; echo "tripwire rc=$?"   # 0 = quiet
+  jq -c 'select(.event|IN("output_style_mismatch","missing_evidence","experiment_reverted"))' "$T"       # must be empty
+  jq -r 'select(.event=="review_verdict") | [.iter,.attempt,.verdict]|@tsv' "$T"                          # attempt-1 FAIL rate vs baseline
+  for f in reports/reviews/*-review.md reports/qa/*-qa.md runs/goal-session-<sid>/iter-*/eval.md; do python3 scripts/automation/lib/artifact_schemas.py validate "$f" >/dev/null 2>&1 || echo "SCHEMA-ISSUE $f"; done
+  ```
+- **Rollback:** `unset CHAIN_OUTPUT_STYLES CHAIN_AGENT_OUTPUT_STYLE
+  CHAIN_OUTPUT_STYLE_OVERRIDE` reverts any live session to unstyled immediately; to
+  remove the mechanism itself, revert the STYLE-1 commits or empty
+  `OUTPUT_STYLE_OVERRIDES`.
+- **Stop-and-ask:** any `output_style_mismatch` event in the first knob-on
+  iteration; wave-1 artifacts failing `artifact_schemas` validation, a
+  `missing_evidence` row appearing, or the attempt-1 review FAIL rate rising under
+  `Concise`; anyone styling a judge outside a debug `CHAIN_OUTPUT_STYLE_OVERRIDE`
+  run, or flipping the default in the same change that touches the knob (G4).
+- **Follow-ups:**
+  - Flip `CHAIN_OUTPUT_STYLES`'s default only in a separate change, after G8
+    evidence.
+  - (G8 stage-1 framework defects — FIXED 2026-08-21, STAGE2-PREREQ T1-T5) QA
+    browser profile now carries the path-hash offset (`iad-qa-<project>-<offset>`)
+    and the headless engine reaps its own QA browsers at exit
+    (`CHAIN_BQA_REAP_ON_EXIT`, default on; `browser-confine.sh --reap` runs without
+    host-guard); `record_review_verdict` emits `review_verdict` from the full-depth
+    loop too; trace rows carry `output_style_requested`; review/qa schemas follow the
+    first-line `**Verdict:**` contract; closure-gate markers are case-sensitive
+    tokens (+`FIXME`). Stage 2 is unblocked on the framework side — it still needs
+    the operator's vendored sync and a free engine slot.
+  - (residuals parked by the STAGE2-PREREQ final review, 2026-08-21 — none blocks
+    stage 2) `browser-confine.sh` `_cmdline()` puts `< /proc/<pid>/cmdline` before
+    `2>/dev/null`, so a process that exits mid-scan leaks "No such file" into the
+    engine log (brace-group fix, one line). A project `host-guard.env` that sets
+    `HOST_GUARD_BROWSER_CONFINE=1` is sourced after the exit hook's `=0` and would
+    re-run confine passes A–C at engine exit (no project sets it; close with a
+    `--reap-only` argv flag). No test distinguishes the `engine_lock_classify`
+    liveness guard from the `kill -0` it replaced (recycled-pid / pre-boot /
+    cross-host branches). The migration grep in `docs/host-guard.md` lists a
+    new-shape profile name as old-shape when it is the last cmdline token.
+    `tests/automation/test-host-guard-browser.sh` is load-sensitive (bounded
+    `wait_for 5/8` process waits; one FAIL seen with a concurrent second instance,
+    clean in isolation) — never run two instances at once; consider a per-suite
+    flock. Verdict-parsing regex now lives in three places (`_review_parses`,
+    `_review_verdict`, `record_review_verdict`) — consolidation candidate.
+  - Arm 2 custom style `pipeline-terse` (pre-drafted, NOT shipped — ships as its
+    own CAND item): use only if wave-1 measurement shows Concise leaking into
+    artifacts (schema failures, thinner handoffs) while the token win is real.
+
+    1. Neutral source `output-styles/pipeline-terse.md`:
+
+       ```markdown
+       ---
+       name: pipeline-terse
+       description: Pipeline agents — minimal transcript, artifacts exactly per agent instructions
+       keep-coding-instructions: true
+       ---
+       You are running unattended inside an automated pipeline. No human reads your transcript; machines read the files you write.
+
+       - Transcript: no preamble, no narration between tool calls, no recap. Your final message is one line naming the artifact(s) you wrote and the verdict line, nothing else.
+       - Artifacts: every file, section, table, and verdict line your agent instructions require is written in full — this style never shortens a file.
+       - Errors, failing test output, and security findings keep their full content.
+       - Never stop to ask a question: make the documented assumption, record it in the artifact, continue.
+       ```
+    2. `adapters/claude/sync.py`: mirror `output-styles/` → `.claude/output-styles/`
+       (same `mirror_directory` helper as skills/commands; add to `sync_all` counts
+       and the docstring); `--check` covers it (G2). Vendored deployments see it
+       through the `.claude` symlink.
+    3. Assignment: `OUTPUT_STYLE_OVERRIDES[...] = "pipeline-terse"` for the
+       affected agents; the resolver already accepts project custom styles by
+       stem/name, and `output_style_text` already serves the file body as the
+       interactive emulation text.
+    4. Caveat: Claude Code emits the per-turn "style active" reminder only for
+       built-in styles; custom styles get none. Measure both arms with the
+       same recipe.
+  - The renderer emits `output_style`/`available_output_styles` as `null` when
+    unknown, and the trace's `+ $usage` spread can null-override an already-known
+    requested value — omit the keys instead of nulling them.
+  - `_codex_invoke` never resets `_CHAIN_TRACE_OUTPUT_STYLE`, so it goes stale in
+    mixed-backend processes (pre-existing gap, shared with model/effort).
+  - Latent vendored gap: `_neutral_agent_yaml` has no framework-root fallback
+    (unlike `_tiers_file`), affecting yaml-only fields (timeout/budget/model) in
+    vendored repos.
+  - Re-derive `AGENT_TIMEOUTS_SECONDS` from `--wall` after ≥3 knob-on iterations.
+  - `session.json`'s `output_styles` stamp is not rewritten after a tripwire revert
+    — `iter_config`/`experiment_reverted` events carry the truth instead.
+  - `missing_evidence` emitters fire on different conditions per agent (e.g.
+    ui-impact only on rc==0) — know each one's trigger before trusting silence.
+  - The cost tripwire needs ≥3 same-session UNSTYLED baseline iterations per agent —
+    run those first, or it has nothing to compare against.
+  - The analyzer's cost dimension counts `<name>(unemulated)` rows and headless
+    rows whose effective `output_style` differs from the requested name as
+    styled (`evaluate_cost_tripwire`, `lib/analyze_telemetry.py:565-566`);
+    exclude them (needs `output_style`, not just `output_style_requested`, in
+    the collected row at `:345-350`). Until then the telemetry doc's "exclude
+    mismatched dispatches by hand" rule stands.
+  - `doctor.sh:731`'s `claude --version` is the one probe in the `output-styles`
+    row not wrapped in `_bounded`.
+  - Test hardening: bound `wait "$bg"` in `run_interactive`
+    (`tests/automation/test-output-style.sh`, the interactive helper) with
+    `timeout` or extend the `.ready` poll beyond 5s; add a telemetry-sourced
+    case for `output_style_mismatch` emission; add a baseline-side (<3
+    unstyled rows) cost fixture.
+
 ---
 
 ## 17. Absorbed-from-README ledger (traceability)
@@ -4537,3 +4955,14 @@ forensics work would have blurred what this package is for.
 - **Trendora carries two un-upstreamed framework patches** worth reverse-porting:
   `lib/common.sh` (force the browser lane when `CHAIN_GOAL_TARGET_JOURNEYS` is set) and
   `lib/replay-lane.sh` (rc=7 backend-unreachable handling).
+  - `lib/common.sh` half **DONE 2026-08-21** (CAND-MAINT-ISO): the
+    `CHAIN_GOAL_TARGET_JOURNEYS` browser-lane override came back with the
+    maintenance-isolation reverse-port — Option A, trendora's whole
+    `detect_frontend_in_plan` taken verbatim with the isolation carve-out ABOVE the
+    override — so `run-goal.sh`'s comment at the `CHAIN_GOAL_TARGET_JOURNEYS` export
+    ("forces the browser lane whenever this iteration names journeys") is true again with
+    no edit.
+  - `lib/replay-lane.sh` rc=7 backend-unreachable handling: **still un-upstreamed**. The
+    isolation port touched that file (a fail-closed guard at
+    `replay_lane_partition_and_verify`) but deliberately took no other trendora hunk;
+    `grep -c TARGET_JOURNEYS scripts/automation/lib/replay-lane.sh` is still 0.

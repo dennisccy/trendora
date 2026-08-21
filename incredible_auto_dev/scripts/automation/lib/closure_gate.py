@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import datetime
 import json
+import os
 import re
 import subprocess
 import sys
@@ -62,9 +63,24 @@ UI_ARTIFACTS = [
 ]
 
 # Objective placeholder markers (skill "Vagueness Detection" + SPEED-17 list).
-_PLACEHOLDER_RE = re.compile(
-    r"\bTODO\b|\bTBD\b|<fill|\bFILL IN\b|\blorem\b|\bxxx+\b", re.IGNORECASE
+# Marker TOKENS are case-sensitive: `TODO`/`FIXME`/`TBD`/`FILL IN` are how a
+# writer flags unfinished work; "todo"/"Todo" in prose is product vocabulary
+# (a todo app tripped the gate on every artifact — G8 stage 1, 2026-08-21).
+# The free-text placeholders stay case-insensitive.
+_PLACEHOLDER_RE_TOKENS = re.compile(r"\bTODO\b|\bFIXME\b|\bTBD\b|\bFILL IN\b")
+_PLACEHOLDER_RE_TEXT = re.compile(r"<fill|\blorem\b|\bxxx+\b", re.IGNORECASE)
+
+# Maintenance isolation, as the engine declares it. Same shape as the bash
+# marker regex (goal_maintenance_isolation_required, lib/common.sh): optional
+# list dash, optional bold, tolerant of `- **Maintenance isolation:** required`.
+_ISOLATION_MARKER_RE = re.compile(
+    r"^[ \t]*-?[ \t]*(?:\*\*)?maintenance[ -]isolation:?(?:\*\*)?[ \t]*:?[ \t]*(?:\*\*)?required",
+    re.IGNORECASE | re.MULTILINE,
 )
+# Deliberately the SAME literal set the bash predicate accepts — not a
+# case-insensitive superset. A value bash reads as "not isolated" (e.g. "True")
+# must not make this gate the more lenient of the two.
+_ISOLATION_ENV_TRUTHY = frozenset({"true", "TRUE", "1", "yes", "on", "required"})
 
 # Code spans are quoted evidence, not authored prose — a marker inside one is
 # something a tool said, not a placeholder the author left behind (owner
@@ -137,8 +153,32 @@ def content_lines(text: str) -> int:
     return n
 
 
+def maintenance_isolation_active(plan_text: str = "") -> bool:
+    """True when this phase/iteration declared maintenance isolation.
+
+    Read the two ways the feature propagates: the environment variable
+    run-goal.sh / run-phase.sh export once the spec is resolved
+    (apply_maintenance_isolation_from_spec), and the marker line itself for a
+    consumer that never inherited that environment — a hand re-run of closure,
+    say. The spec regex is NOT re-implemented against the spec file: this reads
+    the plan text the gate already has.
+    """
+    if os.environ.get("CHAIN_MAINTENANCE_ISOLATION", "") in _ISOLATION_ENV_TRUTHY:
+        return True
+    return bool(plan_text) and bool(_ISOLATION_MARKER_RE.search(plan_text))
+
+
 def frontend_present(plan_text: str) -> bool:
-    """Mirror of detect_frontend_in_plan (lib/common.sh)."""
+    """Mirror of detect_frontend_in_plan (lib/common.sh), including the
+    maintenance-isolation carve-out: isolation withholds browser execution, so
+    every UI artifact is legitimately an N/A stub and the frontend branch must
+    not demand real content for a lane the contract forbade. The bash function's
+    OTHER branch — the CHAIN_GOAL_TARGET_JOURNEYS override — is deliberately not
+    mirrored: it only ever ADDS the browser lane, and this gate reads artifacts
+    that the lane either produced or did not.
+    """
+    if maintenance_isolation_active(plan_text):
+        return False
     if re.search(r"frontend present:\s*yes", plan_text, re.IGNORECASE):
         return True
     return bool(re.search(r"frontend present\s*\n\s*yes", plan_text, re.IGNORECASE))
@@ -209,8 +249,9 @@ def placeholder_hits(text: str) -> list[str]:
         # character inside a code span cannot open a stray quoted span.
         scanned = _INLINE_CODE_RE.sub(lambda m: " " * len(m.group(0)), line)
         scanned = _QUOTED_SPAN_RE.sub(lambda m: " " * len(m.group(0)), scanned)
-        for m in _PLACEHOLDER_RE.finditer(scanned):
-            hits.append(f"{m.group(0)} (line {i})")
+        for rx in (_PLACEHOLDER_RE_TOKENS, _PLACEHOLDER_RE_TEXT):
+            for m in rx.finditer(scanned):
+                hits.append(f"{m.group(0)} (line {i})")
     return hits
 
 
@@ -696,6 +737,24 @@ def _self_test() -> int:
         assert frontend_present("Frontend Present: yes")
         assert frontend_present("## Frontend Present\nyes")
         assert not frontend_present("Frontend Present: no")
+        # maintenance isolation carve-out (env + plan marker), and its default OFF
+        assert not maintenance_isolation_active("Frontend Present: yes")
+        assert maintenance_isolation_active("- **Maintenance isolation:** required")
+        assert maintenance_isolation_active("Maintenance-isolation: REQUIRED")
+        assert not frontend_present(
+            "Frontend Present: yes\n- **Maintenance isolation:** required\n"
+        )
+        _prev_env = os.environ.get("CHAIN_MAINTENANCE_ISOLATION")
+        try:
+            os.environ["CHAIN_MAINTENANCE_ISOLATION"] = "true"
+            assert not frontend_present("Frontend Present: yes")
+            os.environ["CHAIN_MAINTENANCE_ISOLATION"] = "False"
+            assert frontend_present("Frontend Present: yes")  # not a bash-truthy value
+        finally:
+            if _prev_env is None:
+                os.environ.pop("CHAIN_MAINTENANCE_ISOLATION", None)
+            else:
+                os.environ["CHAIN_MAINTENANCE_ISOLATION"] = _prev_env
         assert content_lines("# h\n\n---\n<!-- c -->\nreal\nreal2\n") == 2
         assert len(numbered_steps("1. a\n2) b\nx\n 3. c\n")) == 3
         assert classify_step("1. Test the form") == "blocking"
@@ -704,7 +763,17 @@ def _self_test() -> int:
         assert classify_step('4. Fill "Name" with "demo" — Expect: row appears') == "ok"
         assert classify_step("5. Verify the total updates correctly to $45") == "warn"
         assert placeholder_hits("real\nTODO: later\n") != []
+        assert placeholder_hits("real\nFIXME: wire up\n") != []
+        assert placeholder_hits("real\nTBD\n") != []
+        assert placeholder_hits("real\n<fill in the route>\n") != []
+        assert placeholder_hits("real\nLorem ipsum dolor\n") != []
         assert placeholder_hits("<!-- TBD template note -->\nreal\n") == []
+        # Product vocabulary is not a marker (G8 stage 1: a todo app tripped the gate).
+        assert placeholder_hits("Add a todo via the form\n") == []
+        assert placeholder_hits("state is stored in todo.json\n") == []
+        assert placeholder_hits("the heading 'Todo' is visible\n") == []
+        assert placeholder_hits("shows the todos list\n") == []
+        assert placeholder_hits("Fixme is a band name\n") == []
 
     def t_skip_detection():
         skipped = ("**Browser QA Verdict:** SKIPPED\n"

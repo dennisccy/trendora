@@ -109,6 +109,7 @@ terminal prints the same plain sentences next to them; this is the full list.
 | `AWAITING_GITHUB_AUTH` | Paused because the chain cannot push to GitHub (login missing or expired). Run `gh auth login`, then resume. |
 | `AWAITING_DISK` | Paused because this computer is low on disk space — the chain never builds in that state. Free space, then resume. |
 | `AWAITING_HOST_GUARD` | Paused because this computer's hardware protection is not in place — the chain never builds unprotected. Fix the printed reason (`project-extensions/host-guard/README.md`), then resume. |
+| `AWAITING_FULL_DEPTH` | Paused, not broken — this step needed its full, deeper review pass and could only have run a shorter one, so it stopped instead of checking less. Nothing was built or changed. Follow the reason printed in the terminal, then resume. |
 | `in_progress` | The session is running normally. |
 
 ### The evaluator's per-iteration verdict

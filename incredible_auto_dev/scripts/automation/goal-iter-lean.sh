@@ -939,6 +939,14 @@ When complete:
 - Update runs/${ITER_NAME}/status.json with current_step: dev_complete
 " || _rc=$?
   record_agent_invocation_end "developer" "$_start" "$_rc"
+  # REL-11: the dev handoff is the reviewer's and the goal-evaluator's only
+  # account of what this iteration changed — a dispatch that returns without it
+  # reads downstream as "nothing happened". Loud banner + missing_evidence
+  # telemetry, never a gate (the caller's rc is untouched). Quota exhaustion is
+  # excluded: nothing was dispatched, so nothing went missing.
+  if [[ ! -s "$DEV_HANDOFF" && "$_rc" -ne "${QUOTA_EXHAUSTED_EXIT_CODE:-75}" ]]; then
+    warn_missing_evidence "developer" "$DEV_HANDOFF"
+  fi
   return $_rc
 }
 
@@ -1105,9 +1113,7 @@ else
   _rev_rc=0
   run_reviewer || _rev_rc=$?
   _pause_if_transport "$_rev_rc" "reviewer"
-  if _review_parses; then
-    record_telemetry_event "review_verdict" "$(jq -cn --arg v "$(_review_verdict)" --argjson a 1 --arg n "$ITER_NAME" '{verdict:$v, attempt:$a, iter_name:$n}' 2>/dev/null || printf '{"verdict":"%s","attempt":1}' "$(_review_verdict)")"
-  fi
+  record_review_verdict "$REVIEW_REPORT" 1 "$ITER_NAME" "$_rev_rc" || true
   if [[ "$_rev_rc" -eq 0 ]] && _review_parses; then
     step_mark_done review-1 --dir "$ITER_DIR" --verdict "$(_review_verdict)" "$REVIEW_REPORT"
   fi
@@ -1152,9 +1158,7 @@ Review report path: $REVIEW_REPORT
     _rev_rc=0
     run_reviewer || _rev_rc=$?
     _pause_if_transport "$_rev_rc" "reviewer (fix-mode)"
-    if _review_parses; then
-      record_telemetry_event "review_verdict" "$(jq -cn --arg v "$(_review_verdict)" --argjson a 2 --arg n "$ITER_NAME" '{verdict:$v, attempt:$a, iter_name:$n}' 2>/dev/null || printf '{"verdict":"%s","attempt":2}' "$(_review_verdict)")"
-    fi
+    record_review_verdict "$REVIEW_REPORT" 2 "$ITER_NAME" "$_rev_rc" || true
     if [[ "$_rev_rc" -eq 0 ]] && _review_parses; then
       step_mark_done review-2 --dir "$ITER_DIR" --verdict "$(_review_verdict)" "$REVIEW_REPORT"
     fi

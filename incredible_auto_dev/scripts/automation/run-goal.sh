@@ -79,12 +79,22 @@
 #                      project-extensions/host-guard/README.md), then --resume
 #   AWAITING_FULL_DEPTH - an iteration declared full depth a HARD requirement
 #                      (CHAIN_REQUIRE_FULL_DEPTH=true or a spec `Depth enforcement: required`
-#                      line) but the deterministic depth arbiter could only grant lean. The
-#                      engine halts BEFORE dispatch: no developer mutation, no lean parallel
-#                      browser-QA/replay lane, no second backend/frontend, no DB or network
-#                      action, and no depth-dispatched marker is written (so a resume cannot
-#                      inherit a stale lean decision). Widen CHAIN_FULL_CADENCE_CAP, set
-#                      CHAIN_DEPTH_ARBITER=false, or let the cadence window pass — then --resume
+#                      line) and the engine could not dispatch it. The engine halts BEFORE
+#                      dispatch: no developer mutation, no lean parallel browser-QA/replay
+#                      lane, no second backend/frontend, no DB or network action, and no
+#                      depth-dispatched marker is written (so a resume cannot inherit a stale
+#                      lean decision). The remedy is per-path and is printed with the pause
+#                      (also `remedy=` in iter-<N>/depth-requirement-unmet): depth-arbiter ->
+#                      wait out the cadence window or CHAIN_FULL_CADENCE_CAP=1; depth-parse ->
+#                      fix the spec's `Depth:` line; full-dispatch -> the installed
+#                      run-phase.sh lacks --no-finalize, update the framework;
+#                      depth-legacy-allowlist -> add the qualifying `Full trigger:` line or
+#                      re-enable the arbiter (at iteration 0, which the arbiter exempts, only
+#                      the `Full trigger:` line helps); isolation-requires-full -> the spec
+#                      declared maintenance isolation, which REQUIRES full depth, but resolved
+#                      to lean/evidence: write `Depth: full` or drop the declaration. Then
+#                      --resume. Turning the arbiter off is NOT a way out: it removes the
+#                      precedence rung and the guard itself
 #
 # Quota exhaustion is NOT a halt: claude_with_quota_retry transparently sleeps
 # until the quota resets and resumes.
@@ -345,6 +355,20 @@ fi
 
 require_cli
 ensure_cli_assets_synced "$CHAIN_CLI"
+
+# STYLE-1: validate every configured output style ONCE before any dispatch
+# (the seams refuse too — defense in depth — but failing here costs seconds,
+# not an iteration; the CLI ignores unknown names silently).
+_STYLE_ARM="off"
+if [[ "${CHAIN_OUTPUT_STYLES:-false}" == "true" || -n "${CHAIN_AGENT_OUTPUT_STYLE:-}" || -n "${CHAIN_OUTPUT_STYLE_OVERRIDE:-}" ]]; then
+  if ! python3 "$SCRIPT_DIR/lib/agent_permissions.py" output-style-check; then
+    echo "[run-goal] ERROR: invalid output style configuration (see above) — fix the knob or unset CHAIN_OUTPUT_STYLES." >&2
+    exit 2
+  fi
+  _STYLE_ARM="CHAIN_OUTPUT_STYLES=${CHAIN_OUTPUT_STYLES:-} CHAIN_AGENT_OUTPUT_STYLE=${CHAIN_AGENT_OUTPUT_STYLE:-} CHAIN_OUTPUT_STYLE_OVERRIDE=${CHAIN_OUTPUT_STYLE_OVERRIDE:-}"
+  _STYLE_ARM="${_STYLE_ARM//[^A-Za-z0-9 =,_:-]/_}"
+  echo "[run-goal] output-style experiment ARMED: $_STYLE_ARM (judges refuse by construction)"
+fi
 JOURNEY_HISTORY="$GOAL_SESSION_DIR_LOCAL/state/journey-history.json"
 EVALUATOR_LOG="$GOAL_SESSION_DIR_LOCAL/state/evaluator-log.md"
 # REL-6: the evaluator-written, decomposer-read iteration digest (single
@@ -1037,16 +1061,21 @@ _host_guard_reset_forensics() {
   local script="$SCRIPT_DIR/host-guard/reset-forensics.sh" out path state chk
   local tag hex cause streak prev
   [[ -f "$script" ]] || return 0
-  out="$(bash "$script" ensure-postmortem 2>/dev/null)" || return 0
-  case "$out" in
-    POSTMORTEM\|*) ;;
-    *) return 0 ;;          # CLEAN / NONE / UNKNOWN — say nothing, write nothing
-  esac
-  path="${out#POSTMORTEM|}"; path="${path%|*}"; state="${out##*|}"
+  # check BEFORE ensure-postmortem: freezing the bundles advances the
+  # detector's watermark, so the verdict fields must be captured first.
   chk="$(bash "$script" check 2>/dev/null)" || chk=""
+  case "$chk" in
+    RESET\|*) ;;
+    *) return 0 ;;          # CLEAN / UNKNOWN — say nothing, write nothing
+  esac
   IFS='|' read -r tag hex cause streak prev <<< "$chk"
-  : "$tag" "$prev"
-  echo "[run-goal] host-guard: the PREVIOUS boot ended in a HARDWARE-asserted reset — ${cause:-unknown} (${hex:-?}), ${streak:-?} of the recent boots."
+  : "$tag"
+  out="$(bash "$script" ensure-postmortem 2>/dev/null)" || out=""
+  case "$out" in
+    POSTMORTEM\|*) path="${out#POSTMORTEM|}"; path="${path%|*}"; state="${out##*|}" ;;
+    *)             path="(bundle unavailable: ${out:-no output})"; state="none" ;;
+  esac
+  echo "[run-goal] host-guard: boot ${prev:-unknown} ended in a HARDWARE-asserted reset — ${cause:-unknown} (${hex:-?}), ${streak:-?} of the recent boots."
   echo "[run-goal] host-guard: this is a hardware fault, not a chain failure; no CPU mask or memory ceiling can prevent it."
   echo "[run-goal] host-guard: postmortem → $path"
   echo "[run-goal] host-guard: remediation → docs/host-guard.md § After a hardware reset — root-cause runbook"
@@ -1066,12 +1095,32 @@ _full_depth_pause() { # $1 reason, $2 detected_at_step — pause AWAITING_FULL_D
   # depth-dispatched marker is NOT written, so a resume cannot inherit a stale
   # `lean` decision for this iteration.
   local reason="$1" step="${2:-depth-arbiter}"
+  # Per-path remedy. The generic three-hatch list this used to print was
+  # arbiter-shaped, so it was wrong for the two capability paths — and one of its
+  # entries, CHAIN_DEPTH_ARBITER=false, does not resolve the pause at all: it
+  # deletes the precedence rung and this guard and routes the iteration to the
+  # legacy allowlist. Each site names the ONE thing that actually unblocks it.
+  local remedy=""
+  case "$step" in
+    depth-arbiter)
+      remedy="let the cadence window pass, or re-run with CHAIN_FULL_CADENCE_CAP=1 (disables the one-full-per-window cap)" ;;
+    depth-parse)
+      remedy="fix this iteration spec's 'Depth:' line so it parses (lean | full | evidence) BEFORE resuming — a still-unparseable line makes --resume re-run the decomposer, which rewrites the whole spec and drops operator-only lines (Depth enforcement:, Maintenance isolation:)" ;;
+    full-dispatch)
+      remedy="the installed run-phase.sh has no --no-finalize flag: update/restore the framework checkout so the full pipeline can be dispatched" ;;
+    depth-legacy-allowlist)
+      remedy="add the qualifying 'Full trigger: <1-4> — <reason>' line to the spec, or re-enable the deterministic arbiter (unset CHAIN_DEPTH_ARBITER), whose precedence rung grants a hard-required full outright — note the arbiter exempts iteration 0, so at the baseline only the 'Full trigger:' line helps" ;;
+    isolation-requires-full)
+      remedy="write 'Depth: full' in this iteration's spec — plus the qualifying 'Full trigger:' line when the arbiter is skipped — or drop the isolation declaration; maintenance isolation is enforced only at full depth, so a non-full isolated iteration is refused rather than run" ;;
+    *)
+      remedy="resolve the cause printed above" ;;
+  esac
   echo "[run-goal] Full depth is REQUIRED for this iteration but could not be dispatched — pausing (AWAITING_FULL_DEPTH)."
   echo "[run-goal]   reason: $reason"
   echo "[run-goal]   no fallback: the iteration did NOT run at lean depth, nothing was dispatched, and no mutation occurred."
   rm -f "$ITER_DIR/depth-dispatched" 2>/dev/null || true
   mkdir -p "$ITER_DIR" 2>/dev/null || true
-  printf 'requested=full\nactual=UNMET\nreason=%s\nstep=%s\n' "$reason" "$step" \
+  printf 'requested=full\nactual=UNMET\nreason=%s\nstep=%s\nremedy=%s\n' "$reason" "$step" "$remedy" \
     > "$ITER_DIR/depth-requirement-unmet" 2>/dev/null || true
   python3 - <<PY
 import json, datetime
@@ -1087,16 +1136,18 @@ _os.replace(_tmp, "$SESSION_JSON")
 PY
   record_telemetry_event "halt" "$(printf '{"reason":"AWAITING_FULL_DEPTH","detected_at_step":"%s","demotion_reason":"%s"}' "$step" "$reason")"
   echo ""
-  echo "Full depth was required but the deterministic arbiter could not grant it."
-  echo "Resolve by one of:"
-  echo "  * let the cadence window pass (the cap is CHAIN_FULL_CADENCE_CAP, default 4), or"
-  echo "  * raise/disable the cap for this run: CHAIN_FULL_CADENCE_CAP=1, or"
-  echo "  * restore the legacy allowlist: CHAIN_DEPTH_ARBITER=false"
+  echo "Full depth was REQUIRED for this iteration and could not be dispatched."
+  echo "Where it was caught: $step"
+  echo "Resolve: $remedy"
   echo "then resume:"
   echo "  ./scripts/automation/run-goal.sh --resume --session-id $SESSION_ID"
-  echo "Do NOT clear CHAIN_REQUIRE_FULL_DEPTH to make this pause go away — the"
+  echo ""
+  echo "Do NOT clear CHAIN_REQUIRE_FULL_DEPTH, and do not delete the spec's"
+  echo "'Depth enforcement: required' line, to make this pause go away — the"
   echo "requirement exists because lean depth would skip the lane that gates a"
-  echo "destructive write."
+  echo "destructive write. CHAIN_DEPTH_ARBITER=false is NOT a way out either: it"
+  echo "removes the precedence rung and this very guard, sending the iteration to"
+  echo "the legacy allowlist instead of running it at full depth."
   explain_goal_status "AWAITING_FULL_DEPTH" "$SESSION_ID" "$REPO_ROOT"
   echo "════════════════════════════════════════════════════════════════════"
   exit 0
@@ -1567,6 +1618,7 @@ data = {
   "current_iter": 0,
   "cli": "${CHAIN_CLI:-claude}",
   "agent_backend": "$AGENT_BACKEND",
+  "output_styles": "$_STYLE_ARM",
   "halt_config": {
     "max_iterations": $MAX_ITER,
     "stall_window": $STALL_WINDOW,
@@ -1625,7 +1677,16 @@ if $( [[ "$AUTO_RELEASE" == "true" ]] && echo "True" || echo "False" ):
 d["push_per_iter"] = $( [[ "$PUSH_PER_ITER" == "true" ]] && echo "True" || echo "False" )
 d["push_branch"] = "$PUSH_BRANCH"
 d["agent_backend"] = "$AGENT_BACKEND"
-if "$RUN_MODE" == "resume" and d.get("status") in ("REGRESSION_HALT", "AWAITING_BLUEPRINT_APPROVAL", "AWAITING_PUMP", "AWAITING_INTENT_REVIEW", "AWAITING_GITHUB_AUTH", "AWAITING_DISK", "AWAITING_HOST_GUARD"):
+# STYLE-1 (reporting only — the arm is never re-applied from session.json).
+# Resuming with a different arm silently mixes two populations in one
+# telemetry.jsonl, so say so once, loudly, with the iteration boundary.
+_prev_style = d.get("output_styles", "off")
+if _prev_style != "$_STYLE_ARM":
+    import sys as _sys
+    print("[run-goal] NOTE: output-style arm changed on resume (was '%s', now '%s') — telemetry before iter %s is a different arm."
+          % (_prev_style, "$_STYLE_ARM", "$CURRENT_ITER"), file=_sys.stderr)
+d["output_styles"] = "$_STYLE_ARM"
+if "$RUN_MODE" == "resume" and d.get("status") in ("REGRESSION_HALT", "AWAITING_BLUEPRINT_APPROVAL", "AWAITING_PUMP", "AWAITING_INTENT_REVIEW", "AWAITING_GITHUB_AUTH", "AWAITING_DISK", "AWAITING_HOST_GUARD", "AWAITING_FULL_DEPTH"):
   d["status"] = "in_progress"
 import os as _os, tempfile as _tf
 _fd, _tmp = _tf.mkstemp(dir=_os.path.dirname("$SESSION_JSON") or ".", suffix=".sjtmp")
@@ -1951,6 +2012,18 @@ EOF
 # not available to a later /goal-pause). Cleaned up on any exit, including the
 # on_abort path below (which exits 130 → the EXIT trap fires).
 echo "$$" > "$ENGINE_PID_FILE" 2>/dev/null || true
+# Engine-lock owner predicate — the SAME test release_engine_lock applies
+# (lib/engine-lock.sh): _ENGINE_LOCK_HELD is set only by a successful acquire,
+# and the lock's recorded pid (and host, so a cross-host takeover cannot be
+# claimed from the losing side) must still be ours. False for a refused second
+# start, which never acquired.
+_goal_engine_owns_lock() {
+  [[ -n "${_ENGINE_LOCK_HELD:-}" ]] || return 1
+  local pid host
+  pid="$(_engine_lock_meta "$_ENGINE_LOCK_HELD" pid | tr -dc 0-9)"
+  host="$(_engine_lock_meta "$_ENGINE_LOCK_HELD" host)"
+  [[ "$pid" == "$$" && ( -z "$host" || "$host" == "$(_engine_lock_host)" ) ]]
+}
 # Composed EXIT trap (single trap owner — never add a second `trap … EXIT`, it
 # would silently drop earlier cleanup): join/kill the showcase tail FIRST so
 # nothing is still writing into the tmp dir, then remove pid file + tmp dir.
@@ -1962,9 +2035,31 @@ _goal_engine_on_exit() {
   # the freed budget immediately (the pid sweep would catch it anyway).
   hg_event engine_stop "$(printf '{"iter":%s}' "${CURRENT_ITER:-0}")" 2>/dev/null || true
   hg_release 2>/dev/null || true
-  # REL-4: release LAST so the lock covers the whole cleanup window. Owner-
-  # checked no-op when this process never acquired (e.g. a refused start).
+  # Ownership of the engine lock decides whether we may reap this project's QA
+  # browsers below; sample it HERE, because release_engine_lock clears the record
+  # the predicate reads. A refused second start never acquired, so it is 0.
+  local _owns_engine=0
+  # `if`, not `&&`: an unowned lock must not trip `set -e` inside the EXIT trap.
+  if _goal_engine_owns_lock; then _owns_engine=1; fi
+  # REL-4: release after the cleanup above, so the lock covers the whole
+  # state-mutating window (only the browser reap below, which needs no lock,
+  # follows). Owner-checked no-op when this process never acquired (e.g. a
+  # refused start).
   release_engine_lock
+  # Reap this project's pinned QA browsers (headless engine only; see
+  # lib/common.sh:qa_browser_reap_on_exit). Dead last, and AFTER the lock is
+  # free: the reap needs no lock, and holding one across it refuses a --resume
+  # launched off the pause message this engine has already printed (observed as
+  # "[engine-lock] REFUSED … age 1s", tests/automation/test-host-guard.sh B3).
+  # Releasing first is also what makes the race safe: a resuming engine that
+  # takes the lock in this window is then seen by the hook's own sibling guard,
+  # which skips the reap. The cheap cleanups above are all done by now, so a
+  # goal-pause SIGKILL landing inside the reap cannot skip them.
+  # stderr is deliberately NOT swallowed — the skip line and browser-confine's
+  # warnings belong in the engine log.
+  if (( _owns_engine )); then
+    qa_browser_reap_on_exit || true
+  fi
 }
 trap _goal_engine_on_exit EXIT
 
@@ -2230,6 +2325,9 @@ PY
   if [[ -n "${CHAIN_AGENT_EFFORT:-}" ]]; then
     record_telemetry_event "iter_config" "$(jq -cn --arg k "CHAIN_AGENT_EFFORT" --arg v "$CHAIN_AGENT_EFFORT" '{key:$k, value:$v}' 2>/dev/null || printf '{"key":"CHAIN_AGENT_EFFORT","value":"%s"}' "$CHAIN_AGENT_EFFORT")"
   fi
+  if [[ "$_STYLE_ARM" != "off" ]]; then
+    record_telemetry_event "iter_config" "$(jq -cn --arg k "CHAIN_OUTPUT_STYLES" --arg v "$_STYLE_ARM" '{key:$k, value:$v}' 2>/dev/null || printf '{"key":"CHAIN_OUTPUT_STYLES","value":"%s"}' "$_STYLE_ARM")"
+  fi
 
   echo ""
   echo "════════════════════════════════════════════════════════════════════"
@@ -2310,6 +2408,30 @@ except Exception: print(0)" 2>/dev/null || echo 0)"
     echo "[run-goal] Resume: goal-decomposer already completed for iteration $CURRENT_ITER (checkpoint + spec verified) — skipping."
     record_telemetry_event "step_skipped" "$(jq -cn --arg n "$ITER_NAME" '{step:"goal-decomposer", iter_name:$n, reason:"checkpoint"}' 2>/dev/null || printf '{"step":"goal-decomposer"}')"
   else
+  # Operator-only lines do NOT survive regeneration. The resume-skip above needs a
+  # parseable `Depth:` line, which is exactly what the depth-parse pause reports as
+  # missing — so resuming without fixing that line lands here, and the decomposer
+  # (forbidden to emit either control) rewrites the spec without them. Say so
+  # loudly and record it; the operator's own edit is the only fix.
+  if [[ -f "$ITER_SPEC_PATH" ]]; then
+    # Detected through the PREDICATES, never a second copy of their regexes (the
+    # marker regex lives in exactly one place, lib/common.sh, and a test pins that).
+    # The env forms are unset for the probe because only a SPEC-borne declaration is
+    # what regeneration destroys. Isolation short-circuits goal_full_depth_required,
+    # so when both lines are present the isolation one is what gets named — which is
+    # also the operative one, since isolation implies the depth requirement.
+    _dropped=""
+    if ( unset CHAIN_MAINTENANCE_ISOLATION; goal_maintenance_isolation_required "$ITER_SPEC_PATH" ); then
+      _dropped="Maintenance isolation: required"
+    elif ( unset CHAIN_REQUIRE_FULL_DEPTH CHAIN_MAINTENANCE_ISOLATION; goal_full_depth_required "$ITER_SPEC_PATH" ); then
+      _dropped="Depth enforcement: required"
+    fi
+    if [[ -n "$_dropped" ]]; then
+      echo "[run-goal] WARNING: regenerating $ITER_SPEC_PATH will DROP operator-only line(s): $_dropped" >&2
+      echo "[run-goal]          The goal-decomposer is forbidden to write them (anti-pattern 25), so re-add them by hand after this iteration's spec is written, or declare them session-wide with CHAIN_REQUIRE_FULL_DEPTH / CHAIN_MAINTENANCE_ISOLATION." >&2
+      record_telemetry_event "spec_regenerated" "$(jq -cn --arg d "$_dropped" --arg n "$ITER_NAME" '{iter_name:$n, dropped:$d}' 2>/dev/null || printf '{"dropped":"%s"}' "$_dropped")"
+    fi
+  fi
   step_invalidate_from decomposer "$ITER_DIR"
   record_agent_invocation_start "goal-decomposer"   # bare call: must NOT be $(...) or the CHAIN_CURRENT_AGENT export is lost to a subshell
   _decomp_start=$CHAIN_AGENT_START_EPOCH
@@ -2587,6 +2709,22 @@ Do NOT write code or implement anything. The iteration spec and any blueprint ed
       _full_reason="cadence-due"
     fi
     if [[ -z "$_full_reason" ]]; then
+      # FAIL CLOSED — the same rung the arbiter's precedence check applies, on the
+      # one demotion path that check never sees. The precedence rung AND the
+      # _full_depth_pause backstop both live inside the arbiter's `if`, so a
+      # hard-required iteration reaches this block whenever the arbiter is skipped:
+      # CHAIN_DEPTH_ARBITER=false, or iter-0 (the arbiter exempts baseline). Without
+      # this guard that downgraded it to lean with nothing but a depth_demoted event
+      # — and CHAIN_DEPTH_ARBITER=false was itself documented as the way OUT of
+      # AWAITING_FULL_DEPTH, so the advertised escape removed the control rather than
+      # the cause. (The arbiter's PRIOR_DEPTH==full rung also sets
+      # _use_legacy_allowlist, but only for iterations the precedence rung did not
+      # claim, i.e. never hard-required ones — inert there, kept as defence in depth.)
+      # Ordinary iterations are untouched: the predicate is false unless
+      # CHAIN_REQUIRE_FULL_DEPTH is set or the spec declares it.
+      if goal_full_depth_required "$ITER_SPEC_PATH"; then
+        _full_depth_pause "legacy-allowlist:no-qualifying-trigger (no 'Full trigger:' line, prior verdict ${PRIOR_VERDICT:-none}, no prior coherence FAIL, cadence not due)" "depth-legacy-allowlist"
+      fi
       echo "[run-goal] Depth allowlist: the spec asked for a FULL pass but named no trigger (no 'Full trigger:' line, prior verdict was ${PRIOR_VERDICT:-none}, no prior coherence FAIL, cadence not due) — running LEAN instead. Set CHAIN_DEPTH_ALLOWLIST=false to disable this check."
       record_telemetry_event "depth_demoted" "$(jq -cn --arg pv "${PRIOR_VERDICT:-}" '{from:"full", to:"lean", reason:"no-full-trigger", prior_verdict:$pv}' 2>/dev/null || printf '{"from":"full","to":"lean"}')"
       DEPTH="lean"
@@ -2655,7 +2793,19 @@ PYEOF
   # consumer too, since the target-journey frontend override is what isolation
   # subordinates.
   apply_maintenance_isolation_from_spec "$ITER_SPEC_PATH" || true
-  record_telemetry_event "iter_dispatch" "$(jq -cn --arg d "$DEPTH" --arg tj "$TARGET_JOURNEYS" --arg mi "${CHAIN_MAINTENANCE_ISOLATION:-false}" '{depth:$d, target_journeys:$tj, maintenance_isolation:$mi}' 2>/dev/null || printf '{"depth":"%s"}' "$DEPTH")"
+  # Isolation's first clause is "full depth REQUIRED". goal_full_depth_required now
+  # honours it, which protects an isolated FULL spec from every cost rung — but a
+  # spec that asked for lean/evidence in the first place never entered the arbiter,
+  # so nothing above promoted it, and nothing may. Pause instead, BEFORE any
+  # executor dispatch: the lean path has no isolation handling (bare
+  # ensure_services_running inside a fork whose refusal is swallowed), so running it
+  # would burn the boot timeout, write SKIPPED rows blaming "frontend not running"
+  # instead of the contract, and — with the fork off — abort under `set -e` only
+  # AFTER developer and reviewer had already mutated the tree.
+  if goal_maintenance_isolation_required && [[ "$DEPTH" != "full" ]]; then
+    _full_depth_pause "maintenance isolation requires full depth but this spec resolved to $DEPTH" "isolation-requires-full"
+  fi
+  record_telemetry_event "iter_dispatch" "$(jq -cn --arg d "$DEPTH" --arg tj "$TARGET_JOURNEYS" --arg mi "${CHAIN_MAINTENANCE_ISOLATION:-false}" '{depth:$d, target_journeys:$tj, maintenance_isolation:$mi}' 2>/dev/null || printf '{"depth":"%s","maintenance_isolation":"%s"}' "$DEPTH" "${CHAIN_MAINTENANCE_ISOLATION:-false}")"
 
   # 2c. Join the previous iteration's background showcase tail (if any) BEFORE
   # dispatching build work: its artifacts get committed here, so developer /
@@ -2663,7 +2813,21 @@ PYEOF
   # would have produced. Overlapping it with the decomposer above is where the
   # ~6-13 min saving comes from.
   _engine_step_begin "showcase-join"
-  _join_showcase_tail
+  # Under maintenance isolation this join is a service-boot back door: the tail
+  # was FORKED during iteration N-1, so its subshell carries the PRE-isolation
+  # environment, and demo-phase.sh inside it boots the app idempotently for that
+  # iteration's walkthrough. Waiting for it would therefore start services in the
+  # middle of an isolated iteration. Reap it instead — its artifacts are showcase
+  # only, and a partial walkthrough is the correct trade for the contract.
+  # `--kill` returns early, before the join path's own kill_phase_servers, so
+  # anything the tail already started is cleared here explicitly.
+  if [[ -n "${_SHOWCASE_PID:-}" ]] && goal_maintenance_isolation_required; then
+    maintenance_isolation_refuse "async-showcase-join" "iter ${_SHOWCASE_ITER:-?} tail forked before isolation" || true
+    _join_showcase_tail --kill
+    kill_phase_servers 2>/dev/null || true
+  else
+    _join_showcase_tail
+  fi
   _engine_step_done
 
   # Tmp hygiene boundary — the per-iteration cleanup step. The previous
@@ -3057,19 +3221,32 @@ except Exception as e:
   python3 "$SCRIPT_DIR/lib/analyze_telemetry.py" --wall --iter "$CURRENT_ITER" \
     "$GOAL_SESSION_DIR_LOCAL/telemetry.jsonl" 2>/dev/null | sed 's/^/[run-goal] /' || true
 
-  # Experiment tripwire: while an opt-in speed knob is active, revert it the
-  # moment quality moves in the window (REGRESSION verdict, journey
-  # regressions, repeated first-attempt review FAILs). Exit 3 = TRIP; any
-  # other non-zero rc is an analyzer error and must NOT trigger a revert.
-  if [[ -n "${CHAIN_AGENT_EFFORT:-}" ]]; then
+  # Experiment tripwire: while an opt-in experiment knob is active
+  # (CHAIN_AGENT_EFFORT, the CHAIN_OUTPUT_STYLE* arm), revert every active knob
+  # the moment quality moves in the window (REGRESSION verdict, journey
+  # regressions, an unparseable review verdict, repeated first-attempt review
+  # FAILs) or cost does (styled vs unstyled median output tokens / turns —
+  # ground rule D5). Exit 3 = TRIP; any other non-zero rc is an analyzer error
+  # and must NOT trigger a revert.
+  if [[ -n "${CHAIN_AGENT_EFFORT:-}" || "$_STYLE_ARM" != "off" ]]; then
     _trip_rc=0
     python3 "$SCRIPT_DIR/lib/analyze_telemetry.py" --tripwire --window 3 \
       "$GOAL_SESSION_DIR_LOCAL/telemetry.jsonl" > "$ITER_DIR/.tripwire-report" 2>/dev/null || _trip_rc=$?
     if [[ "$_trip_rc" -eq 3 ]]; then
-      echo "[run-goal] EXPERIMENT TRIPWIRE: quality moved under CHAIN_AGENT_EFFORT='$CHAIN_AGENT_EFFORT' — reverting the knob for the rest of this run." >&2
+      echo "[run-goal] EXPERIMENT TRIPWIRE: quality or cost moved under CHAIN_AGENT_EFFORT='${CHAIN_AGENT_EFFORT:-}' / output-style arm '$_STYLE_ARM' — reverting every active experiment knob for the rest of this run." >&2
       sed 's/^/[run-goal]   /' "$ITER_DIR/.tripwire-report" >&2 2>/dev/null || true
-      record_telemetry_event "experiment_reverted" "$(jq -cn --arg k "CHAIN_AGENT_EFFORT" --arg v "$CHAIN_AGENT_EFFORT" '{key:$k, value:$v}' 2>/dev/null || printf '{"key":"CHAIN_AGENT_EFFORT"}')"
-      unset CHAIN_AGENT_EFFORT
+      if [[ -n "${CHAIN_AGENT_EFFORT:-}" ]]; then
+        record_telemetry_event "experiment_reverted" "$(jq -cn --arg k "CHAIN_AGENT_EFFORT" --arg v "$CHAIN_AGENT_EFFORT" '{key:$k, value:$v}' 2>/dev/null || printf '{"key":"CHAIN_AGENT_EFFORT"}')"
+        unset CHAIN_AGENT_EFFORT
+      fi
+      # Child executors inherit env per dispatch, so the unset takes effect from
+      # the next iteration on. _STYLE_ARM="off" also stops the iter_config mark,
+      # which is what keeps the reverted iterations out of the tripwire window.
+      if [[ "$_STYLE_ARM" != "off" ]]; then
+        record_telemetry_event "experiment_reverted" "$(jq -cn --arg k "CHAIN_OUTPUT_STYLES" --arg v "$_STYLE_ARM" '{key:$k, value:$v}' 2>/dev/null || printf '{"key":"CHAIN_OUTPUT_STYLES","value":"%s"}' "$_STYLE_ARM")"
+        unset CHAIN_OUTPUT_STYLES CHAIN_AGENT_OUTPUT_STYLE CHAIN_OUTPUT_STYLE_OVERRIDE
+        _STYLE_ARM="off"
+      fi
     fi
     rm -f "$ITER_DIR/.tripwire-report" 2>/dev/null || true
   fi

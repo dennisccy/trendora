@@ -420,13 +420,18 @@ phase_spec_has_required_regression() {
 # A pinned identity makes the QA browser findable — by host-guard's confinement
 # pass, by the doctor, and by the reaper. Lane suffix keeps the concurrent qa and
 # browser-qa lanes off each other's profile lock.
+# The profile carries the SAME path-hash offset as the port: two projects that
+# merely share a directory name (every benchmark scratch is ".../scratch") must
+# not share a profile while hashing to different ports — the chrome-mcp plugin
+# reconnects by profile meta but dials the pinned port, and that split ends in
+# ECONNREFUSED on the next session (STYLE-1 G8 stage 1, 2026-08-21).
 # Idempotent; never overrides an operator-supplied value.
 ensure_qa_browser_env() {
   local suffix="${1:-}" project_root="$REPO_ROOT" base offset
   [[ "$project_root" == */incredible_auto_dev ]] && project_root="${project_root%/incredible_auto_dev}"
   base="$(basename "$project_root")"
   offset=$(_project_port_offset)
-  [[ -z "${CHROME_WS_PROFILE:-}" ]] && export CHROME_WS_PROFILE="iad-qa-${base}${suffix:+-$suffix}"
+  [[ -z "${CHROME_WS_PROFILE:-}" ]] && export CHROME_WS_PROFILE="iad-qa-${base}-${offset}${suffix:+-$suffix}"
   if [[ -z "${CHROME_WS_PORT:-}" ]]; then
     if [[ -n "$suffix" ]]; then
       export CHROME_WS_PORT=$((11000 + offset))
@@ -434,6 +439,62 @@ ensure_qa_browser_env() {
       export CHROME_WS_PORT=$((10000 + offset))
     fi
   fi
+  return 0
+}
+
+# qa_browser_reap_on_exit — TERM this project's own pinned QA browsers when the
+# HEADLESS ENGINE exits. The per-phase leave-warm default (CHAIN_BQA_REAP=0:
+# reconnecting saves a cold start on the next dispatch) is about the next
+# dispatch of the SAME engine; at engine exit there is none, and the chrome-mcp
+# plugin spawns the browser detached+unref'd, so without this the browser is
+# reparented to init and can block the next session's lane. Never in the
+# interactive backend (the pump's MCP server is still alive and would respawn
+# what we killed). CHAIN_BQA_REAP_ON_EXIT=0 opts out. Always returns 0.
+qa_browser_reap_on_exit() {
+  [[ "${CHAIN_BQA_REAP_ON_EXIT:-1}" == "1" ]] || return 0
+  [[ "${CHAIN_AGENT_BACKEND:-}" != "interactive" ]] || return 0
+  # Sibling guard. The QA browser identity is per project PATH, but the REL-4
+  # engine lock is per SESSION (run-goal.sh locks
+  # runs/goal-session-<sid>/.engine.lock, not the repo-wide lock run-phase.sh
+  # takes), so two headless goal sessions in ONE checkout share the pinned
+  # browser. That is not a supported configuration and this guard does not make
+  # it work; it only stops a default-on reap from making it worse by killing the
+  # live sibling's browser mid-dispatch. Live sibling = a goal-session lock whose
+  # recorded pid is alive and is not us; the pid is read with engine-lock.sh's
+  # own reader so there is only ever one lock format. Liveness is engine_lock_
+  # classify's verdict, not a bare `kill -0`: it also rules out a recycled pid,
+  # a pre-reboot lock, and a cross-host holder we cannot probe (FRESH there =
+  # "unprovable", which for us correctly means "do not touch its browser").
+  local _lockdir _lpid
+  if ! declare -F _engine_lock_meta >/dev/null 2>&1; then
+    # shellcheck source=engine-lock.sh
+    source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/engine-lock.sh" 2>/dev/null || true
+  fi
+  for _lockdir in "$REPO_ROOT"/runs/goal-session-*/.engine.lock; do
+    [[ -d "$_lockdir" ]] || continue
+    _lpid="$(_engine_lock_meta "$_lockdir" pid 2>/dev/null | tr -dc 0-9)"
+    [[ -n "$_lpid" && "$_lpid" != "$$" ]] || continue
+    [[ "$(engine_lock_classify "$_lockdir" 2>/dev/null)" == FRESH* ]] || continue
+    echo "[qa-browser] exit reap skipped: another engine is live in this checkout ($_lockdir, pid $_lpid)" >&2
+    return 0
+  done
+  local bc
+  bc="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../host-guard/browser-confine.sh"
+  [[ -f "$bc" ]] || return 0
+  # HOST_GUARD_ROOT is pinned to REPO_ROOT, never inherited: it is a documented
+  # operator override (host-guard-exec.sh, hwmon-log.sh), and an exported value
+  # naming another project would aim Pass D at THAT project's browsers while the
+  # sibling guard above (keyed on $REPO_ROOT/runs) stayed blind. The lanes
+  # derived their profile from $REPO_ROOT (ensure_qa_browser_env), so the reap
+  # must use the same root — the form browser-qa-phase.sh already uses.
+  # HOST_GUARD_BROWSER_CONFINE=0 makes this reap-ONLY (pass D). Passes A-C scan
+  # the whole profile root and, for pass B, the DEFAULT Chrome-MCP cmdline match
+  # — neither scoped to this project — so at exit they would re-taskset OTHER
+  # projects' browsers and the developer's live MCP servers into this project's
+  # mask. There is nothing to gain from confining a browser we are about to
+  # kill; confinement belongs to the QA dispatches, which run this pass in full.
+  CHAIN_BQA_REAP=1 HOST_GUARD_BROWSER_CONFINE=0 HOST_GUARD_ROOT="$REPO_ROOT" \
+    bash "$bc" --reap || true
   return 0
 }
 
@@ -1163,6 +1224,22 @@ goal_full_depth_required() {
   case "${CHAIN_REQUIRE_FULL_DEPTH:-}" in
     true|TRUE|1|yes|on) return 0 ;;
   esac
+  # Maintenance isolation IS a full-depth requirement — that is the contract's own
+  # first clause ("full reviewer/QA/auditor/coherence/evaluator depth REQUIRED"),
+  # and until this line it was advertised without being enforced: an isolated
+  # `Depth: full` spec could still be cost-demoted by the arbiter unless the
+  # operator ALSO wrote `Depth enforcement: required`, and the lean path it landed
+  # in has no isolation handling at all (its boot unit calls
+  # ensure_services_running bare; inside the parallel fork the refusal is swallowed
+  # and the results file blames "frontend not running", so the `**Reason:**
+  # maintenance isolation` line the evaluator and closure_gate.py key on never
+  # appears). Routing isolation through this predicate reuses the machinery that
+  # already exists: the arbiter's precedence rung, every _full_depth_pause site,
+  # and goal-iter-lean.sh's fail-closed fork guard. It never PROMOTES a lean spec —
+  # run-goal.sh pauses such an iteration (isolation-requires-full) instead.
+  if goal_maintenance_isolation_required "$spec_path"; then
+    return 0
+  fi
   [[ -n "$spec_path" && -f "$spec_path" ]] || return 1
   grep -qiE '^[[:space:]]*-?[[:space:]]*(\*\*)?Depth[ -]enforcement:?(\*\*)?[[:space:]]*:?[[:space:]]*(\*\*)?required' \
     "$spec_path" 2>/dev/null
@@ -1183,6 +1260,11 @@ goal_full_depth_required() {
 # Maintenance isolation means exactly:
 #     full reasoning/reviewer/audit depth REQUIRED
 #     application-service and browser execution FORBIDDEN
+# Both halves are enforced, not merely stated. The first is routed through
+# goal_full_depth_required above (isolation ⇒ hard full), so the arbiter's
+# precedence rung protects an isolated full spec from every cost rung and
+# run-goal.sh pauses a NON-full isolated spec before dispatch
+# (AWAITING_FULL_DEPTH, step isolation-requires-full) rather than promoting it.
 # Allowed: developer, reviewer, file-scoped tests, static QA, auditor, coherence,
 # evaluator. Forbidden: backend boot, frontend boot, browser QA, deterministic
 # replay, demo/showcase browser, shared app-service fanout.
@@ -1889,30 +1971,73 @@ write_na_ui_artifacts() {
 
   mkdir -p "$REPO_ROOT/reports"
 
+  # Maintenance isolation reaches these stubs by a legitimate path:
+  # detect_frontend_in_plan refuses under isolation, so run-phase.sh's Steps 4-6
+  # take their backend-only branches and the UI chain — including
+  # browser-qa-phase.sh with its own honest SKIPPED artifact — is never entered.
+  # Reporting a contract decision as "Backend-only phase (Frontend Present: no)"
+  # would let the evaluator (and closure_gate.py, which iterates all six) read a
+  # withheld lane as an absent frontend. Resolve the contract once and share one
+  # reason sentence across every stub; the ordinary wording is untouched.
+  local iso_reason=""
+  if goal_maintenance_isolation_required; then
+    iso_reason="Maintenance isolation is required for this iteration — application-service boot, browser QA and the deterministic replay lane are forbidden by contract, not unavailable. Full reviewer/QA/auditor/coherence/evaluator depth was retained."
+  fi
+
   for artifact in "${artifacts[@]}"; do
     local out_file="$REPO_ROOT/reports/phase-${phase}-${artifact}.md"
     if [[ ! -f "$out_file" ]]; then
       case "$artifact" in
         implementation-summary)
-          printf "# Phase %s — Implementation Summary\n\n**Status:** Backend-only phase (Frontend Present: no)\n\nNo UI-visible implementation. All changes are internal backend.\n" "$phase" > "$out_file"
+          if [[ -n "$iso_reason" ]]; then
+            printf "# Phase %s — Implementation Summary\n\n**Status:** UI/browser lane withheld — maintenance isolation\n\n**Reason:** %s\n\nWhatever this iteration implemented is described in the developer handoff and the\nreview; none of it was exercised through a running application, because app\nexecution is forbidden here. This file records the withheld lane, not an absence\nof implementation.\n" "$phase" "$iso_reason" > "$out_file"
+          else
+            printf "# Phase %s — Implementation Summary\n\n**Status:** Backend-only phase (Frontend Present: no)\n\nNo UI-visible implementation. All changes are internal backend.\n" "$phase" > "$out_file"
+          fi
           ;;
         user-visible-changes)
-          printf "# Phase %s — User-Visible Changes\n\n**Status:** N/A — Backend-only phase (Frontend Present: no)\n\nNo user-visible changes. All changes are internal backend implementation.\n" "$phase" > "$out_file"
+          if [[ -n "$iso_reason" ]]; then
+            printf "# Phase %s — User-Visible Changes\n\n**Status:** Not observed — maintenance isolation\n\n**Reason:** %s\n\nNothing was rendered, clicked or screenshotted this iteration, so no user-visible\nchange is claimed OR denied from this lane. Any user-facing effect of the work\nremains to be observed by the next iteration that is allowed to run the app.\n" "$phase" "$iso_reason" > "$out_file"
+          else
+            printf "# Phase %s — User-Visible Changes\n\n**Status:** N/A — Backend-only phase (Frontend Present: no)\n\nNo user-visible changes. All changes are internal backend implementation.\n" "$phase" > "$out_file"
+          fi
           ;;
         ui-surface-map)
-          printf "# Phase %s — UI Surface Map\n\n**Status:** N/A — Backend-only phase (Frontend Present: no)\n\nNo UI surfaces affected.\n" "$phase" > "$out_file"
+          if [[ -n "$iso_reason" ]]; then
+            printf "# Phase %s — UI Surface Map\n\n**Status:** Not mapped this iteration — maintenance isolation\n\n**Reason:** %s\n\nNo surface was opened or inspected. The last recorded surface map, if any, stays\nthe current one; nothing here supersedes it.\n" "$phase" "$iso_reason" > "$out_file"
+          else
+            printf "# Phase %s — UI Surface Map\n\n**Status:** N/A — Backend-only phase (Frontend Present: no)\n\nNo UI surfaces affected.\n" "$phase" > "$out_file"
+          fi
           ;;
         ui-test-plan)
-          printf "# Phase %s — UI Test Plan\n\n**Status:** N/A — Backend-only phase. No UI tests required.\n" "$phase" > "$out_file"
+          if [[ -n "$iso_reason" ]]; then
+            printf "# Phase %s — UI Test Plan\n\n**Status:** No UI tests planned — maintenance isolation\n\n**Reason:** %s\n\nA test plan whose every step needs a running application cannot be written for an\niteration that may not start one.\n" "$phase" "$iso_reason" > "$out_file"
+          else
+            printf "# Phase %s — UI Test Plan\n\n**Status:** N/A — Backend-only phase. No UI tests required.\n" "$phase" > "$out_file"
+          fi
           ;;
         ui-test-results)
-          printf "# Phase %s — UI Test Results\n\n**Browser QA Verdict:** SKIPPED\n\n**Reason:** Backend-only phase (Frontend Present: no). No browser tests executed.\n" "$phase" > "$out_file"
+          # The `**Reason:**` line is also the form closure_gate.py accepts for
+          # an all-SKIPPED browser-QA file.
+          if [[ -n "$iso_reason" ]]; then
+            printf "# Phase %s — UI Test Results\n\n**Browser QA Verdict:** SKIPPED\n\n**Reason:** %s\n\n## Why this lane did not run\n\nThis is a deliberate contract decision, not an infrastructure failure and not an\naccidental gap. No backend or frontend was started, no browser was opened, and\nno replay was partitioned or run.\n\nNo journey is marked PASS or FAIL from a lane that did not run; journeys keep\ntheir prior recorded status.\n" "$phase" "$iso_reason" > "$out_file"
+          else
+            printf "# Phase %s — UI Test Results\n\n**Browser QA Verdict:** SKIPPED\n\n**Reason:** Backend-only phase (Frontend Present: no). No browser tests executed.\n" "$phase" > "$out_file"
+          fi
           ;;
         what-to-click)
-          printf "# Phase %s — What to Click\n\n**Status:** N/A — Backend-only phase. No UI verification steps.\n" "$phase" > "$out_file"
+          if [[ -n "$iso_reason" ]]; then
+            printf "# Phase %s — What to Click\n\n**Status:** No click path — maintenance isolation\n\n**Reason:** %s\n\nThere are no verification steps because no application service may be started for\nthis iteration: with nothing running there is nothing to click. What the operator\ncan check instead is the code review, the static QA report and the audit.\n" "$phase" "$iso_reason" > "$out_file"
+          else
+            printf "# Phase %s — What to Click\n\n**Status:** N/A — Backend-only phase. No UI verification steps.\n" "$phase" > "$out_file"
+          fi
           ;;
         *)
-          printf "# Phase %s — %s\n\n**Status:** N/A — Backend-only phase.\n" "$phase" "$artifact" > "$out_file"
+          if [[ -n "$iso_reason" ]]; then
+            printf "# Phase %s — %s\n\n**Status:** Withheld — maintenance isolation\n\n**Reason:** %s\n" "$phase" "$artifact" "$iso_reason" > "$out_file"
+          else
+            printf "# Phase %s — %s\n\n**Status:** N/A — Backend-only phase.\n" "$phase" "$artifact" > "$out_file"
+          fi
           ;;
       esac
       echo "[write_na_ui_artifacts] Wrote N/A stub: $out_file"

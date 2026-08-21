@@ -28,7 +28,7 @@ disables everything.
 | `HOST_GUARD_REQUIRE_MARKERS` + `HOST_GUARD_MARKER_FILES` | require HOST-GUARD cap blocks in listed launcher scripts | project-specific |
 | `HOST_GUARD_TCTL_PAUSE` / `_RESUME` / `_MAX_WAIT` | thermal gate thresholds (°C, °C, s) | `90` / `80` / `1800` |
 | `HOST_GUARD_SAMPLER_INTERVAL` / `_MAX_BYTES` | forensics sampler cadence / csv ring size | `1` / `10485760` |
-| `HOST_GUARD_BROWSER_CONFINE` | `0` disables the QA-browser confinement pass | `1` (default) |
+| `HOST_GUARD_BROWSER_CONFINE` | `0` disables passes A–C of the QA-browser pass; `--reap` (pass D) is governed by `CHAIN_BQA_REAP` / `CHAIN_BQA_REAP_ON_EXIT` | `1` (default) |
 
 ## Machine-global aggregate budget
 
@@ -215,6 +215,43 @@ sysfs 32×`0`; per the rule above in reverse, later boots must show ZERO
 2026-08-08→09 — in progress**, then JEDEC baseline → SO-DIMM reseat/swap →
 GEEKOM RMA. Full record: `~/.cache/iad/host-guard/soak-log.md`.
 
+2026-08-09→11 OUTCOME — the physical ladder is exhausted short of RMA, and the
+owner has declined RMA. Rung 3 memtest86+: **CLEAN, 26 passes / 20.5 h at
+~90 °C** — RAM cells and IMC exonerated, and a discriminator: the memtest
+environment (no OS, no DF/UCLK P-state transitions) never resets, while Linux
+resets at near-idle and load alike. JEDEC rung moot (already at baseline 4800).
+SO-DIMM reseat 2026-08-09 did NOT hold: two more fault resets on 2026-08-10
+(hwmon-anchored 12:08:35 at 58 °C/16 W cooling, and 22:30:02 at 67 °C/22 W).
+Full-journal sweep found **16 fault resets since 2026-07-20**; authoritative
+table: `~/.cache/iad/host-guard/reset-ledger.md`.
+
+**Detector fix (2026-08-11).** The 22:30 reset exposed a blind spot: its decode
+line landed in an intermediate boot that was then shut down cleanly, and the
+old boot-0-only read reported CLEAN forever — never freezing the evidence.
+`reset-forensics.sh` now walks every boot newer than a persisted watermark
+(`~/.cache/iad/host-guard/reset-watermark`), reports the newest unprocessed
+fault, and `ensure-postmortem` writes one bundle per fault in the gap before
+advancing the watermark. `check` never writes. The `streak` subcommand keeps
+"has this host faulted recently" answerable after the freeze (doctor's
+ras-logging row uses it).
+
+**Mitigation rung A (2026-08-11, running): fabric-pin.** The last untested
+OS-active-only variable the discriminator points at: under `auto` DPM the
+fabric clock steps 500/1600/1960 MHz. The root unit `iad-fabric-pin.service`
+runs `scripts/automation/host-guard/fabric-pin.sh apply` at boot, pinning
+fclk/mclk/socclk at top P-state via `power_dpm_force_performance_level=high`
+(a few watts of idle cost; `release` or unit removal rolls back). Verify ONLY
+by tag + sysfs: `journalctl -t iad-fabric-pin -b 0` and the `*` on the TOP row
+of `pp_dpm_fclk`. Acceptance unchanged: seven consecutive CLEAN days at the
+usual ≥1-fault/day baseline. The BIOS-memory rung is UNAVAILABLE on this host
+(owner confirmed 2026-08-11: the GEEKOM BIOS locks memory/DF settings), so
+falsified → `pcie_aspm=off`, then accept-and-tolerate (~20 s self-recovery,
+manual engine resume). Note the soak boot also runs BIOS performance mode
+QUIET (Balanced→Quiet during the Aug 10→11 power-off; observed envelope
+44 W/61 °C vs 63 W/90 °C on Balanced), so the soak tests pin+Quiet combined —
+the owner's planned pin-disable at soak end A/Bs Quiet alone. Soak journal:
+`~/.cache/iad/host-guard/soak-log.md` §2026-08-11.
+
 `doctor.sh --only ras-logging` verifies what it can read without root (the
 journald drop-in and the rasdaemon unit) and stays silent on hosts that have no
 reset history.
@@ -283,14 +320,24 @@ uses), dropping GPU compositing and the raster thread pool. Screenshots are
 unaffected. `CHAIN_BQA_HEADED=1` restores a visible browser for debugging;
 `CHAIN_BQA_REAP=1` additionally terminates this project's QA browsers when an
 engine-mode phase finishes (default is leave-warm — a cold start costs seconds
-and an idle browser inside the mask costs nothing).
+and an idle browser inside the mask costs nothing). Without a `host-guard.env`,
+`browser-confine.sh` skips confinement but `--reap` still runs (G8 stage 1: a
+detached QA browser from a finished session blocked the next session's lane).
 
 | Var | Meaning | Default |
 |---|---|---|
-| `CHROME_WS_PROFILE` / `CHROME_WS_PORT` | pinned QA browser identity, per project and lane (`iad-qa-<project>` on `10000+hash`, the qa lane on `11000+hash`) | set by `ensure_qa_browser_env` |
+| `CHROME_WS_PROFILE` / `CHROME_WS_PORT` | pinned QA browser identity, per project path and lane (`iad-qa-<project>-<offset>` on `10000+offset`, the qa lane `iad-qa-<project>-<offset>-qa` on `11000+offset`; `<offset>` = the same path hash for both, so a name collision between two projects cannot split profile from port) | set by `ensure_qa_browser_env` |
 | `CHAIN_BQA_HEADED` | `1` keeps a visible browser in engine mode | `0` |
 | `CHAIN_BQA_REAP` | `1` reaps this project's QA browsers at phase end (engine mode only) | `0` |
-| `HOST_GUARD_BROWSER_CONFINE` | `0` disables the pass entirely | `1` |
+| `CHAIN_BQA_REAP_ON_EXIT` | `1` (default) reaps this project's QA browsers when the headless engine exits — leave-warm is about the next dispatch of the same engine, which at exit no longer exists; never in the interactive backend, and skipped when another goal-session engine lock in this checkout names a live pid. Reap-only (passes A–C never run at exit). Costs up to ~11 s of exit latency (a `flock -w 5` wait for a concurrent confine pass, then TERM→3 s→KILL per own browser, two lanes), incurred *after* the engine lock is released so it cannot refuse a resume | `1` |
+| `HOST_GUARD_BROWSER_CONFINE` | `0` disables passes A–C; `--reap` is governed by `CHAIN_BQA_REAP` / `CHAIN_BQA_REAP_ON_EXIT` | `1` |
+
+**One-time migration.** A browser still running under the pre-offset name
+(`iad-qa-<project>`) is *foreign* to the new pass — it is never reaped, yet it
+still holds the pinned DevTools port the new name will dial, which is exactly the
+split that ends in `ECONNREFUSED`. Close any old-name browsers once before the
+first post-upgrade session (or just restart them):
+`pgrep -af 'iad-qa-' | grep -v -- '-[0-9]\{1,3\}\( \|-qa\)'`.
 
 Pump sessions deliberately get **no** profile pin. A Claude Code `env` setting
 overrides the inherited process environment, so a pinned value there would clobber

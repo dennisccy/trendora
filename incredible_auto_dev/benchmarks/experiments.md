@@ -1014,3 +1014,98 @@ Entry format contract (grep-able; pinned by
   CHAIN_GOLDEN_AUTODERIVE=false / CHAIN_REPLAY_MASS_FAIL_BREAKER=false /
   CHAIN_UI_COMBINED=false / CHAIN_SKIP_TESTPLAN_IF_PRESENT=false — each knob
   reverts exactly one item.
+
+---
+
+## PRE bench-20260820-2246 · 2026-08-20T22:46:53Z
+- framework-sha: f8c98b95064070eba1a8f58df30e134749fde60d (dirty: false)
+- fixture: todo-app · max-iter 2
+- hypothesis: STYLE-1 G8 stage-1 ARM A = CONTROL at framework f8c98b9 (style knobs unset; same-sha baseline for arm B): chain reaches GOAL_ACHIEVED 3/3 within max-iter 2 with 0 attempt-1 review FAILs and 0 malformed verdicts; every claude_usage row reads output_style=default and carries no output_style_requested; zero iter_config / output_style_mismatch events; the developer iter-1 row is the baseline for arm B's token prediction. Deviation from the CAND-STYLE DoD, recorded: fixture A/B across two sessions instead of a same-session knob flip (both vendored real-session repos have live engines and HOST_GUARD_MAX_ENGINES=2), so the same-session cost guard is NOT exercised here; stage 2 = the real session after the next vendored sync.
+- metrics + prediction (mechanical --predict): journeys_passing_after>=3;final_status==GOAL_ACHIEVED;attempt1_review_fails==0;malformed_verdicts==0
+
+## POST bench-20260820-2246 · 2026-08-20T23:36:04Z
+- results: benchmarks/results/20260820-233604-f8c98b950640.json
+- headline: status=GOAL_ACHIEVED last_verdict=GOAL_ACHIEVED journeys=3/3 iters=2 engine_exit=0 wall=2951s cost=$15.16705
+- predicate: journeys_passing_after>=3 → true (journeys_passing_after=3)
+- predicate: final_status==GOAL_ACHIEVED → true (final_status='GOAL_ACHIEVED')
+- predicate: attempt1_review_fails==0 → true (attempt1_review_fails=0)
+- predicate: malformed_verdicts==0 → true (malformed_verdicts=0)
+- verdict-vs-prediction: CONFIRMED
+
+---
+
+## PRE bench-20260820-2337 · 2026-08-20T23:37:25Z
+- framework-sha: 3e165ba9a35f0216e8c742a8ac5c532184edd2a4 (dirty: false)
+- fixture: todo-app · max-iter 2
+- hypothesis: STYLE-1 G8 stage-1 ARM B = ARMED at framework f8c98b9 (CHAIN_OUTPUT_STYLES=true): every wave-1 dispatch (developer, qa, browser-qa-agent, orchestrator, ui-impact-analyst, ux-regression-reviewer) carries --settings outputStyle=Concise in its trace args AND reads back output_style=Concise from the init event; judges read output_style=default; zero output_style_mismatch; exactly one iter_config key=CHAIN_OUTPUT_STYLES per iteration; chain still GOAL_ACHIEVED 3/3 with 0 attempt-1 review FAILs, 0 malformed verdicts, 0 missing_evidence rows and no artifact-schema issues; developer iter-1 output_tokens -20..30 percent vs arm A with num_turns flat within 10 percent and cache_creation_input_tokens at most +25K per wave-1 dispatch; wall not worse than arm A +10 percent. Graded MANUAL with the CAND-STYLE read-out recipe; n=1 real iteration per arm, so the token clause is indicative only — the pass/fail clauses are the proof of mechanism.
+- metrics + prediction (mechanical --predict): journeys_passing_after>=3;final_status==GOAL_ACHIEVED;attempt1_review_fails==0;malformed_verdicts==0
+
+## POST bench-20260820-2337 · 2026-08-21T00:38:32Z
+- results: benchmarks/results/20260821-003832-3e165ba9a35f.json
+- headline: status=BUDGET_EXHAUSTED last_verdict=CONTINUE journeys=1/3 iters=2 engine_exit=0 wall=3667s cost=$19.847708
+- predicate: journeys_passing_after>=3 → false (journeys_passing_after=1)
+- predicate: final_status==GOAL_ACHIEVED → false (final_status='BUDGET_EXHAUSTED')
+- predicate: attempt1_review_fails==0 → true (attempt1_review_fails=0)
+- predicate: malformed_verdicts==0 → true (malformed_verdicts=0)
+- verdict-vs-prediction: MIXED
+- assessment 2026-08-21 (STYLE-1 G8 stage-1, arms A = bench-20260820-2246 control and
+  B = bench-20260820-2337 armed; same fixture, code-identical framework f8c98b9/3e165ba;
+  graded clause by clause, MANUAL for everything --predict cannot see):
+  (1) MECHANISM — PASSED on every clause: all six wave-1 agents (developer ×2, browser-qa-agent
+  ×2, orchestrator, ui-impact-analyst, qa, ux-regression-reviewer) requested `Concise` and read
+  back `output_style=Concise` from the CLI init event; every judge/showcase agent read back
+  `default`; `iter_config key=CHAIN_OUTPUT_STYLES` fired in both iterations; zero
+  `output_style_mismatch`, zero `missing_evidence`, zero `experiment_reverted`; tripwire quiet
+  in both arms; doctor `output-styles` PASS (armed) at engine boot; arm A's rows all
+  `default` with no `output_style_requested`. The `--settings` flag itself is not visible in
+  trace `args` (that field records the caller argv; injected flags such as --effort/--model
+  appear as separate fields) — graded by readback, follow-up filed.
+  (2) JOURNEYS 3/3 — REFUTED for arm B (1/3, BUDGET_EXHAUSTED after iter-1 ran FULL depth),
+  but NOT attributable to the style: arm A's browser-QA Chrome (profile
+  `superpowers/browser-profiles/iad-qa-scratch`, CDP 10133, started 23:56 during arm A)
+  outlived its engine and still held the pinned profile when arm B started, so arm B's Chrome
+  MCP lane got `ECONNREFUSED 127.0.0.1:10547` in BOTH iterations (iter-0 browser QA verdict
+  SKIPPED, iter-1 refused twice); the evaluator graded J-02/J-03 "partial" from the Playwright
+  demo walkthrough alone, whose step 4 (authored by the Default-styled demo-narrator) clicked
+  an already-done item's "✓" and never produced the mixed open+done state. The evaluator's own
+  checks (store probe, 14/14 tests, auditor stop/restart persistence) confirmed the product
+  works — "only the picture of it is missing". Same orphan class as the 2026-07-16 run-D/E
+  note; this time it cost the next session its browser lane.
+  (3) DEVELOPER TOKENS — MIXED (n=1 per cell): the only like-for-like cell, iter-0 (lean in
+  both arms): 14,967 → 8,416 output tokens (−44%), 35 → 28 turns (−20%), 184 → 109 s (−41%),
+  cache_creation 53.7K → 71.6K (+17.9K, inside the ≤+25K budget). iter-1 is depth-confounded
+  (arm A lean 29,518 tok / 45 turns / 292 s vs arm B FULL 33,098 / 46 / 325 s — the full-depth
+  developer consumes the orchestrator plan and a different input set). Session-level developer:
+  44,485 → 41,514 tokens (−7%), 80 → 74 turns, $2.70 → $2.82.
+  (4) FULL-DEPTH STYLED ROWS (first ever, n=1 each, no same-version control): orchestrator
+  7,991 tok / 11 turns (2026-07-16 unstyled, older framework: 18,570 / 22); qa 11,923 / 57
+  (14,186 / 74 over 2 invocations then); ui-impact-analyst 8,737 / 22 (4,352 / 15 — but the UI
+  step is now combined with test-plan authoring, so not comparable); ux-regression-reviewer
+  5,946 / 14 (3,456 / 11). Cross-version, indicative only.
+  (5) ARTIFACT THINNING — no deterministic signal fired (0 missing_evidence); dev handoff
+  iter-1 5,184 B (A) vs 4,307 B + 3,584 B frontend handoff (B, full depth); review PASS
+  attempt 1 in both arms (iter-0 of B; the full-depth iter-1 review emits no `review_verdict`
+  telemetry — pre-existing gap in review-phase.sh, so that metric is blind in full iterations);
+  audit PASS_WITH_GAPS with gaps "in evidence, not behaviour". WATCH ITEM: the styled QA report
+  claimed a Chrome screenshot confirmed the done treatment while its only screenshot showed an
+  unticked item — caught and corrected by the auditor and flagged by the styled
+  ux-regression-reviewer. n=1; cannot be attributed to Concise yet; count QA over-claims per
+  arm in stage 2. `artifact_schemas.py validate` flags the lean review reports and the QA report
+  in BOTH arms (`## Verdict` section rule vs the `**Verdict:**` first-line format) —
+  validator/format mismatch, pre-existing, not a style effect.
+  (6) WALL/COST — session wall 2951 s → 3667 s and $15.17 → $19.85, explained by the full-depth
+  iter-1 (7 extra agent rows ≈ $5.5 — auditor alone $3.69) and the blocked browser lane; iter-0
+  wall 14.7 m → 11.2 m (−24%).
+  (7) PRE-EXISTING DEFECTS SURFACED (framework, not style): (a) benchmark/browser-QA Chrome
+  outlives the engine and blocks the next session's pinned chrome-mcp profile; (b)
+  `closure_gate.py:66` matches the word "todo" case-insensitively as a TODO marker — the
+  closure gate fails on every iteration of a todo app (the evaluator correctly called it a
+  false alarm); (c) full-depth review emits no `review_verdict` telemetry; (d) injected
+  `--settings` not recorded in the trace row.
+  VERDICT: mechanism CONFIRMED; token clause indicative (−44% on the one like-for-like cell,
+  +18K cache creation); journey clause REFUTED for infrastructure reasons, not the style;
+  no flip decision from stage 1 (cross-session A/B, n=1, cost guard not exercised by design).
+  Stage 2 = the real same-session rollout per the CAND-STYLE DoD after the next vendored sync,
+  with the orphan-Chrome reap fixed first. Kept scratches:
+  /home/dennis-chan/.cache/iad/shared/bench-bench-20260820-2246.hC7Rqc (A),
+  /home/dennis-chan/.cache/iad/shared/bench-bench-20260820-2337.5aoUbc (B).

@@ -155,8 +155,8 @@ MAINTENANCE ISOLATION IS ACTIVE FOR THIS ITERATION — run QA in no-service (sta
 FORBIDDEN, by contract rather than by circumstance: starting the backend or frontend,
 calling ensure_services_running, any browser/Chrome automation, and the deterministic
 replay lane. No service is running and none may be started; the runner has deliberately
-not booted any. Note that this project's backend boot warmup itself writes derived rows,
-which is one reason the contract withholds it.
+not booted any. A backend boot may itself write derived rows, which is one reason the
+contract withholds it.
 
 STILL REQUIRED — full QA depth, using what does not need a running app: read the code and
 the diff; run the allowed file-scoped/unit tests; inspect persisted artifacts and reports;
@@ -177,7 +177,11 @@ fi
 # If the backend never came up, hand the QA agent the real reason (dependency
 # hint + captured start-up log tail set by ensure_services_running) so it records
 # an actionable failure instead of a generic "backend unreachable".
-if [[ "${QA_BACKEND_UP:-}" == "no" ]]; then
+# NOT under maintenance isolation: QA_BACKEND_UP is "no" there because nobody was
+# allowed to start a backend, so appending "the backend did NOT become healthy
+# after retries" plus a missing-dependency hint would contradict the note above
+# it and hand the agent two different stories about the same service.
+if [[ "$MAINTENANCE_ISOLATION" != "yes" && "${QA_BACKEND_UP:-}" == "no" ]]; then
   _be_hint="$(_qa_dep_hint backend)"
   SERVICES_NOTE+=$'\n\nWARNING: the backend did NOT become healthy after retries.'
   [[ -n "$_be_hint" ]] && SERVICES_NOTE+=" Likely cause: $_be_hint"

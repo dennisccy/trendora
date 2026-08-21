@@ -110,6 +110,41 @@ Halt verdicts:
 - `AWAITING_INTENT_REVIEW` — only when you ran with `--intent-checkpoint` / `--intent-checkpoint-at N`: paused once mid-session for you to read `runs/goal-session-<sid>/intent-review.md` ("is this still the product you wanted?"); `--resume` to continue (counts as acknowledgment; fires once per session)
 - `AWAITING_GITHUB_AUTH` — paused at startup because per-iter push is on but a push to `origin` wouldn't authenticate (expired GitHub session, or no remote); fix auth (the run will offer to launch `gh auth login` for you when interactive) and `--resume`
 - `AWAITING_HOST_GUARD` — only on hosts that declare hardware caps (`project-extensions/host-guard/host-guard.env`): the hwmon forensics sampler could not be started, the engine's CPU-affinity wrap did not take effect, a declared launcher lost its HOST-GUARD cap block, or the interactive pump session could not be confined (the engine auto-confines a running pump in place first via `host-guard-adopt.sh`; relaunching through `scripts/automation/host-guard-exec.sh <cli>` is only needed if that fails); fix the printed reason and `--resume` — see `docs/host-guard.md`
+- `AWAITING_FULL_DEPTH` — only when full depth was declared a HARD requirement for the iteration (you set `CHAIN_REQUIRE_FULL_DEPTH=true`, or the spec carries a `Depth enforcement: required` line, or the iteration declared maintenance isolation — which requires full depth by contract) and the engine could not dispatch it. The engine halts BEFORE dispatch — no developer run, no browser/replay lane, no service boot, nothing changed — and writes `runs/goal-session-<sid>/iter-<N>/depth-requirement-unmet` with the reason, the step that caught it, and a `remedy=` line. The remedy depends on the step, and the engine prints it: `depth-arbiter` (the cost ladder could not grant full) — let the cadence window pass or re-run with `CHAIN_FULL_CADENCE_CAP=1`; `depth-parse` — fix the spec's `Depth:` line so it parses **before** resuming (a still-unparseable line makes `--resume` re-run the decomposer, which rewrites the spec and drops operator-only lines); `full-dispatch` — the installed `run-phase.sh` has no `--no-finalize` flag, so update/restore the framework checkout; `depth-legacy-allowlist` — add the qualifying `Full trigger: <1-4> — <reason>` line to the spec, or re-enable the deterministic arbiter (unset `CHAIN_DEPTH_ARBITER`; at iteration 0, which the arbiter exempts, only the `Full trigger:` line helps); `isolation-requires-full` — the spec declared maintenance isolation, which REQUIRES full depth, but resolved to lean/evidence: write `Depth: full` (plus a `Full trigger:` line when the arbiter is skipped) or drop the isolation declaration. Then `--resume`. Two things are NOT remedies: clearing `CHAIN_REQUIRE_FULL_DEPTH` or deleting the spec line (that deletes the check, not the cause), and `CHAIN_DEPTH_ARBITER=false` (it removes the precedence rung and the guard, and routes the iteration to the legacy allowlist)
+
+### Requiring full depth, or forbidding the app, for one iteration
+
+Two operator-only controls exist, both default-OFF. `Depth enforcement: required` makes full depth
+a hard requirement the engine pauses on rather than downgrades; `Maintenance isolation: required`
+keeps full reviewer/QA/auditor depth while forbidding application-service boot, browser QA, the
+deterministic replay lane and the demo showcase — for an iteration that repairs data the app would
+otherwise write to. Isolation implies the depth requirement, so an isolated spec must also say
+`Depth: full`; if it resolves to lean or evidence the engine pauses (`isolation-requires-full`)
+instead of running a lane it is not allowed to run.
+
+The **session-wide** form is the env one and is the only one with a guarantee that spans
+iterations: `CHAIN_REQUIRE_FULL_DEPTH=true` / `CHAIN_MAINTENANCE_ISOLATION=true` on the
+`run-goal.sh` command line. Note that the env form also binds iteration 0: the baseline
+spec is `Depth: lean` by contract, so a fresh session started with either env form set pauses
+`AWAITING_FULL_DEPTH` before the baseline runs — start the session without the env form and add
+it on the `--resume` that follows the baseline, or accept the pause and resume. The **per-iteration** form is a spec line, and the goal-decomposer is
+forbidden to write it (a governor that reads the governed agent's own prose is not a governor —
+anti-pattern 25), so a human adds it: let the loop pause once the decomposer checkpoint for that
+iteration exists, edit `docs/phases/goal-<sid>-iter-<N>.md` to add the line (and `Depth: full`),
+then `--resume`. Keep the spec's `Depth:` line parseable while you edit — a resume over an
+unparseable one re-runs the decomposer, which rewrites the whole spec and drops both operator-only
+lines (the engine warns loudly and records a `spec_regenerated` event when it is about to do that,
+but it cannot put the lines back).
+
+One boundary worth knowing: the background showcase tail forked at the END of iteration N−1 can
+still boot the app during iteration N's decomposer, until the engine reaps it at the
+showcase-join step. If you need NO app boot at all between two iterations, set the env form
+before the previous iteration ends, or run with `CHAIN_ASYNC_SHOWCASE=false`.
+
+Scope note: the FORBIDDEN half is enforced at the engine's own service and browser call sites, so
+nothing the pipeline drives can start the app. The developer/reviewer/auditor prompts do not yet
+carry the isolation note, so an agent asked to run the app by hand would not be told not to
+(tracked as a follow-up under CAND-MAINT-ISO).
 
 ## Common workflows
 
@@ -147,6 +182,30 @@ Lowers the developer's reasoning effort only (judges are refused by a hardcoded
 guard). Run ≥3 baseline iterations first; the telemetry tripwire auto-reverts
 the knob if a REGRESSION verdict, journey regression, or repeated first-attempt
 review FAILs appear while it is active.
+
+### Try the opt-in output-style experiment (guarded)
+
+```bash
+CHAIN_OUTPUT_STYLES=true ./scripts/automation/run-goal.sh --resume --session-id my-app
+```
+
+Arms the wave-1 table in `lib/agent_permissions.py` (`OUTPUT_STYLE_OVERRIDES`),
+sending Claude Code's built-in `Concise` output style to developer, qa,
+browser-qa-agent, orchestrator, ui-impact-analyst, and ux-regression-reviewer
+(judges are refused by a hardcoded guard). Run ≥3 baseline iterations with the
+knob OFF first — the cost tripwire needs that many same-session unstyled rows
+per agent to compute a baseline median before it can judge a styled one. It
+likewise needs ≥3 STYLED rows per agent before it can judge — expect no cost
+verdict before the third knob-on iteration. The telemetry tripwire auto-reverts
+the knob on a quality regression (as with `CHAIN_AGENT_EFFORT` above) AND on a
+cost regression (styled median `output_tokens` or `num_turns` more than 1.5x the
+unstyled baseline). Check for a style mismatch after a run:
+
+```bash
+jq -c 'select(.event=="output_style_mismatch")' runs/goal-session-my-app/telemetry.jsonl
+```
+
+An empty result means every dispatch's effective style matched what was requested.
 
 ### Recover from `BUDGET_EXHAUSTED`
 

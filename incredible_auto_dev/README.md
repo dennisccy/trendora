@@ -80,7 +80,7 @@ Optional flags: `--max-iter N` (optional hard cap on iterations; **unlimited by 
 
 After baseline the decomposer drafts a coherence blueprint at `runs/goal-session-my-app/state/blueprint.md` and, **by default, auto-approves it and keeps running unattended** — a `coherence-auditor` then enforces the blueprint every iteration. If you'd rather review it first (~3 min: sane navigation? every shared value has one source?), start with `--require-blueprint-approval`: the loop pauses once (`AWAITING_BLUEPRINT_APPROVAL`), and you edit the file if needed then `--resume` (resuming counts as approval).
 
-**4. Inspect** `runs/goal-session-my-app/summary.md` when the loop halts. Halt verdicts: `GOAL_ACHIEVED` (success), `BUDGET_EXHAUSTED`, `STALLED`, `REGRESSION_HALT`, `ABORTED`, `AWAITING_BLUEPRINT_APPROVAL` (resumable pause for blueprint review — only with `--require-blueprint-approval`), `AWAITING_GITHUB_AUTH` (resumable pause — push-per-iter is on but `origin` won't authenticate; the run offers `gh auth login` when interactive, else `gh auth login && gh auth setup-git` then `--resume`).
+**4. Inspect** `runs/goal-session-my-app/summary.md` when the loop halts. Halt verdicts: `GOAL_ACHIEVED` (success), `BUDGET_EXHAUSTED`, `STALLED`, `REGRESSION_HALT`, `ABORTED`, `AWAITING_BLUEPRINT_APPROVAL` (resumable pause for blueprint review — only with `--require-blueprint-approval`), `AWAITING_GITHUB_AUTH` (resumable pause — push-per-iter is on but `origin` won't authenticate; the run offers `gh auth login` when interactive, else `gh auth login && gh auth setup-git` then `--resume`), `AWAITING_FULL_DEPTH` (resumable pause — the iteration declared full depth a HARD requirement via `CHAIN_REQUIRE_FULL_DEPTH`, a `Depth enforcement: required` spec line, or a `Maintenance isolation: required` spec line (isolation requires full depth) and the engine could not dispatch it, so nothing ran; the fix depends on which step caught it and the engine prints it with the pause — cadence window / `CHAIN_FULL_CADENCE_CAP=1`, a malformed `Depth:` line, a `run-phase.sh` without `--no-finalize`, a missing `Full trigger:` line on the legacy-allowlist path, or `isolation-requires-full` (write `Depth: full` or drop the isolation declaration) — then `--resume`; never clear the requirement, and note `CHAIN_DEPTH_ARBITER=false` is not a way out, it deletes the guard).
 
 Because per-iter push is on by default, goal mode checks at startup that a push to `origin` would authenticate, so an expired GitHub session can't stall a mid-run push on a credential prompt. Pushes are also run with `GIT_TERMINAL_PROMPT=0` so they fail fast (non-fatally) instead of hanging. Skip the startup check with `CHAIN_SKIP_GITHUB_PREFLIGHT=true`.
 
@@ -444,6 +444,7 @@ bash scripts/automation/render-summary.sh --session-index <sid>        # re-rend
 | `config/model-tiers.yaml` + `agents/*/agent.yaml` | Tier→model map + per-agent tier |
 | `config/install-security-policy.json` | Package allowlists and deny patterns |
 | `.claude/settings.json` | Claude Code tool permissions |
+| `lib/agent_permissions.py` → `OUTPUT_STYLE_OVERRIDES` | Per-agent Claude Code output style (wave-1: `Concise` on developer/qa/browser-qa-agent/orchestrator/ui-impact-analyst/ux-regression-reviewer); inert until `CHAIN_OUTPUT_STYLES=true` — see `.claude/model-orchestration.md` §7 |
 | `docs/goal.md` | Project vision and success criteria (goal mode also reads Must-have user journeys + Anti-goals) |
 | `runs/goal-session-<sid>/session.json` | Goal-mode session state (halt config, current iteration, last verdict) |
 | `runs/goal-session-<sid>/state/journey-history.json` | Per-journey pass/fail/regressed status across iterations |
@@ -463,6 +464,124 @@ This framework is designed to be added to project repos as a submodule or subtre
 ## Improvement Roadmap
 
 All pending framework improvements — including the former "Token Optimization — Pending Work" and "Pipeline Hardening — Pending Work" backlogs that used to live here — are maintained in one canonical file: [`docs/improvement-roadmap.md`](docs/improvement-roadmap.md). It holds ~50 specified items (problem, file:line anchors, change spec, definition of done, verification commands, rollback) written so any maintainer session can execute one at a time, plus the executor ground rules and the process for adding new items. Every absorbed item from the old sections is traceable in that file's §17 ledger (several were already shipped and are marked as such).
+
+## Host incident 2026-08-07 — status + pending fix plan (GEEKOM A7 Max)
+
+> **Status 2026-08-08: C-state soak FALSIFIED on day 1 — unit removed; ladder → rung 3 (overnight
+> memtest86+ 08-08→09); goal mode PAUSED pending the verdict.** Fault reset #4 (12:48:17 boot)
+> fired with C2/C3 verifiably off in the dying boot (journal tag + `host_state`; 30 W / load1
+> 3.04 / 84 °C). Postmortem frozen pre-resume: `3f7c111ae8e94cdd8e39ad67cd0cff8b.md`. Memtest
+> errors → DIMM isolation → reseat/swap → RMA; clean → BIOS JEDEC baseline → fresh 7-day soak.
+> *(Previous status: fix EXECUTED — soak ACTIVE since 2026-08-07 21:02:21 BST.)* Phase 2 framework
+> code was committed 17:27 (`be57376` + vendored syncs). The Phase 1 unit was installed 17:26 but
+> left **un-enabled** (`sudo cp` only — the implementing session was killed by fault reset #3 at
+> 17:46, which fired **near-idle** in exactly that gap); enabled + verified 21:02:21 (journal tag
+> `iad-cstate-limit`, sysfs `state[23]/disable` 32×1, `is-enabled`) — that timestamp starts the
+> 7-day soak. Pump runs display-less under tmux user scope `goal-pump-tmux`; auto-resume unit
+> installed but **disarmed** (API-billing question stands). Daily journal:
+> `~/.cache/iad/host-guard/soak-log.md`. Plan files:
+> `~/.claude/plans/when-running-trendora-goal-drifting-floyd.md` (diagnosis + fix design),
+> `~/.claude/plans/just-after-implementing-the-majestic-sun.md` (execution + reset #3 forensics).
+
+### What happened (evidence-verified)
+
+Reported symptom: while trendora goal mode (session `ops-hardening`, iter 52) ran, the desktop
+froze and dropped to the GDM login screen. Investigation found **two distinct failures**:
+
+1. **The reported incident (15:13–15:18, no reboot):** `gnome-shell` logged
+   `Invalid sequence for VSYNC frame info` (15:13:15, UI freeze), then **SIGSEGV'd** (15:18:24,
+   `org.gnome.Shell@ubuntu.service: result 'core-dump'`); systemd tore down the graphical session →
+   login screen. The interactive pump (claude in ghostty) is a child of that session, so pump +
+   engine died as collateral (`engine_stop` 15:18:33; orphan `iter52_health_drill.py` left running).
+   Ruled out with hwmon/PSI data: memory pressure, oomd, CPU saturation, thermal trip (Tctl 84–89 °C,
+   gate 90). Contributing stress: pump-dispatched **browser-QA Chrome runs headed in the session**
+   (inherits `WAYLAND_DISPLAY`), spamming Wayland frame errors for hours.
+2. **Recurring hardware hard-resets (separate; 02:13, 11:12, then a 3rd at 17:46 that fired
+   NEAR-IDLE — 20–39 W, engine stopped, C-state unit installed-but-disabled; see Status):** 6 of the last
+   10 boots began from kernel reset-reason `0x08000800 — an uncorrected error caused a data fabric
+   sync flood event`. Settled 2026-07-30 (reset #7 fired with every software mitigation in force at
+   26–37 W / 65–74 °C): **hardware marginality**, not load. Boost-off/split-masks/engine-cap were
+   deliberately released 2026-07-30 — do **not** re-impose them. Failure 1's segfault is plausibly
+   collateral of the same marginal silicon.
+   Runbook status (`docs/host-guard.md` §"After a hardware reset", line 123): journald 15 s sync ✅,
+   rasdaemon ✅ (zero events — expected, non-ECC), pstore empty ✅; **C-state limiting never actually
+   in force** (volatile sysfs write, wiped by the daily resets); memtest86+ installed, never run;
+   **BIOS 1.26 (2025-09-15) is the latest — owner confirmed no newer firmware exists**.
+
+Evidence lives in: `~/.cache/iad/host-guard/postmortems/6f5ec77c93e0402d9629bf24a7a1a2b5.md` (the
+11:12 reset), `~/.cache/iad/host-guard/events.jsonl` (`host_state` events prove which mitigations
+were live), `~/.cache/iad/host-guard/hwmon/hwmon.csv` (1 Hz), journald boots -1/-2 of 2026-08-07.
+
+### Decisions already made by the owner (2026-08-07)
+
+- **Hardware sequencing: C-state limit first**, persistent, one-week soak; memtest → JEDEC →
+  reseat/RMA ladder only if resets continue. **No BIOS rung** (no newer firmware exists).
+- **Topology: keep the interactive pump; add auto-resume.** No permanent headless switch.
+
+### Pending fix plan (execute in order; [P] = propagate to all 5 copies*)
+
+*\*Propagation rule: neutral source `incredible_auto_dev/scripts/automation/...` + active copies in
+`trendora/` and `tapeology/` + vendored snapshots `{trendora,tapeology}/incredible_auto_dev/` —
+patch identical hunks, never whole-tree rsync; `cmp` before/after (all 5 currently byte-identical
+for the files below). Env files are machine/project-specific, never copied.*
+
+**Phase 0 — stabilization:** (1) kill orphan `iter52_health_drill.py` (was pid 291199 — verify cmdline
+first; stale after any reboot). (2) Stale dispatch `runs/goal-session-ops-hardening/dispatch/req.5-aC2vHX.*`
+(no `.res`): leave — `dispatch_channel_janitor` + `--resume` handle it; rm the trio only if the resumed
+pump stalls. (3) Reap escaped headed QA Chromes (`pgrep -af iad-qa-`). (4) [sudo] record pstore contents
+for the soak log.
+
+**Phase 1 — hardware soak ladder [sudo]:** (1) Install `/etc/systemd/system/iad-cstate-limit.service`
+(oneshot; `for f in /sys/devices/system/cpu/cpu*/cpuidle/state[2-9]/disable; do echo 1 > "$f"; done`
+plus a `logger` echo line; `WantedBy=multi-user.target` **and** the four sleep targets with matching
+`After=` so it re-asserts on resume), `enable --now`. Disables C2+C3 (acpi_idle). Self-verifying:
+every engine start's `host_state` event must show `cstate_disabled` `C2:1,C3:1`. Correct the stale
+"in flight" comment in `~/.config/iad/host-guard-host.env` (~line 76) to name the unit, dated.
+(2) Add `HOST_GUARD_MAX_ENGINES=1` there too, dated "revert on acceptance" (pauses tapeology's
+engine resumably during the soak). (3) If a FAULT reset occurs during week 1 → overnight MemTest86+
+(≥1 full pass; any error → rung 5). (4) Week 2 if still faulting: BIOS setup → JEDEC baseline
+(disable EXPO/XMP). (5) Escalation: SO-DIMM reseat → single-DIMM A/B → GEEKOM RMA.
+(6) **Acceptance** (runbook line 199): 7 consecutive days of `doctor.sh --only reset-reason` CLEAN;
+then revert (2).
+
+**Phase 2 — framework fixes [P]:** (1) `host-guard-adopt.sh:103-115` — the width-only early-exit is
+always taken at mask `0-15`, so the scope + `MemoryHigh`/`TasksMax` block (117–131) never runs and
+the 12G pump ceiling binds nothing. Add `_in_hg_scope()` (grep `/proc/<pid>/cgroup` for
+`chain-(pump|goal)-hostguard-`); early-exit only when in-scope AND width-ok, re-issuing
+`systemctl --user set-property` (idempotent refresh) on that path; always adopt when not in scope;
+skip the taskset walk at full width. Keep `MemoryHigh=12G`. (2) Mid-dispatch thermal defer:
+`host_guard_thermal_defer()` in `run-goal.sh` (~line 963), knob `HOST_GUARD_TCTL_DISPATCH_GATE`
+(default 0), poll until Tctl ≤ `TCTL_RESUME`, bound `HOST_GUARD_TCTL_DISPATCH_MAX_WAIT` (600 s,
+proceed loudly), emit `thermal_defer`; hook at top of `agent_with_quota_retry`
+(`lib/quota-retry.sh:1237`) via `declare -F … || true`. Defers next dispatch only. (3) `--headless`
+resume override in `run-goal.sh` (parse ~line 209; skip persisted-backend adoption at 291–304;
+document in usage header). (4) Optional: `HOST_GUARD_PUMP_HEADLESS_QA=1` → `unset DISPLAY
+WAYLAND_DISPLAY` in `host-guard-exec.sh` (~line 47). (5) Env values: trendora
+`project-extensions/host-guard/host-guard.env` → `HOST_GUARD_TCTL_PAUSE=85`, `TCTL_RESUME=75`,
+`TCTL_DISPATCH_GATE=1` (+ dated comment citing this incident); tapeology env → same; and a dated
+line in `docs/host-guard.md` §123 naming `iad-cstate-limit.service` [P]. **No mask/boost changes.**
+(6) `run-evals.sh` green + 5-copy `cmp` after patching.
+
+**Phase 3 — pump survives session death:** (1) QA Chrome headless for pump dispatches — supported
+via absent `DISPLAY`/`WAYLAND_DISPLAY` (`lib/common.sh:386-395`); delivered by the launch recipe
+below (`CHAIN_BQA_HEADED=1` stays the debug escape). (2) Standard launch becomes: `systemd-run
+--user --scope --unit=goal-pump-tmux env -u DISPLAY -u WAYLAND_DISPLAY tmux new-session -A -s
+goal-pump`, then `claude` + `/goal ops-hardening` inside — survives pty/SIGHUP cascade AND
+session-cgroup teardown (Linger=yes verified); after a compositor crash: re-login,
+`tmux attach -t goal-pump`. (3) Opt-in post-reset auto-resume: user unit
+`iad-goal-autoresume.service` gated on marker `~/.config/iad/goal-autoresume.armed`; if
+`session.json` status is `in_progress`/`AWAITING_HOST_GUARD`, exec `run-goal.sh --resume
+--session-id ops-hardening --headless`. **Verify first: headless spawns per-agent `claude -p` —
+API-key billing (`commands/goal.md:47-51`); if unacceptable, leave disarmed and resume via tmux.**
+
+**Verification:** C-state flags survive reboot + suspend/resume; `host_state` shows `C2:1,C3:1`;
+morning check = `doctor.sh --only reset-reason` CLEAN + no new postmortem + gapless hwmon.csv.
+Adopt fix: run adopt twice on a live pump → `systemctl --user show chain-pump-hostguard-<pid>.scope
+-p MemoryHigh -p TasksMax` = 12G/2048 both times. Thermal defer: throwaway session with
+`TCTL_PAUSE=1`, `DISPATCH_MAX_WAIT=10` → `thermal_defer` events, then proceeds. Session-kill drill:
+`pkill -f ghostty` + `loginctl terminate-session` mid-iteration → `tmux attach` shows pump alive,
+`engine.log` advancing. Headless QA: `pgrep -af iad-qa-` shows `--headless`, no new VSYNC lines in
+gnome-shell journal.
 
 ## Known Limitations
 
