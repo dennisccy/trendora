@@ -1138,6 +1138,36 @@ goal_full_ran_in_window() {
   return 1
 }
 
+# goal_full_depth_required <spec_path>
+# True iff full depth is a HARD REQUIREMENT for this iteration rather than a
+# preference the arbiter may trade away for wall-clock. The arbiter above is a
+# COST ladder: it demotes a spec's `Depth: full` to lean whenever a full already
+# ran in the cadence window ("full-cap"), which is correct for ordinary feature
+# work and WRONG when full depth is the safety control itself — e.g. an
+# iteration whose adversarial audit lane is the thing standing between a
+# destructive database write and an unreviewed mutation. In that case a silent
+# demotion removes the very check the iteration exists to satisfy, and lean depth
+# additionally auto-enables the parallel browser-QA replay lane
+# (goal-iter-lean.sh: CHAIN_LEAN_PARALLEL_BROWSER_QA defaults to `replay`).
+#
+# Two independent ways to declare the requirement — either is sufficient:
+#   * CHAIN_REQUIRE_FULL_DEPTH=true|1  — session-level (set by the operator for
+#     a run whose contract makes full depth mandatory);
+#   * the iteration spec carries a `Depth enforcement: required` line — so a
+#     decomposer can mark a single destructive iteration without pinning the
+#     whole session.
+# Default OFF: with neither present the arbiter keeps its existing behaviour
+# exactly, so ordinary projects and legitimately lean iterations are unaffected.
+goal_full_depth_required() {
+  local spec_path="${1:-}"
+  case "${CHAIN_REQUIRE_FULL_DEPTH:-}" in
+    true|TRUE|1|yes|on) return 0 ;;
+  esac
+  [[ -n "$spec_path" && -f "$spec_path" ]] || return 1
+  grep -qiE '^[[:space:]]*-?[[:space:]]*(\*\*)?Depth[ -]enforcement:?(\*\*)?[[:space:]]*:?[[:space:]]*(\*\*)?required' \
+    "$spec_path" 2>/dev/null
+}
+
 # goal_new_fullstack_journey <spec_path> <journey_history>
 # True iff the spec plans a genuinely NEW full-stack journey: ≥1 concrete
 # Backend bullet AND ≥1 concrete Frontend bullet under IN SCOPE, a non-"none"
