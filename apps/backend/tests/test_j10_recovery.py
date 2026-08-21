@@ -1,5 +1,6 @@
 """app.engine.j10_recovery — the J-10 bounded-recovery scope guard (goal-market-compass iter-6,
-extended iter-7 with the vendor swap + fail-closed adjustment-convention gate).
+extended iter-7 with the vendor swap + fail-closed adjustment-convention gate, REDESIGNED iter-8 to
+the owner's per-symbol path-agreement + stable-bridge contract).
 
 Fixture-scoped, file-scoped, synthetic-data only (docs/goal.md: "the full suite takes hours and is
 never run by pipeline agents"). Proves:
@@ -12,14 +13,17 @@ never run by pipeline agents"). Proves:
   - the backfill step is hardcoded to exactly [RECOVERY_START, RECOVERY_END] and cannot create a
     ScannerRun for any other date (TC-8's scope half; the snapshot-content assertions belong to the
     real end-to-end recovery run, not this synthetic fixture);
-  - iter-7: `RECOVERY_SOURCE` is now "yahoo" ("stooq" is the now-rejected vendor); the adjustment-
-    convention check (`check_adjustment_convention`) returns "agree"/"mismatch"/"inconclusive" with
-    zero writes in every outcome, using an injected fake `get_adjusted_close` provider — never live
-    network; and `run_gated_recovery` never reaches the write-capable fetch/backfill calls on any
-    verdict other than "agree" (TC-4 through TC-6, plus the orchestration-level proof).
+  - iter-8: the redesigned per-symbol gate (`_compute_symbol_verdict`, a pure ladder function, plus
+    its DB/provider orchestration `check_adjustment_convention_per_symbol`) returns "agree"/"mismatch"/
+    "inconclusive" PER SAMPLED SYMBOL, calibrating exclusively on `get_daily`'s raw close (never
+    `get_adjusted_close` — B2/TC-9); the persisted evidence artifact (`convention_evidence_to_dict`,
+    B3); the bridge-applying transform (`_BridgeApplyingProvider`, TC-8/B6); and `run_gated_recovery`'s
+    redesigned signature, which accepts NO tolerance/dispersion/sample/window override (B5) and fetches
+    ONLY the symbols that passed the gate.
 """
 from __future__ import annotations
 
+import json
 from datetime import date
 
 import pytest
@@ -30,15 +34,20 @@ from app.data_providers.base import Bar, PriceProvider, ProviderUnavailableError
 from app.db import create_db_and_tables, make_engine
 from app.engine import j10_recovery
 from app.engine.j10_recovery import (
+    BRIDGE_DISPERSION_BOUND,
     CONVENTION_CHECK_SAMPLE_SYMBOLS,
+    CONVENTION_CHECK_WINDOW_END,
     EXCLUDED_UNPROVEN_SYMBOLS,
+    MIN_COMPARABLE_PAIRS_PER_SYMBOL,
+    PATH_AGREEMENT_TOLERANCE,
     RECOVERY_DATES,
     RECOVERY_END,
     RECOVERY_SOURCE,
     RECOVERY_START,
     RECOVERY_SYMBOLS,
     RecoveryScopeError,
-    check_adjustment_convention,
+    check_adjustment_convention_per_symbol,
+    convention_evidence_to_dict,
     run_bounded_recovery_backfill,
     run_bounded_recovery_fetch,
     run_gated_recovery,
@@ -139,9 +148,8 @@ def test_rejects_mnst_explicitly_the_documented_ambiguous_exclusion():
 
 
 def test_rejects_wrong_source():
-    """iter-7: RECOVERY_SOURCE is now "yahoo" (goal.md's vendor addendum) — "stooq" (this retry's
-    permanently excluded original vendor, blocked by its own proof-of-work challenge) is the wrong
-    source now."""
+    """RECOVERY_SOURCE is "yahoo" (goal.md's vendor addendum) — "stooq" (this retry's permanently
+    excluded original vendor, blocked by its own proof-of-work challenge) is the wrong source now."""
     with pytest.raises(RecoveryScopeError, match="source must be"):
         validate_recovery_scope(
             start=RECOVERY_START, end=RECOVERY_END, symbols=["AAPL"], source="stooq"
@@ -225,6 +233,28 @@ def test_fetch_restores_only_the_missing_rows_and_never_touches_survivors(tmp_pa
     assert aapl_end.close == 222.22
     # the genuinely missing row was restored
     assert msft_end.close == 10.5
+
+
+def test_fetch_symbols_param_intersects_with_still_missing_for_idempotency(tmp_path, monkeypatch):
+    """iter-8: the new `symbols=` restriction on `run_bounded_recovery_fetch` (added so
+    `run_gated_recovery` can fetch only the symbols that passed the per-symbol gate) is intersected
+    with LIVE `still_missing_symbols()`, not used verbatim — a symbol the caller names that is already
+    fully restored is excluded, preserving idempotency."""
+    monkeypatch.setattr(j10_recovery, "RECOVERY_SYMBOLS", frozenset({"AAPL", "MSFT"}))
+    engine = _engine(tmp_path)
+    cfg = _cfg()
+    with Session(engine) as session:
+        session.add(DailyPrice(symbol="AAPL", date=RECOVERY_START, open=1, high=1, low=1, close=1.0, volume=1))
+        session.add(DailyPrice(symbol="AAPL", date=RECOVERY_END, open=1, high=1, low=1, close=1.0, volume=1))
+        session.commit()
+
+    provider = _RecordingProvider()
+    with Session(engine) as session:
+        # caller names BOTH symbols, but AAPL is already fully restored
+        outcome = run_bounded_recovery_fetch(session, engine, cfg, provider=provider, symbols=["AAPL", "MSFT"])
+
+    assert outcome.requested_symbols == ["MSFT"]
+    assert provider.requested_symbols == ["MSFT"]
 
 
 def test_second_invocation_after_full_recovery_is_a_true_zero_work_noop(tmp_path):
@@ -314,13 +344,123 @@ def test_data_provider_run_538_is_the_authoritative_removal_record_shape():
 
 
 # ==================================================================================================
-# check_adjustment_convention — J-10 step 2a's fail-closed gate (iter-7, TC-4/TC-5/TC-6)
+# _compute_symbol_verdict — the per-symbol two-part ladder (iter-8 redesign), a PURE function: every
+# degenerate-input scenario is directly unit-testable with hand-built {date: value} dicts, no DB/
+# provider fixture required (the iter-7 lesson: "a guard is only proven fail-closed when a test
+# constructs the degenerate input the guard will actually meet in production... all nine [prior]
+# tests seeded a complete fixture").
 # ==================================================================================================
-class _FakeAdjustedCloseProvider(PriceProvider):
-    """The convention-check's own injection point: `get_daily` fails the test if ever called (the check
-    must use `get_adjusted_close` exclusively — the load-bearing technical finding this iteration exists
-    to honor); `get_adjusted_close` returns a canned {date: close} series per symbol, or raises
-    ProviderUnavailableError for any symbol named in `fail_for` (TC-6)."""
+_W = [date(2026, 8, 4), date(2026, 8, 5), date(2026, 8, 6), date(2026, 8, 7), date(2026, 8, 10)]
+
+
+def test_symbol_verdict_agrees_when_path_and_bridge_are_both_stable():
+    """TC-2: a perfectly stable 1.002 ratio across all 5 window dates -> "agree"; the recorded bridge
+    factor equals the computed stable ratio exactly."""
+    stored = {d: 200.0 + i for i, d in enumerate(_W)}
+    fallback = {d: (200.0 + i) / 1.002 for i, d in enumerate(_W)}
+    v = j10_recovery._compute_symbol_verdict("AAPL", _W, stored, fallback)
+    assert v.verdict == "agree"
+    assert v.comparable_pair_count == 5
+    assert v.bridge_factor == pytest.approx(1.002, rel=1e-9)
+    assert v.path_agreement_max_delta == pytest.approx(0.0, abs=1e-9)
+    assert v.bridge_dispersion == pytest.approx(0.0, abs=1e-9)
+
+
+def test_symbol_verdict_mismatch_when_bridge_dispersion_exceeds_bound():
+    """TC-3: a monotonically drifting ratio (1.00 -> ~1.053 across the window) exceeds
+    BRIDGE_DISPERSION_BOUND -- "mismatch", excluded from the fetch, with the measured dispersion cited
+    in the reason."""
+    stored = {d: 100.0 for d in _W}
+    fallback = {_W[0]: 100.0, _W[1]: 99.0, _W[2]: 98.0, _W[3]: 97.0, _W[4]: 95.0}
+    v = j10_recovery._compute_symbol_verdict("DRIFT", _W, stored, fallback)
+    assert v.verdict == "mismatch"
+    assert v.bridge_factor is None
+    assert v.bridge_dispersion > BRIDGE_DISPERSION_BOUND
+    assert "bridge stability" in v.reason
+
+
+def test_symbol_verdict_mismatch_when_path_agreement_fails_despite_stable_bridge():
+    """TC-4: engineered so bridge-ratio dispersion stays comfortably under BRIDGE_DISPERSION_BOUND (a
+    single date's ratio drifts only ~0.6%, diluted across the 5-date range/mean) while THAT SAME
+    date's path-agreement delta -- measured relative to the anchor date specifically, not diluted by
+    the other four dates -- exceeds the tighter PATH_AGREEMENT_TOLERANCE. Passing only one of the two
+    required tests is insufficient: the verdict is still "mismatch"."""
+    stored = {d: 100.0 for d in _W}
+    fallback = {d: 100.0 for d in _W[:-1]}
+    fallback[_W[-1]] = 100.0 / 1.006  # a lone ~0.6% ratio drift on the LAST window date only
+    v = j10_recovery._compute_symbol_verdict("PATHBUG", _W, stored, fallback)
+    assert v.bridge_dispersion < BRIDGE_DISPERSION_BOUND  # bridge dispersion ALONE would pass
+    assert v.path_agreement_max_delta > PATH_AGREEMENT_TOLERANCE  # path agreement ALONE fails
+    assert v.verdict == "mismatch"
+    assert "path agreement" in v.reason
+    assert v.bridge_factor is None
+
+
+def test_symbol_verdict_inconclusive_with_zero_comparable_pairs():
+    """TC-5 (zero pairs): stored has data but the fallback provider returned nothing at all for this
+    symbol -> "inconclusive", never "agree" -- and the stored-only rows are still recorded as pairs
+    (fallback_close=None), never silently dropped."""
+    stored = {d: 100.0 for d in _W}
+    v = j10_recovery._compute_symbol_verdict("NOFALLBACK", _W, stored, {})
+    assert v.verdict == "inconclusive"
+    assert v.comparable_pair_count == 0
+    assert len(v.pairs) == len(_W)
+    assert all(p.fallback_close is None and p.ratio is None for p in v.pairs)
+
+
+def test_symbol_verdict_inconclusive_with_one_comparable_pair():
+    """TC-5 (one pair -- still below the >=2 floor needed to compute ANY metric): a single comparable
+    date cannot prove a "shape" or a "dispersion", so the verdict is "inconclusive" even though the
+    lone pair happens to match exactly."""
+    v = j10_recovery._compute_symbol_verdict("ONEPAIR", _W, {_W[0]: 100.0}, {_W[0]: 100.0})
+    assert v.verdict == "inconclusive"
+    assert v.comparable_pair_count == 1
+    assert v.path_agreement_max_delta is None and v.bridge_dispersion is None
+
+
+def test_symbol_verdict_inconclusive_below_evidence_floor_despite_clean_data():
+    """TC-5 (partial coverage: 2 comparable pairs, below MIN_COMPARABLE_PAIRS_PER_SYMBOL=3): both
+    metrics are PERFECT (identical series) yet the verdict must still be "inconclusive" -- "not
+    contradicted" is not "proven"."""
+    stored = {_W[0]: 100.0, _W[1]: 101.0}
+    fallback = {_W[0]: 100.0, _W[1]: 101.0}
+    v = j10_recovery._compute_symbol_verdict("BELOWFLOOR", _W, stored, fallback)
+    assert v.comparable_pair_count == 2 < MIN_COMPARABLE_PAIRS_PER_SYMBOL
+    assert v.verdict == "inconclusive"
+    assert v.bridge_factor is None
+    assert "evidence floor" in v.reason
+
+
+def test_symbol_verdict_mismatch_still_wins_over_a_coverage_gap():
+    """TC-6 (per-symbol carry-forward of audit B1's ordering): only 2 comparable pairs (below the
+    3-pair floor) but they clearly disagree -- the genuine mismatch must NOT be downgraded to
+    "inconclusive" by the coverage gap."""
+    stored = {_W[0]: 100.0, _W[1]: 100.0}
+    fallback = {_W[0]: 100.0, _W[1]: 50.0}  # a 2:1 split-away value
+    v = j10_recovery._compute_symbol_verdict("GAPMISMATCH", _W, stored, fallback)
+    assert v.comparable_pair_count == 2 < MIN_COMPARABLE_PAIRS_PER_SYMBOL
+    assert v.verdict == "mismatch"
+
+
+def test_symbol_verdict_never_fabricates_a_pair_when_stored_is_absent():
+    """A window date with no STORED baseline at all is never even turned into a pair (nothing to
+    anchor a comparison to) -- distinct from a stored-but-no-fallback pair, which IS recorded."""
+    stored = {_W[0]: 100.0, _W[2]: 102.0}  # _W[1], _W[3], _W[4] have no stored row at all
+    fallback = {d: 100.0 for d in _W}
+    v = j10_recovery._compute_symbol_verdict("SPARSE", _W, stored, fallback)
+    assert len(v.pairs) == 2
+    assert {p.trading_date for p in v.pairs} == {_W[0], _W[2]}
+
+
+# ==================================================================================================
+# check_adjustment_convention_per_symbol — orchestration (DB + injected fake provider), iter-8 redesign
+# ==================================================================================================
+class _FakeDailyProvider(PriceProvider):
+    """Returns canned OHLC bars per symbol from a `{symbol: {date: close}}` series -- open/high/low are
+    each offset from close by a FIXED, DISTINCT amount (never equal to close or to each other) so a
+    test can verify ALL FOUR fields get bridge-transformed independently, not just close. Raises
+    ProviderUnavailableError for any symbol named in `fail_for`. Records every symbol requested, in
+    call order."""
 
     def __init__(self, series: dict[str, dict[date, float]], *, fail_for: frozenset[str] = frozenset()):
         self._series = series
@@ -328,18 +468,91 @@ class _FakeAdjustedCloseProvider(PriceProvider):
         self.requested_symbols: list[str] = []
 
     def get_daily(self, symbol, start=None, end=None):
-        pytest.fail(f"get_daily called for {symbol} — the convention check must use get_adjusted_close")
-
-    def get_adjusted_close(self, symbol, start=None, end=None):
         self.requested_symbols.append(symbol)
         if symbol in self._fail_for:
-            raise ProviderUnavailableError(f"synthetic adjusted-close failure for {symbol!r}")
-        return dict(self._series.get(symbol, {}))
+            raise ProviderUnavailableError(f"synthetic get_daily failure for {symbol!r}")
+        bars = []
+        for d, close in sorted(self._series.get(symbol, {}).items()):
+            if start is not None and d < start:
+                continue
+            if end is not None and d > end:
+                continue
+            bars.append(Bar(date=d, open=close - 0.5, high=close + 1.0, low=close - 1.0, close=close, volume=777.0))
+        return bars
 
 
-def test_convention_check_default_sample_is_documented_and_in_scope():
-    """The default sample (>= 15 tickers per goal.md) is a real subset of RECOVERY_SYMBOLS, deterministic
-    (a tuple, not a set), MNST-free, and duplicate-free — a cheap constant-sanity check, no DB/network."""
+def test_per_symbol_check_uses_get_daily_never_get_adjusted_close(tmp_path):
+    """Resolves B2/TC-9: the redesigned gate calibrates on get_daily's raw close -- a provider whose
+    get_adjusted_close raises if ever called proves no code path uses it."""
+    class _RaisesIfAdjustedCloseCalled(_FakeDailyProvider):
+        def get_adjusted_close(self, symbol, start=None, end=None):
+            pytest.fail(f"get_adjusted_close called for {symbol} — iter-8's gate must use get_daily only")
+
+    engine = _engine(tmp_path)
+    window = [date(2026, 8, 6), date(2026, 8, 7)]
+    with Session(engine) as session:
+        session.add(DailyPrice(symbol="AAPL", date=window[0], open=1, high=1, low=1, close=200.0, volume=1))
+        session.add(DailyPrice(symbol="AAPL", date=window[1], open=1, high=1, low=1, close=201.0, volume=1))
+        session.commit()
+
+    provider = _RaisesIfAdjustedCloseCalled({"AAPL": {window[0]: 200.0, window[1]: 201.0}})
+    with Session(engine) as session:
+        result = check_adjustment_convention_per_symbol(
+            session, provider=provider, sample_symbols=["AAPL"], window_dates=window,
+        )
+    assert result.verdicts[0].symbol == "AAPL"
+    assert provider.requested_symbols == ["AAPL"]
+
+
+def test_per_symbol_check_judges_each_symbol_independently(tmp_path):
+    """A mixed batch: one symbol agrees, one symbol's fallback fetch fails outright -- each symbol's
+    verdict reflects only its OWN evidence, and a failure on one does not stop the batch (deliberately
+    different from iter-7's aggregate 'stop on first failure')."""
+    engine = _engine(tmp_path)
+    window = [date(2026, 8, 6), date(2026, 8, 7), date(2026, 8, 10)]
+    with Session(engine) as session:
+        for sym, base in (("AAPL", 200.0), ("MSFT", 400.0)):
+            for i, d in enumerate(window):
+                session.add(DailyPrice(symbol=sym, date=d, open=base, high=base, low=base, close=base + i, volume=1.0))
+        session.commit()
+
+    series = {"AAPL": {window[0]: 200.0, window[1]: 201.0, window[2]: 202.0}}  # exact match -> agree
+    provider = _FakeDailyProvider(series, fail_for=frozenset({"MSFT"}))
+    with Session(engine) as session:
+        result = check_adjustment_convention_per_symbol(
+            session, provider=provider, sample_symbols=["AAPL", "MSFT"], window_dates=window,
+        )
+    by_symbol = {v.symbol: v for v in result.verdicts}
+    assert by_symbol["AAPL"].verdict == "agree"
+    assert by_symbol["MSFT"].verdict == "inconclusive"
+    assert "fetch failed" in by_symbol["MSFT"].reason
+    assert provider.requested_symbols == ["AAPL", "MSFT"]  # MSFT was still attempted, not skipped
+
+
+def test_per_symbol_check_never_writes_to_any_table(tmp_path):
+    """A direct restatement of the DoD's own read-only requirement across a mismatching symbol."""
+    engine = _engine(tmp_path)
+    window = [date(2026, 8, 6), date(2026, 8, 7)]
+    with Session(engine) as session:
+        session.add(DailyPrice(symbol="AAPL", date=window[0], open=1, high=1, low=1, close=200.0, volume=1))
+        session.add(DailyPrice(symbol="AAPL", date=window[1], open=1, high=1, low=1, close=201.0, volume=1))
+        session.commit()
+
+    provider = _FakeDailyProvider({"AAPL": {window[0]: 100.0, window[1]: 50.0}})  # forces mismatch
+    with Session(engine) as session:
+        check_adjustment_convention_per_symbol(
+            session, provider=provider, sample_symbols=["AAPL"], window_dates=window,
+        )
+    with Session(engine) as session:
+        assert len(session.exec(select(DailyPrice)).all()) == 2  # only the 2 seeded rows
+        assert session.exec(select(ScannerRun)).all() == []
+        assert session.exec(select(DataProviderRun)).all() == []
+
+
+def test_per_symbol_check_default_sample_and_window_are_used_when_not_overridden():
+    """The default sample (>= 15 tickers per goal.md) is a real subset of RECOVERY_SYMBOLS,
+    deterministic (a tuple, not a set), MNST-free, and duplicate-free -- a cheap constant-sanity
+    check, no DB/network."""
     assert len(CONVENTION_CHECK_SAMPLE_SYMBOLS) >= 15
     assert isinstance(CONVENTION_CHECK_SAMPLE_SYMBOLS, tuple)
     assert set(CONVENTION_CHECK_SAMPLE_SYMBOLS) <= RECOVERY_SYMBOLS
@@ -347,343 +560,220 @@ def test_convention_check_default_sample_is_documented_and_in_scope():
     assert len(set(CONVENTION_CHECK_SAMPLE_SYMBOLS)) == len(CONVENTION_CHECK_SAMPLE_SYMBOLS)
 
 
-def test_convention_check_agree_when_all_sampled_pairs_within_tolerance(tmp_path):
-    """TC-4: every sampled pair's fake adjusted-close equals the stored daily_prices close exactly (well
-    within tolerance) -> "agree", and zero rows are written to any table."""
+# ==================================================================================================
+# convention_evidence_to_dict — B3: the persisted per-pair evidence artifact
+# ==================================================================================================
+def test_convention_evidence_to_dict_includes_every_pair_and_threshold(tmp_path):
+    """B3/TC-7: the serialized evidence carries every threshold, every sampled symbol's verdict, and
+    every one of its pairs (including an incomparable pair with fallback_close=None) -- not a
+    summary."""
     engine = _engine(tmp_path)
-    symbols = ["AAPL", "MSFT"]
-    window = [date(2026, 8, 6), date(2026, 8, 7), date(2026, 8, 10)]
-    with Session(engine) as session:
-        for sym, base in (("AAPL", 200.0), ("MSFT", 400.0)):
-            for i, d in enumerate(window):
-                session.add(DailyPrice(
-                    symbol=sym, date=d, open=base, high=base, low=base, close=base + i, volume=1.0
-                ))
-        session.commit()
-
-    series = {
-        "AAPL": {window[0]: 200.0, window[1]: 201.0, window[2]: 202.0},
-        "MSFT": {window[0]: 400.0, window[1]: 401.0, window[2]: 402.0},
-    }
-    provider = _FakeAdjustedCloseProvider(series)
-    with Session(engine) as session:
-        result = check_adjustment_convention(
-            session, provider=provider, sample_symbols=symbols, window_dates=window,
-        )
-
-    assert result.verdict == "agree"
-    assert len(result.pairs) == 6
-    assert all(p.within_tolerance for p in result.pairs)
-    assert provider.requested_symbols == ["AAPL", "MSFT"]  # one call per symbol, never per (symbol, date)
-
-    with Session(engine) as session:
-        assert len(session.exec(select(DailyPrice)).all()) == 6  # only the 6 seeded rows — nothing new
-        assert session.exec(select(ScannerRun)).all() == []
-        assert session.exec(select(DataProviderRun)).all() == []
-
-
-def test_convention_check_mismatch_when_a_sampled_pair_exceeds_tolerance(tmp_path):
-    """TC-5: one sampled pair (AAPL's second date) diverges by far more than the tolerance — a synthetic
-    2:1 split-away value — so the verdict is "mismatch"; every OTHER pair is still compared (the dev
-    handoff needs every sampled pair's observed delta, not just the first failure), and zero rows are
-    written anywhere."""
-    engine = _engine(tmp_path)
-    symbols = ["AAPL", "MSFT"]
     window = [date(2026, 8, 6), date(2026, 8, 7)]
     with Session(engine) as session:
-        for sym, base in (("AAPL", 200.0), ("MSFT", 400.0)):
-            for d in window:
-                session.add(DailyPrice(symbol=sym, date=d, open=base, high=base, low=base, close=base, volume=1.0))
-        session.commit()
-
-    series = {
-        "AAPL": {window[0]: 200.0, window[1]: 100.0},  # a 2:1 split-away value, far outside tolerance
-        "MSFT": {window[0]: 400.0, window[1]: 400.0},
-    }
-    provider = _FakeAdjustedCloseProvider(series)
-    with Session(engine) as session:
-        result = check_adjustment_convention(
-            session, provider=provider, sample_symbols=symbols, window_dates=window,
-        )
-
-    assert result.verdict == "mismatch"
-    assert len(result.pairs) == 4  # both symbols' both dates were still compared
-    mismatched = [p for p in result.pairs if p.within_tolerance is False]
-    assert len(mismatched) == 1
-    assert mismatched[0].symbol == "AAPL" and mismatched[0].trading_date == window[1]
-    assert provider.requested_symbols == ["AAPL", "MSFT"]  # MSFT still fetched — full evidence gathered
-
-    with Session(engine) as session:
-        assert len(session.exec(select(DailyPrice)).all()) == 4  # only the 4 seeded rows
-        assert session.exec(select(ScannerRun)).all() == []
-        assert session.exec(select(DataProviderRun)).all() == []
-
-
-def test_convention_check_inconclusive_when_provider_fails(tmp_path):
-    """TC-6: a provider failure on one sampled symbol yields "inconclusive" — NEVER a false "agree" —
-    and zero rows are written anywhere. The failure stops further comparison fetches (a systemic
-    failure gives no reason to expect the next call would succeed)."""
-    engine = _engine(tmp_path)
-    symbols = ["AAPL", "MSFT"]
-    window = [date(2026, 8, 6)]
-    with Session(engine) as session:
-        for sym in symbols:
-            session.add(DailyPrice(symbol=sym, date=window[0], open=1, high=1, low=1, close=100.0, volume=1))
-        session.commit()
-
-    provider = _FakeAdjustedCloseProvider(
-        {"AAPL": {window[0]: 100.0}}, fail_for=frozenset({"AAPL"}),
-    )
-    with Session(engine) as session:
-        result = check_adjustment_convention(
-            session, provider=provider, sample_symbols=symbols, window_dates=window,
-        )
-
-    assert result.verdict == "inconclusive"
-    assert "AAPL" in result.reason
-    assert provider.requested_symbols == ["AAPL"]  # stopped at the first failure — MSFT never attempted
-
-    with Session(engine) as session:
-        assert len(session.exec(select(DailyPrice)).all()) == 2  # only the 2 seeded rows
-        assert session.exec(select(ScannerRun)).all() == []
-        assert session.exec(select(DataProviderRun)).all() == []
-
-
-def test_convention_check_never_writes_regardless_of_verdict(tmp_path):
-    """A direct restatement of the DoD's own wording ("provably read-only... in every outcome") across
-    all three verdicts, asserting on the stored DailyPrice VALUE (not just row count) to prove no stored
-    close was mutated either — using the exact same seeded row through agree/mismatch/inconclusive."""
-    engine = _engine(tmp_path)
-    window = [date(2026, 8, 6)]
-    with Session(engine) as session:
-        session.add(DailyPrice(symbol="AAPL", date=window[0], open=1, high=1, low=1, close=123.45, volume=1))
-        session.commit()
-
-    providers = (
-        _FakeAdjustedCloseProvider({"AAPL": {window[0]: 123.45}}),            # would agree
-        _FakeAdjustedCloseProvider({"AAPL": {window[0]: 1.0}}),               # would mismatch
-        _FakeAdjustedCloseProvider({}, fail_for=frozenset({"AAPL"})),         # would be inconclusive
-    )
-    for provider in providers:
-        with Session(engine) as session:
-            check_adjustment_convention(
-                session, provider=provider, sample_symbols=["AAPL"], window_dates=window,
-            )
-        with Session(engine) as session:
-            row = session.exec(select(DailyPrice).where(DailyPrice.symbol == "AAPL")).one()
-        assert row.close == 123.45  # byte-unchanged across every verdict
-
-
-# ==================================================================================================
-# run_gated_recovery — the causal ordering gate (iter-7): agree -> fetch+backfill; anything else -> stop
-# ==================================================================================================
-class _NeverCalledFetchProvider(PriceProvider):
-    """Wired in as the fetch-side provider on a non-agree verdict — fails the test if
-    run_bounded_recovery_fetch (or anything downstream of it) ever calls get_daily."""
-
-    def get_daily(self, symbol, start=None, end=None):
-        pytest.fail(f"get_daily called for {symbol} — the fetch step must never run on a non-agree verdict")
-
-
-def test_gated_recovery_stops_on_mismatch_before_any_write_capable_call(tmp_path):
-    engine = _engine(tmp_path)
-    cfg = _cfg()
-    window = [date(2026, 8, 6)]
-    with Session(engine) as session:
         session.add(DailyPrice(symbol="AAPL", date=window[0], open=1, high=1, low=1, close=200.0, volume=1))
+        session.add(DailyPrice(symbol="AAPL", date=window[1], open=1, high=1, low=1, close=201.0, volume=1))
         session.commit()
 
-    convention_provider = _FakeAdjustedCloseProvider({"AAPL": {window[0]: 100.0}})  # forces mismatch
+    provider = _FakeDailyProvider({"AAPL": {window[0]: 200.0}})  # window[1] deliberately absent from fallback
     with Session(engine) as session:
-        outcome = run_gated_recovery(
-            session, engine, cfg,
-            convention_provider=convention_provider,
-            fetch_provider=_NeverCalledFetchProvider(),
-            convention_sample_symbols=["AAPL"],
-            convention_window_dates=window,
-        )
-
-    assert outcome.convention_check.verdict == "mismatch"
-    assert outcome.fetch is None
-    assert outcome.backfill is None
-    assert outcome.stopped_reason is not None and "mismatch" in outcome.stopped_reason
-
-    with Session(engine) as session:
-        assert session.exec(select(ScannerRun)).all() == []
-        assert session.exec(select(DataProviderRun)).all() == []
-
-
-def test_gated_recovery_stops_on_inconclusive_before_any_write_capable_call(tmp_path):
-    engine = _engine(tmp_path)
-    cfg = _cfg()
-    window = [date(2026, 8, 6)]
-    with Session(engine) as session:
-        session.add(DailyPrice(symbol="AAPL", date=window[0], open=1, high=1, low=1, close=200.0, volume=1))
-        session.commit()
-
-    convention_provider = _FakeAdjustedCloseProvider({}, fail_for=frozenset({"AAPL"}))
-    with Session(engine) as session:
-        outcome = run_gated_recovery(
-            session, engine, cfg,
-            convention_provider=convention_provider,
-            fetch_provider=_NeverCalledFetchProvider(),
-            convention_sample_symbols=["AAPL"],
-            convention_window_dates=window,
-        )
-
-    assert outcome.convention_check.verdict == "inconclusive"
-    assert outcome.fetch is None
-    assert outcome.backfill is None
-    assert outcome.stopped_reason is not None
-
-    with Session(engine) as session:
-        assert session.exec(select(ScannerRun)).all() == []
-        assert session.exec(select(DataProviderRun)).all() == []
-
-
-def test_gated_recovery_reaches_fetch_and_backfill_on_agree(tmp_path, monkeypatch):
-    """The positive path: an "agree" verdict reaches BOTH run_bounded_recovery_fetch (restoring the one
-    genuinely missing row, mirroring test_fetch_restores_only_the_missing_rows_and_never_touches_survivors)
-    AND run_bounded_recovery_backfill (creating ScannerRun rows for both recovery dates)."""
-    monkeypatch.setattr(j10_recovery, "RECOVERY_SYMBOLS", frozenset({"AAPL", "MSFT"}))
-    engine = _engine(tmp_path)
-    cfg = _cfg()
-    window = [date(2026, 8, 6)]
-    with Session(engine) as session:
-        for sym, price in (("SPY", 500.0), ("AAPL", 200.0)):
-            for d in (window[0], RECOVERY_START, RECOVERY_END):
-                session.add(DailyPrice(symbol=sym, date=d, open=price, high=price, low=price, close=price, volume=1.0))
-        session.add(DailyPrice(symbol="MSFT", date=window[0], open=90, high=90, low=90, close=90.0, volume=1.0))
-        session.add(DailyPrice(symbol="MSFT", date=RECOVERY_START, open=90, high=90, low=90, close=90.0, volume=1.0))
-        # MSFT has no RECOVERY_END row yet — the one genuinely missing row this test restores
-        session.commit()
-
-    convention_provider = _FakeAdjustedCloseProvider({"AAPL": {window[0]: 200.0}, "MSFT": {window[0]: 90.0}})
-    fetch_provider = _RecordingProvider()
-
-    with Session(engine) as session:
-        outcome = run_gated_recovery(
-            session, engine, cfg,
-            convention_provider=convention_provider,
-            fetch_provider=fetch_provider,
-            convention_sample_symbols=["AAPL", "MSFT"],
-            convention_window_dates=window,
-        )
-
-    assert outcome.convention_check.verdict == "agree"
-    assert outcome.stopped_reason is None
-    assert outcome.fetch is not None
-    assert outcome.fetch.requested_symbols == ["MSFT"]  # AAPL already fully covered
-    assert outcome.backfill is not None
-
-    with Session(engine) as session:
-        snapshot_dates = set(session.exec(select(ScannerRun.asof_date)).all())
-        msft_end = session.exec(
-            select(DailyPrice).where(DailyPrice.symbol == "MSFT", DailyPrice.date == RECOVERY_END)
-        ).one()
-    assert RECOVERY_START in snapshot_dates and RECOVERY_END in snapshot_dates
-    assert msft_end.close == 10.5  # the _RecordingProvider's canned bar value
-
-
-# ==================================================================================================
-# AUDIT (iter-7, B1) — the minimum-evidence floor: "agree" must never be returned on a vacuum
-# ==================================================================================================
-def test_convention_check_is_inconclusive_when_nothing_was_actually_compared(tmp_path):
-    """AUDIT B1 regression: the sampled symbols have NO stored baseline (the window dates exist in
-    daily_prices, but only for an unsampled symbol), so zero pairs are comparable. Before the fix this
-    returned "agree" — reason "all 0 sampled pairs within 0.7500% relative delta" — i.e. a fail-OPEN
-    gate that proved nothing yet authorized the write. It must be "inconclusive"."""
-    engine = _engine(tmp_path)
-    window = [date(2026, 8, 6), date(2026, 8, 7), date(2026, 8, 10)]
-    with Session(engine) as session:
-        for d in window:  # a symbol that is NOT in the sample — the window exists, the baseline does not
-            session.add(DailyPrice(symbol="ZZZZ", date=d, open=1, high=1, low=1, close=1.0, volume=1))
-        session.commit()
-
-    provider = _FakeAdjustedCloseProvider({"AAPL": {d: 999.0 for d in window}})
-    with Session(engine) as session:
-        result = check_adjustment_convention(
+        result = check_adjustment_convention_per_symbol(
             session, provider=provider, sample_symbols=["AAPL"], window_dates=window,
         )
-
-    assert result.verdict == "inconclusive"
-    assert result.pairs == ()
-    assert "insufficient evidence" in result.reason
-
-
-def test_convention_check_is_inconclusive_when_a_sampled_symbol_has_no_stored_baseline(tmp_path):
-    """AUDIT B1 regression: a PARTIALLY covered sample — AAPL compares cleanly, MSFT has no stored row
-    at all — must not be reported as "agree" on AAPL's evidence alone; the documented sample was not
-    exercised, so nothing is proven for MSFT."""
-    engine = _engine(tmp_path)
-    window = [date(2026, 8, 6), date(2026, 8, 7)]
-    with Session(engine) as session:
-        for d in window:
-            session.add(DailyPrice(symbol="AAPL", date=d, open=1, high=1, low=1, close=200.0, volume=1))
-        session.commit()
-
-    provider = _FakeAdjustedCloseProvider({"AAPL": {d: 200.0 for d in window}, "MSFT": {}})
-    with Session(engine) as session:
-        result = check_adjustment_convention(
-            session, provider=provider, sample_symbols=["AAPL", "MSFT"], window_dates=window,
-        )
-
-    assert result.verdict == "inconclusive"
-    assert len(result.pairs) == 2  # AAPL's two pairs are still recorded as evidence
-    assert "MSFT" in result.reason
+    evidence = convention_evidence_to_dict(result)
+    assert evidence["path_agreement_tolerance"] == PATH_AGREEMENT_TOLERANCE
+    assert evidence["bridge_dispersion_bound"] == BRIDGE_DISPERSION_BOUND
+    assert evidence["min_comparable_pairs"] == MIN_COMPARABLE_PAIRS_PER_SYMBOL
+    assert evidence["sample_symbols"] == ["AAPL"]
+    aapl = evidence["symbols"][0]
+    assert aapl["symbol"] == "AAPL"
+    assert len(aapl["pairs"]) == 2
+    incomparable = [p for p in aapl["pairs"] if p["fallback_close"] is None]
+    assert len(incomparable) == 1 and incomparable[0]["ratio"] is None
+    json.dumps(evidence)  # must be JSON-serializable end to end (dates as ISO strings, no NaN/Inf)
 
 
-def test_convention_check_still_reports_a_genuine_mismatch_over_a_coverage_gap(tmp_path):
-    """AUDIT B1 regression (ordering): a real out-of-tolerance pair is the stronger, more diagnostic
-    signal — a coverage gap elsewhere in the sample must NOT downgrade "mismatch" to "inconclusive".
-    This pins the real 2026-08-20 run's own shape (12 of 100 pairs had no stored baseline AND CVX
-    exceeded the tolerance -> the verdict was, and must remain, "mismatch")."""
-    engine = _engine(tmp_path)
-    window = [date(2026, 8, 6), date(2026, 8, 7)]
-    with Session(engine) as session:
-        session.add(DailyPrice(symbol="AAPL", date=window[0], open=1, high=1, low=1, close=200.0, volume=1))
-        session.commit()
-
-    provider = _FakeAdjustedCloseProvider({"AAPL": {window[0]: 100.0}, "MSFT": {}})  # AAPL 2:1 away
-    with Session(engine) as session:
-        result = check_adjustment_convention(
-            session, provider=provider, sample_symbols=["AAPL", "MSFT"], window_dates=window,
-        )
-
-    assert result.verdict == "mismatch"
-
-
-def test_gated_recovery_never_writes_when_the_sample_proved_nothing(tmp_path):
-    """AUDIT B1 regression at the orchestration level: the end-to-end proof that the vacuous verdict
-    reached the WRITE path. Before the fix this exact call wrote daily_prices AND data_provider_runs
-    rows; now it must stop with `stopped_reason` set and leave every table empty."""
-    monkeypatch_symbols = frozenset({"AAPL", "MSFT"})
+def test_gated_recovery_persists_evidence_before_any_verdict_is_used(tmp_path, monkeypatch):
+    """TC-7: the evidence artifact is written even when the outcome is a stop (zero symbols passed) --
+    proving persistence is not merely a side effect bolted onto the success path -- and its content
+    matches the returned ConventionCheckBatchResult exactly."""
+    monkeypatch.setattr(j10_recovery, "CONVENTION_CHECK_SAMPLE_SYMBOLS", ("AAPL",))
     engine = _engine(tmp_path)
     cfg = _cfg()
-    window = [date(2026, 8, 6)]
     with Session(engine) as session:
-        session.add(DailyPrice(symbol="ZZZZ", date=window[0], open=1, high=1, low=1, close=1.0, volume=1))
+        session.add(DailyPrice(
+            symbol="AAPL", date=CONVENTION_CHECK_WINDOW_END, open=1, high=1, low=1, close=200.0, volume=1,
+        ))
         session.commit()
 
-    original = j10_recovery.RECOVERY_SYMBOLS
-    j10_recovery.RECOVERY_SYMBOLS = monkeypatch_symbols
-    try:
-        with Session(engine) as session:
-            outcome = run_gated_recovery(
-                session, engine, cfg,
-                convention_provider=_FakeAdjustedCloseProvider({}),
-                fetch_provider=_NeverCalledFetchProvider(),
-                convention_sample_symbols=["AAPL", "MSFT"],
-                convention_window_dates=window,
-            )
-    finally:
-        j10_recovery.RECOVERY_SYMBOLS = original
+    # only 1 comparable pair (a single window date exists in the fixture) -- below the floor -> inconclusive
+    provider = _FakeDailyProvider({"AAPL": {CONVENTION_CHECK_WINDOW_END: 100.0}})
+    evidence_path = tmp_path / "evidence.json"
+    with Session(engine) as session:
+        outcome = run_gated_recovery(
+            session, engine, cfg, convention_provider=provider, evidence_path=evidence_path,
+        )
 
-    assert outcome.convention_check.verdict == "inconclusive"
+    assert outcome.stopped_reason is not None  # a stop -- proves persistence isn't only-on-success
+    assert evidence_path.exists()
+    on_disk = json.loads(evidence_path.read_text())
+    assert on_disk["symbols"][0]["symbol"] == "AAPL"
+    assert on_disk["symbols"][0]["verdict"] == outcome.convention_check.verdicts[0].verdict == "inconclusive"
+
+
+# ==================================================================================================
+# _BridgeApplyingProvider — TC-8 (bridge applied to all four OHLC fields, volume unscaled) + B6
+# ==================================================================================================
+def test_bridge_applying_provider_transforms_all_four_price_fields_not_volume():
+    inner = _FakeDailyProvider({"AAPL": {RECOVERY_START: 100.0, RECOVERY_END: 102.0}})
+    wrapped = j10_recovery._BridgeApplyingProvider(inner, {"AAPL": 1.01})
+    bars = wrapped.get_daily("AAPL", start=RECOVERY_START, end=RECOVERY_END)
+    assert len(bars) == 2
+    for b, close in zip(bars, (100.0, 102.0)):
+        assert b.close == pytest.approx(close * 1.01)
+        assert b.open == pytest.approx((close - 0.5) * 1.01)
+        assert b.high == pytest.approx((close + 1.0) * 1.01)
+        assert b.low == pytest.approx((close - 1.0) * 1.01)
+        assert b.volume == 777.0  # unscaled -- "volume is not a price and is not scaled"
+
+
+def test_bridge_applying_provider_refuses_a_symbol_without_a_passing_factor():
+    inner = _FakeDailyProvider({"AAPL": {RECOVERY_START: 100.0}})
+    wrapped = j10_recovery._BridgeApplyingProvider(inner, {"MSFT": 1.0})  # AAPL never passed
+    with pytest.raises(RecoveryScopeError, match="no passing bridge factor"):
+        wrapped.get_daily("AAPL", start=RECOVERY_START, end=RECOVERY_END)
+
+
+def test_bridge_applying_provider_refuses_a_bar_dated_outside_the_recovery_window():
+    """B6: a defence-in-depth check independent of validate_recovery_scope -- the underlying provider
+    returning a bar outside [RECOVERY_START, RECOVERY_END] is refused, never transformed/returned."""
+    inner = _FakeDailyProvider({"AAPL": {date(2026, 8, 13): 100.0}})  # outside the recovery window
+    wrapped = j10_recovery._BridgeApplyingProvider(inner, {"AAPL": 1.0})
+    with pytest.raises(RecoveryScopeError, match="outside the authorized"):
+        wrapped.get_daily("AAPL", start=date(2026, 8, 13), end=date(2026, 8, 13))
+
+
+# ==================================================================================================
+# run_gated_recovery — the causal ordering gate (iter-8 redesign): only PASSING symbols get fetched
+# ==================================================================================================
+def test_gated_recovery_stops_when_zero_symbols_pass(tmp_path, monkeypatch):
+    """TC-10: every sampled symbol ends up NOT "agree" (AAPL genuinely mismatches; MSFT has no stored
+    baseline at all, so it's inconclusive) -> zero rows inserted anywhere, an honest stopped_reason
+    recorded."""
+    monkeypatch.setattr(j10_recovery, "CONVENTION_CHECK_SAMPLE_SYMBOLS", ("AAPL", "MSFT"))
+    engine = _engine(tmp_path)
+    cfg = _cfg()
+    d0, d1 = date(2026, 8, 6), CONVENTION_CHECK_WINDOW_END
+    with Session(engine) as session:
+        session.add(DailyPrice(symbol="AAPL", date=d0, open=1, high=1, low=1, close=200.0, volume=1))
+        session.add(DailyPrice(symbol="AAPL", date=d1, open=1, high=1, low=1, close=200.0, volume=1))
+        session.commit()
+
+    provider = _FakeDailyProvider({"AAPL": {d0: 200.0, d1: 100.0}})  # ratio drifts 1.0 -> 2.0: mismatch
+    with Session(engine) as session:
+        outcome = run_gated_recovery(session, engine, cfg, convention_provider=provider)
+
+    by_symbol = {v.symbol: v for v in outcome.convention_check.verdicts}
+    assert by_symbol["AAPL"].verdict == "mismatch"
+    assert by_symbol["MSFT"].verdict == "inconclusive"
     assert outcome.fetch is None and outcome.backfill is None
-    assert outcome.stopped_reason is not None
+    assert outcome.stopped_reason is not None and "0/2" in outcome.stopped_reason
 
     with Session(engine) as session:
         assert session.exec(select(DailyPrice).where(DailyPrice.date >= RECOVERY_START)).all() == []
         assert session.exec(select(DataProviderRun)).all() == []
         assert session.exec(select(ScannerRun)).all() == []
+
+
+def test_gated_recovery_restores_only_passing_symbols_leaves_failing_ones_missing(tmp_path, monkeypatch):
+    """The mixed-verdict integration proof: AAPL agrees (an exact-match series, bridge factor 1.0),
+    MSFT mismatches (a drifting ratio) -- only AAPL's rows are inserted, bridge-transformed; MSFT
+    stays fully missing. SPY is seeded directly (not gate-checked -- outside the sample) purely so the
+    backfill step has a benchmark to compute a ScannerRun snapshot from."""
+    monkeypatch.setattr(j10_recovery, "RECOVERY_SYMBOLS", frozenset({"AAPL", "MSFT", "SPY"}))
+    monkeypatch.setattr(j10_recovery, "CONVENTION_CHECK_SAMPLE_SYMBOLS", ("AAPL", "MSFT"))
+    engine = _engine(tmp_path)
+    cfg = _cfg()
+    window = [date(2026, 8, 6), date(2026, 8, 7), CONVENTION_CHECK_WINDOW_END]
+    with Session(engine) as session:
+        for i, d in enumerate(window):
+            session.add(DailyPrice(symbol="AAPL", date=d, open=1, high=1, low=1, close=200.0 + i, volume=1))
+            session.add(DailyPrice(symbol="MSFT", date=d, open=1, high=1, low=1, close=90.0, volume=1))
+            session.add(DailyPrice(symbol="SPY", date=d, open=500, high=500, low=500, close=500.0, volume=1))
+        for d in (RECOVERY_START, RECOVERY_END):
+            session.add(DailyPrice(symbol="SPY", date=d, open=500, high=500, low=500, close=500.0, volume=1))
+        session.commit()
+
+    provider = _FakeDailyProvider({
+        "AAPL": {
+            window[0]: 200.0, window[1]: 201.0, window[2]: 202.0,  # exact match -> agree
+            RECOVERY_START: 201.5, RECOVERY_END: 202.5,
+        },
+        "MSFT": {
+            window[0]: 45.0, window[1]: 44.0, window[2]: 40.0,  # a drifting ratio -> mismatch
+            RECOVERY_START: 45.25, RECOVERY_END: 45.5,
+        },
+    })
+    with Session(engine) as session:
+        outcome = run_gated_recovery(session, engine, cfg, convention_provider=provider)
+
+    by_symbol = {v.symbol: v for v in outcome.convention_check.verdicts}
+    assert by_symbol["AAPL"].verdict == "agree"
+    assert by_symbol["MSFT"].verdict == "mismatch"
+    assert outcome.stopped_reason is None
+    assert outcome.fetch.requested_symbols == ["AAPL"]  # MSFT never requested -- it never passed the gate
+
+    with Session(engine) as session:
+        aapl_rows = session.exec(
+            select(DailyPrice).where(DailyPrice.symbol == "AAPL", DailyPrice.date >= RECOVERY_START)
+        ).all()
+        msft_rows = session.exec(
+            select(DailyPrice).where(DailyPrice.symbol == "MSFT", DailyPrice.date >= RECOVERY_START)
+        ).all()
+        snapshot_dates = set(session.exec(select(ScannerRun.asof_date)).all())
+    assert sorted(r.close for r in aapl_rows) == [201.5, 202.5]  # bridge factor exactly 1.0
+    assert msft_rows == []  # MSFT stayed fully missing -- never inserted on a failed gate
+    assert RECOVERY_START in snapshot_dates and RECOVERY_END in snapshot_dates
+
+
+def test_gated_recovery_second_invocation_after_partial_success_only_refetches_missing(tmp_path, monkeypatch):
+    """Idempotency at the run_gated_recovery level: once AAPL is fully restored, a second gated-recovery
+    call (AAPL still passes the sample/gate) makes no redundant restore fetch for it -- the `symbols=`
+    intersection with `still_missing_symbols()` inside `run_bounded_recovery_fetch` excludes it. The
+    convention check itself always re-runs (it is cheap and read-only), but the write-capable fetch is
+    a true no-op the second time."""
+    monkeypatch.setattr(j10_recovery, "RECOVERY_SYMBOLS", frozenset({"AAPL"}))
+    monkeypatch.setattr(j10_recovery, "CONVENTION_CHECK_SAMPLE_SYMBOLS", ("AAPL",))
+    engine = _engine(tmp_path)
+    cfg = _cfg()
+    window = [date(2026, 8, 6), date(2026, 8, 7), CONVENTION_CHECK_WINDOW_END]
+    with Session(engine) as session:
+        for d in window:
+            session.add(DailyPrice(symbol="AAPL", date=d, open=1, high=1, low=1, close=200.0, volume=1))
+            session.add(DailyPrice(symbol="SPY", date=d, open=500, high=500, low=500, close=500.0, volume=1))
+        for d in (RECOVERY_START, RECOVERY_END):
+            session.add(DailyPrice(symbol="SPY", date=d, open=500, high=500, low=500, close=500.0, volume=1))
+        session.commit()
+
+    all_dates = window + [RECOVERY_START, RECOVERY_END]
+    provider = _FakeDailyProvider({"AAPL": {d: 200.0 for d in all_dates}})
+    with Session(engine) as session:
+        first = run_gated_recovery(session, engine, cfg, convention_provider=provider)
+    assert first.fetch.requested_symbols == ["AAPL"]
+
+    with Session(engine) as session:
+        second = run_gated_recovery(session, engine, cfg, convention_provider=provider)
+    assert second.fetch.already_complete is True
+    assert second.fetch.requested_symbols == []
+    # get_daily was called 3 times total: calibration(1), restore(1), calibration(2) -- never restore(2)
+    assert len(provider.requested_symbols) == 3
+
+
+def test_gated_recovery_has_no_threshold_or_scope_override_parameters():
+    """B5, structural: the production entry point's own signature is the enforcement -- pins the exact
+    accepted parameter set so a future caller cannot reintroduce a tolerance/dispersion/sample/window
+    override without this test failing first."""
+    import inspect
+    params = set(inspect.signature(run_gated_recovery).parameters)
+    assert params == {
+        "session", "engine", "config", "convention_provider", "fetch_provider", "api_key", "evidence_path",
+    }

@@ -12,8 +12,12 @@ Resolved ONLY by the on-demand Data Manager fetch path via the provider factory 
 
 `get_adjusted_close` (iter-7, J-10 step 2a) is an additive, read-only capability alongside `get_daily`:
 it returns Yahoo's split/dividend-ADJUSTED close series (`indicators.adjclose`), not `get_daily`'s
-plain `quote.close` — used ONLY by `app.engine.j10_recovery.check_adjustment_convention`'s fail-closed
-gate, never by the ordinary fetch/import path. See that method's own docstring.
+plain `quote.close`. iter-8: the redesigned J-10 gate (`app.engine.j10_recovery.check_adjustment_
+convention_per_symbol`) calibrates on `get_daily`'s raw close instead (so calibration and restoration
+read the identical series — resolves audit finding B2, "one series end to end"; see that module's
+docstring). This method stays in place, additive and still synthetic-payload tested
+(`test_provider_clients.py`), unused by the live gate for now — never by the ordinary fetch/import
+path either way.
 """
 from __future__ import annotations
 

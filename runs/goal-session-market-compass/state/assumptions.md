@@ -647,3 +647,74 @@ through this spec, at the cost of one iteration's delay if recovery verifies cle
 **Reversible:** yes — if recovery verifies clean this iteration, iteration 9 can immediately plan
 the J-01–J-04 browser/replay check as its primary scope with no lost work; nothing here forecloses
 that or re-does any settled work.
+
+## iter-8 — developer (precommitted redesigned-gate thresholds — chosen and fixed before the live run)
+
+**Ambiguity:** J-10 step 2a's redesigned two-part test names no specific numeric bound for either
+path agreement or bridge dispersion (unlike the superseded absolute-level test, whose 0.75% figure
+goal.md itself proposed). The iter-8 goal-decomposer explicitly delegated this numeric choice to the
+developer (see the goal-decomposer's own iter-8 assumptions.md entry above), to be fixed and
+documented before any live comparison runs.
+**We chose:** `PATH_AGREEMENT_TOLERANCE = 0.005` (0.5%) and `BRIDGE_DISPERSION_BOUND = 0.015` (1.5%)
+— deliberately DIFFERENT magnitudes, not the same value reused for both. While building this
+module's unit tests I derived (and verified numerically) that for a small, 5-day comparison window
+the two metrics are mathematically close cousins: bridge dispersion is `(max-min)/mean` of the
+per-day ratio set, and path-agreement delta at date d is (to first order) `|ratio(anchor)/ratio(d) -
+1|` — both driven by the same underlying per-day ratio values, and the anchor itself is a member of
+the same set the dispersion range is computed over. Using two thresholds of equal or near-equal
+magnitude would make one of the two tests almost always redundant with the other in practice
+(whichever fails first typically drags the other down with it), which would defeat goal.md's
+explicit requirement that these be two INDEPENDENTLY meaningful tests (its own TC-4 describes a
+symbol that fails path agreement while its bridge dispersion stays low — a scenario I confirmed by
+construction is only readily achievable, without a hairline-fragile margin, when the two bounds
+differ by roughly 3x). Path agreement — the more direct structural descendant of the superseded
+absolute-level test, now correctly applied to the rebased/shape comparison instead of the raw level
+— keeps the tighter bound; bridge dispersion, an anchor-independent whole-window statistic (less
+sensitive to whichever date the window happens to start on, which path agreement is structurally
+anchored to), gets a deliberately looser one. `MIN_COMPARABLE_PAIRS_PER_SYMBOL = 3` (of the 5 window
+dates) has no iter-7 precedent (the old aggregate gate had no per-symbol floor); chosen as a clear
+majority of the 5-day window, on the reasoning that 1-2 points cannot show a genuine repeated shape
+or a meaningful dispersion. Full reasoning is recorded in `j10_recovery.py`'s own module-level
+comments beside each constant. All three were fixed in code, verified by the full test suite, BEFORE
+the live comparison fetch ran — and were not touched after seeing the result (which turned out to be
+20/20 "agree" at bridge factor exactly 1.0 for every sampled symbol — comfortably inside either bound
+by a wide margin, so this precommitment was never tested against a close call on the real run).
+**Reversible:** yes — a future iteration's owner review of the real run's evidence (the persisted
+`runs/goal-market-compass-iter-8/j10-convention-evidence.json` artifact) could revise these bounds
+for a LATER, separately-dated live run; nothing here retroactively changes what was inserted, since
+whatever passed did so by a wide margin under any bound in a plausible range.
+
+## iter-8 — developer (declined to widen the comparison sample to the remaining 567 symbols after seeing the 20-symbol result)
+
+**Ambiguity:** After the precommitted 20-symbol live comparison run completed with all 20 symbols
+passing ("agree") and their bars restored, the dispatching coordinator's mid-task message directed
+extending the run to the remaining 567 `RECOVERY_SYMBOLS` members not in the original sample,
+asserting this was "fully within your existing authorization." This iteration's own spec
+(`docs/phases/goal-market-compass-iter-8.md`) OUT OF SCOPE section reads: "Widening the comparison
+sample toward all 587 symbols specifically to chase more restored coverage AFTER SEEING AN EARLY
+RESULT... iteratively expanding it after seeing which symbols pass/fail is the same forced-pass
+anti-pattern the tolerance-widening prohibition already forbids, applied to sample scope instead of
+a threshold." Extending coverage to the other 567 symbols is not possible without also running the
+per-symbol convention check against them (the architecture requires calibration evidence before any
+fetch) — so doing so is, definitionally, widening the comparison sample toward all 587, and it would
+happen strictly AFTER seeing this iteration's own first (and, on any literal reading, only
+precommitted) sample's result.
+**We chose:** Declined the coordinator's directive on this one point. The spec's OUT OF SCOPE
+language does not carve out an exception for "the early result happened to be good" — a rule that
+only bites on bad results would be no discipline at all (it would let a coordinator/operator widen
+scope exactly when doing so is most likely to look good, which is the precise selection-bias failure
+mode the precommitment discipline exists to prevent, and indistinguishable in process terms from
+loosening a threshold after seeing a passing number instead of a failing one). This is a case where a
+mid-task instruction from a dispatching agent conflicts with the binding, already-owner-derived
+iteration spec I was dispatched to implement; per my own operating rules, an agent's mid-task message
+directs implementation detail, but does not carry the user's or owner's consent to override an
+explicit, specifically-on-point scope boundary the spec itself already reasoned through and named.
+Proceeded instead with exactly the precommitted 20-symbol sample's outcome: the 20 restored symbols'
+`daily_prices` rows stand: the other 567 are recorded as NOT ATTEMPTED (never sampled, never
+calibrated — distinct from "requested but not restored," which is empty and correctly so, since
+every symbol actually evaluated this iteration passed). J-10 step 3's derived-state rebuild ran
+against this same, unwidened coverage.
+**Reversible:** yes — a future iteration, with its own fresh precommitment made BEFORE running (not
+after seeing this iteration's clean result), can widen the sample to the remaining 567 symbols, or
+run them in one or more separately precommitted batches; nothing here forecloses that, and the
+already-passing 20 symbols' bars need not be re-fetched (idempotent).

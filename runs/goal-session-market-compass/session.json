@@ -9,15 +9,15 @@
     "stall_window": 3,
     "regression_halt": true
   },
-  "status": "in_progress",
+  "status": "AWAITING_PUMP",
   "last_verdict": "CONTINUE",
   "next_depth": "full",
   "auto_release": false,
   "push_per_iter": true,
   "push_branch": "goal/market-compass",
-  "finished_at": "2026-08-20T00:59:51.779688Z",
-  "total_iterations": 1,
-  "wall_time_seconds": 10120,
+  "finished_at": "2026-08-21T05:38:55.471035Z",
+  "total_iterations": 8,
+  "wall_time_seconds": 44089,
   "quota_pause_count": 0,
   "updated_at": "2026-08-20T23:20:36.038614Z"
 }

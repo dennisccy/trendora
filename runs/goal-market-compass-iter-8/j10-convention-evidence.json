@@ -1,0 +1,784 @@
+{
+  "bridge_dispersion_bound": 0.015,
+  "min_comparable_pairs": 3,
+  "path_agreement_tolerance": 0.005,
+  "sample_symbols": [
+    "AAPL",
+    "AMZN",
+    "BAC",
+    "CSCO",
+    "CVX",
+    "DIS",
+    "GOOGL",
+    "HD",
+    "INTC",
+    "JNJ",
+    "JPM",
+    "KO",
+    "META",
+    "MRK",
+    "MSFT",
+    "NVDA",
+    "PEP",
+    "PG",
+    "WMT",
+    "XOM"
+  ],
+  "symbols": [
+    {
+      "bridge_dispersion": 0.0,
+      "bridge_factor": 1.0,
+      "comparable_pair_count": 4,
+      "pairs": [
+        {
+          "fallback_close": 311.0,
+          "ratio": 1.0,
+          "stored_close": 311.0,
+          "trading_date": "2026-08-05"
+        },
+        {
+          "fallback_close": 312.4100036621094,
+          "ratio": 1.0,
+          "stored_close": 312.4100036621094,
+          "trading_date": "2026-08-06"
+        },
+        {
+          "fallback_close": 313.3299865722656,
+          "ratio": 1.0,
+          "stored_close": 313.3299865722656,
+          "trading_date": "2026-08-07"
+        },
+        {
+          "fallback_close": 308.260009765625,
+          "ratio": 1.0,
+          "stored_close": 308.260009765625,
+          "trading_date": "2026-08-10"
+        }
+      ],
+      "path_agreement_max_delta": 0.0,
+      "reason": "path agreement (max delta 0.0000% <= 0.5000%) and a stable bridge (dispersion 0.0000% <= 1.5000%) over 4 comparable pairs",
+      "symbol": "AAPL",
+      "verdict": "agree"
+    },
+    {
+      "bridge_dispersion": 0.0,
+      "bridge_factor": 1.0,
+      "comparable_pair_count": 4,
+      "pairs": [
+        {
+          "fallback_close": 272.6499938964844,
+          "ratio": 1.0,
+          "stored_close": 272.6499938964844,
+          "trading_date": "2026-08-05"
+        },
+        {
+          "fallback_close": 272.260009765625,
+          "ratio": 1.0,
+          "stored_close": 272.260009765625,
+          "trading_date": "2026-08-06"
+        },
+        {
+          "fallback_close": 274.4800109863281,
+          "ratio": 1.0,
+          "stored_close": 274.4800109863281,
+          "trading_date": "2026-08-07"
+        },
+        {
+          "fallback_close": 278.0899963378906,
+          "ratio": 1.0,
+          "stored_close": 278.0899963378906,
+          "trading_date": "2026-08-10"
+        }
+      ],
+      "path_agreement_max_delta": 0.0,
+      "reason": "path agreement (max delta 0.0000% <= 0.5000%) and a stable bridge (dispersion 0.0000% <= 1.5000%) over 4 comparable pairs",
+      "symbol": "AMZN",
+      "verdict": "agree"
+    },
+    {
+      "bridge_dispersion": 0.0,
+      "bridge_factor": 1.0,
+      "comparable_pair_count": 4,
+      "pairs": [
+        {
+          "fallback_close": 63.25,
+          "ratio": 1.0,
+          "stored_close": 63.25,
+          "trading_date": "2026-08-05"
+        },
+        {
+          "fallback_close": 63.0,
+          "ratio": 1.0,
+          "stored_close": 63.0,
+          "trading_date": "2026-08-06"
+        },
+        {
+          "fallback_close": 63.16999816894531,
+          "ratio": 1.0,
+          "stored_close": 63.16999816894531,
+          "trading_date": "2026-08-07"
+        },
+        {
+          "fallback_close": 63.86000061035156,
+          "ratio": 1.0,
+          "stored_close": 63.86000061035156,
+          "trading_date": "2026-08-10"
+        }
+      ],
+      "path_agreement_max_delta": 0.0,
+      "reason": "path agreement (max delta 0.0000% <= 0.5000%) and a stable bridge (dispersion 0.0000% <= 1.5000%) over 4 comparable pairs",
+      "symbol": "BAC",
+      "verdict": "agree"
+    },
+    {
+      "bridge_dispersion": 0.0,
+      "bridge_factor": 1.0,
+      "comparable_pair_count": 5,
+      "pairs": [
+        {
+          "fallback_close": 121.73999786376953,
+          "ratio": 1.0,
+          "stored_close": 121.73999786376953,
+          "trading_date": "2026-08-04"
+        },
+        {
+          "fallback_close": 121.5,
+          "ratio": 1.0,
+          "stored_close": 121.5,
+          "trading_date": "2026-08-05"
+        },
+        {
+          "fallback_close": 120.87999725341797,
+          "ratio": 1.0,
+          "stored_close": 120.87999725341797,
+          "trading_date": "2026-08-06"
+        },
+        {
+          "fallback_close": 121.43000030517578,
+          "ratio": 1.0,
+          "stored_close": 121.43000030517578,
+          "trading_date": "2026-08-07"
+        },
+        {
+          "fallback_close": 122.56999969482422,
+          "ratio": 1.0,
+          "stored_close": 122.56999969482422,
+          "trading_date": "2026-08-10"
+        }
+      ],
+      "path_agreement_max_delta": 0.0,
+      "reason": "path agreement (max delta 0.0000% <= 0.5000%) and a stable bridge (dispersion 0.0000% <= 1.5000%) over 5 comparable pairs",
+      "symbol": "CSCO",
+      "verdict": "agree"
+    },
+    {
+      "bridge_dispersion": 0.0,
+      "bridge_factor": 1.0,
+      "comparable_pair_count": 5,
+      "pairs": [
+        {
+          "fallback_close": 190.39999389648438,
+          "ratio": 1.0,
+          "stored_close": 190.39999389648438,
+          "trading_date": "2026-08-04"
+        },
+        {
+          "fallback_close": 186.41000366210938,
+          "ratio": 1.0,
+          "stored_close": 186.41000366210938,
+          "trading_date": "2026-08-05"
+        },
+        {
+          "fallback_close": 189.22999572753906,
+          "ratio": 1.0,
+          "stored_close": 189.22999572753906,
+          "trading_date": "2026-08-06"
+        },
+        {
+          "fallback_close": 186.55999755859375,
+          "ratio": 1.0,
+          "stored_close": 186.55999755859375,
+          "trading_date": "2026-08-07"
+        },
+        {
+          "fallback_close": 194.91000366210938,
+          "ratio": 1.0,
+          "stored_close": 194.91000366210938,
+          "trading_date": "2026-08-10"
+        }
+      ],
+      "path_agreement_max_delta": 0.0,
+      "reason": "path agreement (max delta 0.0000% <= 0.5000%) and a stable bridge (dispersion 0.0000% <= 1.5000%) over 5 comparable pairs",
+      "symbol": "CVX",
+      "verdict": "agree"
+    },
+    {
+      "bridge_dispersion": 0.0,
+      "bridge_factor": 1.0,
+      "comparable_pair_count": 5,
+      "pairs": [
+        {
+          "fallback_close": 98.18000030517578,
+          "ratio": 1.0,
+          "stored_close": 98.18000030517578,
+          "trading_date": "2026-08-04"
+        },
+        {
+          "fallback_close": 101.76000213623047,
+          "ratio": 1.0,
+          "stored_close": 101.76000213623047,
+          "trading_date": "2026-08-05"
+        },
+        {
+          "fallback_close": 104.68000030517578,
+          "ratio": 1.0,
+          "stored_close": 104.68000030517578,
+          "trading_date": "2026-08-06"
+        },
+        {
+          "fallback_close": 104.91000366210938,
+          "ratio": 1.0,
+          "stored_close": 104.91000366210938,
+          "trading_date": "2026-08-07"
+        },
+        {
+          "fallback_close": 103.18000030517578,
+          "ratio": 1.0,
+          "stored_close": 103.18000030517578,
+          "trading_date": "2026-08-10"
+        }
+      ],
+      "path_agreement_max_delta": 0.0,
+      "reason": "path agreement (max delta 0.0000% <= 0.5000%) and a stable bridge (dispersion 0.0000% <= 1.5000%) over 5 comparable pairs",
+      "symbol": "DIS",
+      "verdict": "agree"
+    },
+    {
+      "bridge_dispersion": 0.0,
+      "bridge_factor": 1.0,
+      "comparable_pair_count": 4,
+      "pairs": [
+        {
+          "fallback_close": 362.42999267578125,
+          "ratio": 1.0,
+          "stored_close": 362.42999267578125,
+          "trading_date": "2026-08-05"
+        },
+        {
+          "fallback_close": 357.75,
+          "ratio": 1.0,
+          "stored_close": 357.75,
+          "trading_date": "2026-08-06"
+        },
+        {
+          "fallback_close": 354.29998779296875,
+          "ratio": 1.0,
+          "stored_close": 354.29998779296875,
+          "trading_date": "2026-08-07"
+        },
+        {
+          "fallback_close": 357.5199890136719,
+          "ratio": 1.0,
+          "stored_close": 357.5199890136719,
+          "trading_date": "2026-08-10"
+        }
+      ],
+      "path_agreement_max_delta": 0.0,
+      "reason": "path agreement (max delta 0.0000% <= 0.5000%) and a stable bridge (dispersion 0.0000% <= 1.5000%) over 4 comparable pairs",
+      "symbol": "GOOGL",
+      "verdict": "agree"
+    },
+    {
+      "bridge_dispersion": 0.0,
+      "bridge_factor": 1.0,
+      "comparable_pair_count": 4,
+      "pairs": [
+        {
+          "fallback_close": 353.1400146484375,
+          "ratio": 1.0,
+          "stored_close": 353.1400146484375,
+          "trading_date": "2026-08-05"
+        },
+        {
+          "fallback_close": 349.5199890136719,
+          "ratio": 1.0,
+          "stored_close": 349.5199890136719,
+          "trading_date": "2026-08-06"
+        },
+        {
+          "fallback_close": 355.6199951171875,
+          "ratio": 1.0,
+          "stored_close": 355.6199951171875,
+          "trading_date": "2026-08-07"
+        },
+        {
+          "fallback_close": 350.7799987792969,
+          "ratio": 1.0,
+          "stored_close": 350.7799987792969,
+          "trading_date": "2026-08-10"
+        }
+      ],
+      "path_agreement_max_delta": 0.0,
+      "reason": "path agreement (max delta 0.0000% <= 0.5000%) and a stable bridge (dispersion 0.0000% <= 1.5000%) over 4 comparable pairs",
+      "symbol": "HD",
+      "verdict": "agree"
+    },
+    {
+      "bridge_dispersion": 0.0,
+      "bridge_factor": 1.0,
+      "comparable_pair_count": 5,
+      "pairs": [
+        {
+          "fallback_close": 100.86000061035156,
+          "ratio": 1.0,
+          "stored_close": 100.86000061035156,
+          "trading_date": "2026-08-04"
+        },
+        {
+          "fallback_close": 101.05999755859375,
+          "ratio": 1.0,
+          "stored_close": 101.05999755859375,
+          "trading_date": "2026-08-05"
+        },
+        {
+          "fallback_close": 99.80999755859375,
+          "ratio": 1.0,
+          "stored_close": 99.80999755859375,
+          "trading_date": "2026-08-06"
+        },
+        {
+          "fallback_close": 101.6500015258789,
+          "ratio": 1.0,
+          "stored_close": 101.6500015258789,
+          "trading_date": "2026-08-07"
+        },
+        {
+          "fallback_close": 97.5199966430664,
+          "ratio": 1.0,
+          "stored_close": 97.5199966430664,
+          "trading_date": "2026-08-10"
+        }
+      ],
+      "path_agreement_max_delta": 0.0,
+      "reason": "path agreement (max delta 0.0000% <= 0.5000%) and a stable bridge (dispersion 0.0000% <= 1.5000%) over 5 comparable pairs",
+      "symbol": "INTC",
+      "verdict": "agree"
+    },
+    {
+      "bridge_dispersion": 0.0,
+      "bridge_factor": 1.0,
+      "comparable_pair_count": 5,
+      "pairs": [
+        {
+          "fallback_close": 254.92999267578125,
+          "ratio": 1.0,
+          "stored_close": 254.92999267578125,
+          "trading_date": "2026-08-04"
+        },
+        {
+          "fallback_close": 257.5899963378906,
+          "ratio": 1.0,
+          "stored_close": 257.5899963378906,
+          "trading_date": "2026-08-05"
+        },
+        {
+          "fallback_close": 256.9800109863281,
+          "ratio": 1.0,
+          "stored_close": 256.9800109863281,
+          "trading_date": "2026-08-06"
+        },
+        {
+          "fallback_close": 259.239990234375,
+          "ratio": 1.0,
+          "stored_close": 259.239990234375,
+          "trading_date": "2026-08-07"
+        },
+        {
+          "fallback_close": 261.80999755859375,
+          "ratio": 1.0,
+          "stored_close": 261.80999755859375,
+          "trading_date": "2026-08-10"
+        }
+      ],
+      "path_agreement_max_delta": 0.0,
+      "reason": "path agreement (max delta 0.0000% <= 0.5000%) and a stable bridge (dispersion 0.0000% <= 1.5000%) over 5 comparable pairs",
+      "symbol": "JNJ",
+      "verdict": "agree"
+    },
+    {
+      "bridge_dispersion": 0.0,
+      "bridge_factor": 1.0,
+      "comparable_pair_count": 4,
+      "pairs": [
+        {
+          "fallback_close": 359.239990234375,
+          "ratio": 1.0,
+          "stored_close": 359.239990234375,
+          "trading_date": "2026-08-05"
+        },
+        {
+          "fallback_close": 356.29998779296875,
+          "ratio": 1.0,
+          "stored_close": 356.29998779296875,
+          "trading_date": "2026-08-06"
+        },
+        {
+          "fallback_close": 357.5199890136719,
+          "ratio": 1.0,
+          "stored_close": 357.5199890136719,
+          "trading_date": "2026-08-07"
+        },
+        {
+          "fallback_close": 359.7900085449219,
+          "ratio": 1.0,
+          "stored_close": 359.7900085449219,
+          "trading_date": "2026-08-10"
+        }
+      ],
+      "path_agreement_max_delta": 0.0,
+      "reason": "path agreement (max delta 0.0000% <= 0.5000%) and a stable bridge (dispersion 0.0000% <= 1.5000%) over 4 comparable pairs",
+      "symbol": "JPM",
+      "verdict": "agree"
+    },
+    {
+      "bridge_dispersion": 0.0,
+      "bridge_factor": 1.0,
+      "comparable_pair_count": 4,
+      "pairs": [
+        {
+          "fallback_close": 86.83000183105469,
+          "ratio": 1.0,
+          "stored_close": 86.83000183105469,
+          "trading_date": "2026-08-05"
+        },
+        {
+          "fallback_close": 86.8499984741211,
+          "ratio": 1.0,
+          "stored_close": 86.8499984741211,
+          "trading_date": "2026-08-06"
+        },
+        {
+          "fallback_close": 87.05000305175781,
+          "ratio": 1.0,
+          "stored_close": 87.05000305175781,
+          "trading_date": "2026-08-07"
+        },
+        {
+          "fallback_close": 86.87000274658203,
+          "ratio": 1.0,
+          "stored_close": 86.87000274658203,
+          "trading_date": "2026-08-10"
+        }
+      ],
+      "path_agreement_max_delta": 0.0,
+      "reason": "path agreement (max delta 0.0000% <= 0.5000%) and a stable bridge (dispersion 0.0000% <= 1.5000%) over 4 comparable pairs",
+      "symbol": "KO",
+      "verdict": "agree"
+    },
+    {
+      "bridge_dispersion": 0.0,
+      "bridge_factor": 1.0,
+      "comparable_pair_count": 4,
+      "pairs": [
+        {
+          "fallback_close": 588.77001953125,
+          "ratio": 1.0,
+          "stored_close": 588.77001953125,
+          "trading_date": "2026-08-05"
+        },
+        {
+          "fallback_close": 589.9000244140625,
+          "ratio": 1.0,
+          "stored_close": 589.9000244140625,
+          "trading_date": "2026-08-06"
+        },
+        {
+          "fallback_close": 592.0999755859375,
+          "ratio": 1.0,
+          "stored_close": 592.0999755859375,
+          "trading_date": "2026-08-07"
+        },
+        {
+          "fallback_close": 594.9199829101562,
+          "ratio": 1.0,
+          "stored_close": 594.9199829101562,
+          "trading_date": "2026-08-10"
+        }
+      ],
+      "path_agreement_max_delta": 0.0,
+      "reason": "path agreement (max delta 0.0000% <= 0.5000%) and a stable bridge (dispersion 0.0000% <= 1.5000%) over 4 comparable pairs",
+      "symbol": "META",
+      "verdict": "agree"
+    },
+    {
+      "bridge_dispersion": 0.0,
+      "bridge_factor": 1.0,
+      "comparable_pair_count": 5,
+      "pairs": [
+        {
+          "fallback_close": 128.0,
+          "ratio": 1.0,
+          "stored_close": 128.0,
+          "trading_date": "2026-08-04"
+        },
+        {
+          "fallback_close": 128.3300018310547,
+          "ratio": 1.0,
+          "stored_close": 128.3300018310547,
+          "trading_date": "2026-08-05"
+        },
+        {
+          "fallback_close": 128.3699951171875,
+          "ratio": 1.0,
+          "stored_close": 128.3699951171875,
+          "trading_date": "2026-08-06"
+        },
+        {
+          "fallback_close": 128.5800018310547,
+          "ratio": 1.0,
+          "stored_close": 128.5800018310547,
+          "trading_date": "2026-08-07"
+        },
+        {
+          "fallback_close": 130.9199981689453,
+          "ratio": 1.0,
+          "stored_close": 130.9199981689453,
+          "trading_date": "2026-08-10"
+        }
+      ],
+      "path_agreement_max_delta": 0.0,
+      "reason": "path agreement (max delta 0.0000% <= 0.5000%) and a stable bridge (dispersion 0.0000% <= 1.5000%) over 5 comparable pairs",
+      "symbol": "MRK",
+      "verdict": "agree"
+    },
+    {
+      "bridge_dispersion": 0.0,
+      "bridge_factor": 1.0,
+      "comparable_pair_count": 4,
+      "pairs": [
+        {
+          "fallback_close": 487.4599914550781,
+          "ratio": 1.0,
+          "stored_close": 487.4599914550781,
+          "trading_date": "2026-08-05"
+        },
+        {
+          "fallback_close": 499.8599853515625,
+          "ratio": 1.0,
+          "stored_close": 499.8599853515625,
+          "trading_date": "2026-08-06"
+        },
+        {
+          "fallback_close": 499.989990234375,
+          "ratio": 1.0,
+          "stored_close": 499.989990234375,
+          "trading_date": "2026-08-07"
+        },
+        {
+          "fallback_close": 506.05999755859375,
+          "ratio": 1.0,
+          "stored_close": 506.05999755859375,
+          "trading_date": "2026-08-10"
+        }
+      ],
+      "path_agreement_max_delta": 0.0,
+      "reason": "path agreement (max delta 0.0000% <= 0.5000%) and a stable bridge (dispersion 0.0000% <= 1.5000%) over 4 comparable pairs",
+      "symbol": "MSFT",
+      "verdict": "agree"
+    },
+    {
+      "bridge_dispersion": 0.0,
+      "bridge_factor": 1.0,
+      "comparable_pair_count": 4,
+      "pairs": [
+        {
+          "fallback_close": 219.22000122070312,
+          "ratio": 1.0,
+          "stored_close": 219.22000122070312,
+          "trading_date": "2026-08-05"
+        },
+        {
+          "fallback_close": 218.99000549316406,
+          "ratio": 1.0,
+          "stored_close": 218.99000549316406,
+          "trading_date": "2026-08-06"
+        },
+        {
+          "fallback_close": 223.9600067138672,
+          "ratio": 1.0,
+          "stored_close": 223.9600067138672,
+          "trading_date": "2026-08-07"
+        },
+        {
+          "fallback_close": 217.5500030517578,
+          "ratio": 1.0,
+          "stored_close": 217.5500030517578,
+          "trading_date": "2026-08-10"
+        }
+      ],
+      "path_agreement_max_delta": 0.0,
+      "reason": "path agreement (max delta 0.0000% <= 0.5000%) and a stable bridge (dispersion 0.0000% <= 1.5000%) over 4 comparable pairs",
+      "symbol": "NVDA",
+      "verdict": "agree"
+    },
+    {
+      "bridge_dispersion": 0.0,
+      "bridge_factor": 1.0,
+      "comparable_pair_count": 5,
+      "pairs": [
+        {
+          "fallback_close": 139.10000610351562,
+          "ratio": 1.0,
+          "stored_close": 139.10000610351562,
+          "trading_date": "2026-08-04"
+        },
+        {
+          "fallback_close": 138.77999877929688,
+          "ratio": 1.0,
+          "stored_close": 138.77999877929688,
+          "trading_date": "2026-08-05"
+        },
+        {
+          "fallback_close": 138.44000244140625,
+          "ratio": 1.0,
+          "stored_close": 138.44000244140625,
+          "trading_date": "2026-08-06"
+        },
+        {
+          "fallback_close": 139.02000427246094,
+          "ratio": 1.0,
+          "stored_close": 139.02000427246094,
+          "trading_date": "2026-08-07"
+        },
+        {
+          "fallback_close": 137.72999572753906,
+          "ratio": 1.0,
+          "stored_close": 137.72999572753906,
+          "trading_date": "2026-08-10"
+        }
+      ],
+      "path_agreement_max_delta": 0.0,
+      "reason": "path agreement (max delta 0.0000% <= 0.5000%) and a stable bridge (dispersion 0.0000% <= 1.5000%) over 5 comparable pairs",
+      "symbol": "PEP",
+      "verdict": "agree"
+    },
+    {
+      "bridge_dispersion": 0.0,
+      "bridge_factor": 1.0,
+      "comparable_pair_count": 5,
+      "pairs": [
+        {
+          "fallback_close": 148.00999450683594,
+          "ratio": 1.0,
+          "stored_close": 148.00999450683594,
+          "trading_date": "2026-08-04"
+        },
+        {
+          "fallback_close": 146.8000030517578,
+          "ratio": 1.0,
+          "stored_close": 146.8000030517578,
+          "trading_date": "2026-08-05"
+        },
+        {
+          "fallback_close": 146.97000122070312,
+          "ratio": 1.0,
+          "stored_close": 146.97000122070312,
+          "trading_date": "2026-08-06"
+        },
+        {
+          "fallback_close": 145.7899932861328,
+          "ratio": 1.0,
+          "stored_close": 145.7899932861328,
+          "trading_date": "2026-08-07"
+        },
+        {
+          "fallback_close": 146.44000244140625,
+          "ratio": 1.0,
+          "stored_close": 146.44000244140625,
+          "trading_date": "2026-08-10"
+        }
+      ],
+      "path_agreement_max_delta": 0.0,
+      "reason": "path agreement (max delta 0.0000% <= 0.5000%) and a stable bridge (dispersion 0.0000% <= 1.5000%) over 5 comparable pairs",
+      "symbol": "PG",
+      "verdict": "agree"
+    },
+    {
+      "bridge_dispersion": 0.0,
+      "bridge_factor": 1.0,
+      "comparable_pair_count": 4,
+      "pairs": [
+        {
+          "fallback_close": 112.33999633789062,
+          "ratio": 1.0,
+          "stored_close": 112.33999633789062,
+          "trading_date": "2026-08-05"
+        },
+        {
+          "fallback_close": 112.06999969482422,
+          "ratio": 1.0,
+          "stored_close": 112.06999969482422,
+          "trading_date": "2026-08-06"
+        },
+        {
+          "fallback_close": 111.8499984741211,
+          "ratio": 1.0,
+          "stored_close": 111.8499984741211,
+          "trading_date": "2026-08-07"
+        },
+        {
+          "fallback_close": 112.66000366210938,
+          "ratio": 1.0,
+          "stored_close": 112.66000366210938,
+          "trading_date": "2026-08-10"
+        }
+      ],
+      "path_agreement_max_delta": 0.0,
+      "reason": "path agreement (max delta 0.0000% <= 0.5000%) and a stable bridge (dispersion 0.0000% <= 1.5000%) over 4 comparable pairs",
+      "symbol": "WMT",
+      "verdict": "agree"
+    },
+    {
+      "bridge_dispersion": 0.0,
+      "bridge_factor": 1.0,
+      "comparable_pair_count": 4,
+      "pairs": [
+        {
+          "fallback_close": 151.6300048828125,
+          "ratio": 1.0,
+          "stored_close": 151.6300048828125,
+          "trading_date": "2026-08-05"
+        },
+        {
+          "fallback_close": 154.83999633789062,
+          "ratio": 1.0,
+          "stored_close": 154.83999633789062,
+          "trading_date": "2026-08-06"
+        },
+        {
+          "fallback_close": 153.0399932861328,
+          "ratio": 1.0,
+          "stored_close": 153.0399932861328,
+          "trading_date": "2026-08-07"
+        },
+        {
+          "fallback_close": 159.7899932861328,
+          "ratio": 1.0,
+          "stored_close": 159.7899932861328,
+          "trading_date": "2026-08-10"
+        }
+      ],
+      "path_agreement_max_delta": 0.0,
+      "reason": "path agreement (max delta 0.0000% <= 0.5000%) and a stable bridge (dispersion 0.0000% <= 1.5000%) over 4 comparable pairs",
+      "symbol": "XOM",
+      "verdict": "agree"
+    }
+  ],
+  "window_dates": [
+    "2026-08-04",
+    "2026-08-05",
+    "2026-08-06",
+    "2026-08-07",
+    "2026-08-10"
+  ]
+}

@@ -1,1 +1,1 @@
-pickup-busy timeout: 21601s unclaimed while pump busy (agent=reviewer)
+pump heartbeat stale: 21601s since last beat (agent=reviewer)

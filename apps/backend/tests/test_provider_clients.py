@@ -193,6 +193,72 @@ def test_yahoo_reported_error_and_empty_result_still_raise():
 
 
 # ==================================================================================================
+# Yahoo get_adjusted_close / _parse_adjusted_close (J-10 step 2a, iter-7) — resolves T2 (iter-7 audit):
+# every failure branch gets its own synthetic-payload test, mirroring the get_daily tests above (no
+# branch was previously pinned — only a one-time, non-repeatable live probe). iter-8's redesigned J-10
+# gate no longer calls this method (it calibrates on get_daily's raw close instead — see
+# j10_recovery.py's module docstring, "ITERATION 8 REDESIGN"); it stays an additive, tested capability.
+# ==================================================================================================
+def test_yahoo_adjusted_close_reported_error_raises():
+    """Branch: chart.error."""
+    provider = YahooProvider(client=_FakeClient(payload={"chart": {"error": "Not Found", "result": None}}))
+    with pytest.raises(ProviderUnavailableError):
+        provider.get_adjusted_close("ZZZZ")
+
+
+def test_yahoo_adjusted_close_missing_result_raises():
+    """Branch: empty/missing result list."""
+    provider = YahooProvider(client=_FakeClient(payload={"chart": {"error": None, "result": []}}))
+    with pytest.raises(ProviderUnavailableError):
+        provider.get_adjusted_close("ZZZZ")
+
+
+def test_yahoo_adjusted_close_empty_timestamp_returns_empty_dict_not_an_error():
+    """Branch: empty timestamp array. Mirrors get_daily's empty-window allowance (an honest zero-rows
+    answer, never a fault) — here the return shape is a dict, so the honest empty answer is `{}`."""
+    payload = {"chart": {"error": None, "result": [{
+        "meta": {"symbol": "SATS"}, "indicators": {"adjclose": [{}], "quote": [{}]},
+    }]}}
+    provider = YahooProvider(client=_FakeClient(payload=payload))
+    assert provider.get_adjusted_close("SATS", start=date(2026, 8, 3), end=date(2026, 8, 14)) == {}
+
+
+def test_yahoo_adjusted_close_absent_adjclose_block_raises():
+    """Branch: absent adjclose block. A response with a `quote` block but NO `adjclose` block at all —
+    the load-bearing failure mode this method exists to guard against (never silently fall back to the
+    raw close)."""
+    payload = {"chart": {"error": None, "result": [{
+        "timestamp": [_unix(date(2024, 1, 2))],
+        "indicators": {"quote": [{"close": [185.5]}]},  # no "adjclose" key anywhere
+    }]}}
+    with pytest.raises(ProviderUnavailableError) as exc:
+        YahooProvider(client=_FakeClient(payload=payload)).get_adjusted_close("AAPL")
+    assert "adjclose" in str(exc.value)
+
+
+def test_yahoo_adjusted_close_malformed_shape_raises():
+    """Branch: malformed shape. `indicators.adjclose` is present but its own inner block carries no
+    "adjclose" key — an unexpected-shape KeyError, surfaced honestly rather than fabricated."""
+    payload = {"chart": {"error": None, "result": [{
+        "timestamp": [_unix(date(2024, 1, 2))],
+        "indicators": {"adjclose": [{}], "quote": [{"close": [185.5]}]},
+    }]}}
+    with pytest.raises(ProviderUnavailableError) as exc:
+        YahooProvider(client=_FakeClient(payload=payload)).get_adjusted_close("AAPL")
+    assert "unparseable" in str(exc.value)
+
+
+def test_yahoo_adjusted_close_skips_null_cell_never_fabricates():
+    """Branch: null-cell skip. A null adjusted close is a provider gap — SKIPPED, never back-filled."""
+    payload = {"chart": {"error": None, "result": [{
+        "timestamp": [_unix(date(2024, 1, 2)), _unix(date(2024, 1, 3))],
+        "indicators": {"adjclose": [{"adjclose": [185.1, None]}]},
+    }]}}
+    series = YahooProvider(client=_FakeClient(payload=payload)).get_adjusted_close("AAPL")
+    assert series == {date(2024, 1, 2): 185.1}
+
+
+# ==================================================================================================
 # Tiingo (key-aware)
 # ==================================================================================================
 _TIINGO_OK = [

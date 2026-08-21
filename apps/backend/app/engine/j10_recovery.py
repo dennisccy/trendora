@@ -1,5 +1,6 @@
 """app.engine.j10_recovery — J-10's single-use, fail-closed bounded-recovery scope guard
-(goal-market-compass iter-6, 2026-08-20 incident response).
+(goal-market-compass iter-6, extended iter-7 with the vendor swap + fail-closed adjustment-convention
+gate, REDESIGNED iter-8 to the owner's per-symbol path-agreement + stable-bridge contract).
 
 Iteration 5's own live drill (remove+backfill of 2026-08-11/2026-08-12, believing them seed-safe)
 permanently deleted those two dates' `daily_prices` bars: the committed seed's real boundary is
@@ -24,16 +25,73 @@ challenge instead of CSV, a vendor-side block, not a per-symbol or transient fai
 `docs/handoffs/goal-market-compass-iter-6-dev.md`). The owner responded the same day with a vendor
 addendum to AG-9's exception: `RECOVERY_SOURCE` below is now `"yahoo"` — Stooq stays PERMANENTLY
 EXCLUDED from this recovery (do not retry it, do not attempt to defeat its challenge, do not add a
-third vendor without a new dated amendment). The addendum rides with a new fail-closed gate (J-10
-step 2a, `check_adjustment_convention` below): Stooq's stored bars are split/dividend-adjusted, so
-before a single byte may be written under the `yahoo` source, this module must POSITIVELY PROVE that
-Yahoo's OWN split/dividend-adjusted series (`YahooProvider.get_adjusted_close`, NOT `get_daily`'s
-plain `quote.close` — see that method's own docstring) agrees with the stored bars on a documented
-sample of already-surviving days, within a stated tolerance. `run_gated_recovery` is the one entry
-point that enforces this ordering: a `mismatch`/`inconclusive` verdict returns immediately with zero
-calls capable of writing to `daily_prices`/`scanner_runs`/`data_provider_runs`. A passing check is
-evidence THIS sample agreed within THIS tolerance — it is NOT evidence that Yahoo and Stooq bars are
-interchangeable generally (goal.md AG-9 step 2a); no surface in this module claims otherwise.
+third vendor without a new dated amendment). The addendum rode with a fail-closed gate (J-10 step 2a)
+that, AS ORIGINALLY BUILT this iteration, required Yahoo's OWN split/dividend-adjusted series
+(`YahooProvider.get_adjusted_close`) to agree with the stored bars on a documented sample within an
+absolute-level tolerance (`CONVENTION_CHECK_TOLERANCE = 0.0075`, now removed — see "ITERATION 8
+REDESIGN" below). The real run against the live database returned a genuine `mismatch` (CVX ~0.865%,
+just over the 0.75% bar) and correctly wrote nothing.
+
+ITERATION 8 REDESIGN (owner, 2026-08-20, after iteration 7's real run): the owner withdrew the
+absolute-level tolerance test AFTER seeing it produce a technically-correct-but-uninformative
+"mismatch" on two oil-dividend names (CVX ~0.865%, XOM ~0.643% — both deltas uniform WITHIN the
+symbol across all 5 window days, the signature of a stale retroactive dividend adjustment, not a
+convention disagreement: an "adjusted close" for a fixed past date is not a stable number — vendors
+recompute it retroactively on every later corporate action, so a freshly-fetched series sits
+uniformly below a stale stored one even under IDENTICAL conventions). `docs/goal.md` J-10 step 2a now
+specifies a two-part test that is invariant to exactly that kind of uniform offset, evaluated PER
+SYMBOL (not one aggregate verdict for the whole 587):
+  1. PATH AGREEMENT — do the two series move the same way over the overlap window? Each series is
+     rebased to 1.0 at the EARLIEST date that symbol has a comparable pair for (goal.md: "rebased to
+     1.0 at the window's earliest date" — read per-symbol so a missing anchor date for one symbol
+     never blocks judging that symbol on its own available evidence); the symbol's path-agreement
+     metric is the WORST (max) relative deviation between the two rebased series over the remaining
+     comparable dates.
+  2. STABLE MULTIPLICATIVE BRIDGE — the per-day stored/fallback ratio across the same comparable
+     dates; the symbol's bridge-dispersion metric is the relative range `(max-min)/mean` of those
+     ratios.
+A symbol passes ("agree") only if BOTH metrics are within their precommitted bounds AND the symbol has
+at least `MIN_COMPARABLE_PAIRS_PER_SYMBOL` comparable pairs (the per-symbol form of iter-7 audit B1's
+minimum-evidence floor — see below). Its bridge factor — the MEAN of its per-day ratios — is then
+APPLIED: multiplied onto all four OHLC fields of its two fetched recovery-date bars (never volume)
+before insert; never a raw fallback value written unchanged (goal.md: "Passing the gate does NOT
+authorize inserting raw Yahoo adjusted-close values unchanged").
+
+This redesign also resolves three findings the iter-7 audit flagged "close in the same turn"
+(`docs/handoffs/goal-market-compass-iter-7-audit.md`):
+  - B2 ("one series, end to end"): the iter-7 gate validated `get_adjusted_close` (Yahoo's adjusted
+    close) while the SAME UNCHANGED restore path wrote `get_daily`'s raw close — a ~0.086% gap on
+    AAPL the iter-7 developer measured directly. Rather than build a second parsing capability to
+    derive an "adjusted OHLC" series, this redesign adopts the spec NOTES' offered simplification:
+    calibrate the bridge on `get_daily`'s RAW close — the EXACT SAME method, called the same way, that
+    `run_bounded_recovery_fetch` already uses to restore bars — so `check_adjustment_convention_
+    per_symbol` and the restoration fetch read the identical provider method/field, symbol by symbol.
+    One series, one code path; no crossover is possible because there is only one series in play at
+    all. (Logged to `assumptions.md` per the spec NOTES' explicit ask.) `YahooProvider.get_adjusted_
+    close`/`_parse_adjusted_close` stay in place — additive, unused by this module now, but tested
+    (resolves T2) — in case a future iteration judges the adjusted-close comparison worth reviving.
+  - B3 (persisted per-pair evidence): `run_gated_recovery` now persists `convention_evidence_to_dict`'s
+    FULL per-pair record (every sampled symbol, every window date, stored close, fallback close,
+    ratio) to `evidence_path` — a run artifact under `runs/goal-market-compass-iter-8/` on the real
+    driver path — BEFORE a single verdict is used for anything else. That artifact, not prose, is the
+    sole admissible calibration input (goal.md, verbatim: "Numbers that survive only as prose in a
+    handoff are not calibration evidence").
+  - B5 (non-overridable thresholds): `run_gated_recovery`'s signature no longer accepts a tolerance,
+    dispersion-bound, sample, or window override AT ALL — contrast the iter-7 signature, which exposed
+    all four as caller-settable parameters. `check_adjustment_convention_per_symbol` (one level below
+    the production entry point) still accepts `sample_symbols`/`window_dates` for direct unit testing
+    of the ladder logic in isolation — but `run_gated_recovery` itself calls it with neither override,
+    on every real run, and accepts no threshold parameter of any kind.
+  - B6 (cheap defence-in-depth, audit-recommended, not itself a finding): `_BridgeApplyingProvider` —
+    the ONE place this iteration introduces a transforming write path — asserts every returned bar's
+    date falls inside `[RECOVERY_START, RECOVERY_END]` before transforming/returning it.
+
+Iter-7 audit B1's minimum-evidence floor is carried forward in PER-SYMBOL form
+(`MIN_COMPARABLE_PAIRS_PER_SYMBOL`, evaluated in `_compute_symbol_verdict` AFTER the mismatch branch,
+exactly as before, so a genuine per-symbol disagreement can never be downgraded to `"inconclusive"` by
+a coverage gap): a symbol with fewer comparable pairs than the floor — including zero — is
+`"inconclusive"`, never `"agree"`, no matter how clean the few available pairs look (goal.md: "Zero
+usable pairs can NEVER produce agreement... is not evidence, it is the absence of evidence").
 
 WHY THESE ARE LITERALS, NOT `config.yaml` TUNABLES (goal.md NOTES, "Config-vs-literal judgment
 call"): the two recovery dates and the derived 587-symbol missing set are INCIDENT-SPECIFIC
@@ -79,15 +137,17 @@ owner-review flag.
 """
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from datetime import date as date_cls
+from pathlib import Path
 from typing import Literal, Optional, Sequence
 
 from sqlalchemy.engine import Engine
 from sqlmodel import Session, select
 
 from app.config import Config
-from app.data_providers.base import PriceProvider, ProviderUnavailableError
+from app.data_providers.base import Bar, PriceProvider, ProviderUnavailableError
 from app.engine import data_manager
 from app.models import DailyPrice
 
@@ -100,8 +160,8 @@ RECOVERY_START: date_cls = min(RECOVERY_DATES)
 RECOVERY_END: date_cls = max(RECOVERY_DATES)
 RECOVERY_SOURCE: str = "yahoo"  # goal.md's 2026-08-20 vendor addendum (Stooq is blocked by its own
 # proof-of-work challenge — see the module docstring's "ITERATION 7 RETRY" paragraph). The sole vendor
-# authorized for this retry, gated behind check_adjustment_convention below. Stooq stays permanently
-# excluded; a third vendor needs a new dated amendment.
+# authorized for this retry, gated behind check_adjustment_convention_per_symbol below. Stooq stays
+# permanently excluded; a third vendor needs a new dated amendment.
 
 # The 587-symbol derived missing set (J-10 step 1) — see the module docstring for the evidence
 # trail. Sorted for a deterministic, diffable literal.
@@ -211,42 +271,15 @@ RECOVERY_SYMBOLS: frozenset[str] = frozenset({
 # cite the exact exclusion by name instead of it being an unexplained absence.
 EXCLUDED_UNPROVEN_SYMBOLS: frozenset[str] = frozenset({"MNST"})
 
-# --------------------------------------------------------------------------------------------------
-# J-10 step 2a (iter-7 addendum): the fail-closed adjustment-convention check's own frozen literals.
-# These are single-use incident-check constants for the SAME reason RECOVERY_DATES/RECOVERY_SYMBOLS
-# above are (see the module docstring, "WHY THESE ARE LITERALS") — promoting them to config.yaml would
-# misrepresent a one-time gate as a standing tunable.
-# --------------------------------------------------------------------------------------------------
-CONVENTION_CHECK_WINDOW_END: date_cls = date_cls(2026, 8, 10)  # RECOVERY_START minus one day — the last
-# surviving trading day before the drill's gap (J-10 step 2a: "a small overlap window of already-
-# surviving trading days (<= 2026-08-10)").
-CONVENTION_CHECK_WINDOW_SIZE: int = 5  # "a small overlap window" (goal.md) — the N most recent surviving
-# trading days on or before CONVENTION_CHECK_WINDOW_END, read LIVE from daily_prices (never hardcoded
-# dates: the exact trading-day boundary is DB state, not a policy choice — see
-# _convention_check_window_dates).
-CONVENTION_CHECK_TOLERANCE: float = 0.0075  # 0.75% relative delta on close price — goal.md's OWN
-# proposed default (spec NOTES): tight enough to catch a genuine convention mismatch (a full split is
-# tens of percent) while tolerating ordinary cross-vendor rounding noise. Adopted UNCHANGED as the
-# final tolerance (see the dev handoff for the empirical per-pair deltas observed on the real run) —
-# never loosened after seeing a result, the same discipline J-09 already established.
-
-# The convention-check sample (J-10 step 2a): >= 15 RECOVERY_SYMBOLS tickers, hardcoded for the same
-# "single-use incident constant" reason as RECOVERY_SYMBOLS itself — a deterministic, documented,
-# diffable sample, never re-derived per run. 20 large-cap, highly-liquid RECOVERY_SYMBOLS members
-# spanning a mix of established dividend payers and growth-oriented names, so the sample can plausibly
-# exercise the raw-close-vs-adjusted-close gap the module docstring's load-bearing technical finding
-# warns about, not just names where the two series would trivially coincide. Sorted alphabetically for
-# determinism; a TUPLE (not a set) so iteration order — and therefore the fetch-call order — is fixed.
-CONVENTION_CHECK_SAMPLE_SYMBOLS: tuple[str, ...] = (
-    "AAPL", "AMZN", "BAC", "CSCO", "CVX", "DIS", "GOOGL", "HD", "INTC", "JNJ",
-    "JPM", "KO", "META", "MRK", "MSFT", "NVDA", "PEP", "PG", "WMT", "XOM",
-)
-
 
 class RecoveryScopeError(ValueError):
     """Raised when a recovery request falls outside the single-use J-10 authorization. A ValueError
     subclass — mirrors `data_manager.validate_job_request`'s existing error-mapping convention (the
-    API layer maps a ValueError to an honest 4xx, never a silent no-op)."""
+    API layer maps a ValueError to an honest 4xx, never a silent no-op). iter-8: also raised by
+    `_BridgeApplyingProvider` for the two internal-invariant conditions described on that class — a
+    symbol with no passing bridge factor, or a bar dated outside the authorized window — both of
+    which are "refuse to touch something outside authorized scope", the same family this error
+    already names."""
 
 
 def validate_recovery_scope(
@@ -298,34 +331,124 @@ def still_missing_symbols(session: Session) -> list[str]:
 
 
 # ==================================================================================================
-# J-10 step 2a (iter-7 addendum): the fail-closed adjustment-convention check
-# ==================================================================================================
+# J-10 step 2a (iter-8 redesign): the fail-closed adjustment-convention check's own frozen literals.
+# These are single-use incident-check constants for the SAME reason RECOVERY_DATES/RECOVERY_SYMBOLS
+# above are (see the module docstring, "WHY THESE ARE LITERALS") — promoting them to config.yaml would
+# misrepresent a one-time gate as a standing tunable. Fixed here BEFORE this iteration's live
+# comparison run and never adjusted afterward (goal.md: loosening a threshold to convert a failure
+# into a pass is forbidden, and doing so is itself a reportable violation).
+# --------------------------------------------------------------------------------------------------
+CONVENTION_CHECK_WINDOW_END: date_cls = date_cls(2026, 8, 10)  # RECOVERY_START minus one day — the last
+# surviving trading day before the drill's gap (J-10 step 2a: "a small overlap window of already-
+# surviving trading days (<= 2026-08-10)").
+CONVENTION_CHECK_WINDOW_SIZE: int = 5  # "a small overlap window" (goal.md) — the N most recent surviving
+# trading days on or before CONVENTION_CHECK_WINDOW_END, read LIVE from daily_prices (never hardcoded
+# dates: the exact trading-day boundary is DB state, not a policy choice — see
+# _convention_check_window_dates).
+
+PATH_AGREEMENT_TOLERANCE: float = 0.005  # max relative deviation, at ANY single comparable date, of
+# the fallback series rebased to 1.0 at its earliest comparable date vs. the stored series rebased the
+# same way — "do the two series move together", invariant to a uniform multiplicative offset by
+# construction (goal.md step 2a, part 1). Deliberately a bit TIGHTER than goal.md's own 0.75% figure
+# for the now-superseded absolute-level test: rebasing specifically cancels the dominant source of
+# "ordinary cross-vendor noise" that 0.75% was calibrated for (a roughly-constant per-symbol offset —
+# exactly what a stale-adjustment/ex-dividend gap looks like, and exactly what rebasing removes), so
+# the residual this test actually measures should be materially smaller. iter-7's real-run evidence
+# supports generous headroom even at this tighter bound: CVX/XOM's per-day delta printed identical to
+# 5 decimal places across all 5 independent trading days (< 0.00001 percentage points of spread) — a
+# rebased-path residual several orders of magnitude below 0.5%. Precommitted before this iteration's
+# live run; never adjusted after seeing a result (see `assumptions.md`'s iter-8 developer entry for
+# the full reasoning, including why this and BRIDGE_DISPERSION_BOUND are deliberately NOT the same
+# magnitude).
+BRIDGE_DISPERSION_BOUND: float = 0.015  # max relative range `(max(ratio) - min(ratio)) / mean(ratio)`
+# of the per-day stored/fallback ratio across a symbol's comparable window dates (goal.md step 2a,
+# part 2 — "stable... its dispersion across the window within a precommitted bound"). DELIBERATELY
+# LOOSER than PATH_AGREEMENT_TOLERANCE — not an arbitrary choice: for a small (5-day) window these two
+# metrics are mathematically close cousins (a per-day ratio that is stable necessarily makes the
+# rebased paths agree, and a single-date perturbation moves both statistics by a similar order of
+# magnitude — verified numerically while building this module's tests), so using two thresholds close
+# in value would make one nearly always redundant with the other, defeating goal.md's explicit intent
+# that these be two INDEPENDENTLY meaningful tests (TC-4: a symbol can fail path agreement while its
+# bridge dispersion stays low). Bridge dispersion is also the anchor-INDEPENDENT statistic (it does not
+# single out whichever date happens to be earliest, unlike path agreement) — modest extra headroom
+# avoids penalizing that robustness. 1.5% stays far below the "tens of percent" scale of an actual
+# split/convention mismatch, though a marginal within-window corporate-action shift close to CVX/XOM's
+# own ~0.6-0.9% scale might not by itself trip this bound — path agreement, being the tighter
+# threshold, is the first line of defense for that case; this tradeoff is stated honestly, not hidden.
+MIN_COMPARABLE_PAIRS_PER_SYMBOL: int = 3  # of the CONVENTION_CHECK_WINDOW_SIZE=5 window dates, a
+# symbol needs comparable evidence (both sides present and strictly positive) on a CLEAR MAJORITY
+# (3 of 5) before "agree" may ever be reported — the per-symbol form of iter-7 audit B1's "zero pairs
+# can never mean agree", extended with an explicit floor above zero: 1-2 pairs cannot show a genuine
+# repeated "shape" (rebasing to a single other point proves nothing about a pattern, and a 2-point
+# dispersion stat is easily coincidence). No iter-7 precedent anchors this exact number (the old
+# aggregate gate had no per-symbol floor) — a documented judgment call, precommitted before the live
+# run (see assumptions.md).
+
+# The convention-check sample (J-10 step 2a): >= 15 RECOVERY_SYMBOLS tickers, hardcoded for the same
+# "single-use incident constant" reason as RECOVERY_SYMBOLS itself — a deterministic, documented,
+# diffable sample, never re-derived per run. 20 large-cap, highly-liquid RECOVERY_SYMBOLS members
+# spanning a mix of established dividend payers and growth-oriented names, so the sample can plausibly
+# exercise the raw-close-vs-adjusted-close gap the module docstring's load-bearing technical finding
+# warns about, not just names where the two series would trivially coincide. UNCHANGED from iter-7
+# (kept, not re-derived — deliberately: this iteration's job is to prove the REDESIGNED gate mechanism
+# on real evidence, not to chase coverage by widening the sample; goal.md's own host-safety note asks
+# for a "modest" sample, and OUT OF SCOPE forbids widening it to chase coverage after seeing results —
+# choosing a fresh, larger, still-precommitted sample up front was considered and declined for this
+# iteration, see assumptions.md). Sorted alphabetically for determinism; a TUPLE (not a set) so
+# iteration order — and therefore the fetch-call order — is fixed.
+CONVENTION_CHECK_SAMPLE_SYMBOLS: tuple[str, ...] = (
+    "AAPL", "AMZN", "BAC", "CSCO", "CVX", "DIS", "GOOGL", "HD", "INTC", "JNJ",
+    "JPM", "KO", "META", "MRK", "MSFT", "NVDA", "PEP", "PG", "WMT", "XOM",
+)
+
+
 @dataclass(frozen=True)
 class ConventionCheckPair:
-    """One sampled (symbol, date) comparison — the atomic evidence unit the dev handoff cites verbatim
-    (goal.md: "every sampled pair's observed delta recorded in the dev handoff"). `within_tolerance` is
-    `None` only when no comparable yahoo value was obtained for this pair (never a fabricated pass)."""
+    """One (symbol, window-date) comparison point — the atomic evidence unit persisted verbatim to the
+    run artifact (B3) so a bridge factor is traceable to specific rows, never merely asserted in prose.
+    `fallback_close`/`ratio` are `None` only when this window date had a stored baseline but no usable
+    fallback value (a provider gap, or a non-positive close on either side) — recorded, never silently
+    dropped. A window date with NO stored baseline at all is never even turned into a pair (nothing to
+    anchor a comparison to — see `_compute_symbol_verdict`)."""
 
     symbol: str
     trading_date: date_cls
     stored_close: float
-    yahoo_adjusted_close: Optional[float]
-    relative_delta: Optional[float]
-    within_tolerance: Optional[bool]
+    fallback_close: Optional[float]
+    ratio: Optional[float]  # stored_close / fallback_close — the per-day bridge estimate
 
 
 @dataclass(frozen=True)
-class ConventionCheckResult:
-    """J-10 step 2a's one evidenced return value — held entirely in memory, never partially written.
-    `verdict` is exactly one of "agree" / "mismatch" / "inconclusive"; `reason` is the human-readable
-    summary the caller (and the dev handoff) cites verbatim."""
+class SymbolConventionVerdict:
+    """One sampled symbol's two-part gate outcome (J-10 step 2a, iter-8 redesign). `verdict` is
+    exactly one of "agree" / "mismatch" / "inconclusive"; `bridge_factor` is set ONLY on "agree" — the
+    mean per-day stored/fallback ratio, the single number `_BridgeApplyingProvider` multiplies onto
+    every OHLC field of this symbol's two recovery-date bars before insert (never a raw fallback
+    value, never volume)."""
 
+    symbol: str
     verdict: Literal["agree", "mismatch", "inconclusive"]
-    tolerance: float
+    reason: str
+    pairs: tuple[ConventionCheckPair, ...]
+    comparable_pair_count: int
+    path_agreement_max_delta: Optional[float]
+    bridge_dispersion: Optional[float]
+    bridge_factor: Optional[float]
+
+
+@dataclass(frozen=True)
+class ConventionCheckBatchResult:
+    """The whole live comparison run's result — one `SymbolConventionVerdict` per sampled symbol
+    (deterministic sample order), plus the precommitted thresholds actually applied (recorded here,
+    not only in module source, so the persisted evidence artifact is self-describing without
+    cross-referencing code)."""
+
+    path_agreement_tolerance: float
+    bridge_dispersion_bound: float
+    min_comparable_pairs: int
     sample_symbols: tuple[str, ...]
     window_dates: tuple[date_cls, ...]
-    pairs: tuple[ConventionCheckPair, ...]
-    reason: str
+    verdicts: tuple[SymbolConventionVerdict, ...]
 
 
 def _convention_check_window_dates(session: Session) -> list[date_cls]:
@@ -356,134 +479,222 @@ def _stored_closes(
     return {(sym, d): close for sym, d, close in rows}
 
 
-def check_adjustment_convention(
+def _compute_symbol_verdict(
+    symbol: str,
+    window_dates: Sequence[date_cls],
+    stored: dict[date_cls, float],
+    fallback: dict[date_cls, float],
+) -> SymbolConventionVerdict:
+    """The per-symbol two-part verdict ladder (J-10 step 2a, iter-8 redesign) — a PURE function (no
+    I/O), so every degenerate-input scenario (zero pairs, below-floor coverage, one-test-only failure)
+    is directly unit-testable with hand-built dicts, no DB/provider fixture required.
+
+    `stored`/`fallback` are keyed by date, already scoped to `symbol` and to `window_dates` by the
+    caller (`check_adjustment_convention_per_symbol`). A pair is COMPARABLE only when BOTH sides are
+    present and strictly positive (a non-positive price is never a real quote — defensive, never
+    fabricated). Ladder, in order:
+      1. Fewer than 2 comparable pairs -> "inconclusive" (cannot compute ANY metric: path agreement
+         needs an anchor plus at least one more point; a "dispersion" over a single ratio is a vacuous
+         zero-spread that proves nothing — the exact B1 trap, in per-symbol form).
+      2. Compute path-agreement (the max, over every non-anchor comparable date, of the relative
+         difference between the two series each rebased to 1.0 at the EARLIEST comparable date) and
+         bridge-dispersion (the relative range `(max-min)/mean` of the per-day stored/fallback ratio
+         across every comparable date). EITHER exceeding its precommitted bound -> "mismatch" —
+         checked BEFORE the evidence floor below, so a genuine disagreement is never downgraded to
+         "inconclusive" by a coverage gap elsewhere (iter-7 audit B1, carried into per-symbol form —
+         TC-6).
+      3. Fewer comparable pairs than MIN_COMPARABLE_PAIRS_PER_SYMBOL (but >= 2, or the ladder would
+         already have stopped at step 1) -> "inconclusive" — the available evidence didn't contradict
+         agreement, but "not contradicted" is not "proven" (goal.md: "zero usable pairs can NEVER
+         produce agreement"; the same reasoning extended to "too few").
+      4. Otherwise -> "agree"; the recorded bridge factor is the MEAN of the per-day stored/fallback
+         ratios (the "stable" ratio the dispersion check just proved is nearly constant across the
+         window, so mean/median/anchor-ratio would all but coincide numerically — mean chosen as the
+         simplest, tie-free central-tendency statistic)."""
+    pairs: list[ConventionCheckPair] = []
+    for d in window_dates:
+        stored_close = stored.get(d)
+        if stored_close is None:
+            continue  # nothing stored to compare against — never fabricated, never recorded as a pair
+        fallback_close = fallback.get(d)
+        ratio = (
+            stored_close / fallback_close
+            if fallback_close is not None and fallback_close > 0 and stored_close > 0
+            else None
+        )
+        pairs.append(ConventionCheckPair(
+            symbol=symbol, trading_date=d, stored_close=stored_close,
+            fallback_close=fallback_close, ratio=ratio,
+        ))
+
+    comparable = [p for p in pairs if p.ratio is not None]
+    if len(comparable) < 2:
+        return SymbolConventionVerdict(
+            symbol=symbol, verdict="inconclusive",
+            reason=(
+                f"only {len(comparable)} comparable pair(s) (both sides present and positive) — need "
+                f"at least 2 to evaluate path agreement or bridge stability at all"
+            ),
+            pairs=tuple(pairs), comparable_pair_count=len(comparable),
+            path_agreement_max_delta=None, bridge_dispersion=None, bridge_factor=None,
+        )
+
+    ratios = [p.ratio for p in comparable]
+    mean_ratio = sum(ratios) / len(ratios)
+    bridge_dispersion = (max(ratios) - min(ratios)) / mean_ratio
+
+    anchor = comparable[0]  # earliest comparable date — `comparable` preserves window_dates' ascending order
+    path_deltas = []
+    for p in comparable[1:]:
+        rebased_stored = p.stored_close / anchor.stored_close
+        rebased_fallback = p.fallback_close / anchor.fallback_close
+        path_deltas.append(abs(rebased_fallback - rebased_stored) / rebased_stored)
+    path_agreement_max_delta = max(path_deltas)  # len(comparable) >= 2 guarantees >= 1 delta
+
+    path_fails = path_agreement_max_delta > PATH_AGREEMENT_TOLERANCE
+    bridge_fails = bridge_dispersion > BRIDGE_DISPERSION_BOUND
+    if path_fails or bridge_fails:
+        failed: list[str] = []
+        if path_fails:
+            failed.append("path agreement")
+        if bridge_fails:
+            failed.append("bridge stability")
+        return SymbolConventionVerdict(
+            symbol=symbol, verdict="mismatch",
+            reason=(
+                f"failed {' and '.join(failed)}: path_agreement_max_delta={path_agreement_max_delta:.4%} "
+                f"(tolerance {PATH_AGREEMENT_TOLERANCE:.4%}), bridge_dispersion={bridge_dispersion:.4%} "
+                f"(bound {BRIDGE_DISPERSION_BOUND:.4%}), over {len(comparable)} comparable pair(s)"
+            ),
+            pairs=tuple(pairs), comparable_pair_count=len(comparable),
+            path_agreement_max_delta=path_agreement_max_delta, bridge_dispersion=bridge_dispersion,
+            bridge_factor=None,
+        )
+
+    # AUDIT B1, carried into per-symbol form: neither test was contradicted, but that alone is not
+    # proof — a below-floor sample must not be reported "agree" merely because it happened not to fail.
+    if len(comparable) < MIN_COMPARABLE_PAIRS_PER_SYMBOL:
+        return SymbolConventionVerdict(
+            symbol=symbol, verdict="inconclusive",
+            reason=(
+                f"only {len(comparable)} comparable pair(s) (< the {MIN_COMPARABLE_PAIRS_PER_SYMBOL}-pair "
+                f"evidence floor); path agreement and bridge stability both held on what little evidence "
+                f"existed, but that is insufficient to call agreement PROVEN (goal.md: 'not contradicted' "
+                f"is not evidence)"
+            ),
+            pairs=tuple(pairs), comparable_pair_count=len(comparable),
+            path_agreement_max_delta=path_agreement_max_delta, bridge_dispersion=bridge_dispersion,
+            bridge_factor=None,
+        )
+    return SymbolConventionVerdict(
+        symbol=symbol, verdict="agree",
+        reason=(
+            f"path agreement (max delta {path_agreement_max_delta:.4%} <= {PATH_AGREEMENT_TOLERANCE:.4%}) "
+            f"and a stable bridge (dispersion {bridge_dispersion:.4%} <= {BRIDGE_DISPERSION_BOUND:.4%}) "
+            f"over {len(comparable)} comparable pairs"
+        ),
+        pairs=tuple(pairs), comparable_pair_count=len(comparable),
+        path_agreement_max_delta=path_agreement_max_delta, bridge_dispersion=bridge_dispersion,
+        bridge_factor=mean_ratio,
+    )
+
+
+def check_adjustment_convention_per_symbol(
     session: Session,
     *,
     provider: PriceProvider,
     sample_symbols: Optional[Sequence[str]] = None,
     window_dates: Optional[Sequence[date_cls]] = None,
-    tolerance: float = CONVENTION_CHECK_TOLERANCE,
-) -> ConventionCheckResult:
-    """J-10 step 2a's fail-closed gate: BEFORE any write, prove that `provider`'s split/dividend-
-    ADJUSTED close series for a documented sample of already-surviving days agrees with the stored
-    (Stooq-sourced) `daily_prices` closes within `tolerance`. Read-only / in-memory ONLY — this
-    function itself never writes to any table and never persists its fetched comparison values beyond
-    its own call frame (goal.md: "held in memory... never written to the database, never cached").
+) -> ConventionCheckBatchResult:
+    """J-10 step 2a's fail-closed gate, iter-8 REDESIGN — PER SYMBOL, not one aggregate verdict (see
+    the module docstring's "ITERATION 8 REDESIGN" paragraph for the full rationale). For every sampled
+    symbol, independently: fetch `provider.get_daily(symbol, start=window[0], end=window[-1])` — the
+    EXACT SAME method/field `run_bounded_recovery_fetch` uses to restore the recovery-date bars (B2 /
+    TC-9: one series, end to end, no crossover with an adjusted-close series) — and hand the two
+    series to `_compute_symbol_verdict`, the pure ladder function.
 
-    `provider` must implement `get_adjusted_close(symbol, start=..., end=...) -> dict[date, float]` —
-    the additive Yahoo capability (`YahooProvider.get_adjusted_close`), NOT `get_daily`'s plain/raw
-    `quote.close` (see the module docstring's load-bearing technical finding: comparing the wrong field
-    would let a real mismatch pass silently, or flag a false one). A test fake implements the same
-    method name.
+    A provider failure (`ProviderUnavailableError`, including its `RateLimitError` subclass) on ONE
+    symbol makes only THAT symbol "inconclusive" and does not stop the batch — deliberately different
+    from the iter-7 aggregate gate's "stop the whole check on the first failure", which made sense
+    only when a single failure poisoned one shared verdict. A per-symbol design lets every OTHER
+    sampled symbol's evidence stand on its own; a systemic Yahoo outage still naturally yields an
+    all-"inconclusive" batch — an honest zero-restored outcome (TC-10) — with no special-casing
+    needed.
 
-    One call per sampled symbol (never per (symbol, date) pair), covering the whole window in one
-    request. A provider failure for ANY sampled symbol makes the WHOLE verdict "inconclusive" (never a
-    false "agree") and stops further comparison fetches immediately — a systemic failure gives no
-    reason to expect the next call would succeed, and this is a single-use incident check, not a
-    resilient production import path; every pair compared before the failure is still recorded.
-    Otherwise every sampled (symbol, date) pair with BOTH a stored close and a returned yahoo value is
-    compared; "mismatch" is returned if ANY pair's relative delta exceeds `tolerance` (every pair is
-    still compared — the dev handoff needs every sampled pair's observed delta, not just the first
-    failure); "agree" only if every sampled symbol was fetched and every compared pair is within
-    tolerance. A pair with no comparable yahoo value (a date genuinely absent from the returned series)
-    is recorded with `within_tolerance=None` and also forces "inconclusive" — never silently dropped
-    from the sample and never counted as a pass.
-
-    MINIMUM-EVIDENCE FLOOR (audit iter-7, B1): "agree" additionally requires that the comparison was
-    non-empty AND actually covered EVERY sampled symbol. A (symbol, date) whose STORED close is absent
-    is skipped (nothing to compare, never fabricated), so a sample whose symbols have no stored baseline
-    yields zero comparisons — which previously returned "agree" on an empty proof and let the caller
-    proceed to the write-capable fetch. An unproven sample is now "inconclusive": this gate returns
-    "agree" only when agreement was POSITIVELY demonstrated on the documented sample, never merely
-    "not contradicted".
-
-    A passing ("agree") result is evidence that THIS sample agreed within THIS tolerance — it is NOT
-    evidence that Yahoo and Stooq bars are interchangeable generally (goal.md AG-9 step 2a; see also
-    the module docstring)."""
+    Read-only / in-memory ONLY: makes no write to any table and persists nothing itself (the caller,
+    `run_gated_recovery`, is responsible for persisting the evidence artifact — B3). `sample_symbols`/
+    `window_dates` are test-injection points ONLY; they are NOT exposed on `run_gated_recovery`, the
+    production entry point (B5) — this function is one level below it."""
     symbols = tuple(sample_symbols) if sample_symbols is not None else CONVENTION_CHECK_SAMPLE_SYMBOLS
     dates = tuple(window_dates) if window_dates is not None else tuple(_convention_check_window_dates(session))
     if not symbols or not dates:
-        return ConventionCheckResult(
-            verdict="inconclusive", tolerance=tolerance, sample_symbols=symbols, window_dates=dates,
-            pairs=(), reason="empty sample-symbol list or comparison window — nothing to compare",
+        return ConventionCheckBatchResult(
+            path_agreement_tolerance=PATH_AGREEMENT_TOLERANCE,
+            bridge_dispersion_bound=BRIDGE_DISPERSION_BOUND,
+            min_comparable_pairs=MIN_COMPARABLE_PAIRS_PER_SYMBOL,
+            sample_symbols=symbols, window_dates=dates, verdicts=(),
         )
 
     stored = _stored_closes(session, symbols, dates)
-    pairs: list[ConventionCheckPair] = []
-    inconclusive_reason: Optional[str] = None
+    verdicts: list[SymbolConventionVerdict] = []
     for symbol in symbols:
+        symbol_stored = {d: stored[(symbol, d)] for d in dates if (symbol, d) in stored}
         try:
-            yahoo_series = provider.get_adjusted_close(symbol, start=dates[0], end=dates[-1])
+            bars = provider.get_daily(symbol, start=dates[0], end=dates[-1])
+            symbol_fallback = {b.date: b.close for b in bars if b.date in dates}
         except ProviderUnavailableError as exc:
-            inconclusive_reason = f"yahoo adjusted-close fetch failed for {symbol!r}: {exc}"
-            break
-        for d in dates:
-            stored_close = stored.get((symbol, d))
-            if stored_close is None:
-                continue  # this (symbol, date) isn't actually stored — nothing to compare, never fabricated
-            yahoo_close = yahoo_series.get(d)
-            if yahoo_close is None:
-                pairs.append(ConventionCheckPair(symbol, d, stored_close, None, None, None))
-                continue
-            delta = (abs(yahoo_close - stored_close) / abs(stored_close)) if stored_close else None
-            pairs.append(ConventionCheckPair(
-                symbol, d, stored_close, yahoo_close, delta,
-                (delta is not None and delta <= tolerance),
+            verdicts.append(SymbolConventionVerdict(
+                symbol=symbol, verdict="inconclusive",
+                reason=f"fallback fetch failed: {exc}",
+                pairs=(), comparable_pair_count=0,
+                path_agreement_max_delta=None, bridge_dispersion=None, bridge_factor=None,
             ))
+            continue
+        verdicts.append(_compute_symbol_verdict(symbol, dates, symbol_stored, symbol_fallback))
 
-    if inconclusive_reason is not None:
-        return ConventionCheckResult(
-            verdict="inconclusive", tolerance=tolerance, sample_symbols=symbols, window_dates=dates,
-            pairs=tuple(pairs), reason=inconclusive_reason,
-        )
-    incomparable = [p for p in pairs if p.within_tolerance is None]
-    if incomparable:
-        return ConventionCheckResult(
-            verdict="inconclusive", tolerance=tolerance, sample_symbols=symbols, window_dates=dates,
-            pairs=tuple(pairs),
-            reason=(
-                f"{len(incomparable)}/{len(pairs)} sampled pair(s) had no comparable yahoo value "
-                f"(a window date missing from the fetched series)"
-            ),
-        )
-    failing = [p for p in pairs if not p.within_tolerance]
-    if failing:
-        worst = max(failing, key=lambda p: p.relative_delta or 0.0)
-        return ConventionCheckResult(
-            verdict="mismatch", tolerance=tolerance, sample_symbols=symbols, window_dates=dates,
-            pairs=tuple(pairs),
-            reason=(
-                f"{len(failing)}/{len(pairs)} sampled pair(s) exceeded {tolerance:.4%} relative delta "
-                f"(worst: {worst.symbol} {worst.trading_date} delta={worst.relative_delta:.4%})"
-            ),
-        )
-    # AUDIT (iter-7, B1) — the minimum-evidence floor. Reaching here with an EMPTY or partially-covered
-    # `pairs` list means nothing (or not the documented sample) was actually compared: a (symbol, date)
-    # whose stored close is absent is skipped above (correctly — it is never fabricated), so a sample
-    # whose symbols have no stored baseline at all produced ZERO comparisons. Without this floor the
-    # function returned "agree" ("all 0 sampled pairs within 0.7500% relative delta") on that vacuum and
-    # `run_gated_recovery` proceeded to the write-capable fetch/backfill — a fail-OPEN gate on exactly
-    # the damaged-database condition J-10 exists to repair (live-reproduced 2026-08-20: zero pairs ->
-    # "agree" -> 4 daily_prices + 2 data_provider_runs rows written on a fixture DB). "Agree" must mean
-    # "positively proven on the documented sample" (goal.md AG-9 step 2a / J-10 step 2a), never
-    # "nothing contradicted it". Placed AFTER the mismatch branch on purpose: a genuine out-of-tolerance
-    # pair is the stronger, more diagnostic signal and must never be downgraded to "inconclusive" by a
-    # coverage gap elsewhere in the sample.
-    uncovered = [s for s in symbols if not any(p.symbol == s for p in pairs)]
-    if not pairs or uncovered:
-        return ConventionCheckResult(
-            verdict="inconclusive", tolerance=tolerance, sample_symbols=symbols, window_dates=dates,
-            pairs=tuple(pairs),
-            reason=(
-                f"insufficient evidence to prove agreement: {len(pairs)} comparable pair(s) across "
-                f"{len(symbols) - len(uncovered)}/{len(symbols)} sampled symbol(s)"
-                + (f" — no stored baseline for {uncovered[:10]}" if uncovered else "")
-            ),
-        )
-    return ConventionCheckResult(
-        verdict="agree", tolerance=tolerance, sample_symbols=symbols, window_dates=dates,
-        pairs=tuple(pairs), reason=f"all {len(pairs)} sampled pairs within {tolerance:.4%} relative delta",
+    return ConventionCheckBatchResult(
+        path_agreement_tolerance=PATH_AGREEMENT_TOLERANCE,
+        bridge_dispersion_bound=BRIDGE_DISPERSION_BOUND,
+        min_comparable_pairs=MIN_COMPARABLE_PAIRS_PER_SYMBOL,
+        sample_symbols=symbols, window_dates=dates, verdicts=tuple(verdicts),
     )
+
+
+def convention_evidence_to_dict(result: ConventionCheckBatchResult) -> dict:
+    """B3: the FULL per-pair evidence, serialized — the sole admissible calibration input (goal.md:
+    "Numbers that survive only as prose in a handoff are not calibration evidence and may not be used
+    as such"). Every field on every dataclass is included (no summarization), so the persisted
+    artifact alone — with no cross-reference to a handoff or this module's source — can answer any
+    question about how a bridge factor was derived. Pure / no I/O: the caller (`run_gated_recovery`)
+    decides where, and whether, to write this."""
+    return {
+        "path_agreement_tolerance": result.path_agreement_tolerance,
+        "bridge_dispersion_bound": result.bridge_dispersion_bound,
+        "min_comparable_pairs": result.min_comparable_pairs,
+        "sample_symbols": list(result.sample_symbols),
+        "window_dates": [d.isoformat() for d in result.window_dates],
+        "symbols": [
+            {
+                "symbol": v.symbol,
+                "verdict": v.verdict,
+                "reason": v.reason,
+                "comparable_pair_count": v.comparable_pair_count,
+                "path_agreement_max_delta": v.path_agreement_max_delta,
+                "bridge_dispersion": v.bridge_dispersion,
+                "bridge_factor": v.bridge_factor,
+                "pairs": [
+                    {
+                        "trading_date": p.trading_date.isoformat(),
+                        "stored_close": p.stored_close,
+                        "fallback_close": p.fallback_close,
+                        "ratio": p.ratio,
+                    }
+                    for p in v.pairs
+                ],
+            }
+            for v in result.verdicts
+        ],
+    }
 
 
 @dataclass
@@ -494,7 +705,7 @@ class RecoveryOutcome:
     the caller uses to WRITE that section, never a second provenance store."""
 
     requested_symbols: list[str]
-    already_complete: bool  # True iff still_missing_symbols() was empty BEFORE this call (zero-work, zero network calls)
+    already_complete: bool  # True iff the target scope was empty BEFORE this call (zero-work, zero network calls)
     job_summary: Optional[dict] = None  # data_manager.run_data_job's return value, or None if already_complete
 
 
@@ -505,6 +716,7 @@ def run_bounded_recovery_fetch(
     *,
     provider: Optional[PriceProvider] = None,
     api_key: Optional[str] = None,
+    symbols: Optional[Sequence[str]] = None,
 ) -> RecoveryOutcome:
     """The ONE entry point for J-10 step 2 (the live fetch). Idempotent (TC-5): computes the current
     still-missing scope from LIVE `daily_prices` state, validates it through
@@ -516,21 +728,29 @@ def run_bounded_recovery_fetch(
     Makes NO network call when nothing is missing (true zero-work no-op). `provider`/`api_key` are
     test/session-only injection points — `api_key` is NEVER persisted (mirrors every other call site
     in `data_manager`); stooq's own HTTP call uses no credential (see `StooqProvider`'s docstring),
-    the catalog's `needs_key` flag is this environment's IP-gate acknowledgment only."""
-    symbols = still_missing_symbols(session)
-    if not symbols:
+    the catalog's `needs_key` flag is this environment's IP-gate acknowledgment only.
+
+    iter-8: `symbols`, when given, further restricts the request to `symbols ∩ still_missing_symbols()`
+    — still computed FRESH from live state, so idempotency is preserved (a symbol already restored by
+    a prior partial attempt is excluded even if the caller's list still names it). `None` (the
+    default) preserves the exact original behavior — every pre-iter-8 caller/test is unaffected. This
+    is how `run_gated_recovery` restricts the real fetch to only the symbols that passed the per-
+    symbol convention gate, without a second write/request path."""
+    missing = still_missing_symbols(session)
+    target = sorted(set(symbols) & set(missing)) if symbols is not None else missing
+    if not target:
         return RecoveryOutcome(requested_symbols=[], already_complete=True, job_summary=None)
     validate_recovery_scope(
-        start=RECOVERY_START, end=RECOVERY_END, symbols=symbols, source=RECOVERY_SOURCE
+        start=RECOVERY_START, end=RECOVERY_END, symbols=target, source=RECOVERY_SOURCE
     )
     data_manager.validate_job_request(
         "fetch", RECOVERY_START, RECOVERY_END, config, source=RECOVERY_SOURCE, api_key=api_key,
     )
     job = data_manager.create_job("fetch", RECOVERY_START, RECOVERY_END, source=RECOVERY_SOURCE)
     summary = data_manager.run_data_job(
-        job.job_id, config=config, engine=engine, provider=provider, api_key=api_key, symbols=symbols,
+        job.job_id, config=config, engine=engine, provider=provider, api_key=api_key, symbols=target,
     )
-    return RecoveryOutcome(requested_symbols=symbols, already_complete=False, job_summary=summary)
+    return RecoveryOutcome(requested_symbols=target, already_complete=False, job_summary=summary)
 
 
 def run_bounded_recovery_backfill(session: Session, engine: Engine, config: Config) -> dict:
@@ -544,17 +764,65 @@ def run_bounded_recovery_backfill(session: Session, engine: Engine, config: Conf
     return data_manager.run_data_job(job.job_id, config=config, engine=engine)
 
 
+class _BridgeApplyingProvider(PriceProvider):
+    """iter-8 (B2/TC-8): wraps a real provider and transforms every returned bar's OHLC fields by that
+    SYMBOL's passing bridge factor before the caller ever sees them — so the SINGLE existing
+    `data_manager` chunked-fetch insert path (the one every other fetch job already uses) writes
+    already-bridge-transformed values, with NO second write path (goal.md: "Passing the gate does NOT
+    authorize inserting raw Yahoo adjusted-close values unchanged"). Volume passes through UNSCALED
+    ("volume is not a price and is not scaled" — goal.md, verbatim).
+
+    B6 (audit, cheap defence-in-depth): this is the ONE place iter-8 introduces a transforming write
+    path, so the cheap extra check belongs here, closest to the insert it feeds — every returned bar's
+    date is asserted inside `[RECOVERY_START, RECOVERY_END]` before it is transformed/returned.
+
+    Raises `RecoveryScopeError` for a symbol with no passing bridge factor — an internal-invariant
+    guard (the caller must only ever request symbols that passed the gate), not a normal runtime
+    provider condition; this is what stands between "the gate said mismatch" and "inserted anyway on
+    a guessed factor" if a future caller is ever wired up wrong (goal.md: "Never insert on a guessed
+    factor to improve coverage")."""
+
+    def __init__(self, inner: PriceProvider, bridge_factors: dict[str, float]):
+        self._inner = inner
+        self._bridge_factors = dict(bridge_factors)
+
+    def get_daily(
+        self, symbol: str, start: Optional[date_cls] = None, end: Optional[date_cls] = None,
+    ) -> list[Bar]:
+        if symbol not in self._bridge_factors:
+            raise RecoveryScopeError(
+                f"J-10 recovery: {symbol!r} has no passing bridge factor — refusing to fetch/insert an "
+                f"untransformed bar for it (this must never happen on the real driver path: only "
+                f"symbols with verdict=='agree' may ever reach this wrapper)"
+            )
+        factor = self._bridge_factors[symbol]
+        bars = self._inner.get_daily(symbol, start=start, end=end)
+        out: list[Bar] = []
+        for b in bars:
+            if not (RECOVERY_START <= b.date <= RECOVERY_END):
+                raise RecoveryScopeError(
+                    f"J-10 recovery: {symbol!r} returned a bar dated {b.date}, outside the authorized "
+                    f"[{RECOVERY_START}, {RECOVERY_END}] window — refusing to transform/insert it (B6)"
+                )
+            out.append(Bar(
+                date=b.date, open=b.open * factor, high=b.high * factor,
+                low=b.low * factor, close=b.close * factor, volume=b.volume,
+            ))
+        return out
+
+
 # ==================================================================================================
-# run_gated_recovery — the ONE J-10 retry entry point (iter-7): the causal ordering gate
+# run_gated_recovery — the ONE J-10 retry entry point (iter-7, redesigned iter-8): the causal
+# ordering gate
 # ==================================================================================================
 @dataclass
 class GatedRecoveryOutcome:
-    """The top-level J-10 retry outcome (steps 2a-3): the convention check's own result, PLUS — only
-    when it returned "agree" — the fetch and backfill outcomes. `stopped_reason` is set (with `fetch`/
-    `backfill` left None) for every non-agree verdict, so a caller can tell "restored" from "honestly
-    stopped" without separately inspecting three return values."""
+    """The top-level J-10 retry outcome (steps 2a-3): the per-symbol convention-check batch result,
+    PLUS — only when at least one symbol passed — the fetch and backfill outcomes. `stopped_reason` is
+    set (with `fetch`/`backfill` left None) exactly when zero symbols passed, so a caller can tell
+    "restored" from "honestly stopped" without separately inspecting three return values."""
 
-    convention_check: ConventionCheckResult
+    convention_check: ConventionCheckBatchResult
     fetch: Optional[RecoveryOutcome] = None
     backfill: Optional[dict] = None
     stopped_reason: Optional[str] = None
@@ -568,31 +836,52 @@ def run_gated_recovery(
     convention_provider: PriceProvider,
     fetch_provider: Optional[PriceProvider] = None,
     api_key: Optional[str] = None,
-    convention_sample_symbols: Optional[Sequence[str]] = None,
-    convention_window_dates: Optional[Sequence[date_cls]] = None,
-    convention_tolerance: float = CONVENTION_CHECK_TOLERANCE,
+    evidence_path: Optional[Path] = None,
 ) -> GatedRecoveryOutcome:
-    """The ONE J-10 retry entry point (steps 2a->3): run the adjustment-convention check FIRST; only a
-    verdict of EXACTLY "agree" reaches `run_bounded_recovery_fetch` / `run_bounded_recovery_backfill` —
-    every other verdict returns immediately with `stopped_reason` set and makes NO call capable of
-    writing to `daily_prices`/`scanner_runs`/`data_provider_runs`. This is the textual and causal gate
-    goal.md step 2a demands: no code path below the verdict branch can reach the write-capable calls on
-    a non-agree verdict. `convention_provider` and `fetch_provider` are separate injection points (they
-    are the SAME `YahooProvider()` instance in production — `get_adjusted_close` for the check,
-    `get_daily` for the fetch — kept separate here only so tests can inject independent fakes for each
-    concern)."""
-    check = check_adjustment_convention(
-        session,
-        provider=convention_provider,
-        sample_symbols=convention_sample_symbols,
-        window_dates=convention_window_dates,
-        tolerance=convention_tolerance,
-    )
-    if check.verdict != "agree":
+    """The ONE J-10 retry entry point (steps 2a->3), iter-8 REDESIGN. B5: the ONLY parameters this
+    production entry point accepts are provider OBJECTS, the optional `api_key`, and the optional
+    evidence-artifact write location — no tolerance, dispersion-bound, sample, or window override
+    exists here at all (contrast the iter-7 signature, which exposed all four). `check_adjustment_
+    convention_per_symbol` is always called with its own default (module-constant) sample and a LIVE
+    DB-derived window — there is no code path by which a caller loosens either without a source diff
+    to review.
+
+    Order of operations, structurally enforced (not by convention):
+      1. Run the per-symbol check against `convention_provider` (read-only, in-memory).
+      2. If `evidence_path` is given, persist the FULL per-pair evidence (B3) — BEFORE a single
+         verdict is used for anything else (TC-7). The real driver ALWAYS passes a real path; most
+         tests omit it (no filesystem side effect) unless they specifically test persistence.
+      3. Collect symbols with verdict=="agree" and their bridge factors. Zero -> stop, `stopped_reason`
+         set, no fetch/backfill call of any kind (TC-10) — the fetch/backfill calls below sit
+         textually inside the `if not passing` branch's fallthrough, so no code path below the
+         verdict check can reach them when nothing passed.
+      4. Otherwise: fetch ONLY the passing symbols (intersected with what's still actually missing,
+         for idempotency) through a `_BridgeApplyingProvider` wrapping `fetch_provider` (defaulting to
+         `convention_provider` itself — the SAME instance/method used for calibration, reinforcing
+         B2), via the EXISTING `run_bounded_recovery_fetch` -> `data_manager.run_data_job` write path
+         (no second insert path), then run the existing backfill.
+
+    `fetch_provider` defaulting to `convention_provider` when omitted is a DELIBERATE change from the
+    iter-7 signature (there, omitting it meant "let data_manager resolve its own catalog provider" —
+    that is no longer possible here, because the bridge transform must wrap a CONCRETE provider
+    instance). Every current caller passes both explicitly anyway."""
+    check = check_adjustment_convention_per_symbol(session, provider=convention_provider)
+    if evidence_path is not None:
+        evidence_path.parent.mkdir(parents=True, exist_ok=True)
+        evidence_path.write_text(json.dumps(convention_evidence_to_dict(check), indent=2, sort_keys=True))
+
+    passing = {v.symbol: v.bridge_factor for v in check.verdicts if v.verdict == "agree"}
+    if not passing:
         return GatedRecoveryOutcome(
             convention_check=check,
-            stopped_reason=f"adjustment-convention check returned {check.verdict!r}: {check.reason}",
+            stopped_reason=(
+                f"0/{len(check.verdicts)} sampled symbols passed the per-symbol path-agreement + "
+                f"stable-bridge gate — nothing fetched, nothing inserted"
+            ),
         )
-    fetch = run_bounded_recovery_fetch(session, engine, config, provider=fetch_provider, api_key=api_key)
+    bridged_provider = _BridgeApplyingProvider(fetch_provider or convention_provider, passing)
+    fetch = run_bounded_recovery_fetch(
+        session, engine, config, provider=bridged_provider, api_key=api_key, symbols=sorted(passing),
+    )
     backfill = run_bounded_recovery_backfill(session, engine, config)
     return GatedRecoveryOutcome(convention_check=check, fetch=fetch, backfill=backfill)
