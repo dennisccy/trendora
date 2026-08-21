@@ -654,7 +654,9 @@ manifest artifact (it must be self-describing and self-caveating).
             bound. That stability IS the convention-agreement evidence; a drifting or erratic ratio
             means the two series are not on one consistent scale and the symbol fails.
          **A passing bridge MUST then be applied.** Restored values are the fallback provider's fields
-         **transformed by that symbol's bridge factor onto the existing Stooq historical scale** —
+         **transformed by that symbol's bridge factor onto the existing STORED historical scale**
+         (see the vendor-provenance correction in Acceptance: the stored bars in the overlap region
+         are not necessarily Stooq's) —
          applied consistently to every price field (open/high/low/close, not close alone, or the bar
          becomes internally inconsistent; volume is not a price and is not scaled). **Passing the gate
          does NOT authorize inserting raw Yahoo adjusted-close values unchanged** — an untransformed
@@ -702,6 +704,42 @@ manifest artifact (it must be self-describing and self-caveating).
          claim would need its own pre-registered experiment (AG-4/AG-15). If Yahoo also proves
          unreachable or fails the convention check, that is an honest miss — stop and report it;
          do not try a third vendor without a new amendment.
+    2b. **Validation sample vs recovery population — two different things (owner, 2026-08-21).**
+       Iteration 8 restored 20 of 587 symbols and then declined to continue, reading the
+       anti-goodharting rule as a cap on coverage. That reading conflates two distinct populations,
+       and the distinction is now explicit:
+       - **The methodology-validation sample** exists to establish *whether the fallback-provider
+         convention/bridge methodology is admissible* under the fixed fail-closed rules. Its
+         composition is **frozen for that methodological test**. The anti-goodharting prohibition
+         stands unchanged and in full force: it must never be enlarged, redrawn, filtered,
+         substituted, cherry-picked, expanded toward easier names, or otherwise changed **for the
+         purpose of converting a failing or inconclusive methodology verdict into a passing one**.
+         The evidence already obtained from that sample remains the evidence for the methodology
+         decision. Nothing here permits re-running alternative samples until one passes.
+       - **The authorized recovery population** exists to *restore the exact rows independently
+         proven missing* by the iter-5 drill. It was established **before** the fallback methodology
+         result, from the drill's own audit record — it is not a sample selected after seeing an
+         outcome — and it currently holds **587 symbols over the two authorized dates**.
+       **Binding invariant:** *the prohibition on widening or redrawing the methodology-validation
+       sample does not restrict execution over the already frozen J-10 recovery population. Once the
+       recovery methodology is admissible, every member of the independently established recovery
+       population must be evaluated under the same fixed per-symbol gate.* The anti-goodharting rule
+       therefore does **not** cap recovery at the first 20 symbols.
+    2c. **No population-level pass, ever.** The 20 successful symbols do **not** authorize insertion
+       for the other 567. Each remaining symbol must independently satisfy the same precommitted
+       fail-closed requirements under the existing fixed methodology, including as applicable: exact
+       authorized symbol/date membership; same-series validation; minimum usable evidence;
+       path/bridge agreement; bridge-factor stability; field-level convention compatibility;
+       deterministic ticker mapping; no out-of-scope row overwrite; no threshold override; persisted
+       pair-level evidence; and a bridge calibration reproducible from that persisted evidence.
+       For any symbol: **`mismatch` or `inconclusive` ⇒ zero rows written for that symbol.** Do not
+       loosen thresholds after seeing failures. Do not substitute a different methodology for
+       troublesome symbols without a later explicit goal amendment.
+    2d. **Continue from 20/587 — do not restart.** The 20 already-restored symbols stay restored if
+       they satisfy the corrected J-10 contract and the audit findings. Do not delete or revert them
+       merely to restart the recovery. Treat current state as **20 validly restored · 567 still
+       pending individual evaluation**, and make the next recovery pass **idempotent** over the
+       restored 20 (already-complete symbols are skipped, never re-fetched or overwritten).
     3. **Never overwrite a survivor.** Insert only missing rows; every surviving row stays
        byte-unchanged. Derived state for those two dates (`scanner_runs` and their snapshots) is
        rebuilt through the normal ingest path once the bars are present, and must not touch any
@@ -724,8 +762,31 @@ manifest artifact (it must be self-describing and self-caveating).
        immutable, **state that limitation plainly** and verify the strongest practical invariants
        instead (per-symbol row presence, OHLCV shape, expected session count, no gap against the
        surrounding trading days).
+    5a. **Account for every mutation the verification itself causes (owner, 2026-08-21).**
+       Iteration 8's step-5(f) check required starting the backend, and this codebase's boot warmup
+       created an unrelated `ScannerRun` for **2026-05-12**. Investigation showed it benign — no
+       `daily_prices` row changed, no manifest changed, no network fetch, computed from
+       already-committed data — so it is *not* equivalent to unauthorized price-data recovery. It is
+       still an unexpected persistent write outside the intended verification scope, and
+       verification must stop being blind to that class of write. Recovery verification MUST
+       reconcile **all** database mutations caused by the verification procedure itself, classifying
+       each as:
+       - **an authorized recovery write** — the intended recovery-date price rows, plus the
+         explicitly expected derived-state rebuild for those two dates; or
+       - **an incidental product write** — e.g. backend boot warmup creating an unrelated scanner
+         run. Incidental writes MUST be **detected, recorded, and explained**, and MUST be
+         **excluded from any claim that verification was side-effect-free**.
+       **A verification step must never claim "no out-of-scope writes" if the application itself
+       produced an unrelated persistent row during that verification.** Where practical within the
+       existing architecture, prefer a verification path that suppresses or isolates automatic boot
+       warmup writes — but do NOT turn this into a broad redesign of application startup within this
+       goal. If suppression or isolation is not trivial, record the known side effect as a defect
+       and require exact before/after mutation accounting for every J-10 verification run.
     6. **Close the exception.** Once verification passes, record in the handoff that AG-9's dated
        exception is **exhausted**; normal offline-deterministic ingest applies again automatically.
+       "Verification passes" means the recovery is complete per the completion rule in Acceptance —
+       a partial restoration does not exhaust the exception, because the remaining authorized
+       symbols still need it.
     7. All recovery work stays on the session branch `goal/market-compass`; `main` is not touched.
   - Acceptance:
     - **Consistency (single source):** restored rows enter through the existing ingest/provider
@@ -743,6 +804,56 @@ manifest artifact (it must be self-describing and self-caveating).
       2026-07-01) could not restore these dates. AG-17 governs what the repair may NOT do to
       provenance. If any part of the recovery cannot be proven to stay inside the authorized scope,
       the iteration stops for owner review rather than broadening the fetch.
+    - **Completion rule (owner, 2026-08-21):** J-10 does **NOT** close merely because the recovery
+      mechanism has been demonstrated on 20 names. The goal is recovery of the proven deletion, not
+      a pilot implementation. J-10 remains **incomplete** while the majority of the authorized
+      recovery population is neither (a) restored under the fixed gate, nor (b) explicitly
+      classified as fail-closed/unrestorable under a goal-authorized completion policy. **Do not
+      invent a partial-completion threshold** — there is no "enough symbols" number, and none may be
+      introduced without an owner amendment. If some symbols ultimately cannot be restored under the
+      fixed methodology, surface the **exact residual set and the per-symbol reasons** for
+      owner/reviewer decision rather than silently lowering the coverage requirement.
+    - **Recorded finding — the one-series rule worked, and a vendor-provenance correction
+      (iteration 8; corrected 2026-08-21 by the out-of-band audit — read the correction, it changes
+      what the result means):** running the comparison and the restore through the same raw-close
+      series produced bridge factors of **exactly 1.0** for every restored symbol, and iteration 7's
+      ~0.865% CVX "mismatch" was indeed a **series-crossover artifact** — `adjclose` compared against
+      a stored raw close — which the one-series rule correctly eliminated. That conclusion stands.
+      **But the earlier attribution of this file was wrong and is corrected here: the stored bars in
+      the overlap window are NOT Stooq's — they are Yahoo's.** The committed seed ends 2026-07-01;
+      every post-seed fetch in `data_provider_runs` is `provider='yahoo'` (34 runs from 2026-07-17
+      onward), and the single `stooq` run, id 541, **failed with 0 symbols**. Consequences that every
+      future iteration must reason from:
+      - The gate compared **Yahoo against Yahoo** over that window, so the 1.0 factors were expected
+        by construction and the check **could not have failed** there. This makes the write *safer*
+        (no scale discontinuity is possible), but it is **NOT** cross-vendor validation evidence and
+        may never be cited as such.
+      - Iteration 7's crossover was therefore **within a single vendor** (`adjclose` vs raw close),
+        which is exactly why both offenders were dividend payers.
+      - "Bridge onto the existing scale" means the **stored** scale, whatever vendor produced it —
+        not "the Stooq scale". A genuinely cross-vendor overlap (pre-2026-07-01 seed region) has
+        never been exercised by this gate.
+      This finding is evidence that the corrected gate tests the intended property — it is **NOT**
+      grounds for removing, weakening, or skipping the convention gate, and must never be cited as
+      such.
+    - **Keep the closed audit findings closed:** generalizing recovery from 20 symbols to the full
+      authorized population must not regress **B2** (no raw/adjusted series crossover), **B3**
+      (persisted per-pair comparison evidence), **B5** (thresholds not caller-overridable), **B6**
+      (explicit authorized-date assertion), or the rule that **zero usable pairs can never return
+      `agree`**.
+    - **Traps this journey must actually prove** (each is a required check, not a nice-to-have):
+      1. the methodology-validation sample cannot be enlarged or redrawn after seeing its outcome to
+         chase a pass;
+      2. the full frozen 587-symbol recovery population is nevertheless eligible for processing;
+      3. a passing methodology sample gives untested symbols **no** automatic pass;
+      4. every restored symbol has its own persisted evidence and verdict;
+      5. previously restored valid symbols are idempotently skipped, never overwritten;
+      6. a failing or inconclusive symbol produces **zero** writes for that symbol;
+      7. fixed thresholds remain structurally non-overridable;
+      8. recovery cannot leave J-10 complete at `20/587`;
+      9. every database mutation caused during recovery verification is reconciled, **including
+         incidental `ScannerRun` creation** by backend boot warmup;
+      10. `Depth: full` cannot silently become `lean` without an explicit unmet-requirement record.
     - **Walkthrough:** waived — data-layer repair with no UI surface change of its own; the demo
       requirement is replaced by the provenance record, the verification evidence, and the
       J-01/J-02/J-03 live replay that proves the damage is gone.
@@ -866,6 +977,20 @@ manifest artifact (it must be self-describing and self-caveating).
   completed inside AG-9's authorized scope, stop and surface it for owner review rather than resuming
   normal evaluation on damaged data.
 - Depth: lean by default; full when an iteration first lands user-visible UI changes.
+- **`Depth: full` must never silently become `lean` (owner, 2026-08-21).** This session has had an
+  explicit `Depth: full` spec dispatched as `lean` three times (iters 2, 6, 8) — including iteration
+  8, the one that performed the first real writes to the production database, and including
+  iteration 6, where the demotion also let an ungated browser-QA replay run against the damaged
+  dataset. That is not acceptable for a recovery path whose correctness depends on adversarial
+  review and audit. **When the goal or an iteration spec requires `Depth: full`, inability to run the
+  required full-depth lanes MUST be surfaced explicitly and MUST NOT silently fall back to `lean`.**
+  For any J-10 iteration that can write recovery data, the intended full audit/review depth is
+  required before the iteration may be treated as fully accepted. If the infrastructure cannot
+  provide `full`: mark the depth requirement **unmet**, preserve the implementation and recovery
+  evidence, do **not** pretend `lean == full`, and surface it for owner/evaluator decision. Never
+  fabricate an audit result to satisfy this. Do **not** re-run destructive or network actions merely
+  to obtain another depth marker, unless the existing idempotent recovery design makes that provably
+  safe and this goal explicitly allows it.
 - Backlog cards partially pulled forward (mark `IN-GOAL.MD (scoped, market-compass)` in
   `docs/improvement-backlog.md`): B-306 (engine-identity stamping — scoped to manifests + new runs),
   B-802 (rule distances — realized as the selection trace), B-804 (score diff — scoped to bucket/status/rank
