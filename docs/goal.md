@@ -895,9 +895,13 @@ manifest artifact (it must be self-describing and self-caveating).
       9. every database mutation caused during recovery verification is reconciled, **including
          incidental `ScannerRun` creation** by backend boot warmup;
       10. `Depth: full` cannot silently become `lean` without an explicit unmet-requirement record.
-    - **Walkthrough:** waived — data-layer repair with no UI surface change of its own; the demo
-      requirement is replaced by the provenance record, the verification evidence, and the
-      J-01/J-02/J-03 live replay that proves the damage is gone.
+    - **Walkthrough:** waived — **raw-layer** incident repair with no UI surface change of its own.
+      The J-10 demo requirement is replaced by the raw-recovery provenance record, bounded-scope
+      verification, canonical price-coverage evidence, and complete mutation reconciliation. **Final
+      repaired-state `GET /api/compass` serving and the J-01/J-02/J-03 replay belong exclusively to
+      J-11 Stage G** (owner, 2026-08-21 — this bullet previously claimed the replay as J-10's own
+      proof "that the damage is gone", which contradicted the J-10/J-11 responsibility boundary and
+      could pull the final derived-state check back into J-10).
 
 - **J-11: Incident-bounded clean regeneration of derived state (owner, 2026-08-21)**
   - Why: the iter-5 drill's cascade left the derived layer for its incident dates in four *different*
