@@ -976,6 +976,17 @@ manifest artifact (it must be self-describing and self-caveating).
        through the canonical producer. **Prefer deterministic explicit invalidation** wherever
        delete/recreate could reproduce the same key. No stale cache may survive while appearing
        current; do not delete a cache unrelated to the changed dependency graph.
+       **Classify by ACTUAL data dependency, not by table name or the mere presence of a
+       dataset-version field (owner, 2026-08-21).** Carrying a version stamp does not by itself mean a
+       payload depends on anything J-11 changes. Worked example, verified: `index_series_cache` stores
+       `indexes.compute_index_series(...)`, which hydrates the configured `index_chart.symbols` ETFs'
+       stored **`daily_prices`** — and J-11 modifies no price row at all, so its payload is unaffected
+       even though it carries a stamp; it may legitimately need no destructive invalidation. The
+       required disposition for every cache is therefore one of: **prove it unaffected and leave it
+       alone**; explicitly invalidate; or regenerate through the canonical producer. **Do not
+       blanket-delete the named caches for convenience** — a needless cache wipe is its own
+       (recoverable, but real) availability and compute cost, and it obscures which dependency the
+       repair actually touched.
     7. **Preserve the evidence history and do not reinterpret it.** The canonical certified-claims
        ledger currently holds **7 entries, all `FAIL`** (verified 2026-08-21; the staging ledger
        likewise holds 7, all `FAIL`). Preserve both exactly. Do **not** reset trial count, Bonferroni
@@ -1018,16 +1029,102 @@ manifest artifact (it must be self-describing and self-caveating).
        backend/frontend, execute the destructive reset, or be treated as equivalent to full. If fixing
        this needs an `incredible_auto_dev` framework change outside this repository, **report that
        dependency and keep the engine paused rather than bypassing it.**
+    11. **Stage B1 — reconcile the manifest↔ScannerRun referential contract BEFORE any incident run is
+       deleted (hard precondition, owner 2026-08-21).** The schema and the design currently disagree,
+       and the disagreement is load-bearing for this journey. `models.py:820` declares
+       `source_run_id: int = Field(foreign_key="scanner_runs.id", index=True)` and the live DDL carries
+       `FOREIGN KEY(source_run_id) REFERENCES scanner_runs (id)`, while the Market Compass design
+       requires manifests to survive snapshot deletion and rebuild. Today that works **only because
+       enforcement is off** — `db._apply_sqlite_pragmas` never issues `PRAGMA foreign_keys=ON`, SQLite
+       defaults it OFF (`PRAGMA foreign_keys` reads `0` on the live DB), and
+       `PRAGMA foreign_key_check(next_session_manifests)` already reports **12 violations**, all on the
+       four incident dates that carry manifests. **The observed 2026-08-05 orphan is therefore NOT
+       proof the schema contract is sound — it is proof the constraint is unenforced.**
+       **J-11 must not rely on SQLite foreign-key enforcement being disabled as part of its safety
+       model.** The intended semantic contract, to be made true by schema/contract rather than by
+       accident:
+       > `source_run_id` is **immutable historical provenance** identifying the run that originally
+       > produced the manifest. A manifest remains valid and immutable even if that `ScannerRun` is
+       > later removed and canonically rebuilt under a different row id.
+       Therefore: do **not** mutate any existing manifest to point at a rebuilt run; do **not** "fix
+       up" `source_run_id` after a rebuild; and do **not** change `source_run_id`,
+       `source_run_created_at` (carried inside `generation_json`), the hashes, `version`,
+       `available_at_utc`, or `prospective_eligible`. The implementer must determine the safest
+       schema/migration strategy and **prove it before the destructive phase**. This repository has no
+       Alembic, so a table rewrite must not be prescribed casually — any approach must be shown to
+       preserve every historical artifact byte-for-byte. Reassuringly, the read path already does the
+       right thing and needs no change: `compass.basis_disclosure` (`compass.py:1100-1115`) resolves
+       the current run **by `as_of`** and compares the recorded `source_run_created_at` against that
+       run's `created_at` — it never dereferences `source_run_id`.
+       **Stage C may not begin until all six of these are proven:**
+       1. the live schema's manifest/run relationship matches the documented
+          manifest-survives-rebuild contract;
+       2. deleting an authorized `ScannerRun` does not require deleting or rewriting any existing
+          manifest;
+       3. existing manifest rows remain byte-for-byte semantically unchanged;
+       4. the solution holds **by schema/contract, not merely because SQLite FK checking is off**;
+       5. a future backend with enforced FK semantics — including Postgres-compatible behaviour —
+          would not render J-11's intended deletion logically invalid;
+       6. `basis_disclosure` still determines rebuilt/unavailable status from the current run for the
+          same `as_of`, never by mutating historical manifest linkage.
+       **If this contradiction cannot be resolved safely inside the current repository without a risky
+       migration, STOP before J-11 and surface it as an owner decision.**
+    12. **Stage B2 — freeze ONE engine identity for the whole attempt (owner, 2026-08-21).** J-11's
+       claim is that the incident set ends up as one internally consistent current-engine derivation;
+       that claim must be testable. Before Stage C, freeze the intended current engine identity and
+       the relevant config/rule identity into the pre-reset inventory for **this attempt**. Invariant:
+       > Every `ScannerRun` recreated by one J-11 regeneration attempt MUST carry the same
+       > `engine_identity`, equal to the identity frozen in that attempt's pre-reset inventory.
+       A run of "dates 1–5 under engine A → code or config changes → dates 6–11 under engine B" is
+       **not** a successful clean regeneration and must not be recorded as one. If the code or config
+       identity changes before an attempt finishes, the attempt must **not** be resumed piecemeal — it
+       is restarted under one identity per the failure semantics below. This does not relax anything
+       already required: the canonical scoring path stands, no recovery-specific formulas, no
+       threshold changes, and no hand-editing of regenerated rows.
+    13. **Failure and retry semantics — the unit of work is the whole 11-date set (owner, 2026-08-21).**
+       The stages say what should happen; they must also say what happens when the process dies after
+       the bounded clear or midway through recreating the dates. Without this, a failed attempt leaves
+       exactly the per-date archaeology J-11 exists to eliminate — some dates rebuilt, some absent,
+       some caches refreshed, some forward returns repaired, and boot warmup free to recreate another
+       date behind the operator's back. **Once the destructive phase (Stage C) has begun, if the
+       attempt fails before final verification:** keep the engine and app paused for normal operation;
+       do **not** boot normal backend warmup over the partial state; do **not** treat partially rebuilt
+       dates as accepted progress; preserve the attempt's audit and mutation evidence; delete no
+       immutable manifest or audit evidence; fetch no additional market data under J-11; and do **not**
+       silently continue from "the next unfinished date". The next authorized retry restarts the whole
+       unit: (1) re-verify the J-10 raw-input prerequisite still holds; (2) re-freeze the current
+       intended engine/config identity; (3) re-inventory the exact 11-date incident state; (4) re-clear
+       the exact allowlisted rebuildable derived state for **all 11 dates**; (5) regenerate all 11
+       under the one frozen identity; (6) re-run the canonical missing-forward-return repair;
+       (7) explicitly invalidate/refresh affected caches; (8) run the full verification suite.
+       > A failed J-11 attempt may be retried idempotently, but **the clean-regeneration unit is the
+       > complete 11-date incident set, not an individual date checkpoint.**
+       Retry never deletes canonical raw inputs or immutable evidence.
+    14. **Transaction expectations — stated honestly (owner, 2026-08-21).** The current machinery does
+       **not** offer one atomic transaction across the 11-date clear and rebuild:
+       `scanner.run_scan` is a thin compose of `compute_run_payload` + `persist_run_payload`, and
+       `persist_run_payload` performs its own flush/commit per run behind its create-once
+       IntegrityError guards (`scanner.py:85-130`) — i.e. **the rebuild commits per date**. The goal
+       therefore does not claim transactional rollback it cannot deliver. J-11's real safety model is
+       the combination of: maintenance isolation (one controlled writer, no warmup race), bounded
+       destructive scope (11 dates, allowlisted tables), complete-attempt restart semantics (above),
+       pre/post inventories, and fail-closed verification. Do not specify or imply "transaction
+       rollback" unless and until the implementation actually supports it.
   - Sequencing (explicit): **A** finish J-10's canonical input repair (567 remaining under the fixed
     per-symbol gate → verify 2026-08-11/12 coverage → close the temporary fetch authorization) →
     **B** freeze a read-only pre-reset inventory (the exact 11-date target set; row counts by relevant
     table and date; `daily_prices` coverage/fingerprint; manifest count and hashes; manifest export
     fingerprints where practical; `data_provider_runs` audit state; the certified-ledger file hash;
     user-state counts; current engine and config identity — an audit checkpoint, **not** a second
-    historical database) → **C** bounded derived-state clear (allowlisted tables, 11 dates, no price /
-    manifest / audit / user-state deletion) → **D** canonical regeneration of exactly those 11 dates →
+    historical database) → **B1** reconcile the manifest↔`ScannerRun` schema contract and prove its six
+    acceptance items (step 11) → **B2** freeze the one intended engine/config identity for this attempt
+    (step 12) → **C** bounded derived-state clear (allowlisted tables, 11 dates, no price / manifest /
+    audit / user-state deletion) → **D** canonical regeneration of exactly those 11 dates →
     **E** global create-once forward-return hole repair → **F** dependency-aware cache invalidation and
     re-warm → **G** verification. Only after G passes is the incident repaired.
+    **On any failure from C onward:** mark the attempt **incomplete**, preserve its audit evidence,
+    keep the normal app paused, and have the next retry restart at **B/B1/B2** and redo **C→G for all
+    11 dates**. A partial C→G execution is never represented as accepted J-11 progress.
   - Acceptance:
     - Every item below is a required check, proven by named tests **plus** live read-only
       verification — not by narrative assertion in a handoff.
@@ -1062,6 +1159,21 @@ manifest artifact (it must be self-describing and self-caveating).
       through genuinely read-only routes or direct DB assertions. For a date that already has one, it
       is acceptable to confirm the existing artifact still serves unchanged **provided the test proves
       no new manifest or version was created**.
+    - **Named traps for the schema/identity/retry blockers (owner, 2026-08-21)** — each is a required
+      test, in addition to the ten traps already listed for J-10:
+      1. **manifest survival does not depend on FK enforcement being off** — the contract holds with
+         `PRAGMA foreign_keys=ON` (or equivalent enforced-FK semantics), not merely with it disabled;
+      2. deleting and rebuilding an incident `ScannerRun` does **not** rewrite its historical manifest;
+      3. `source_run_id` remains historical provenance and is **never** rebound to the new run's id;
+      4. `basis_disclosure` still reports `rebuilt` / `unavailable` correctly once the schema contract
+         is reconciled (it resolves by `as_of`, so this must survive the reconciliation unchanged);
+      5. all 11 rebuilt runs in one successful attempt share the frozen `engine_identity`;
+      6. an engine/config identity change mid-attempt **prevents** piecemeal continuation;
+      7. a simulated failure after a subset of dates are rebuilt leaves the attempt **incomplete** —
+         never recorded as partial progress;
+      8. a retry re-clears and rebuilds the **full 11-date set** rather than resuming from one date;
+      9. immutable manifests and audit evidence survive a retry byte-unchanged;
+      10. an unrelated cache is **not** invalidated solely because it happens to carry a version field.
     - **Honest status & anti-goals:** this journey deliberately does not preserve the accidental
       mixture of incident states — original surviving rows, missing rows, warmup-recreated rows, and
       partial J-10 reconstructions. Inside the 11-date boundary those derived rows are disposable
@@ -1246,8 +1358,21 @@ manifest artifact (it must be self-describing and self-caveating).
   before the data frontier**; the frontier's manifest is minted only by the freeze or an explicit
   confirm-gated regenerate.
 - `next_session_manifests` joins NEITHER `clear_snapshot_set` (`data_manager.py:2223-2227`) nor the
-  remove-data cascade (`:2170-2177`); no foreign key to `scanner_runs` (rebuild recreates ids) —
-  `source_run_created_at` + `engine_identity` are the rebuild detectors, never the dataset stamp alone.
+  remove-data cascade (`:2170-2177`); `source_run_created_at` + `engine_identity` are the rebuild
+  detectors, never the dataset stamp alone.
+  **CORRECTION (owner, 2026-08-21 — this line previously read "no foreign key to `scanner_runs`
+  (rebuild recreates ids)", which is FALSE and load-bearing).** `apps/backend/app/models.py:820`
+  declares `source_run_id: int = Field(foreign_key="scanner_runs.id", index=True)`, and the live
+  SQLite DDL carries `FOREIGN KEY(source_run_id) REFERENCES scanner_runs (id)`. The behaviour the
+  design relies on — manifests outliving their source run — currently works only because
+  **enforcement is off**: `db._apply_sqlite_pragmas` sets `journal_mode`, `synchronous`,
+  `busy_timeout`, `cache_size`, `mmap_size` and `temp_store` but never `PRAGMA foreign_keys=ON`, and
+  SQLite defaults it OFF. Measured on the live database 2026-08-21: `PRAGMA foreign_keys` reads `0`,
+  and `PRAGMA foreign_key_check(next_session_manifests)` reports **12 existing violations** — every
+  manifest on the four incident dates that carry one (2026-08-05 ×2, 2026-08-10 ×1, 2026-08-11 ×3,
+  2026-08-12 ×6), while all 12 non-incident manifests dereference cleanly. Half the manifest table is
+  already in a state a foreign-key-enforcing backend would reject. See **J-11 Stage B1**, which makes
+  reconciling this a hard precondition of any incident-run deletion.
 - `ScannerRun.engine_identity` = additive nullable column via `db._ADDITIVE_COLUMNS`
   (`apps/backend/app/db.py:108-145`), stamped only in `persist_run_payload`; old rows stay NULL
   ("pre-stamping era"), never backfilled.
