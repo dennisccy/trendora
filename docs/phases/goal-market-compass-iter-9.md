@@ -22,6 +22,16 @@
   demotion this line exists to override (verified against `scripts/automation/lib/common.sh`'s
   `goal_full_depth_required` and `run-goal.sh`'s arbiter precedence).
 - **Frontend Present:** no
+- **Maintenance isolation:** required — J-10 is a **raw-layer maintenance iteration**. Full depth means
+  full reviewer/QA/audit scrutiny, **not permission to start application services**. Backend boot,
+  frontend boot, browser QA, deterministic replay and demo are **forbidden until J-11 Stage G**. This
+  is a machine-readable contract, not a convention: `goal_maintenance_isolation_required`
+  (`scripts/automation/lib/common.sh`) is the single predicate every affected component consults, and
+  each forbidden path fails closed with a recorded refusal. Developer, reviewer, file-scoped tests,
+  static QA, auditor, coherence and evaluator all remain fully available — this withholds application
+  services, never scrutiny. It is required here because this iteration's backend boot warmup has
+  already been shown to write derived rows into the very database under repair (iteration 8's
+  2026-05-12 `ScannerRun` side effect).
 - **Target journeys:** J-10
 - **Required-still-passing journeys:** None this iteration — deliberately. `docs/goal.md`'s
   Loop-mechanics lane gate ("No developer, reviewer, QA, browser-QA, evaluator, coherence, research or
@@ -143,8 +153,25 @@ iteration's much larger population-scale run must be reproducible.
 deterministic replay/browser lane has now run against the knowingly damaged database twice (iter-6 lean,
 iter-8 both lean and — during the very re-run meant to add the missing audit — full), overwriting
 AG-17-protected evidence once. Correcting the depth marker did not stop it (iter-8 audit finding P2:
-the lane runs at full depth too). This spec therefore names zero Target/Required-still-passing journeys
-whose verification would invoke that lane, and J-10's own step-5 verification (raw coverage, no
+the lane runs at full depth too).
+
+**What actually makes this iteration safe is the `Maintenance isolation: required` marker above — not
+an empty Required-still-passing set.** An earlier draft of this section claimed the spec "names zero
+Target/Required-still-passing journeys whose verification would invoke that lane." That was **false**
+and is corrected here: this spec names `Target journeys: J-10`, and the deterministic replay
+partitioner routes **TARGET** journeys as well as required ones (`lib/replay-lane.sh` unions
+`REQUIRED_JOURNEYS` with `TARGET_JOURNEYS` and passes `--target`). An empty required set therefore
+confers no protection whatsoever. Two other mechanisms would also have forced app/browser execution
+here regardless of journey lists: `detect_frontend_in_plan` force-enables the browser lane whenever
+`CHAIN_GOAL_TARGET_JOURNEYS` is non-empty — overriding this spec's own `Frontend Present: no` — and
+`run-phase.sh`'s post-dev fanout boots shared services before QA, while `qa-phase.sh` self-boots the
+backend through `ensure_services_running` independently of any frontend.
+
+Maintenance isolation closes all four structurally and fail-closed: the target-journey override is
+subordinated, shared-service boot is skipped with the start commands unset, `ensure_services_running`
+refuses outright, `replay_lane_partition_and_verify` refuses at entry, and the demo runner refuses
+before launching Playwright — each recording an explicit refusal marker rather than proceeding
+silently. J-10's own step-5 verification (raw coverage, no
 third-date/symbol touch, no overwrite, frontier unchanged, integrity checks) is executed as direct,
 read-only DB and provenance checks — never by starting the backend merely to look, since boot warmup
 itself writes (iteration 8's own 2026-05-12 `ScannerRun` side effect). Where a check cannot avoid

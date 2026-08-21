@@ -623,12 +623,26 @@ manifest artifact (it must be self-describing and self-caveating).
        same proven-missing row set, same fail-closed guard, same verification, same auto-close.
        Three conditions ride with it:
        - **Provenance-explicit.** Every restored row is recorded as `yahoo`-sourced through the
-         existing per-row/per-run vendor fields — never relabelled, back-dated, or blended into the
-         surrounding `stooq` history. The dataset after recovery is honestly mixed-vendor at exactly
-         two dates, and the handoff and `data_provider_runs` must both say so.
+         existing per-run vendor fields — never relabelled or back-dated.
+         **Factual correction (owner, 2026-08-21 — this bullet previously said the restored rows must
+         not be "blended into the surrounding `stooq` history" and that the dataset becomes "honestly
+         mixed-vendor at exactly two dates". Both were wrong):** the bars *adjacent* to 2026-08-11/12
+         are **not** Stooq's. The committed seed ends **2026-07-01**; every post-seed fetch in
+         `data_provider_runs` is `provider='yahoo'` (34 runs), and the single `stooq` run — id 541 —
+         **failed with 0 symbols**, so Stooq has never written a bar into this database. The correct
+         model is: **through 2026-07-01** the basis is the committed seed / Stooq historical data;
+         **post-seed recent history is Yahoo-sourced**; and **the 2026-08-11/12 recovery is Yahoo-
+         sourced** — i.e. the recovery is vendor-*continuous* with its immediate neighbours, not a
+         two-date mixed-vendor splice. (A broader historical vendor splice may exist at the seed
+         boundary itself; that is a separate, pre-existing question and **J-10 must not expand into
+         repairing or researching it.**) The handoff and `data_provider_runs` must still record the
+         `yahoo` provenance plainly.
        - **Fail closed: precommitted path-agreement + stable multiplicative bridge (owner, 2026-08-20
-         — supersedes the earlier absolute-level tolerance).** Stooq's bars are split/dividend-adjusted
-         (seed manifest: "REAL split/dividend-adjusted EOD OHLCV"). Before inserting anything, the
+         — supersedes the earlier absolute-level tolerance).** The stored historical basis is
+         split/dividend-adjusted (seed manifest: "REAL split/dividend-adjusted EOD OHLCV"); note per
+         the correction above that the *overlap window this gate actually samples* is Yahoo-stored,
+         not Stooq-stored, so the gate compares Yahoo raw close against stored Yahoo raw close and
+         does **not** test cross-vendor equivalence. Before inserting anything, the
          implementation MUST demonstrate agreement using the two-part test below. To make it possible —
          and for no other purpose — a **read-only comparison fetch** of a small overlap window of
          already-surviving trading days (≤ 2026-08-10) for a sample of the proven-missing symbols is
