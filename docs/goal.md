@@ -858,6 +858,225 @@ manifest artifact (it must be self-describing and self-caveating).
       requirement is replaced by the provenance record, the verification evidence, and the
       J-01/J-02/J-03 live replay that proves the damage is gone.
 
+- **J-11: Incident-bounded clean regeneration of derived state (owner, 2026-08-21)**
+  - Why: the iter-5 drill's cascade left the derived layer for its incident dates in four *different*
+    conditions at once — rows that survived, rows still missing, rows incidentally recreated by
+    backend boot warmup, and rows partially rebuilt during J-10. Repairing each condition separately
+    is per-date archaeology with a large surface for error. Within the incident boundary those
+    derived rows are **deterministic outputs of preserved canonical inputs**, so they are disposable:
+    clear them and regenerate the whole incident set uniformly through the CURRENT canonical engines,
+    leaving one internally consistent derivation from one engine generation. The immutable evidence
+    layer stays separate and untouched. This deliberately removes the need to reason about old-vs-new
+    snapshot row format inside the incident set.
+  - **Prerequisite — J-10 first, hard gate.** J-11 does NOT replace or bypass J-10. J-10 still owns
+    restoration of the canonical `daily_prices` rows for 2026-08-11 and 2026-08-12 across the proven
+    587-symbol population (**currently 20 restored / 567 pending**). J-11 may not begin until **the
+    authorized J-10 raw-input recovery has reached its accepted terminal state and the canonical
+    daily-price coverage needed by every incident date has been verified.** Never run the derived
+    rebuild against a knowingly incomplete price layer, and never lower J-10's acceptance criteria to
+    unblock this journey.
+  - **The incident date set — all 11, not the 8 currently absent.** From the authoritative removal
+    audit (`data_provider_runs` id=538, whose own cascade record lists them):
+    `2026-05-12, 2026-05-13, 2026-07-10, 2026-07-13, 2026-07-24, 2026-07-27, 2026-08-03, 2026-08-05,
+    2026-08-10, 2026-08-11, 2026-08-12`.
+    Scoping to only the absent dates would preserve exactly the inconsistency this journey exists to
+    remove: 2026-05-12 was incidentally rebuilt by boot warmup, and 2026-08-11/2026-08-12 were
+    partially rebuilt during J-10. Verified current state (read-only, 2026-08-21) — 2026-05-12: 1 run
+    / 0 manifests · 2026-05-13, 07-10, 07-13, 07-24, 07-27, 08-03: 0 runs / 0 manifests · **2026-08-05:
+    0 runs / 2 manifests (orphaned — its source run was destroyed)** · 2026-08-10: 1 run / 1 manifest ·
+    2026-08-11: 1 run / 3 manifests · 2026-08-12: 1 run / 6 manifests. **This authorizes no deletion of
+    raw price rows for these or any other dates.**
+  - Steps:
+    1. **Do NOT call `clear_snapshot_set()` (`app/engine/data_manager.py:2212`).** That helper is
+       correct for what it does — it deletes `ForwardReturn` → `ScannerResult` → `SectorScoreRow` →
+       `ThemeScoreRow` → `ScannerRun` children-before-parents, whole-row only, never referencing
+       `DailyPrice`, and asserts `bars_before == bars_after` — but it takes **no date filter and
+       clears the ENTIRE historical snapshot set** (J-85 semantics). A full-history reset would not be
+       a neutral repair: `config.yaml` `scanner.snapshot_cadence` is `deep_cadence: monthly` with
+       `daily_start: 2026-06-01`, and the config itself records a surviving create-once **daily stretch
+       2021-01→2021-04** that today's cadence does not imply — a wholesale rebuild would silently
+       discard real point-in-time density. Specify instead a narrow mechanism conceptually equivalent
+       to **`clear_snapshot_dates(EXACT_INCIDENT_DATE_SET)`**, reusing the SAME child-before-parent
+       deletion semantics, whole-row-delete discipline, and price-untouched assertion as
+       `clear_snapshot_set` rather than inventing different semantics. J-11 is incident-bounded, never
+       a cadence reset.
+    2. **Classify before deleting — explicit allowlist, produced by inspecting the live model graph,
+       never `DELETE FROM <everything except prices>`.** The classification below is the verified
+       starting point; the developer must re-derive it against the current models and extend it if
+       inspection finds more:
+       - **Canonical input — never deleted:** `daily_prices`; the reference/universe tables (`stocks`,
+         `etfs`, `sectors`, `industries`, `themes`, `theme_members`); `macro_series`. The reset MUST
+         assert the `daily_prices` row count **and** a content fingerprint/coverage measure are
+         identical immediately before and after the deletion step.
+       - **Immutable / audit evidence — never deleted, rewritten, or re-created as newly historical:**
+         `next_session_manifests` and their export artifacts; `data_provider_runs`; `import_checkpoints`;
+         the certified-claims ledger (`runs/goal-session-mcp-loop/state/certified-claims.jsonl`), the
+         staging ledger, pre-registrations, and graveyard/rejected-hypothesis history; the recovery and
+         audit artifacts including all iter-5 and iter-8 evidence; existing goal/session audit history.
+       - **User state — never deleted:** `watchlist`, plus any other user-authored rows inspection finds.
+       - **Rebuildable incident-derived state — cleared and regenerated for the 11 dates only:**
+         `scanner_runs`, `scanner_results`, `sector_scores`, `theme_scores`, and the associated
+         canonical derived forward-return state as the real dependency graph requires.
+    3. **Regenerate through the canonical engines only.** Rebuild the 11 dates through the same
+       production computation paths normal snapshots use — `scanner.run_scan` (`scanner.py:226`) and
+       the canonical `persist_run_payload` (`scanner.py:85`) — plus the canonical forward-return
+       helpers. Introduce **no** recovery-specific scoring, regime, sector, theme, setup, pattern or
+       return formula, and no second computation implementation. Rebuilt runs then carry the current
+       engine identity and current additive schema naturally, because the normal production path
+       stamps them. Do **not** hand-patch current-format columns onto legacy rows when deleting and
+       canonically recreating makes that unnecessary. Do not apply current cadence to choose a
+       different historical date universe — regenerate exactly the 11 incident dates.
+    4. **Mint NO new historical manifests (critical).** The ingest-finalize tail calls
+       `compass.get_or_create_manifest(session, run_for_date, cfg, producer="ingest_finalize")` for
+       **every** date in `prog.new_snapshot_dates` (`data_manager.py:4526-4538`). During an ordinary
+       backfill that legitimately creates a retrospective manifest — here it must not. **7 of the 11
+       incident dates currently have no manifest at all** (2026-05-13, 07-10, 07-13, 07-24, 07-27,
+       08-03, and 05-12), so an unguarded rebuild would manufacture 7 immutable "historical" decision
+       artifacts that never existed at their supposed historical time. Binding rule:
+       > **Incident-rebuild snapshot creation must not mint a `NextSessionManifest` for an as-of that
+       > did not already have one before the maintenance operation.**
+       For the 4 dates that DO have manifests (2026-08-05, 08-10, 08-11, 08-12): do not regenerate
+       them, and do not change `version`, `source_run_id`, `available_at_utc`, `content_hash`,
+       `manifest_hash`, or `prospective_eligible`. The existing read-time **basis disclosure** is the
+       sanctioned mechanism for surfacing that a stored source run was rebuilt or is unavailable
+       relative to the manifest's recorded source-run timestamp — note 2026-08-05 already carries 2
+       manifests with **zero** surviving runs, so it exercises exactly that path. A maintenance rebuild
+       must never create an apparently historical prior that did not actually exist at that time.
+       **Add a named test for this.**
+    5. **Repair the full forward-return damage, not just the rebuilt runs.** Rebuilding 11 runs is not
+       sufficient. The removal path's defensive consistency sweep
+       (`data_manager.py:2185-2192`) deletes **any** `ForwardReturn` whose `measured_date` falls on a
+       removed bar date — *including rows whose originating `ScannerRun` was never removed*. So holes
+       exist on retained runs. After J-10 has restored the raw bars and the 11 snapshots are
+       regenerated, run the existing **create-once** canonical forward-return machinery
+       (`forward_testing.backfill_forward_returns` / `backfill_run_forward_returns`, whose
+       `_insert_run_forward_returns` is create-once) over the retained + rebuilt snapshot set to fill
+       every derivable missing row. Do **not** recompute or overwrite surviving rows, and do **not**
+       introduce a second return formula. The post-rebuild audit must distinguish three populations:
+       (a) forward returns belonging to the 11 rebuilt runs; (b) holes on otherwise-retained runs
+       caused by the original 2026-08-11/12 bar deletion; (c) genuinely not-yet-mature horizons, which
+       **must remain absent/NA**. Never fabricate a forward return to reach row-count parity.
+    6. **Invalidate caches explicitly — the same-stamp collision is real, not hypothetical.**
+       `research._dataset_version()` (`research.py:2517`) returns `f"r{max_run_id}-f{fr_count}"` — the
+       max `scanner_runs.id` plus the `forward_returns` row count. A delete-and-recreate that restores
+       the same row counts, and reuses SQLite rowids (no `AUTOINCREMENT`), can therefore produce a
+       **byte-identical stamp**, and every dependent cache would keep serving its stale pre-reset
+       payload while appearing current. `_membership_dataset_version` (`research.py:2535`) is narrower
+       — the snapshot/`asof_date` set, bars manifest, history threshold — and collides just as easily
+       once the same date set is restored. Before implementation, classify **every** cache that depends
+       directly or transitively on `scanner_runs`, `scanner_results`, `sector_scores`, `theme_scores`
+       or `forward_returns`, deriving the set from the current models rather than copying this list.
+       Verified today, all seven key on a dataset-version stamp: `event_study_cache`
+       (`subject, view, asof_key, dataset_version`), `market_phase_cache` (`asof_key, dataset_version`),
+       `forward_aggregate_cache` (`horizon, asof_key, dataset_version`), `index_series_cache`
+       (`range_key, full, dataset_version`), `availability_cache` (`dataset_version`),
+       `membership_timeline_cache` (`dataset_version`, narrow stamp), `coverage_snapshot`
+       (`asof_key, dataset_version`). For each, document one of: (1) its key is *guaranteed* to change
+       and cleanly invalidates; (2) explicitly delete the affected rows; or (3) explicitly regenerate
+       through the canonical producer. **Prefer deterministic explicit invalidation** wherever
+       delete/recreate could reproduce the same key. No stale cache may survive while appearing
+       current; do not delete a cache unrelated to the changed dependency graph.
+    7. **Preserve the evidence history and do not reinterpret it.** The canonical certified-claims
+       ledger currently holds **7 entries, all `FAIL`** (verified 2026-08-21; the staging ledger
+       likewise holds 7, all `FAIL`). Preserve both exactly. Do **not** reset trial count, Bonferroni
+       history, alpha-spend history, or rejected claims, and do **not** re-run old claims as part of
+       this maintenance. Record the semantic distinction: *old referee entries are historical verdict
+       records produced from the dataset that existed at their registration time; a later maintenance
+       regeneration must never be described as the dataset those historical verdicts originally
+       evaluated.* There is currently no PASS claim to invalidate — **that is not permission to rewrite
+       the history.** Two concrete write/reinterpret paths must stay shut for the whole of J-11:
+       `app/mcp/tools.py`'s `verify_edge` **appends** to a ledger (`ledger.append_entry`, `tools.py:660`)
+       and would consume a trial and spend alpha; and `app/engine/forward_walk.py` **re-scores** existing
+       claims — running it against the regenerated dataset is exactly the reinterpretation this rule
+       forbids. Neither may run as part of the maintenance. (`app/engine/evidence.py` is read-only —
+       `build_evidence_payload` serves the ledger and recomputes nothing — so the read side is safe.) (Note for implementers: `ledger.py`'s `rejection_offsets` docstring still says the
+       live ledger is `[1, 2, 4] PASS` — that comment is **stale**; the file itself is 7×FAIL. Trust the
+       file.) **If implementation discovers a current PASS/proven claim in any canonical source not
+       identified here, STOP and surface the conflict** rather than silently carrying a Proven label
+       across a materially changed research dataset. This journey is a repair, never a new
+       certification or research experiment.
+    8. **Do not bootstrap a fresh database from the committed seed.** A fresh DB is not equivalent to
+       the current canonical raw dataset: the seed window ends **2026-07-01**, while the live database
+       holds post-seed acquired history (all of it `provider='yahoo'` — 34 runs from 2026-07-17 on;
+       the single `stooq` run, id 541, failed with 0 symbols). Deleting `trendora.db` and re-seeding
+       would discard valid canonical input. Use the **current repaired `daily_prices` layer** as the
+       input to the bounded regeneration. A separate dataset-epoch migration may be designed later if
+       ever wanted; it is not required to resolve this incident.
+    9. **Isolate the maintenance run from normal app boot side effects.** Boot warmup itself writes —
+       `warmup.ensure_latest_snapshot` calls `run_scan`, and `_warm_membership_timeline` /
+       `_warm_coverage_snapshot` populate caches — which is exactly how 2026-05-12 got recreated. The
+       destructive clear and regeneration must therefore run with: **one controlled writer**; no boot
+       warmup racing the mutation; no browser QA; no replay lane; no second backend or frontend; no
+       network fetch anywhere in J-11; and no unrelated producer writing while the
+       deletion/regeneration is being reasoned about. Prefer a bounded maintenance command or module
+       calling the existing canonical engine functions over using the UI merely to trigger a rebuild.
+       Add no second computation implementation.
+    10. **Depth gate — fail closed before any destructive write.** The `Depth: full → lean` demotion is
+       unresolved (iters 2, 6, 8). Before any J-11 destructive write executes: **if the goal or spec
+       requests `Depth: full` and the actually dispatched depth is not full, stop before the mutation.**
+       A lean fallback must not launch the parallel replay, start browser QA, start another
+       backend/frontend, execute the destructive reset, or be treated as equivalent to full. If fixing
+       this needs an `incredible_auto_dev` framework change outside this repository, **report that
+       dependency and keep the engine paused rather than bypassing it.**
+  - Sequencing (explicit): **A** finish J-10's canonical input repair (567 remaining under the fixed
+    per-symbol gate → verify 2026-08-11/12 coverage → close the temporary fetch authorization) →
+    **B** freeze a read-only pre-reset inventory (the exact 11-date target set; row counts by relevant
+    table and date; `daily_prices` coverage/fingerprint; manifest count and hashes; manifest export
+    fingerprints where practical; `data_provider_runs` audit state; the certified-ledger file hash;
+    user-state counts; current engine and config identity — an audit checkpoint, **not** a second
+    historical database) → **C** bounded derived-state clear (allowlisted tables, 11 dates, no price /
+    manifest / audit / user-state deletion) → **D** canonical regeneration of exactly those 11 dates →
+    **E** global create-once forward-return hole repair → **F** dependency-aware cache invalidation and
+    re-warm → **G** verification. Only after G passes is the incident repaired.
+  - Acceptance:
+    - Every item below is a required check, proven by named tests **plus** live read-only
+      verification — not by narrative assertion in a handoff.
+    - **Raw inputs:** `daily_prices` unchanged by J-11 (count and fingerprint identical either side of
+      the clear); no network fetch occurred during J-11; the price frontier is unchanged by J-11;
+      J-10's recovered rows remain intact.
+    - **Snapshot scope:** exactly the 11 authorized incident dates were cleared and recreated; **no
+      `ScannerRun` outside that set was deleted or rewritten**; rebuilt runs went through the current
+      canonical engine path; all required child rows reconcile with their rebuilt parent runs.
+    - **Forward returns:** every derivable hole caused by the incident is refilled — including holes on
+      **retained** runs from the `measured_date` sweep; surviving rows were not overwritten; genuinely
+      immature horizons remain honestly absent.
+    - **Manifests:** manifest row count unchanged by J-11 (24 at the time of writing); every pre-J-11
+      manifest byte/hash identical; **no new historical manifest appears merely because a snapshot was
+      rebuilt**; no `prospective_eligible`, version, or availability-timestamp change; basis disclosure
+      correctly identifies a rebuilt or unavailable source-run basis where relevant.
+    - **Audit / evidence / user state:** `data_provider_runs` historical rows preserved; certified and
+      staging ledgers preserved; trial/alpha history preserved; pre-registrations and graveyard
+      preserved; watchlist and user state preserved.
+    - **Caches:** no cache claims freshness against a stale pre-reset payload; affected caches either
+      provably invalidate or are re-warmed through their canonical producer; **the same-count/same-ID
+      stamp collision is explicitly tested** (a test that reproduces an identical `r{max_id}-f{count}`
+      stamp across a clear-and-recreate and proves the cache still refreshes).
+    - **Operational isolation:** one writer only; no boot warmup inside the destructive window; no
+      browser or replay lane; no second backend; no unexplained DB mutation — every write during J-11
+      and its verification is reconciled and classified per J-10 step 5a.
+    - **Verification must not itself mint a manifest (trap).** `compass.get_or_create_manifest`
+      create-once-mints for any **historical** (non-frontier) as-of *regardless of caller*
+      (`compass.py:1050-1053`), so a `GET /api/compass?as_of=<incident date>` check would manufacture
+      the very artifact this journey forbids and then "prove" immutability against it. For the 7
+      incident dates with **no** pre-existing manifest, verify reconstructed scanner/serving state
+      through genuinely read-only routes or direct DB assertions. For a date that already has one, it
+      is acceptable to confirm the existing artifact still serves unchanged **provided the test proves
+      no new manifest or version was created**.
+    - **Honest status & anti-goals:** this journey deliberately does not preserve the accidental
+      mixture of incident states — original surviving rows, missing rows, warmup-recreated rows, and
+      partial J-10 reconstructions. Inside the 11-date boundary those derived rows are disposable
+      deterministic outputs of preserved canonical inputs, and the clean current-engine regeneration
+      becomes the one serving derived state for those dates. The immutable historical evidence layer
+      remains separate and untouched. Non-goals, explicitly: no full-history rebuild of every
+      `ScannerRun`; no change to `scanner.snapshot_cadence`; no change to the snapshot universe outside
+      the incident set; no delete/recreate of the whole DB; no deletion of canonical raw prices or
+      manifests; no regeneration of old manifests; no evidence-ledger reset; no re-certification; no
+      change to trading/research thresholds; no change to the Yahoo/raw-close recovery methodology; no
+      widening of J-10's dates; no new data providers.
+    - **Walkthrough:** waived — maintenance repair of the derived layer with no UI surface of its own;
+      the demo requirement is replaced by the pre/post inventory, the mutation reconciliation, the
+      cache-invalidation proof, and the manifest-immutability evidence.
+
 <!-- Continuous-improvement auto-journeys: the goal-proposer appends NEW Must-have journeys ONLY
      between the two markers below (see the goal-self-extension skill). The human-authored journeys
      above and the Anti-goals below are never machine-edited. An empty block = nothing auto-proposed yet. -->
