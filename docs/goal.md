@@ -756,8 +756,35 @@ manifest artifact (it must be self-describing and self-caveating).
        2026-08-12 is restored; (b) no other historical date was modified — compare against the
        recorded pre-recovery state; (c) surviving rows were not overwritten unnecessarily;
        (d) the dataset frontier did **not** advance past 2026-08-12 as a result of the repair;
-       (e) the project's data/DB-integrity checks pass; (f) the original destructive condition is
-       gone — `GET /api/compass?as_of=2026-08-12` serves again and J-01/J-02/J-03 replay clean.
+       (e) the project's data/DB-integrity checks pass; (f) the RAW-layer destructive condition is
+       gone — canonical price coverage exists for both dates.
+       **Scope correction (owner, 2026-08-21): the final derived-state cleanliness claim does NOT
+       belong to J-10.** `GET /api/compass?as_of=2026-08-12` serving cleanly and J-01/J-02/J-03
+       replaying clean are now **J-11 Stage G** criteria, because the derived state those checks read
+       is exactly what J-11 exists to regenerate. J-10 verifies raw-layer facts and safe DB state only,
+       and may report: rows restored; canonical price coverage restored; no unauthorized overwrite or
+       date expansion; and that temporary recovery-era `ScannerRun`s remain pending J-11. J-10 must
+       **not** claim the derived state is clean, and must not require create-once APIs to refresh runs
+       they cannot refresh (see step 5b).
+    5b. **Completing the remaining raw rows does NOT refresh the existing 2026-08-11/12 ScannerRuns
+       (owner, 2026-08-21 — verified against the implementation).** J-10's rebuild step is a
+       **create-once no-op** when a snapshot already exists: `run_bounded_recovery_backfill`'s own
+       docstring states *"A true no-op (create-once) if a snapshot already exists for both dates"*
+       (`j10_recovery.py:756-761`), and it routes through `scanner.persist_run_payload`, which opens
+       with `existing = get_run_for_date(...); if existing is not None: return existing  # immutable:
+       never re-create or overwrite an existing run` (`scanner.py:95-97`). Iteration 8 already created
+       runs for both dates while only **20 of 587** symbols were restored, so:
+       > Completing the remaining 567 raw-price rows does not automatically refresh the already-existing
+       > 2026-08-11 / 2026-08-12 `ScannerRun`s. They remain derived from the partial raw basis until
+       > J-11 deliberately clears and regenerates them.
+       They are therefore **not** final reconstructed snapshots, and J-10 must not describe them as
+       such. **Status of those rows, recorded explicitly:**
+       > Any `ScannerRun` for 2026-08-11 or 2026-08-12 created before J-10's final raw-input recovery
+       > completes is **known temporary / recovery-era derived state**. It is non-authoritative for the
+       > repaired dataset until J-11 clears and recreates the full incident set.
+       Do **not** delete those runs inside J-10 merely to satisfy J-10 acceptance — their deliberate
+       removal belongs to J-11 Stage C. Do **not** mint new manifests to reflect this status, and do
+       **not** mutate existing ones.
        If byte-for-byte restoration cannot be demonstrated because the vendor archive is not itself
        immutable, **state that limitation plainly** and verify the strongest practical invariants
        instead (per-symbol row presence, OHLCV shape, expected session count, no gap against the
@@ -792,9 +819,23 @@ manifest artifact (it must be self-describing and self-caveating).
     - **Consistency (single source):** restored rows enter through the existing ingest/provider
       path — no second write path, no hand-edited rows, no new provenance framework; the missing
       set is computed once and is the sole input to the fetch.
+    - **Responsibility boundary (owner, 2026-08-21) — J-10 and J-11 must not be circular.**
+      > **J-10 repairs canonical inputs. J-11 repairs the derived state built from those inputs.**
+      J-10's terminal state is **raw-layer only**: every symbol in the frozen 587 population is either
+      restored under the fixed per-symbol gate or explicitly classified fail-closed/unrestorable under
+      the owner-authorized completion policy; `daily_prices` for 2026-08-11/12 carries the strongest
+      provable intended coverage; surviving price rows were not overwritten; no third date was fetched
+      or modified; raw OHLCV/provider-convention invariants pass; provider and recovery provenance are
+      recorded; and AG-9's live-fetch exception is exhausted when those raw criteria pass.
+      **J-10 must NOT require J-11's clean derived-state regeneration to be complete before J-10 can
+      close** — requiring it would deadlock, since J-11 is itself gated behind J-10's terminal state.
+      J-11 owns: clearing the 11-date incident derived state; recreating runs and child rows under one
+      engine generation; forward-return hole repair; dependency-aware cache invalidation/rewarm;
+      manifest/run schema reconciliation; and final incident-wide serving consistency.
     - **Correctness:** the two dates are restored, no third date is touched, no surviving row is
-      overwritten, the frontier is unchanged at 2026-08-12, and J-01/J-02/J-03 pass a live replay
-      again. If the restoration is cross-vendor (step 2a), the path-agreement test passed on
+      overwritten, and the frontier is unchanged at 2026-08-12. (Final repaired-state J-01/J-02/J-03
+      replay is a **J-11 Stage G** criterion, not a J-10 one — see step 5a/5b.) If the restoration is
+      cross-vendor (step 2a), the path-agreement test passed on
       precommitted criteria, every restored symbol had a stable bridge that was actually applied to
       all four price fields (no raw fallback value inserted unchanged), any symbol without one is
       listed as not-restored, and every restored row carries its true `yahoo` provenance.
@@ -1043,9 +1084,31 @@ manifest artifact (it must be self-describing and self-caveating).
        **J-11 must not rely on SQLite foreign-key enforcement being disabled as part of its safety
        model.** The intended semantic contract, to be made true by schema/contract rather than by
        accident:
-       > `source_run_id` is **immutable historical provenance** identifying the run that originally
-       > produced the manifest. A manifest remains valid and immutable even if that `ScannerRun` is
-       > later removed and canonically rebuilt under a different row id.
+       > `source_run_id` is the **immutable historical row-id VALUE recorded when the manifest was
+       > created**. It is retained as provenance, but it is **not a durable live foreign-key identity**,
+       > and it must never be used alone to prove that a current `ScannerRun` is the original source
+       > run after a delete/rebuild. A manifest remains valid and immutable even if that `ScannerRun`
+       > is later removed and canonically rebuilt — under a different row id **or the same one**.
+       **Why "or the same one" is not paranoia (verified 2026-08-21):** `scanner_runs.id` is a plain
+       SQLite **rowid alias** — `id INTEGER` PRIMARY KEY with **no `AUTOINCREMENT`**, and the database
+       has no `sqlite_sequence` table at all — so SQLite allocates `max(rowid)+1` and **freely reuses
+       the ids of deleted rows**. This is live, not hypothetical: the three highest ids in the whole
+       table (**3148, 3149, 3150**) are all incident-date runs, so J-11 Stage C's deletion drops the
+       max to **3147** and the regeneration re-issues **3148–3158** — very likely binding those exact
+       ids to *different* `as_of` dates than they hold today, since recreation order need not match
+       original creation order. The reassuring half, recorded honestly: the currently orphaned
+       manifests point at ids **3048, 3049, 3081, 3112**, all below 3147, so **none** falls inside the
+       re-issue range and no existing manifest would be silently re-bound by this particular rebuild.
+       That is an accident of today's id distribution, **not a guarantee** — a retry, a different
+       recreation order, or any future incident could collide. **Never reason about source identity by
+       id equality.**
+       **Effective historical source identity is compound**, made of the already-immutable fields:
+       `as_of` + recorded `source_run_id` + recorded `source_run_created_at` + frozen engine identity.
+       Do not invent a new manifest field for this unless implementation proves one is required. The
+       operative rule is simply: **row-id equality alone is insufficient after delete/recreate.**
+       `basis_disclosure` must continue to resolve the CURRENT run by `as_of` and compare its
+       `created_at` against the manifest's frozen `source_run_created_at` — that design is strictly
+       stronger than id equality and remains authoritative.
        Therefore: do **not** mutate any existing manifest to point at a rebuilt run; do **not** "fix
        up" `source_run_id` after a rebuild; and do **not** change `source_run_id`,
        `source_run_created_at` (carried inside `generation_json`), the hashes, `version`,
@@ -1067,6 +1130,13 @@ manifest artifact (it must be self-describing and self-caveating).
           would not render J-11's intended deletion logically invalid;
        6. `basis_disclosure` still determines rebuilt/unavailable status from the current run for the
           same `as_of`, never by mutating historical manifest linkage.
+       **Intended end state, stated precisely:** `source_run_id` remains **stored historical
+       provenance**; it is **not** required to dereference to a live `ScannerRun` forever; manifest
+       survival must not depend on foreign-key enforcement being off; current-run reconciliation is by
+       `as_of` + frozen source timing/provenance, **never** by FK rebinding; a rebuilt run may
+       legitimately carry a different id; and **even when it reuses the same numeric id it is still a
+       rebuilt run** whenever the frozen timestamp/provenance differs. Never mutate a manifest to
+       "repair" an orphaned foreign key.
        **If this contradiction cannot be resolved safely inside the current repository without a risky
        migration, STOP before J-11 and surface it as an owner decision.**
     12. **Stage B2 — freeze ONE engine identity for the whole attempt (owner, 2026-08-21).** J-11's
@@ -1125,6 +1195,20 @@ manifest artifact (it must be self-describing and self-caveating).
     **On any failure from C onward:** mark the attempt **incomplete**, preserve its audit evidence,
     keep the normal app paused, and have the next retry restart at **B/B1/B2** and redo **C→G for all
     11 dates**. A partial C→G execution is never represented as accepted J-11 progress.
+    **Stage G now owns the final incident-cleanliness claim (owner, 2026-08-21).** Moved here from
+    J-10, because the derived state these checks read is precisely what J-11 regenerates. Only after
+    Stage G may the system assert the repaired-state equivalents of: rebuilt `ScannerRun`s serve the
+    **current complete raw basis**; J-01/J-02/J-03 replay clean; Market Compass historical serving is
+    internally consistent; and **no stale derived state remains for the 11-date incident set** — in
+    particular the recovery-era 2026-08-11/12 runs have been replaced, not merely re-read. The
+    manifest-minting verification trap still applies in full: `GET /api/compass` can mint a missing
+    historical manifest, so use only the safe verification paths defined in the Acceptance section.
+    **The full recovery sequence, unambiguously:** J-10 restores/classifies the whole authorized
+    raw-price population → verifies canonical raw input → closes the live-fetch exception ⇒ **RAW LAYER
+    RECOVERED, derived incident state still quarantined** → J-11 B/B1/B2 (inventory + schema
+    reconciliation + frozen engine identity) → J-11 C→G (clear the exact 11-date derived state, rebuild
+    all 11, repair forward returns, refresh affected caches, full verification) ⇒ **INCIDENT FULLY
+    REPAIRED** → normal Market Compass lanes resume.
   - Acceptance:
     - Every item below is a required check, proven by named tests **plus** live read-only
       verification — not by narrative assertion in a handoff.
@@ -1174,6 +1258,25 @@ manifest artifact (it must be self-describing and self-caveating).
       8. a retry re-clears and rebuilds the **full 11-date set** rather than resuming from one date;
       9. immutable manifests and audit evidence survive a retry byte-unchanged;
       10. an unrelated cache is **not** invalidated solely because it happens to carry a version field.
+    - **Named traps for the J-10/J-11 sequencing boundary (owner, 2026-08-21)** — each a required test:
+      1. completing the remaining J-10 raw rows does **not** falsely imply the existing 2026-08-11/12
+         `ScannerRun`s were recomputed (the create-once backfill is a proven no-op for them);
+      2. J-10 can reach its raw-recovery terminal state **without** J-11 having run — no circularity;
+      3. J-11 cannot start before J-10 raw recovery reaches terminal state;
+      4. normal product/research lanes remain blocked **after** J-10 and **before** J-11 Stage G;
+      5. the final repaired-state J-01/J-02/J-03 replay belongs to J-11 Stage G, not J-10 acceptance;
+      6. the stale recovery-era 2026-08-11/12 runs are explicitly recognized as temporary until J-11
+         replaces them — never reported as final reconstructed snapshots;
+      7. `source_run_id` equality alone **never** proves original-source identity after a rebuild;
+      8. **exact numeric id reuse still yields `basis_disclosure = rebuilt`** when the frozen source
+         timestamp differs. Construct the case directly: mint a manifest from run id `N` created at
+         `T1`; delete and rebuild that run; arrange for the replacement to reuse numeric id `N` with
+         `created_at = T2`; then assert the manifest's `source_run_id` is still `N`, its bytes and
+         hashes are unchanged, the replacement is **not** treated as the original source merely because
+         its id matches, and `basis_disclosure` reports `rebuilt` because
+         `source_run_created_at != current_run.created_at`. Id reuse is reachable here — `scanner_runs.id`
+         is a rowid alias with no `AUTOINCREMENT` and no `sqlite_sequence` — so this must be proven, not
+         assumed away; if a future backend makes reuse genuinely impossible, **prove that instead**.
     - **Honest status & anti-goals:** this journey deliberately does not preserve the accidental
       mixture of incident states — original surviving rows, missing rows, warmup-recreated rows, and
       partial J-10 reconstructions. Inside the 11-date boundary those derived rows are disposable
@@ -1276,8 +1379,12 @@ manifest artifact (it must be self-describing and self-caveating).
   way; **`prospective_eligible` is never upgraded merely because historical data was later repaired**;
   `available_at_utc`, manifest versions, `content_hash`/`manifest_hash`, and prior eligibility
   classifications remain immutable (AG-12 governs the rows and files themselves). Any manifest or artifact
-  produced while the database was known to be damaged — everything dated from the iter-5 drill until J-10's
-  post-recovery verification passes — **remains marked unusable as prospective/out-of-sample evidence**;
+  produced while the database was known to be damaged — everything dated from the iter-5 drill until
+  **J-11 Stage G** passes (owner, 2026-08-21: extended from "J-10's post-recovery verification", because
+  after J-10 the raw layer is repaired but the derived state is still knowingly pending J-11 normalization)
+  — **remains marked unusable as prospective/out-of-sample evidence**; nothing is retroactively marked
+  prospective merely because raw bars were repaired in J-10 or derived snapshots were regenerated in J-11 —
+  historical causality is unchanged by either;
   only a separately regenerated artifact, minted after verified recovery under the existing create-once and
   version rules, may carry eligibility, and it remains subject to the same version and
   `prospective_eligible` contract as any other artifact. The incident record itself is evidence: the iter-5
@@ -1301,8 +1408,19 @@ manifest artifact (it must be self-describing and self-caveating).
 - **2026-08-20 owner insert #2 (incident response): J-10 (bounded recovery) jumps the queue ahead of
   everything, including the J-05/J-06 make-up.** The iter-5 drill left the canonical database damaged.
   **No developer, reviewer, QA, browser-QA, evaluator, coherence, research or proposer lane may run
-  against the knowingly damaged database before J-10's post-recovery verification passes** — the only
-  work that proceeds is the recovery itself and its verification. Artifacts already produced from the
+  against the knowingly damaged database before J-11 Stage G passes** — the only work that proceeds is
+  the recovery itself and its verification.
+  **Extended 2026-08-21 (was "before J-10's post-recovery verification passes" — insufficient).** A
+  successful J-10 raw repair must NOT reopen the normal pipeline: after J-10 the database still
+  intentionally contains derived state known to need J-11 normalization, including the recovery-era
+  2026-08-11/12 `ScannerRun`s that J-10's create-once backfill cannot refresh (J-10 step 5b). The gate
+  therefore runs:
+  > J-10 raw-input recovery complete → **J-11 incident-bounded clean regeneration** → **J-11 Stage G
+  > passes** → normal Market Compass work resumes.
+  Between those two points the honest description of the database is: **raw-input recovered,
+  derived-state repair pending; not yet clean for normal research or evaluation lanes.** Only work
+  needed to execute and verify J-10/J-11 — plus explicit prerequisites such as the depth/safety
+  control — may run in that window. Artifacts already produced from the
   damaged state (iter-5's dev handoff, its `status.json`, and any reviewer/QA output) are preserved as
   incident evidence and are never treated as clean research evidence (AG-17). If the recovery cannot be
   completed inside AG-9's authorized scope, stop and surface it for owner review rather than resuming
