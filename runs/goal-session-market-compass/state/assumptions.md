@@ -591,3 +591,31 @@ authorised to continue, over damage that is already undone. Instead the unfixed 
 **Reversible:** yes — if the lane recurs a third time, or if the owner reads the AG-17 breach as
 halt-worthy on its own, this can be re-raised as REGRESSION with `--acknowledge-regression`; nothing
 here erases or softens the recorded ledger entry, which stays `critical`.
+
+## iter-9 — goal-decomposer (single-iteration completion vs. an honestly-named residual)
+
+**Ambiguity:** `docs/goal.md`'s J-10 Completion rule forbids inventing a partial-completion threshold
+and requires every recovery-population symbol to end up either restored or explicitly classified
+fail-closed/unrestorable, but it does not state whether that terminal state must be reached inside
+this single iteration or may legitimately span more than one precommitted batch — iteration 8's own
+dev handoff explicitly offered "run one or more additional precommitted comparison batches ... in a
+future iteration" as one of three honest owner-review paths, and the dispatching coordinator's
+constraint 2 ("every symbol must be restored ... or explicitly classified") does not itself say
+"within one iteration."
+**We chose:** Set this iteration's target as full population coverage — every remaining symbol
+attempted this iteration, per the coordinator's explicit direction and goal.md's Completion rule — while
+phrasing DEFINITION OF DONE/TC-1 and TC-13 to honestly allow a named, by-symbol residual (with the
+blocking reason recorded) if a genuine external blocker (e.g., a Yahoo provider outage or rate limit on
+a specific symbol) prevents evaluating it at all, rather than hard-requiring literal 100% success
+regardless of cause as the pass/fail gate for this exact iteration. AG-9's exception-exhaustion
+statement (step 6) is tied to actually reaching the terminal state, not to merely attempting it, so a
+genuine residual keeps the exception honestly open rather than forcing either a false completion claim
+or a spec that is impossible to satisfy if the external provider itself is flaky for a handful of names.
+This is explicitly NOT a repeat of iteration 8's superseded "expect a partial outcome, and that is
+acceptable" framing (which pre-accepted an arbitrary stopping point after only 20 of 587 were even
+attempted) — here the target is attempting and classifying all 567, with a residual permitted only for a
+named, external, non-methodology reason.
+**Reversible:** yes — if the evaluator judges this reading too lenient, a future iteration (or a
+revision before dispatch) can tighten DEFINITION OF DONE to require 100% attempted-and-classified with
+zero exceptions; nothing in this iteration's design forecloses that, and any named residual remains
+individually processable by the same idempotent driver on a later pass.
