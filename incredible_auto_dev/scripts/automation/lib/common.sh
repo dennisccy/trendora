@@ -1202,6 +1202,46 @@ goal_maintenance_isolation_required() {
     "$spec_path" 2>/dev/null
 }
 
+# apply_maintenance_isolation_from_spec <spec_path>
+# Materialize the SPEC-level declaration into runtime state so child processes
+# inherit it. Without this the contract is only half-wired: most chokepoints
+# (_boot_shared_services, ensure_services_running, detect_frontend_in_plan, the
+# replay lane, the demo runner) are called with NO spec path and can only consult
+# the environment, while the marker itself lives in a file they never read. A
+# spec could therefore declare isolation and still have services booted beneath
+# it. Call this once per phase/iteration, immediately after the spec is resolved
+# and BEFORE any child dispatch or service logic.
+#
+# Uses the single predicate — no second parser. Always recomputes and overwrites:
+# an isolated iteration must not leak CHAIN_MAINTENANCE_ISOLATION into the next,
+# ordinary one, so the else-branch explicitly UNSETS rather than leaving stale
+# truth behind. Idempotent; safe to call from both run-goal.sh and a standalone
+# run-phase.sh entry.
+apply_maintenance_isolation_from_spec() {
+  local spec_path="${1:-}"
+  # Clear only what WE materialized for a previous iteration. Without this the
+  # predicate — which checks the environment first — would re-affirm its own
+  # stale value and an isolated iteration would silently isolate every iteration
+  # after it. An operator's session-wide CHAIN_MAINTENANCE_ISOLATION is tagged
+  # `env` instead and is never cleared here.
+  if [[ "${CHAIN_MAINTENANCE_ISOLATION_SOURCE:-}" == "spec" ]]; then
+    unset CHAIN_MAINTENANCE_ISOLATION CHAIN_MAINTENANCE_ISOLATION_SOURCE 2>/dev/null || true
+  fi
+  if goal_maintenance_isolation_required; then   # no spec arg ⇒ environment only
+    export CHAIN_MAINTENANCE_ISOLATION_SOURCE=env
+    echo "[maintenance-isolation] ACTIVE (session-level CHAIN_MAINTENANCE_ISOLATION) — application-service and browser execution forbidden; full reviewer/QA/audit depth retained." >&2
+    return 0
+  fi
+  if goal_maintenance_isolation_required "$spec_path"; then
+    export CHAIN_MAINTENANCE_ISOLATION=true
+    export CHAIN_MAINTENANCE_ISOLATION_SOURCE=spec
+    echo "[maintenance-isolation] ACTIVE for this phase/iteration (declared by $spec_path) — application-service and browser execution forbidden; full reviewer/QA/audit depth retained." >&2
+    return 0
+  fi
+  unset CHAIN_MAINTENANCE_ISOLATION CHAIN_MAINTENANCE_ISOLATION_SOURCE 2>/dev/null || true
+  return 1
+}
+
 # maintenance_isolation_refuse <operation> [detail]
 # FAIL CLOSED. Called from every forbidden path so a reached-anyway attempt is
 # loud and recorded instead of silently proceeding. Writes an explicit marker

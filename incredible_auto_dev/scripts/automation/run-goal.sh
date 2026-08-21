@@ -2644,7 +2644,18 @@ PYEOF
   # (the iter-8 CLOSURE-FAIL root cause). Exported unconditionally (empty = none)
   # so a prior iteration's value never leaks forward.
   export CHAIN_GOAL_TARGET_JOURNEYS="$TARGET_JOURNEYS"
-  record_telemetry_event "iter_dispatch" "$(jq -cn --arg d "$DEPTH" --arg tj "$TARGET_JOURNEYS" '{depth:$d, target_journeys:$tj}' 2>/dev/null || printf '{"depth":"%s"}' "$DEPTH")"
+  # Materialize this iteration's maintenance-isolation declaration into the
+  # environment BEFORE any child dispatch (run-phase.sh / goal-iter-lean.sh /
+  # evidence micro-path). Most chokepoints — _boot_shared_services,
+  # ensure_services_running, detect_frontend_in_plan, the replay lane, the demo
+  # runner — are called with no spec path and can only consult the environment,
+  # so without this a spec could declare isolation and still have services booted
+  # beneath it. Recomputed every iteration, so an isolated one never leaks into
+  # the next. Note the ordering: this must precede the CHAIN_GOAL_TARGET_JOURNEYS
+  # consumer too, since the target-journey frontend override is what isolation
+  # subordinates.
+  apply_maintenance_isolation_from_spec "$ITER_SPEC_PATH" || true
+  record_telemetry_event "iter_dispatch" "$(jq -cn --arg d "$DEPTH" --arg tj "$TARGET_JOURNEYS" --arg mi "${CHAIN_MAINTENANCE_ISOLATION:-false}" '{depth:$d, target_journeys:$tj, maintenance_isolation:$mi}' 2>/dev/null || printf '{"depth":"%s"}' "$DEPTH")"
 
   # 2c. Join the previous iteration's background showcase tail (if any) BEFORE
   # dispatching build work: its artifacts get committed here, so developer /

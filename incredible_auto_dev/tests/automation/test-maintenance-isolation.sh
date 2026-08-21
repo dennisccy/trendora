@@ -95,9 +95,14 @@ r="$(_svc true)"
   && assert "fail-closed: the refusal is RECORDED to an explicit marker, not silent" "pass" \
   || assert "fail-closed: the refusal is RECORDED to an explicit marker, not silent" "fail"
 
-# 13. ordinary iterations unchanged — the chokepoint still attempts a real boot
+# 13. ordinary iterations unchanged — the chokepoint still attempts a real boot.
+# Bounded: the sentinel fires the instant the start command is spawned, so we poll
+# briefly and kill rather than waiting out the real 45s x 2 health-retry ladder.
 rm -f "$WORK/SERVICE_STARTED"
-_svc "" >/dev/null 2>&1 || true
+( _svc "" >/dev/null 2>&1 ) & _ctl_pid=$!
+for _i in $(seq 1 40); do [[ -e "$WORK/SERVICE_STARTED" ]] && break; sleep 0.25; done
+kill -TERM "$_ctl_pid" 2>/dev/null || true; wait "$_ctl_pid" 2>/dev/null || true
+pkill -P "$_ctl_pid" 2>/dev/null || true
 [[ -e "$WORK/SERVICE_STARTED" ]] \
   && assert "ordinary: ensure_services_running still attempts the real service boot" "pass" \
   || assert "ordinary: ensure_services_running still attempts the real service boot" "fail"
@@ -164,6 +169,140 @@ fi
 [[ "$(grep -rc 'Maintenance\[ -\]isolation' "$A" 2>/dev/null | awk -F: '{s+=$2} END{print s}')" == "1" ]] \
   && assert "one parser only: the marker regex exists in exactly one place" "pass" \
   || assert "one parser only: the marker regex exists in exactly one place" "fail"
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PROPAGATION: the spec marker ALONE must activate isolation across the real
+# wrapper→child boundary, with NO manually-set environment variable.
+#
+# This is the case the earlier suite missed. Most chokepoints are called with no
+# spec path and can only read the environment, so a spec could declare isolation
+# and still have services booted beneath it.
+# ══════════════════════════════════════════════════════════════════════════════
+SPEC_ITER9="$WORK/iter9.md"
+cat > "$SPEC_ITER9" <<'SPEC'
+- **Depth:** full
+- **Depth enforcement:** required
+- **Frontend Present:** no
+- **Maintenance isolation:** required
+- **Target journeys:** J-10
+- **Required-still-passing journeys:** None
+SPEC
+
+# 1/2. materialization from the spec alone (no env pre-set)
+r="$( unset CHAIN_MAINTENANCE_ISOLATION CHAIN_MAINTENANCE_ISOLATION_SOURCE
+      apply_maintenance_isolation_from_spec "$SPEC_ITER9" >/dev/null 2>&1
+      printf '%s' "${CHAIN_MAINTENANCE_ISOLATION:-unset}" )"
+[[ "$r" == "true" ]] \
+  && assert "propagation: spec marker ALONE exports CHAIN_MAINTENANCE_ISOLATION=true" "pass" \
+  || assert "propagation: spec marker ALONE exports CHAIN_MAINTENANCE_ISOLATION=true (got '$r')" "fail"
+
+# 3. real child-process inheritance across a fork
+r="$( unset CHAIN_MAINTENANCE_ISOLATION CHAIN_MAINTENANCE_ISOLATION_SOURCE
+      apply_maintenance_isolation_from_spec "$SPEC_ITER9" >/dev/null 2>&1
+      bash -c 'printf "%s" "${CHAIN_MAINTENANCE_ISOLATION:-unset}"' )"
+[[ "$r" == "true" ]] \
+  && assert "propagation: a forked CHILD SHELL inherits isolation (real env inheritance)" "pass" \
+  || assert "propagation: a forked CHILD SHELL inherits isolation (got '$r')" "fail"
+
+# 4. no stale leakage into a later ordinary iteration
+r="$( unset CHAIN_MAINTENANCE_ISOLATION CHAIN_MAINTENANCE_ISOLATION_SOURCE
+      apply_maintenance_isolation_from_spec "$SPEC_ITER9" >/dev/null 2>&1
+      apply_maintenance_isolation_from_spec "$SPEC_PLAIN" >/dev/null 2>&1
+      printf '%s' "${CHAIN_MAINTENANCE_ISOLATION:-unset}" )"
+[[ "$r" == "unset" ]] \
+  && assert "no leakage: an isolated iteration does NOT leak into the next ordinary one" "pass" \
+  || assert "no leakage: an isolated iteration does NOT leak into the next ordinary one (got '$r')" "fail"
+
+# an operator's session-level declaration must NOT be wiped by an ordinary spec
+r="$( export CHAIN_MAINTENANCE_ISOLATION=true; unset CHAIN_MAINTENANCE_ISOLATION_SOURCE
+      apply_maintenance_isolation_from_spec "$SPEC_PLAIN" >/dev/null 2>&1
+      printf '%s' "${CHAIN_MAINTENANCE_ISOLATION:-unset}" )"
+[[ "$r" == "true" ]] \
+  && assert "no leakage: an operator's session-level isolation survives an ordinary spec" "pass" \
+  || assert "no leakage: an operator's session-level isolation survives an ordinary spec (got '$r')" "fail"
+
+# ── WRAPPER → CHILD END-TO-END DRY RUN (the most important new test) ──────────
+# spec → wrapper materializes → child inherits → chokepoints observe isolation.
+# Sentinels prove zero service side effects. No agent, no real service, no browser.
+E2E="$WORK/e2e"; mkdir -p "$E2E"
+printf '#!/bin/sh\ntouch "%s/BACKEND_STARTED"\n' "$E2E" > "$E2E/start-backend.sh"
+printf '#!/bin/sh\ntouch "%s/FRONTEND_STARTED"\n' "$E2E" > "$E2E/start-frontend.sh"
+chmod +x "$E2E/start-backend.sh" "$E2E/start-frontend.sh"
+cat > "$E2E/child.sh" <<'CHILD'
+#!/usr/bin/env bash
+# Stands in for run-phase.sh's children: consults the SAME predicate with no spec
+# path, exactly as _boot_shared_services / replay-lane / demo do.
+source "$ENGINE_ROOT/scripts/automation/lib/common.sh"
+if goal_maintenance_isolation_required; then echo "CHILD_ISOLATION=active"; else echo "CHILD_ISOLATION=inactive"; fi
+export QA_BACKEND_HEALTH_URL="http://127.0.0.1:9/health"
+export QA_BACKEND_START_CMD="$E2E_DIR/start-backend.sh"
+export QA_FRONTEND_URL="http://127.0.0.1:9"
+export QA_FRONTEND_START_CMD="$E2E_DIR/start-frontend.sh"
+export QA_FRONTEND_REQUIRED=yes
+ensure_services_running >/dev/null 2>&1 || true
+CHILD
+chmod +x "$E2E/child.sh"
+
+_e2e_out="$( unset CHAIN_MAINTENANCE_ISOLATION CHAIN_MAINTENANCE_ISOLATION_SOURCE
+             export ENGINE_ROOT E2E_DIR="$E2E" ITER_DIR="$E2E/iter"
+             apply_maintenance_isolation_from_spec "$SPEC_ITER9" >/dev/null 2>&1   # the wrapper step
+             bash "$E2E/child.sh" 2>/dev/null )"                                    # the child dispatch
+[[ "$_e2e_out" == *"CHILD_ISOLATION=active"* ]] \
+  && assert "E2E: spec-only isolation crosses the wrapper→child boundary and the child OBSERVES it" "pass" \
+  || assert "E2E: spec-only isolation crosses the wrapper→child boundary (got '$_e2e_out')" "fail"
+[[ ! -e "$E2E/BACKEND_STARTED" ]] \
+  && assert "E2E: backend start sentinel = 0 across the real boundary" "pass" \
+  || assert "E2E: backend start sentinel = 0 across the real boundary" "fail"
+[[ ! -e "$E2E/FRONTEND_STARTED" ]] \
+  && assert "E2E: frontend start sentinel = 0 across the real boundary" "pass" \
+  || assert "E2E: frontend start sentinel = 0 across the real boundary" "fail"
+
+# control: WITHOUT the marker the same child does boot — proving the sentinels work
+rm -f "$E2E/BACKEND_STARTED" "$E2E/FRONTEND_STARTED"
+( unset CHAIN_MAINTENANCE_ISOLATION CHAIN_MAINTENANCE_ISOLATION_SOURCE
+  export ENGINE_ROOT E2E_DIR="$E2E" ITER_DIR="$E2E/iter"
+  # `|| true`: the helper returns 1 for a NON-isolated spec, which under the
+  # inherited `set -e` would abort this control subshell before the child ran.
+  apply_maintenance_isolation_from_spec "$SPEC_PLAIN" >/dev/null 2>&1 || true
+  bash "$E2E/child.sh" >/dev/null 2>&1 ) & _ctl2=$!
+for _i in $(seq 1 40); do [[ -e "$E2E/BACKEND_STARTED" ]] && break; sleep 0.25; done
+kill -TERM "$_ctl2" 2>/dev/null || true; pkill -P "$_ctl2" 2>/dev/null || true
+wait "$_ctl2" 2>/dev/null || true
+[[ -e "$E2E/BACKEND_STARTED" ]] \
+  && assert "E2E control: without the marker the SAME child does start the backend (sentinels are real)" "pass" \
+  || assert "E2E control: without the marker the SAME child does start the backend" "fail"
+
+# ── wiring: both entry points materialize before dispatch ─────────────────────
+_rg_apply="$(grep -n 'apply_maintenance_isolation_from_spec "\$ITER_SPEC_PATH"' "$ENGINE_ROOT/scripts/automation/run-goal.sh" | head -1 | cut -d: -f1)"
+_rg_disp="$(grep -n 'Dispatching FULL pipeline via run-phase.sh' "$ENGINE_ROOT/scripts/automation/run-goal.sh" | head -1 | cut -d: -f1)"
+[[ -n "$_rg_apply" && -n "$_rg_disp" && "$_rg_apply" -lt "$_rg_disp" ]] \
+  && assert "wiring: run-goal materializes isolation BEFORE child dispatch" "pass" \
+  || assert "wiring: run-goal materializes isolation BEFORE child dispatch" "fail"
+_rp_apply="$(grep -n 'apply_maintenance_isolation_from_spec "\$SPEC"' "$RP" | head -1 | cut -d: -f1)"
+_rp_boot="$(grep -n '_boot_shared_services()' "$RP" | head -1 | cut -d: -f1)"
+[[ -n "$_rp_apply" && -n "$_rp_boot" && "$_rp_apply" -lt "$_rp_boot" ]] \
+  && assert "wiring: standalone run-phase materializes isolation before service logic" "pass" \
+  || assert "wiring: standalone run-phase materializes isolation before service logic" "fail"
+
+# ── qa-phase ordering: isolation resolved before ANY service setup ───────────
+_qa_iso="$(grep -n 'apply_maintenance_isolation_from_spec "\$SPEC"' "$QA" | head -1 | cut -d: -f1)"
+_qa_cmd="$(grep -n 'BACKEND_START_CMD="bash' "$QA" | head -1 | cut -d: -f1)"
+_qa_call="$(grep -n '^  ensure_services_running$' "$QA" | head -1 | cut -d: -f1)"
+[[ -n "$_qa_iso" && -n "$_qa_cmd" && "$_qa_iso" -lt "$_qa_cmd" ]] \
+  && assert "qa ordering: isolation resolved BEFORE any start command is resolved" "pass" \
+  || assert "qa ordering: isolation resolved BEFORE any start command is resolved" "fail"
+[[ -n "$_qa_iso" && -n "$_qa_call" && "$_qa_iso" -lt "$_qa_call" ]] \
+  && assert "qa ordering: isolation resolved BEFORE ensure_services_running" "pass" \
+  || assert "qa ordering: isolation resolved BEFORE ensure_services_running" "fail"
+grep -q 'Service startup bypassed' "$QA" \
+  && assert "qa: isolated path BYPASSES ensure_services_running (not call-and-refuse)" "pass" \
+  || assert "qa: isolated path BYPASSES ensure_services_running (not call-and-refuse)" "fail"
+awk "/MAINTENANCE_ISOLATION\" == \"yes\"/{f=1} f&&/unset CHAIN_CLAUDE_PRE_RETRY_HOOK/{print;exit}" "$QA" | grep -q unset \
+  && assert "qa: isolated path does NOT register the service retry hook" "pass" \
+  || assert "qa: isolated path does NOT register the service retry hook" "fail"
+grep -q 'prohibited by contract, not unavailable' "$QA" \
+  && assert "qa: reports services as prohibited-by-contract, not unavailable" "pass" \
+  || assert "qa: reports services as prohibited-by-contract, not unavailable" "fail"
 
 echo ""
 echo "  ${PASS} passed, ${FAIL} failed"

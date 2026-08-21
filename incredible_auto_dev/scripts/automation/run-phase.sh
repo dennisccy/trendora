@@ -92,6 +92,14 @@ if [[ -z "$SPEC" ]]; then
   exit 1
 fi
 
+# Materialize maintenance isolation from THIS phase's spec before frontend
+# detection, shared-service logic, or any QA/UI/browser routing. run-goal.sh
+# already applies it for goal-mode dispatch; doing it here as well makes the
+# phase contract correct when run-phase.sh is invoked directly, so the guarantee
+# never depends on which wrapper you entered through. Same single parser; safe to
+# apply twice.
+apply_maintenance_isolation_from_spec "$SPEC" || true
+
 REVIEW_REPORT="$REPO_ROOT/reports/reviews/${PHASE}-review.md"
 QA_REPORT="$REPO_ROOT/reports/qa/${PHASE}-qa.md"
 PLAN_FILE="$REPO_ROOT/runs/${PHASE}/plan.md"
