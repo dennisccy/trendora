@@ -111,10 +111,35 @@ if [[ "${CHAIN_SHARED_SERVICES:-false}" != "true" ]]; then
 fi
 
 # Build services context note for the agent prompt.
+if goal_maintenance_isolation_required "$SPEC"; then
+  # Static/no-service QA. Full skepticism is still required — this withholds
+  # application services, NOT scrutiny. The note must say the restriction is a
+  # contract decision so the report cannot read as an accidental gap, and must
+  # forbid fabricating the evidence those services would have produced.
+  SERVICES_NOTE="
+MAINTENANCE ISOLATION IS ACTIVE FOR THIS ITERATION — run QA in no-service (static) mode.
+
+FORBIDDEN, by contract rather than by circumstance: starting the backend or frontend,
+calling ensure_services_running, any browser/Chrome automation, and the deterministic
+replay lane. No service is running and none may be started; the runner has deliberately
+not booted any. Note that this project's backend boot warmup itself writes derived rows,
+which is one reason the contract withholds it.
+
+STILL REQUIRED — full QA depth, using what does not need a running app: read the code and
+the diff; run the allowed file-scoped/unit tests; inspect persisted artifacts and reports;
+run direct READ-ONLY database queries where the iteration spec authorizes them; and verify
+mutation accounting after the developer's execution.
+
+State plainly in your report that it ran under maintenance isolation and that app-service
+and browser checks were prohibited by contract, not skipped by accident. Record those checks
+as SKIPPED with that reason. Do NOT fabricate browser evidence, and do NOT mark a journey
+PASS or FAIL from a lane that did not run."
+else
 SERVICES_NOTE="
 Note: The QA runner manages backend (${BACKEND_HEALTH_URL}, log: ${QA_BACKEND_LOG})$(if [[ "$FRONTEND_PRESENT" == "yes" ]]; then echo " and frontend (${FRONTEND_URL}, log: ${QA_FRONTEND_LOG})"; fi) for this validation.
 Services are restarted automatically if they die during quota-retry sleeps.
 You do NOT need to start or stop them yourself."
+fi
 
 # If the backend never came up, hand the QA agent the real reason (dependency
 # hint + captured start-up log tail set by ensure_services_running) so it records
