@@ -369,3 +369,90 @@ OLDER OWNER QUESTIONS still open and still not blocking: whether 3.44 GB is acce
 "underlying run unavailable" wording; the rewording of J-01's first two test steps; whether an empty
 "next-session focus" is acceptable; and whether MNST should join the 587 names. ONE HOUSEKEEPING NOTE:
 the `docs/goal.md` amendment is still uncommitted in the working tree.
+
+## Iteration 8 — goal-market-compass-iter-8
+
+**Date:** 2026-08-21T13:55:00Z
+**Verdict:** CONTINUE
+**Depth dispatched:** full (`iter-8/depth-dispatched` reads `full`, matching the spec's own
+`**Depth:** full` line — but only after a re-dispatch: the marker read `lean` at the product commit
+`47d50d04`, the developer flagged that honestly as Known Issue 7 and correctly declined to edit it,
+and the full-depth re-run did add the audit lane the earlier demotion had skipped)
+
+**Journey deltas:**
+- Newly passing: none
+- Newly failing: none. **Regressed: none.**
+- Still partial, materially advanced (this iteration's sole TARGET): J-10 — the first real restoration
+  of this session. 40 `daily_prices` rows across exactly 2026-08-11 and 2026-08-12, for 20 of the 587
+  authorized symbols, through the owner's redesigned per-symbol gate. Scored against the CURRENT goal
+  text and stamped with the current hash `ba6ee6fd...` (replacing iter-7's `95e93e72...`)
+- NEW journey entered the ledger: J-11 "Incident-bounded clean regeneration of derived state" (owner
+  insert 2026-08-21, commits `b6587a71`/`c96fc20f`/`2227ccd8`/`51ae56d2`, all AFTER this iteration's
+  product commit `47d50d04`) — status `unknown`, no `spec_hash`, never measured, spec-only
+- Carried, NOT re-tested (the only browser/replay rows this iteration are contract-forbidden and
+  quarantined): J-01, J-04 stay `passing` under evidence durability; J-02, J-03 stay `partial`
+  (blocker moved but nowhere near cleared — 20 of 587 symbols on the two dates vs 587 on 2026-08-10);
+  J-05, J-06, J-09 stay `partial`; J-07, J-08 stay `failing`
+- Anti-goal violations: ONE CRITICAL, found and FIXED inside this iteration (AG-17 — the
+  contract-forbidden replay lane overwrote two quarantined incident-evidence pictures; the auditor
+  restored the original bytes from `47d50d04` and preserved the second run's bytes alongside, and I
+  verified both md5s myself). Ledger: 4 total, 0 unresolved. **The cause is NOT fixed** — audit
+  finding P2 proves the forbidden lane runs at full depth too, so the depth-arbiter fix `046dd956`
+  does not close it.
+
+**Reasoning:** For the first time in this session, real data went back into the database, and the
+safety gate the owner designed did its job rather than being bypassed. I did not take that from the
+reports. I queried the database myself, read-only: exactly 20 rows on 11 August and 20 on 12 August,
+zero rows on or after 13 August, the price frontier stopping precisely at the authorised boundary,
+all 24 sealed briefing records still present with none marked as usable forward evidence, and the
+download log ending at id 543. So why is J-10 still not finished? Because the owner wrote the answer
+into the goal file during this very run: 20 out of 587 does not close it, and nobody may invent a
+"good enough" number. The developer stopped at 20 by reading the rule against enlarging the
+methodology sample as a cap on how many companies get repaired; the owner has now said plainly that
+those are two different things. Two findings must travel with this result rather than be buried in
+it. First, the gate's perfect score is a same-supplier result: the starter data stops on 1 July, the
+only Stooq download this project ever made failed with zero companies, and every price after that
+came from Yahoo — so the check compared Yahoo against Yahoo and could not have failed. I confirmed
+that from the database myself (supplier tally: seed 508, yahoo 34, stooq 1 — and that one is
+`status='failed'`, `symbols_ok=0`). That makes the 40 restored rows safer, not riskier, but the
+sentence now sitting in the goal file crediting Stooq is wrong and needs the owner's pen. Second, a
+browser test lane this project's own rules forbid ran twice — once in the light mode, and again at
+12:54 in the careful mode, during the re-run commissioned to add the missing safety review — and it
+overwrote two protected evidence pictures. That is a breach of a critical rule about never rewriting
+the incident record. It was repaired inside the run and I checked the repair byte for byte, and the
+lane made no database writes at all. Why CONTINUE and not a halt? Nothing that worked stopped
+working, no data is corrupted, the one critical breach is closed, the structure check passed, and the
+security scan was clean. Why not REGRESSION? No journey went from working to broken, and the AG-17
+breach is resolved. Why not ESCALATE? Escalation means "run the next turn in the careful mode" — this
+turn already ran that way, and the careful mode is exactly what caught the problem; worse, the audit
+proved the forbidden lane runs in the careful mode too, so escalating would not fix it. Why not
+STALLED? The owner has already authorised the next step in writing: continue from 20 of 587, do not
+restart, skip the ones already done.
+
+**Next-step recommendation:** Three things next turn, in this order, in the careful full mode. FIRST,
+fix the test lane that keeps running when it is banned. It has now started a second web server and a
+second backend on the machine that froze on 20 August, twice, and overwritten protected evidence
+once. The correction that was supposed to stop it did not, because the depth setting was never the
+whole cause: the pipeline simply does not know the goal file has closed these lanes. The goal file
+already demands this fix (J-11 step 10). It is small work in the pipeline scripts, not the product,
+and it must land before anything else writes to the database. SECOND, continue the recovery from 20
+of 587 — do not restart it. Judge each of the remaining 567 companies one at a time under the same
+fixed gate; each either gets its prices back or is written down by name with the reason it could not
+be. Skip the 20 already done; never re-fetch or overwrite them. Three cheap safety fixes ride along,
+all named by the reviewer: make the evidence file compulsory instead of optional on the real entry
+point, refuse a mismatched pair of data sources, and lock the un-gated back door into the fetch
+function. Commit the recovery script this time — today's run cannot be reproduced from the
+repository. THIRD, ONE THING NEEDS THE OWNER: correct the sentence in the goal file that says Yahoo
+matched Stooq exactly. It should say the comparison was Yahoo against Yahoo for that window. The
+conclusion it supports — that running one price series end to end fixed the earlier false alarm —
+still stands; only the supplier attribution is wrong. AFTER that, and only after the recovery reaches
+its accepted end state, comes J-11: clear and rebuild the derived state for all eleven damaged dates
+in one go, which is also the only place the four browser journeys may finally be re-checked. FIVE
+OLDER OWNER QUESTIONS still open and still not blocking: whether 3.44 GB is acceptable for J-09;
+J-06's "underlying run unavailable" wording; the rewording of J-01's first two test steps; whether an
+empty "next-session focus" is acceptable; and whether MNST joins the recovery list. ONE NEW
+NON-BLOCKING FINDING: there is a genuine, never-examined supplier change inside the stored price
+history at 1/2 July, made by ordinary downloads in mid-August — outside this repair's remit, but any
+future supplier-comparison work must start from it. ONE HOUSEKEEPING NOTE: the deterministic closure
+gate failed on missing bookkeeping files (`runs/goal-market-compass-iter-8/plan.md` and the
+implementation-summary stub), not on anything about the product.

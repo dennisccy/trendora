@@ -2486,7 +2486,34 @@ Do NOT write code or implement anything. The iteration spec and any blueprint ed
       _prev_coh_file="$GOAL_SESSION_DIR_LOCAL/iter-$((CURRENT_ITER - 1))/coherence.md"
       _prev_budget_marker="$GOAL_SESSION_DIR_LOCAL/iter-$((CURRENT_ITER - 1))/budget-breached"
       _arb_decision="" _arb_reason=""
-      if [[ "${PRIOR_VERDICT:-}" == "ESCALATE" || "${PRIOR_VERDICT:-}" == "REGRESSION" ]]; then
+      if goal_full_depth_required "$ITER_SPEC_PATH"; then
+        # ── PRECEDENCE: a hard full-depth requirement outranks COST policy ─────
+        # Everything below this rung is a cost/performance heuristic answering
+        # "is full depth worth the wall-clock here?" — budget-breach, full-cap,
+        # cadence, and the evaluator's lean preference. None of them answers
+        # "can this engine execute full depth?", which is the only question that
+        # may override a safety requirement. When an iteration is hard-required
+        # full (CHAIN_REQUIRE_FULL_DEPTH, or a spec `Depth enforcement: required`
+        # line) the adversarial review/audit lane IS the control standing between
+        # a destructive write and an unreviewed mutation, so cost may not trade
+        # it away. The cost rungs stay fully intact for every ordinary iteration.
+        _arb_decision="full"; _arb_reason="hard-full-required"
+        # Evidence, not behaviour: record which cost rung WOULD have demoted this
+        # iteration, so the budget/cadence signal is preserved in telemetry
+        # rather than silently discarded. Markers on disk are never touched.
+        _overridden=""
+        if [[ -f "$_prev_budget_marker" && "${PRIOR_VERDICT:-}" == "CONTINUE" ]]; then
+          _overridden="budget-breach"
+        elif goal_full_ran_in_window "$GOAL_SESSION_DIR_LOCAL" "$CURRENT_ITER"; then
+          _overridden="full-cap"
+        elif [[ "$PRIOR_DEPTH" == "lean" || "$PRIOR_DEPTH" == "evidence" ]]; then
+          _overridden="evaluator-requested-${PRIOR_DEPTH}"
+        fi
+        if [[ -n "$_overridden" ]]; then
+          echo "[run-goal] Depth arbiter: HARD full-depth requirement overrides the cost rung '$_overridden' (the signal is recorded, not acted on; its marker is preserved)."
+          record_telemetry_event "depth_cost_overridden" "$(jq -cn --arg o "$_overridden" --arg pv "${PRIOR_VERDICT:-}" --arg pd "${PRIOR_DEPTH:-}" '{requirement:"hard-full-required", overridden_cost_rung:$o, prior_verdict:$pv, prior_depth:$pd}' 2>/dev/null || printf '{"requirement":"hard-full-required","overridden_cost_rung":"%s"}' "$_overridden")"
+        fi
+      elif [[ "${PRIOR_VERDICT:-}" == "ESCALATE" || "${PRIOR_VERDICT:-}" == "REGRESSION" ]]; then
         _arb_decision="full"; _arb_reason="prior-verdict-${PRIOR_VERDICT}"
       elif grep -qE '^\*\*Verdict:\*\* COHERENCE-FAIL' "$_prev_coh_file" 2>/dev/null; then
         _arb_decision="full"; _arb_reason="prior-coherence-fail"
@@ -2517,8 +2544,12 @@ Do NOT write code or implement anything. The iteration spec and any blueprint ed
         _use_legacy_allowlist=1
       fi
       if [[ "$_arb_decision" == "lean" ]] && goal_full_depth_required "$ITER_SPEC_PATH"; then
-        # FAIL-CLOSED: full depth is a hard requirement here, so the cost ladder
-        # may not trade it away. Halt before dispatch instead of degrading.
+        # Defence in depth. With the precedence rung above, a hard-required
+        # iteration always resolves to full, so this is unreachable by design —
+        # AWAITING_FULL_DEPTH must mean "the engine cannot execute full depth",
+        # never "the cost ladder preferred lean". It stays as a backstop so a
+        # future edit that reorders or adds a cost rung cannot silently
+        # reintroduce the demotion this guard exists to stop.
         _full_depth_pause "arbiter-demotion:${_arb_reason}" "depth-arbiter"
       fi
       if [[ "$_arb_decision" == "lean" ]]; then

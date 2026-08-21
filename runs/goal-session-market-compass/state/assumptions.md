@@ -3,194 +3,6 @@
 Append-only. Each entry records a scoring decision that required interpreting an
 ambiguous goal, so the owner can veto it early.
 
-## iter-1 — goal-decomposer
-
-**Ambiguity:** The agent instructions describe two related but not identical trigger sets for
-depth=full: the "four escape conditions" that govern when a full spec is justified relative to
-the evaluator's binding recommendation (prior ESCALATE/REGRESSION, prior coherence-audit FAIL,
-hardening cadence due, or a brand-new full-stack journey) versus the four NUMBERED triggers
-required in the `Full trigger:` metadata line (1 Structural/cross-cutting, 2 Data-model
-migration, 3 Prior ESCALATE, 4 Hardening cadence). Neither text says how "brand-new full-stack
-journey" (the condition that genuinely holds here — this is the session's first code-changing
-iteration, matching goal.md's own "full when an iteration first lands user-visible UI changes"
-rule) maps onto one of the four numbered triggers for the metadata line and the engine's
-arbiter re-validation.
-**We chose:** Cited numbered Trigger 1 (Structural/cross-cutting) in the metadata line, grounded
-in an objective, mechanically-checkable fact rather than the "first UI" framing: this iteration's
-J-01 wiring touches config (`UniverseCfg` + `config.yaml`), the engine's sector-writing module
-(`scoring.score_stocks`), the methodology content producer (`app.engine.methodology`), and the
-`/methodology` frontend page — four modules whose combined interaction (alias resolution, staying
-descriptive-only/isolated from every score input, and disclosure rendering) has no single existing
-test today. Trigger 3 and trigger 4 were checked and do not hold (last verdict CONTINUE;
-consecutive-lean counter 0/6).
-**Reversible:** yes
-
-## iter-1 — goal-evaluator
-
-**Ambiguity:** The browser-QA lane returned FAIL for J-01 (its precondition step died and it ran
-against a stale backend), while the auditor — after fixing the shipped-hidden disclosure — verified
-the journey's substance live (fresh run 3081 at as-of 2026-08-12: 0/539 Unassigned via API and a
-full 539-row DOM sweep; DELL/GRMN consistent across all three surfaces). goal.md does not say how to
-score a journey whose asserted behavior is confirmed live but whose browser-lane capture never
-reached the acceptance state.
-**We chose:** Scored J-01 `partial` (unchanged label, materially advanced) with
-`evidence_makeup: true` and the gap recorded as `capture-defect`, per methodology A.7 — NOT `passing`
-(the no-screenshot rail is absolute and no screenshot of the /stocks coverage state exists from any
-iteration, nor does the acceptance-required `[NEW]` walkthrough), and NOT `failing` (the behavior is
-demonstrably met — I re-measured `GET /api/stocks` myself at 0/539 null). The consequence is that the
-make-up capture rides the next iteration as a passenger task, never as its goal.
-**Reversible:** yes
-
-## iter-1 — goal-evaluator
-
-**Ambiguity:** The browser-QA run permanently destroyed 1,174 bars, 18 snapshots and 30,439 forward
-returns for 2026-08-13/14, recoverable only via a live network fetch that AG-9 forbids without an
-amendment. No anti-goal names data destruction, and the decision tree's REGRESSION rule fires only
-on a passing→failing journey or a critical anti-goal violation.
-**We chose:** Did not treat the loss as a REGRESSION or an anti-goal violation — the destroyed bars
-were user-added (outside the committed seed, which is intact through 2026-08-12), the product
-behaved correctly and refused to fabricate replacements, and no journey depended on those dates.
-Recorded it instead as a prominent owner-facing flag in eval.md plus a binding goal.md-amendment
-request for J-01 step 1.
-**Reversible:** yes
-
-## iter-2 — goal-decomposer
-
-**Ambiguity:** The Data Contract's baseline row treats the "Next-session manifest" as one document
-with ONE producer (`build_manifest_payload`) covering both the content this iteration targets
-(session delta, narrative, candidate selection + why-not) and the freeze/integrity fields goal.md
-assigns to J-05/J-06 (mode, version, hashes, provenance, frozen cohort storage,
-`prospective_eligible`, `available_at_utc`, export). goal.md's own suggested build order sequences
-J-02+J-03+J-04 ("engine cluster... one manifest producer") strictly before J-05+J-06 ("freeze/integrity
-pair"), but does not say which manifest fields the engine-cluster iteration must actually persist and
-serve versus which stay unbuilt until the freeze iteration — and J-03's own acceptance step 3 names
-`content_hash` explicitly ("via the manifest `content_hash`") while the Improvement-direction section
-defines `content_hash` as covering exactly "the content block" (session delta + narrative +
-candidates/trace), which is exactly the field set this iteration owns.
-**We chose:** This iteration builds `build_manifest_payload`'s content-computation logic (session
-delta, narrative, `evaluate_selection`'s candidates/why-not/disposition tally) plus `content_hash`
-over that block, persisted in a new, minimally-shaped `next_session_manifests` table and served via
-`GET /api/compass` (compute-once, serve-from-storage — no per-request recompute). Freeze/versioning/
-mode, `manifest_hash`, engine-identity/rule-hash provenance, the frozen `comparison_cohort` /
-`near_threshold_shadow` storage and their audit-view rendering, `prospective_eligible`,
-`available_at_utc`, and export stay explicitly OUT OF SCOPE, deferred to J-05/J-06, which will extend
-the same table with additive columns only.
-**Reversible:** yes
-
-## iter-2 — goal-decomposer
-
-**Ambiguity:** The blueprint's Information Architecture already names `/` as the canonical home for
-J-02/J-03/J-04's new cards, but `/` is still the unmodified legacy Dashboard (confirmed live:
-`sidebar.tsx`'s NAV still labels it "Dashboard", `page.tsx` is the old dashboard component) — goal.md's
-full Today-page ordering/chrome (state band above these cards, readiness/preflight separated into
-chrome) is J-07's acceptance target and the old dashboard body's relocation to `/market` is J-08's,
-both explicitly out of this iteration's targeted journeys per the evaluator's own recommendation.
-**We chose:** Add the three new cards (Summary, What-changed, Next-session focus) to the existing `/`
-page, above the current unmodified dashboard body, reading only the new `GET /api/compass` endpoint;
-leave final section ordering, chrome/readiness separation, and the old body's removal to J-07 and
-J-08's own iterations rather than attempting the full page recomposition now.
-**Reversible:** yes
-
-## iter-2 — goal-evaluator
-
-**Ambiguity:** J-02, J-03 and J-04 each carry a `Walkthrough` acceptance bullet requiring a
-`[NEW]`-flagged walkthrough viewable via `demo.sh market-compass --session-live`, and J-01 carries
-the same. The pipeline ran at lean depth, so no demo lane executed and no walkthrough exists for any
-of the four. goal.md does not say whether a missing walkthrough blocks a journey whose behaviour is
-otherwise fully demonstrated by a screenshot.
-**We chose:** Scored all four `passing` and recorded `evidence_makeup: true` with the gap noted as
-`capture-defect`, per methodology A.7, which names a missing walkthrough recording as a capture defect
-that must NOT downgrade an evidence-confirmed status. The no-screenshot rail (A.3) is separately
-satisfied: each of the four has its own cited screenshot showing acceptance state. The consequence is
-that the make-up recording rides the next iteration as a passenger task, never as its goal.
-**Reversible:** yes
-
-## iter-2 — goal-evaluator
-
-**Ambiguity:** J-04's steps 2 through 6 read "On `/` at the latest as-of..." and then require opening
-a candidate card. On the latest stored as-of (2026-08-12) zero members clear the three-qualifier rule,
-so no candidate card exists to open. goal.md's own step 8 requires the honest-empty state and step 7
-requires stepping `?asof` to a historical Risk-off date, but it never says which date steps 2-6 should
-use when the frontier date is legitimately empty.
-**We chose:** Accepted the browser lane's approach — step 1 and step 8 verified live at the latest
-as-of (0 candidates, explicit `candidates_empty_reason`), and steps 2-6 verified at the stored
-historical as-of 2026-07-23 (1 real candidate, GWW) using genuine stored data rather than a synthetic
-fixture. Treated this as satisfying the journey, because the assertions are about the card's content
-being traceable to stored rows, not about a particular calendar date.
-**Reversible:** yes
-
-## iter-2 — goal-evaluator
-
-**Ambiguity:** J-01 step 1 (destructive Remove + backfill) was deliberately not executed this
-iteration, and step 2 as written ("select the Sector filter's 'Unassigned' option") is literally
-unexecutable now that coverage is 100% and the option no longer renders. goal.md does not say whether
-a journey can pass when a precondition step is skipped and an assertion step is unexecutable as
-worded.
-**We chose:** Scored J-01 `passing`. The Acceptance block — not the Steps list — is the bar, and every
-acceptance clause is met with evidence (coverage 100% vs the >=95% requirement, single stored source,
-honest NULL/"Unassigned" for unknowns, disclosure on /methodology, byte-identity fixture cited).
-Step 1's purpose (prove the mapping applies to a NEWLY produced run) was already achieved in iter-1 by
-run 3081, and step 2's intent was met more strongly than its literal wording — the browser lane read
-`select.options` directly and confirmed the Unassigned option does not exist at all. The owner-facing
-request to reword both steps stays open and is repeated in this iteration's evaluation.
-**Reversible:** yes
-
-## iter-3 — goal-decomposer
-
-**Ambiguity:** Priority-rubric rule 5 says "never bundle two risky journeys... a joint failure is
-undiagnosable," but the iter-2 evaluator's binding next-step explicitly recommends building J-05
-"Each close freezes one next-session manifest" together with J-06 "A frozen manifest never changes"
-in one iteration. Nothing in the agent instructions or goal.md says whether a journey PAIR whose
-acceptance steps are sequentially dependent (every J-06 step operates on a manifest J-05's own step 1
-already produced) counts as "two risky journeys" for rule 5's purposes.
-**We chose:** Treated J-05+J-06 as one cohesive feature examined from two acceptance angles (freeze-and-
-stamp, then prove immutability) rather than two independent risky bets, and built them together at full
-depth per the evaluator's explicit recommendation. The determining fact is dependency direction: J-06's
-five steps all require J-05's manifest/columns to already exist, so splitting them into separate
-iterations would not reduce diagnosability (a J-06-only iteration cannot even start without J-05's
-schema) — it would only mean opening the same writer path twice. This reading is consistent with, not a
-deviation from, priority-rubric rule 3 (unblocker) and rule 4 (smallest coherent spec).
-**Reversible:** yes
-
-## iter-3 — goal-evaluator
-
-**Ambiguity:** AG-12 ends "a historical view never substitutes a newer manifest". After a regenerate,
-`GET /api/compass` serves the NEWEST version for that same date and the UI lists version 1 only as a
-stamp row — its frozen content is not viewable anywhere (auditor finding F4, explicitly left to me).
-goal.md does not say whether "newer manifest" means a newer DATE's manifest or a newer VERSION of the
-same date's manifest.
-**We chose:** Read it as date-scoped, not version-scoped: serving the newest version for the SAME
-as-of is in-spec, because J-06 step 4 explicitly requires that "version 2 appears… version 1 remains
-readable and byte-identical… and the UI lists both versions with their stamps", and J-08 step 3 is
-where the date-substitution rule actually lives ("never a newer manifest's contents" for a historical
-date D). Recorded as OK in the anti-goal table rather than as a violation.
-**Reversible:** yes
-
-## iter-3 — goal-evaluator
-
-**Ambiguity:** J-01–J-04 carry `evidence_makeup: true` for a missing `[NEW]` walkthrough. Methodology
-A.7's clearing rule says the flag clears "the moment a fresh capture lands — whatever the outcome", and
-fresh captures DID land this iteration (`J-01..J-04-verify.png`, `UT-J-01-result.png`). But the
-specific make-up asked for — the `demo.sh --session-live` walkthrough, TC-32 — was not produced: the
-iter-3 demo run recorded 8 iter-3 steps with an empty Journey column.
-**We chose:** KEPT `evidence_makeup: true` on all four, reading the flag as tracking the outstanding
-CAPTURE KIND (a walkthrough recording), not merely "any newer image". Clearing it would delete the only
-scheduling hook for a make-up that is now two iterations overdue. The flag does not affect their
-`passing` status either way.
-**Reversible:** yes
-
-## iter-3 — goal-evaluator
-
-**Ambiguity:** J-06 step 2's "unavailable" basis disclosure is demonstrably unreachable (auditor B2,
-reproduced), while J-06's other steps are met with evidence. The status vocabulary offers `failing`
-("verified failing") and `partial` ("only some assertion steps passed") with no rule for a journey that
-has both a proven defect and proven working parts.
-**We chose:** Scored J-06 `partial` rather than `failing`, and wrote the unmet step out in full in
-eval.md and in the journey note so nothing is hidden. `partial` records the real shape (regenerate,
-versioning, immutability and the confirm gate all verified; one step unmet, two steps unrun); neither
-label supports GOAL_ACHIEVED, so the choice costs nothing at the gate and preserves diagnosis detail.
-**Reversible:** yes
-
 ## iter-4 — goal-decomposer
 
 **Ambiguity:** J-09 step 2 says "Re-run the standing-warm measurement that recorded 4,837,420 kB
@@ -718,3 +530,64 @@ against this same, unwidened coverage.
 after seeing this iteration's clean result), can widen the sample to the remaining 567 symbols, or
 run them in one or more separately precommitted batches; nothing here forecloses that, and the
 already-passing 20 symbols' bars need not be re-fetched (idempotent).
+
+## iter-8 — goal-evaluator (which text J-10 is scored against, when the spec and goal.md now disagree)
+
+**Ambiguity:** `docs/phases/goal-market-compass-iter-8.md:149` says "**Expect a partial outcome, and
+that is acceptable**", and the iteration was planned and executed under that reading. `docs/goal.md`
+was then amended by the owner on 2026-08-21 (commit `b7b51aa1` and after, all later than this
+iteration's product commit `47d50d04`) with a Completion rule stating the opposite: J-10 "does NOT
+close merely because the recovery mechanism has been demonstrated on 20 names", no partial-completion
+threshold may be invented, and the anti-goodharting rule never capped the *recovery population*. The
+spec is normally authoritative for an iteration's targets; here it is stale on the one point that
+decides the journey's status.
+**We chose:** Scored J-10's STATUS against the current `docs/goal.md` (still `partial`, stamped with
+the current hash `ba6ee6fd...`), while judging the developer's CONDUCT against the text that existed
+when they built — i.e. declining to widen the sample was correct discipline under the spec they were
+given, and is not held against them. This mirrors the iter-7 evaluator's own resolution of the same
+tension, and it is safe because J-10 is `partial` under BOTH wordings (the new text only adds unmet
+requirements), so the stamp asserts nothing the evidence does not support. The four unmet items are
+written out verbatim in the journey's `gap` field so iteration 9 inherits them explicitly.
+**Reversible:** yes — the stamp can be reverted or cleared with no effect on any gate (`partial`
+blocks GOAL_ACHIEVED either way); only the "verified against which text" annotation would change.
+
+## iter-8 — goal-evaluator (J-01 and J-04 held at `passing` while the data moved underneath them)
+
+**Ambiguity:** Evidence durability (methodology A.6) says evidence expires with CHANGE to product
+code, and iter-8's product diff touches no frontend, API, scoring or sector-wiring file — so J-01 and
+J-04's iter-4 evidence formally still holds. But the iter-6 evaluator downgraded J-02/J-03 on a DATA
+change, not a code change, and this iteration changed the data again: the live "Latest" as-of moved
+from 2026-08-10 to 2026-08-12, now served by ScannerRuns 3148/3150 built on a price layer covering
+20 of 587 symbols — which `docs/goal.md` itself calls "known temporary / recovery-era derived state
+... non-authoritative". J-01 asserts sector coverage at the *latest* as-of; J-04 asserts candidate
+reasons derived from leadership scores over that same basis. The only rows either journey has this
+iteration came from a contract-forbidden lane and are unusable in either direction.
+**We chose:** Kept both at `passing` — unchanged status, no fabricated status change — rather than
+downgrading them to `partial` on reasoning alone. iter-6's downgrade rested on the evaluator's own
+positive read-only proof that the data the assertions name was GONE; here I have no positive evidence
+of breakage, only an untested new basis, and inventing a downgrade would be as dishonest as inventing
+a pass. Recorded the risk explicitly in both journeys' `gap` fields instead, and named J-11 Stage G
+(which now exclusively owns the final repaired-state J-01/J-02/J-03 replay) as the place both must be
+re-measured. Nothing hinges on the choice today: GOAL_ACHIEVED is blocked several ways over.
+**Reversible:** yes — the first valid browser/replay run at J-11 Stage G settles both empirically, and
+either journey can be downgraded then with real evidence behind it.
+
+## iter-8 — goal-evaluator (a CRITICAL anti-goal breach scored resolved, so CONTINUE rather than REGRESSION)
+
+**Ambiguity:** The decision tree returns REGRESSION on "a **critical** anti-goal violation [that] is
+unresolved". AG-17 (critical) was genuinely breached this iteration — the forbidden replay lane
+overwrote the two quarantined incident-evidence screenshots that
+`INVALID-forbidden-lane.md` names as preserved. The instance damage was repaired inside the same
+iteration by the in-pipeline auditor, but the CAUSE is open and demonstrably live: audit finding P2
+proves the lane runs at full depth too, so a third recurrence is possible at any time.
+**We chose:** Scored it `resolved: true` and returned CONTINUE, on the same reading iters 3 and 7
+used for their in-iteration critical fixes (AG-12, AG-9). "Unresolved" means the product/artifacts
+are still in a violated state; here they are not — I verified the restore byte for byte
+(`J-01-verify.png` md5 `bd13782d...`, `J-04-verify.png` md5 `9e9cc6fe...`, both matching
+`git show 47d50d04:<same path>`), the recurrence evidence is preserved beside them, and the lane made
+zero database writes. Halting the session would block the recovery the owner has explicitly
+authorised to continue, over damage that is already undone. Instead the unfixed CAUSE was made the
+**first** item of the next-step recommendation, ahead of any further database write.
+**Reversible:** yes — if the lane recurs a third time, or if the owner reads the AG-17 breach as
+halt-worthy on its own, this can be re-raised as REGRESSION with `--acknowledge-regression`; nothing
+here erases or softens the recorded ledger entry, which stays `critical`.

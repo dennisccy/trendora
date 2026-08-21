@@ -437,3 +437,109 @@ restored is never re-requested (`still_missing_symbols()` excludes it), and
 `run_gated_recovery(session, engine, config, convention_provider=YahooProvider(),
 evidence_path=Path(...))` is the one entry point, unconditionally re-running the per-symbol check fresh
 every time.
+
+---
+
+## AUDITOR CORRECTIONS (appended 2026-08-21 by the in-pipeline auditor — original text above left intact)
+
+The developer's prose above is preserved verbatim as the record of what was believed at the time.
+Three load-bearing statements in it are contradicted by evidence and **must not be cited as written**.
+Each correction below was verified independently against the live database (read-only) and the
+committed seed manifest.
+
+### C1 — The comparison was Yahoo-vs-Yahoo, NOT Stooq-vs-Yahoo (corrects the claim above)
+
+The sections *"Per-symbol verdicts"* and *"CVX … passed the redesigned gate"* state that **"Stooq's
+stored close and Yahoo's raw `get_daily` close are byte-identical for every sampled (symbol, date)
+pair in this window"** and that this iteration *"compares Stooq-adjusted against Yahoo's raw close."*
+**The stored side of that comparison is not Stooq — it is Yahoo.** Four independent lines of evidence:
+
+1. `apps/backend/data/seed/meta.json` — the committed Stooq seed's window ends **2026-07-01**. The
+   comparison window (2026-08-04 … 2026-08-10) lies five to six weeks past that boundary, so none of
+   it comes from the Stooq seed.
+2. `data_provider_runs` provider tally across the whole table: `seed: 508, yahoo: 34, stooq: 1`.
+   The single `stooq` row is **id 541, `status='failed'`, `symbols_ok=0, symbols_failed=587`** — no
+   Stooq fetch has ever written a bar to this database. There are **zero** `seed`-provider rows of
+   `kind: "fetch"`. Every bar after 2026-07-01 therefore came from a `yahoo` fetch (ids 527/528/529
+   on 2026-08-14 cover 2026-08-03 … 2026-08-13).
+3. Float32 round-trip fingerprint on `daily_prices.close` (400-row samples): 2000-06-15 **1.7%**,
+   2020-06-15 **2.0%**, 2026-07-01 **3.8%**, then 2026-07-02 **100.0%**, 2026-08-05 **100.0%**,
+   2026-08-10 **100.0%**, 2026-08-11/12 **100.0%**. The discontinuity lands exactly on the seed
+   boundary; the 100% band is Yahoo's chart-API float32 precision artifact.
+4. All **88 of 88** pairs in `j10-convention-evidence.json` have `stored_close == fallback_close`
+   bit-for-bit, every ratio exactly `1.0`. That is the signature of one vendor's series re-fetched,
+   not of two vendors' adjusted series coinciding.
+
+**Consequence:** the gate ran against an input pair that could not disagree, so this run proves the
+gate is *correctly built* — it does **not** prove the gate is *discriminating on cross-vendor data*.
+It also means the "1.0 bridge factor" is not measured cross-vendor agreement and may not be cited as
+such (AG-9 step 2a). The write itself is unaffected and is, if anything, safer: the restored bars and
+the adjacent surviving bars are both Yahoo raw close, so no scale discontinuity was introduced at
+2026-08-11/12 — which is the integrity property that actually mattered.
+
+**Also corrected: the CVX explanation.** iter-7's ~0.865% CVX delta was *not* Stooq-adjusted vs
+Yahoo-adjusted. The stored side was always Yahoo **raw** close; iter-7 compared it against Yahoo
+**adjusted** close (`get_adjusted_close`) — an accumulated dividend adjustment *within one vendor*,
+which is why both offenders (CVX, XOM) were high-yield energy names with within-symbol-uniform
+deltas. B2's "one series, end to end" fix removed that crossover and the artifact vanished, exactly
+as designed. The fix worked; only the vendor attribution was wrong.
+
+**Open owner item (cannot be fixed by this audit):** this mischaracterization has been carried into
+`docs/goal.md`, under "Recorded finding — the one-series rule worked (iteration 8, keep this)", which
+now reads *"Yahoo's raw close matched Stooq's stored close exactly over the overlap window."* Amending
+the goal contract is the owner's action; the sentence should be corrected before any future study
+cites it. The finding's operative conclusions are unaffected.
+
+### C2 — The 2026-05-12 `ScannerRun` is unrepaired iter-5 drill damage, not an unrelated cadence gap
+
+The sections above call 2026-05-12 *"a date wholly unrelated to this incident"* and *"a pre-existing,
+unrelated cadence gap."* `data_provider_runs` **id=538** — the drill's own removal record, which this
+module's docstring already cites — carries
+`cascade.snapshot_count: 11` and
+`cascade.snapshot_dates: ['2026-05-12', '2026-05-13', '2026-07-10', '2026-07-13', '2026-07-24',
+'2026-07-27', '2026-08-03', '2026-08-05', '2026-08-10', '2026-08-11', '2026-08-12']`.
+**2026-05-12 is the first entry.** The boot warmup opportunistically re-filled one of the eleven
+snapshots the iter-5 drill destroyed.
+
+This changes the meaning, not the safety, of the side effect. Verified: run 3149's forward returns
+span `2026-05-13 … 2026-08-10` (2,771 rows) with **zero** rows measuring on or after 2026-08-11, so
+none of its arithmetic reads the still-damaged region; it created no `daily_prices`, manifest or
+`data_provider_runs` row. It also reframes recovery state: **3 of the 11 destroyed snapshots now
+exist** (2026-05-12, 2026-08-11, 2026-08-12); the rest remain absent and belong to J-11.
+
+### C3 — The mutation accounting names 3 tables; 14 tables and ~4,600 rows were written
+
+The handoff states "no other table (`daily_prices`, `next_session_manifests`) was touched." The
+complete reconciliation of 2026-08-21 writes, verified by direct read-only query:
+
+| Table | Rows | Time (UTC) | Attribution |
+|---|---|---|---|
+| `daily_prices` | +40 (ids 3311385-3311424, contiguous at the table tail) | 00:10:17-00:10:58 | Authorized recovery write |
+| `data_provider_runs` | +2 (542 yahoo fetch, 543 backfill) | 00:10:17 / 00:10:58 | Authorized provenance |
+| `import_checkpoints` | +1 | 00:10:17 | Fetch-engine bookkeeping |
+| `forward_aggregate_cache` | +5 | 00:11:20-00:12:33 | Derived-cache refresh |
+| `event_study_cache` | +9 | 00:12:35 and 00:44:51 | Derived cache (last 8 during the replay-lane backend) |
+| `scanner_runs` | +3 (3148 = 2026-08-12, 3149 = **2026-05-12**, 3150 = 2026-08-11) | 00:26:04-00:28:16 | Boot warmup; 3149 is out-of-scope (see C2) |
+| `scanner_results` | +1,620 (539 + 542 + 539) | with the three runs | Derived children |
+| `sector_scores` | +93 (31 x 3) | with the three runs | Derived children |
+| `theme_scores` | +33 (11 x 3) | with the three runs | Derived children |
+| `forward_returns` | +2,791 (2,771 for run 3149; 20 for run 3150) | with the three runs | Derived children |
+| `membership_timeline_cache` | 1 (sole row, replaced) | 00:39:51 | Forbidden replay lane |
+| `coverage_snapshot` | 1 (sole row, replaced) | 00:39:54 | Forbidden replay lane |
+| `availability_cache` | 1 (sole row, replaced) | 00:39:55 | Forbidden replay lane |
+| `market_phase_cache` | +2 | 00:40:02-00:40:05 | Forbidden replay lane |
+
+**14 distinct tables, ~4,602 rows.** Every write is attributable; none is unauthorized; none touched
+`next_session_manifests` (24 rows, max `as_of` 2026-08-12, zero `prospective_eligible` — AG-17/AG-12
+hold). But this iteration must not be described as having made no out-of-scope writes, and the
+last four rows post-date the developer's own post-state verification, so nothing in the iteration
+verified them.
+
+### What is NOT corrected
+
+Everything else in this handoff verified clean: the 40 rows are inside the authorized envelope on
+exactly the two authorized dates for exactly 20 authorized symbols, no surviving row was overwritten
+(pure append, total 3,309,204 → 3,309,244), the frontier never advanced (zero rows on/after
+2026-08-13), all 20 bridge factors re-derive from the persisted artifact to <1e-12, the per-symbol
+ladder is genuinely fail-closed, and the decision to hold AG-9's exception open rather than declare
+it exhausted was correct. Full detail: `docs/handoffs/goal-market-compass-iter-8-audit.md`.
