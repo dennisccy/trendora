@@ -531,3 +531,79 @@ run unavailable" wording; the rewording of J-01's first two test steps; whether 
 focus" is acceptable; and whether MNST joins the recovery list. ONE STANDING FRAMEWORK NOTE: the defect
 that let the forbidden test lane run three times is still unfixed in `scripts/automation/`; this run
 avoided it with the new maintenance-isolation contract rather than by curing it.
+
+## Iteration 10 — goal-market-compass-iter-10
+
+**Date:** 2026-08-23T13:36:00Z
+**Verdict:** STALLED
+**Depth dispatched:** full (both `runs/goal-session-market-compass/iter-10/depth-dispatched` and
+`runs/goal-market-compass-iter-10/depth-dispatched` read `full`, matching the spec's own `Depth: full`
+line — the silent full→lean demotion that fired in iters 2, 6 and 8 did NOT recur, for the second
+iteration running, and neither did the forbidden browser/replay lane)
+
+**Journey deltas:**
+- Newly passing: none
+- **Advanced unknown -> partial: J-11** "Incident-bounded clean regeneration of derived state" — this
+  iteration's sole target and its first measurement. Stages B (pre-reset inventory) and B2 (frozen
+  attempt identity) are genuinely delivered; Stage B1 (schema-contract reconciliation) is only partly
+  delivered; Stages C-G are untouched by design. Stamped with the current goal-text hash `994809be...`.
+- Newly failing: none. **Regressed: none.**
+- Carried, NOT re-verified (maintenance isolation — browser QA and the replay lane were forbidden by
+  contract, so every journey keeps its prior recorded status): J-01, J-04, J-10 stay `passing`; J-02,
+  J-03, J-05, J-06, J-09 stay `partial`; J-07, J-08 stay `failing`.
+- Anti-goal violations: **NONE new.** Ledger unchanged at 4, all resolved. AG-9, AG-10, AG-12 and AG-17
+  were the four at real risk and all four held, each verified by my own read-only queries and checksums.
+- Coherence: COHERENCE-PASS. Deterministic scan: CLEAN. Review: PASS. QA: PASS. Audit: PASS_WITH_GAPS
+  (3 IMPORTANT gaps, none fixable inside this iteration's binding constraints).
+
+**Reasoning:** The safety work built this turn did the one thing that matters — it proved the big repair
+is not yet allowed to start. The measurement half is solid and I did not take it on trust: I re-ran every
+figure in the inventory against the live database read-only and each one matched exactly, including the
+two awkward rows that would expose a lazy capture (12 August holds a run with zero forward returns of its
+own, while 20 were measured into that date). I also confirmed the database was never written: it sits at
+the identical size and timestamp before and after the developer, reviewer, QA, auditor and my own checks,
+and no scanner run was created today, so no background start-up quietly rebuilt a day as it did in
+iteration 8. The blocking finding is this. The goal file says the destructive clear may not begin until
+six safety points are proven, and I verified read-only that two are false on the real database: the live
+table definition still ends in a link to the scanner runs, that link is switched off rather than removed,
+and twelve stored rows already break it. The code change made this turn corrects the description of the
+table, not the table on disk — which was the right choice, because rewriting the real table means writing
+to the 7.8 GB file this iteration was forbidden to touch. Both the review and the quality check recorded
+that safety item as complete anyway; the independent auditor caught it and I confirmed the auditor from
+primary sources. So why STALLED rather than CONTINUE, when real progress was made? Because every way to
+unblock the next step is an owner decision — accept the current state in writing, authorise a bounded
+rewrite of the real table, or reword the gate — and the goal file itself prescribes exactly that: "STOP
+before J-11 and surface it as an owner decision." Nor is there other work to do meanwhile: the goal file
+shuts every other product, research and browser lane until this repair's final stage passes, so the eight
+other unfinished journeys cannot legally be worked on. And the step waiting on the other side of this
+decision is the destructive clear of the canonical database — the same class of action that permanently
+lost data in iteration 5. Halting to ask is the safe direction. Why not REGRESSION? Nothing that worked
+stopped working and no critical rule was broken. Why not ESCALATE? This turn already ran at the careful
+full depth, and the careful depth is precisely what caught the over-claim.
+
+**Next-step recommendation:** ONE DECISION IS NEEDED FROM THE OWNER, and it is small to state. The real
+`next_session_manifests` table still declares a link to the scanner runs; that link is switched off, and
+twelve existing rows already break it. The goal file's gate says the repair cannot start until that is
+sound. Pick one: (a) accept it in writing with a dated note saying the safety points are met at the
+code-description level only — reassuring fact for that choice, which I verified: no manifest points at any
+of the four scanner runs the repair would delete, so today's practical risk is nil; (b) authorise a
+bounded rewrite of that 24-row table, which is a write to the 7.8 GB database and needs its own
+single-writer isolation and a byte-for-byte survival proof; or (c) reword the gate so it asks about the
+table the rebuild creates from current code rather than the one on disk. TWO SMALLER DECISIONS ride along:
+whether the fix to a false "basis is intact" reading may land before the final verification stage — the
+12 August version-1 manifest has no recorded history at all, so the reading code reports its original
+basis as intact while its five sibling versions correctly say "rebuilt", and I reproduced that live; and
+whether the one-version-of-the-code check may stay blind to the scoring files, given that a change to
+exactly those files is already planned for the repair stage. AFTER the decision, the next iteration is the
+full repair (stages C to G) at full depth, alone: no web server, no browser tests, one writer only. Three
+fixes must travel with it — the honest "no recorded basis" state plus a test for it, opening the database
+in a true read-only mode for the inventory step, and an independent end-of-run check that all eleven
+rebuilt days came from one single version of the code. Also still true and still important: AVB's restored
+prices sit on the stored scale while its trading volume does not, so any sum multiplying price by volume
+reads it about 2.79 times too high on those two days; and the recovery script must not be re-run, since
+permission for live downloads is used up and the script has no guard. FIVE OLDER OWNER QUESTIONS remain
+open and non-blocking: whether 3.44 GB is acceptable for J-09 "The backend fits the host"; J-06's
+"underlying run unavailable" wording; the rewording of J-01's first two test steps; whether an empty
+"next-session focus" is acceptable; and whether MNST joins the recovery list. ONE STANDING FRAMEWORK NOTE:
+the defect that let the forbidden test lane run three times is still unfixed in `scripts/automation/`; two
+iterations running have avoided it with the maintenance-isolation contract rather than by curing it.

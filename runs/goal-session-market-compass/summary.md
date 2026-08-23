@@ -1,18 +1,18 @@
 # Goal Session Summary — market-compass
 
-**Final verdict:** AWAITING_PUMP
-**Total iterations:** 8
-**Wall time (seconds):** 44089
+**Final verdict:** ABORTED
+**Total iterations:** 10
+**Wall time (seconds):** 64
 **Quota pauses:** 0
 **Started:** 2026-08-19T21:31:52.886915Z
-**Finished:** 2026-08-21T05:38:55.471035Z
+**Finished:** 2026-08-23T12:28:48.428486Z
 
 ## Branch
 
 This session pushed iteration commits to `goal/market-compass`. Open a PR with:
 
     gh pr create --base main --head goal/market-compass \
-      --title "feat: market-compass — AWAITING_PUMP" \
+      --title "feat: market-compass — ABORTED" \
       --body-file runs/goal-session-market-compass/summary.md
 
 ## Final journey state
@@ -28,13 +28,15 @@ This session pushed iteration commits to `goal/market-compass`. Open a PR with:
 | J-07 | failing | - |
 | J-08 | failing | - |
 | J-09 | partial | - |
-| J-10 | partial | - |
+| J-10 | passing | goal-market-compass-iter-9 |
+| J-11 | unknown | - |
 
 ## Anti-goal violations
 
 - [minor] AG-2 - Decision-quality only: never present return promises, price targets, 'buy/sell' signals, or alpha claims; never place or simulate orders. Candidate framing is 'worth monitoring', never advice. (iter goal-market-compass-iter-2)
 - [critical] AG-12 - Manifest immutability: a stored next_session_manifests row and its exported file are never mutated or deleted by any later ingest, rebuild, data removal, config change, or code change. (iter goal-market-compass-iter-3)
 - [critical] AG-9 - Offline-deterministic ingest: ingest jobs run only against the committed seed / local provider fixtures - no live external network calls or paid data services without an explicit goal.md amendment. || Dated exception (owner, 2026-08-20): '...If the implementation cannot prove a request stays inside this scope, it MUST stop rather than broaden the fetch.' || J-10 step 2a (text in force during this iteration): '...If the conventions do not demonstrably agree within a stated tolerance - or if the comparison cannot be performed at all - insert nothing and STOP for owner review.' (iter goal-market-compass-iter-7)
+- [critical] AG-17 - Repair never rewrites provenance (owner, 2026-08-20): ... The incident record itself is evidence: the iter-5 drill result, its handoff, the reviewer/QA evidence already produced, and the explicit statement that the committed seed could not restore these dates MUST NOT be deleted, rewritten, or silently superseded. (iter goal-market-compass-iter-8)
 
 ## Telemetry
 
@@ -188,21 +190,70 @@ See `runs/goal-session-market-compass/telemetry.jsonl` for the structured event 
       [engine] lean-pipeline     360.1m  (contains agent time above)
       [engine] showcase-join       0.0m  (contains agent time above)
       pump-wait                300.3m
-  session: 7 completed iteration(s), mean wall 125.4m
-      total reviewer                   873.4m
-      total developer                  608.5m
-      total goal-decomposer            185.8m
-      total browser-qa-agent           139.2m
-      total goal-evaluator              81.9m
-      total iteration-summarizer        53.1m
-      total auditor                     48.9m
-      total qa                          48.3m
-      total coherence-auditor           47.5m
-      total ui-impact-analyst           32.4m
-      total orchestrator                22.3m
-      total demo-narrator               20.0m
+  goal-market-compass-iter-8  depth=full  verdict=CONTINUE  wall=69.5m
+      auditor                     20.9m  calls=1
+      goal-evaluator              12.7m  calls=1
+      qa                           9.7m  calls=1
+      reviewer                     8.6m  calls=1
+      ux-regression-reviewer       7.2m  calls=1
+      ui-impact-analyst            6.7m  calls=1
+      browser-qa-agent             6.2m  calls=1
+      coherence-auditor            5.7m  calls=1
+      demo-narrator                1.3m  calls=1
+      [engine] full-pipeline      51.1m  (contains agent time above)
+      [engine] showcase-join       0.0m  (contains agent time above)
+      (resume-skipped: goal-decomposer, ui-test-design)
+      pump-wait                  9.8m
+      overlap saved              9.3m  (parallel steps)
+  goal-market-compass-iter-9  depth=full  verdict=?  wall=?  (incomplete/interrupted attempt)
+      orchestrator               340.9m  calls=1  failures=1
+      goal-decomposer             19.1m  calls=1
+      iteration-summarizer        11.6m  calls=1
+      [engine] showcase-join       0.1m  (contains agent time above)
+      pump-wait                341.1m
+  goal-market-compass-iter-9  depth=full  verdict=?  wall=?  (incomplete/interrupted attempt)
+      [engine] showcase-join       0.0m  (contains agent time above)
+      (resume-skipped: goal-decomposer)
+  goal-market-compass-iter-9  depth=full  verdict=CONTINUE  wall=133.8m
+      developer                   61.3m  calls=1
+      goal-evaluator              17.5m  calls=1
+      auditor                     17.4m  calls=1
+      orchestrator                 9.4m  calls=1
+      coherence-auditor            9.3m  calls=1
+      reviewer                     9.3m  calls=1
+      qa                           9.3m  calls=1
+      [engine] full-pipeline     107.0m  (contains agent time above)
+      [engine] showcase-join       0.0m  (contains agent time above)
+      (resume-skipped: goal-decomposer)
+      pump-wait                  0.2m
+      OVER BUDGET at post-dev-fanout: 4809s > 3600s (mode=trim)
+      unattributed (glue)        0.1m  (wall − agents(active) − quota)
+  goal-market-compass-iter-10  depth=full  verdict=?  wall=?  (incomplete/interrupted attempt)
+      iteration-summarizer         9.1m  calls=1
+      goal-decomposer              9.1m  calls=1
+      orchestrator                 8.9m  calls=1
+      [engine] showcase-join       0.0m  (contains agent time above)
+      pump-wait                  0.0m
+  goal-market-compass-iter-10  depth=full  verdict=?  wall=?  (incomplete/interrupted attempt)
+      [engine] showcase-join       0.0m  (contains agent time above)
+      [engine] full-pipeline       0.0m  (contains agent time above)
+      (resume-skipped: goal-decomposer, coherence-auditor)
+  session: 9 completed iteration(s), mean wall 120.1m
+      total reviewer                   891.3m
+      total developer                  669.9m
+      total orchestrator               381.6m
+      total goal-decomposer            214.0m
+      total browser-qa-agent           145.4m
+      total goal-evaluator             112.1m
+      total auditor                     87.2m
+      total iteration-summarizer        73.8m
+      total qa                          67.3m
+      total coherence-auditor           62.6m
+      total ui-impact-analyst           39.1m
+      total demo-narrator               21.3m
+      total ux-regression-reviewer       7.2m
       total browser-qa-replay            6.5m
       total readme-maintainer            1.2m
-      total AWAITING_PUMP paused gaps: 141.1m
+      total AWAITING_PUMP paused gaps: 501.7m
       halts: AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP
 ```

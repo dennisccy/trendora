@@ -1,0 +1,340 @@
+{
+  "captured_at": "2026-08-23T12:41:21.738173+00:00",
+  "certified_claims_ledger": {
+    "exists": true,
+    "path": "/home/dennis-chan/Git/trendora/runs/goal-session-mcp-loop/state/certified-claims.jsonl",
+    "sha256": "5d435cff51aff4e8a0072e466c50ad76c8063f8883a20fdbd78db8286135e721"
+  },
+  "daily_prices": {
+    "fingerprint": "572691772b7313b893055a9ada984945292bbcd07686f4702193a03e9223451a",
+    "id_sum": 5479295003075,
+    "max_date": "2026-08-12",
+    "min_date": "1996-01-02",
+    "ohlcv_sum": 52367106488426.56,
+    "row_count": 3310374
+  },
+  "data_provider_runs_count": 549,
+  "incident_dates": [
+    "2026-05-12",
+    "2026-05-13",
+    "2026-07-10",
+    "2026-07-13",
+    "2026-07-24",
+    "2026-07-27",
+    "2026-08-03",
+    "2026-08-05",
+    "2026-08-10",
+    "2026-08-11",
+    "2026-08-12"
+  ],
+  "per_date": {
+    "2026-05-12": {
+      "forward_returns_from_run_count": 2771,
+      "forward_returns_measured_into_count": 2770,
+      "manifests": [],
+      "scanner_results_count": 542,
+      "scanner_run": {
+        "created_at": "2026-08-21T00:26:13.943276+00:00",
+        "engine_identity": "6261ca1791b59771f3b6b6829142e2cf7c0f33d0fa4ea00a2f1e2c8d1d6b3a6e",
+        "present": true,
+        "run_id": 3149
+      },
+      "sector_scores_count": 31,
+      "theme_scores_count": 11
+    },
+    "2026-05-13": {
+      "forward_returns_from_run_count": 0,
+      "forward_returns_measured_into_count": 2771,
+      "manifests": [],
+      "scanner_results_count": 0,
+      "scanner_run": {
+        "created_at": null,
+        "engine_identity": null,
+        "present": false,
+        "run_id": null
+      },
+      "sector_scores_count": 0,
+      "theme_scores_count": 0
+    },
+    "2026-07-10": {
+      "forward_returns_from_run_count": 0,
+      "forward_returns_measured_into_count": 2769,
+      "manifests": [],
+      "scanner_results_count": 0,
+      "scanner_run": {
+        "created_at": null,
+        "engine_identity": null,
+        "present": false,
+        "run_id": null
+      },
+      "sector_scores_count": 0,
+      "theme_scores_count": 0
+    },
+    "2026-07-13": {
+      "forward_returns_from_run_count": 0,
+      "forward_returns_measured_into_count": 2217,
+      "manifests": [],
+      "scanner_results_count": 0,
+      "scanner_run": {
+        "created_at": null,
+        "engine_identity": null,
+        "present": false,
+        "run_id": null
+      },
+      "sector_scores_count": 0,
+      "theme_scores_count": 0
+    },
+    "2026-07-24": {
+      "forward_returns_from_run_count": 0,
+      "forward_returns_measured_into_count": 1660,
+      "manifests": [],
+      "scanner_results_count": 0,
+      "scanner_run": {
+        "created_at": null,
+        "engine_identity": null,
+        "present": false,
+        "run_id": null
+      },
+      "sector_scores_count": 0,
+      "theme_scores_count": 0
+    },
+    "2026-07-27": {
+      "forward_returns_from_run_count": 0,
+      "forward_returns_measured_into_count": 1660,
+      "manifests": [],
+      "scanner_results_count": 0,
+      "scanner_run": {
+        "created_at": null,
+        "engine_identity": null,
+        "present": false,
+        "run_id": null
+      },
+      "sector_scores_count": 0,
+      "theme_scores_count": 0
+    },
+    "2026-08-03": {
+      "forward_returns_from_run_count": 0,
+      "forward_returns_measured_into_count": 1662,
+      "manifests": [],
+      "scanner_results_count": 0,
+      "scanner_run": {
+        "created_at": null,
+        "engine_identity": null,
+        "present": false,
+        "run_id": null
+      },
+      "sector_scores_count": 0,
+      "theme_scores_count": 0
+    },
+    "2026-08-05": {
+      "forward_returns_from_run_count": 0,
+      "forward_returns_measured_into_count": 1660,
+      "manifests": [
+        {
+          "available_at_utc": "2026-08-20T10:27:50.388724+00:00",
+          "content_hash": "d90138a6b5ed449288656669d59531183a4e7f54fe9507d942a8c9a332194810",
+          "frozen": true,
+          "manifest_hash": "bcf122a2b19d8d8ad1371322fb04b4b2ad3ab6fe2953e7f53713d91145880f53",
+          "mode": "retrospective",
+          "prospective_eligible": false,
+          "source_run_id": 3112,
+          "version": 1
+        },
+        {
+          "available_at_utc": "2026-08-20T10:37:08.522720+00:00",
+          "content_hash": "d90138a6b5ed449288656669d59531183a4e7f54fe9507d942a8c9a332194810",
+          "frozen": true,
+          "manifest_hash": "bd5fc089f872de4984866788092e98aafe41e2ec60124802405b24abfeb8a65b",
+          "mode": "retrospective",
+          "prospective_eligible": false,
+          "source_run_id": 3112,
+          "version": 2
+        }
+      ],
+      "scanner_results_count": 0,
+      "scanner_run": {
+        "created_at": null,
+        "engine_identity": null,
+        "present": false,
+        "run_id": null
+      },
+      "sector_scores_count": 0,
+      "theme_scores_count": 0
+    },
+    "2026-08-10": {
+      "forward_returns_from_run_count": 20,
+      "forward_returns_measured_into_count": 124,
+      "manifests": [
+        {
+          "available_at_utc": "2026-08-20T12:54:39.810563+00:00",
+          "content_hash": "f1b6d2bdeaba1b95aa9240b16e88434534fe37bda4872d2b7b8cc27d765044f6",
+          "frozen": true,
+          "manifest_hash": "d0b1171cb867bff08a583b7912b396cc61f05a9945585fc7b6fe21f05134fe51",
+          "mode": "retrospective",
+          "prospective_eligible": false,
+          "source_run_id": 3048,
+          "version": 1
+        }
+      ],
+      "scanner_results_count": 539,
+      "scanner_run": {
+        "created_at": "2026-08-20T15:29:00.277879+00:00",
+        "engine_identity": "6261ca1791b59771f3b6b6829142e2cf7c0f33d0fa4ea00a2f1e2c8d1d6b3a6e",
+        "present": true,
+        "run_id": 3114
+      },
+      "sector_scores_count": 31,
+      "theme_scores_count": 11
+    },
+    "2026-08-11": {
+      "forward_returns_from_run_count": 20,
+      "forward_returns_measured_into_count": 20,
+      "manifests": [
+        {
+          "available_at_utc": "2026-08-20T11:15:33.112156+00:00",
+          "content_hash": "273d91bfea09da0b3b2a6ac71f5e8bfcd6fa8b2d8bef3a26d3015ae14d82075f",
+          "frozen": true,
+          "manifest_hash": "627efe339b98aa7aee6dbc17793fdbb119c221e2efe91943267aa7c22e4eff4f",
+          "mode": "retrospective",
+          "prospective_eligible": false,
+          "source_run_id": 3049,
+          "version": 1
+        },
+        {
+          "available_at_utc": "2026-08-20T11:38:04.282548+00:00",
+          "content_hash": "273d91bfea09da0b3b2a6ac71f5e8bfcd6fa8b2d8bef3a26d3015ae14d82075f",
+          "frozen": true,
+          "manifest_hash": "56dd84285330be721a88c02d1b6eb329b5c3bd650226d12f9b3320aecef9c66f",
+          "mode": "retrospective",
+          "prospective_eligible": false,
+          "source_run_id": 3049,
+          "version": 2
+        },
+        {
+          "available_at_utc": "2026-08-20T11:51:57.526574+00:00",
+          "content_hash": "273d91bfea09da0b3b2a6ac71f5e8bfcd6fa8b2d8bef3a26d3015ae14d82075f",
+          "frozen": true,
+          "manifest_hash": "212c5c0ebf6182f12e4c0200cbee6b7e98558827c558d725476aa4508c17f426",
+          "mode": "retrospective",
+          "prospective_eligible": false,
+          "source_run_id": 3049,
+          "version": 3
+        }
+      ],
+      "scanner_results_count": 539,
+      "scanner_run": {
+        "created_at": "2026-08-21T00:28:16.273886+00:00",
+        "engine_identity": "6261ca1791b59771f3b6b6829142e2cf7c0f33d0fa4ea00a2f1e2c8d1d6b3a6e",
+        "present": true,
+        "run_id": 3150
+      },
+      "sector_scores_count": 31,
+      "theme_scores_count": 11
+    },
+    "2026-08-12": {
+      "forward_returns_from_run_count": 0,
+      "forward_returns_measured_into_count": 20,
+      "manifests": [
+        {
+          "available_at_utc": null,
+          "content_hash": "8bb67cd69448b5391bf76dba99cbcab1570840d28cc2749a9f084344785eb917",
+          "frozen": false,
+          "manifest_hash": null,
+          "mode": null,
+          "prospective_eligible": false,
+          "source_run_id": 3081,
+          "version": 1
+        },
+        {
+          "available_at_utc": "2026-08-20T10:24:11.083084+00:00",
+          "content_hash": "3aff17d15a91466e15a7272a841ca4f0e619b7cff4412bc08c33abfc25ae954a",
+          "frozen": true,
+          "manifest_hash": "bff668ec857920049417448297462091d1b088f406b88dfa02afe2af79e6d50a",
+          "mode": "at_ingest",
+          "prospective_eligible": false,
+          "source_run_id": 3081,
+          "version": 2
+        },
+        {
+          "available_at_utc": "2026-08-20T10:24:23.315919+00:00",
+          "content_hash": "3aff17d15a91466e15a7272a841ca4f0e619b7cff4412bc08c33abfc25ae954a",
+          "frozen": true,
+          "manifest_hash": "35f22104a26e895e7389c0d842f06b7390e35fe5b9432932c00642c7a8dfae11",
+          "mode": "at_ingest",
+          "prospective_eligible": false,
+          "source_run_id": 3081,
+          "version": 3
+        },
+        {
+          "available_at_utc": "2026-08-20T10:25:39.227219+00:00",
+          "content_hash": "3aff17d15a91466e15a7272a841ca4f0e619b7cff4412bc08c33abfc25ae954a",
+          "frozen": true,
+          "manifest_hash": "746c9c6f3cd79e916163aa18c74738d12b6fc3b6cca639224a134da66a66733c",
+          "mode": "at_ingest",
+          "prospective_eligible": false,
+          "source_run_id": 3081,
+          "version": 4
+        },
+        {
+          "available_at_utc": "2026-08-20T10:28:45.293278+00:00",
+          "content_hash": "3aff17d15a91466e15a7272a841ca4f0e619b7cff4412bc08c33abfc25ae954a",
+          "frozen": true,
+          "manifest_hash": "6f05c7559e50f60e446997477400fec7aa998cd0c43dc96cdc66858bac107279",
+          "mode": "at_ingest",
+          "prospective_eligible": false,
+          "source_run_id": 3081,
+          "version": 5
+        },
+        {
+          "available_at_utc": "2026-08-20T14:51:57.701653+00:00",
+          "content_hash": "3aff17d15a91466e15a7272a841ca4f0e619b7cff4412bc08c33abfc25ae954a",
+          "frozen": true,
+          "manifest_hash": "9bc08cfba04fc2dcab7eeb35f7b695834ef69da5ca3b6634acca4c605d5769c3",
+          "mode": "at_ingest",
+          "prospective_eligible": false,
+          "source_run_id": 3081,
+          "version": 6
+        }
+      ],
+      "scanner_results_count": 539,
+      "scanner_run": {
+        "created_at": "2026-08-21T00:26:04.189714+00:00",
+        "engine_identity": "6261ca1791b59771f3b6b6829142e2cf7c0f33d0fa4ea00a2f1e2c8d1d6b3a6e",
+        "present": true,
+        "run_id": 3148
+      },
+      "sector_scores_count": 31,
+      "theme_scores_count": 11
+    }
+  },
+  "staging_ledger": {
+    "exists": true,
+    "path": "/home/dennis-chan/Git/trendora/runs/goal-session-mcp-loop/state/staging-ledger.jsonl",
+    "sha256": "3e85847e8d7424e3f473b758c18f83e5819db8c66904c5a4ec4b490c463f441a"
+  },
+  "watchlist_count": 6,
+  "zero_write_proof": {
+    "capture_daily_prices": {
+      "fingerprint": "572691772b7313b893055a9ada984945292bbcd07686f4702193a03e9223451a",
+      "id_sum": 5479295003075,
+      "max_date": "2026-08-12",
+      "min_date": "1996-01-02",
+      "ohlcv_sum": 52367106488426.56,
+      "row_count": 3310374
+    },
+    "counts_match": true,
+    "db_file": "/home/dennis-chan/Git/trendora/apps/backend/data/trendora.db",
+    "fingerprints_match": true,
+    "independent_spot_check": {
+      "fingerprint": "572691772b7313b893055a9ada984945292bbcd07686f4702193a03e9223451a",
+      "id_sum": 5479295003075,
+      "max_date": "2026-08-12",
+      "min_date": "1996-01-02",
+      "ohlcv_sum": 52367106488426.56,
+      "row_count": 3310374
+    },
+    "mtime_after": 1787482245.3511636,
+    "mtime_before": 1787482245.3511636,
+    "mtime_unchanged": true
+  }
+}

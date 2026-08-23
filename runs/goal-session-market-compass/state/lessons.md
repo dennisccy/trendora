@@ -44,30 +44,12 @@ Today-page recomposition and `/market` relocation.
 **Applies to:** any iter adding user-facing generated prose under `app/engine/compass.py`, and the
 J-05/J-06 manifest work that will serialise these same strings into an exported artifact.
 
-## iter-3 — 2026-08-20T13:20:00Z
-
-**Verdict:** CONTINUE
-**Lesson:** Five of this iteration's fourteen browser-QA screenshots are the SAME 20 KB file
-(`UT-01/06/11/13/14-result.png`, md5 `e83381c1…`) and two more are one identical BLANK 6 KB file
-(`UT-04/UT-05-result.png`, md5 `ad732856…`) — every one of them bottom-anchored so the card under test
-is off-frame. The prose rows were accurate (they were read from the DOM), but the cited images prove
-nothing, and a checksum sweep of the evidence directory exposed it in seconds. The only usable
-acceptance frames came from the QA agent's full-page captures — which themselves truncate at
-~29,500 px, cutting the shadow-cohort table off the end of a 539-row page.
+## iter-3 — 2026-08-20T13:20:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** every iteration's evidence review — run `md5sum` over
 `reports/qa/<iter>-evidence/*.png` before citing any of them, and expect long pages (audit tables,
 cohort lists) to need an element-scoped capture rather than a full-page one.
 
-## iter-3 — 2026-08-20T13:20:00Z
-
-**Verdict:** CONTINUE
-**Lesson:** A feature can be fully built, fully unit-tested, review-passed and audit-passed and still
-have its headline claim unobserved. J-05's whole point is that a real close seals the record with
-`prospective_eligible: true`, and NOTHING in this iteration ever produced that state: the ingest test
-was skipped for host safety, the live frontier still served a pre-freeze-era row, and every `at_ingest`
-manifest anyone saw came from the regenerate button — which by design is always
-`prospective_eligible: false`. The producer path with the strictest acceptance rule is also the one no
-lane can exercise cheaply, so it silently becomes the untested path.
+## iter-3 — 2026-08-20T13:20:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration whose acceptance depends on the ingest-finalize tail
 (`data_manager._refresh_ingest_aggregates`) — plan the remove+backfill drill as a first-class,
 budgeted step, or state up front that the journey cannot close this round.
@@ -215,3 +197,21 @@ mechanics, never about narrative.
 **Applies to:** any iteration where full depth is optional; and specifically J-11, whose acceptance is a
 long list of narrative claims ("no stale cache survives", "no new historical manifest appears") that a
 row-count check cannot confirm.
+
+## iter-10 — 2026-08-23T13:36:00Z
+
+**Verdict:** STALLED
+**Lesson:** A "schema contract proven by fixture-DB tests" can be fully green and still be false on the
+production database: `apps/backend/app/models.py`'s FK-declaration drop makes the manifest↔run contract
+true for any DB built from current SQLModel metadata, while the live `next_session_manifests` DDL still
+carries `FOREIGN KEY(source_run_id) REFERENCES scanner_runs (id)` with `PRAGMA foreign_keys=0` and 12
+standing `foreign_key_check` violations. Both the reviewer and QA recorded that DoD item complete on the
+strength of the passing fixture tests; only the auditor queried the live DDL. Second, smaller edge from
+the same iteration: `compass.basis_disclosure`'s `if not row.generation_json: return {"status":
+"available"}` short-circuit (`compass.py:1108-1109`) fabricates an honest-looking state on 10 of 24 live
+manifests — the degenerate input that bites is "row exists but records no basis", not "no row at all",
+and the TC-5 orphan test covered only the latter.
+**Applies to:** any iteration whose acceptance items say "the LIVE schema/database" — verify against the
+live artifact (`sqlite_master`, `pragma_foreign_key_check`) and not only against a metadata-built fixture;
+and any fail-closed read path, where the missing-field branch deserves its own test alongside the
+missing-row branch.

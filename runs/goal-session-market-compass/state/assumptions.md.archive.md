@@ -287,3 +287,98 @@ deterministic gate and preserves diagnosis detail. Scoring it `failing` would al
 iteration whose most valuable output was an accurate number reported against its author's interest.
 **Reversible:** yes
 
+
+<!-- condense.sh 2026-08-23T12:27:43Z: moved 3 entries (keep-iters=5) -->
+
+## iter-5 — goal-decomposer
+
+**Ambiguity:** J-05 step 2's flagship claim (a manifest minted by `ingest_finalize` with `mode:
+at_ingest`, `version: 1`, `prospective_eligible: true`) can only ever be computed for the CURRENT bar
+frontier (the single latest `daily_prices` date), and `next_session_manifests` is append-only /
+skip-if-exists (AG-12 — no UPDATE path exists). Direct read-only inspection of the live 7.8 GB DB
+(2026-08-20, no service started) found the only possible frontier date, 2026-08-12, already carries 5
+manifest rows — an iter-2-era placeholder version 1 (`mode` NULL) plus four `at_ingest`/`frozen: true`/
+`prospective_eligible: false` rows minted 2026-08-20 10:23-10:27 by regenerate-class calls during
+iter-3's own build/testing — so no future remove+backfill of that date can ever mint a fresh version-1
+row there again. Advancing the real bar frontier past 2026-08-12 needs a live network fetch (AG-9,
+requires an explicit goal.md amendment). goal.md does not anticipate this accumulated-test-state
+condition when it asks the iteration to "actually watch a real close seal the record", and does not
+say whether a fixture-scoped test may stand in for a live-production observation of a fact the
+production database can no longer produce through no fault of this iteration's own actions.
+**We chose:** Did not attempt to force a live-production observation of this specific fact (that would
+require either an unauthorized AG-9 live-fetch exception, or clearing pre-existing manifest rows, which
+risks the append-only spirit of AG-12 without owner sign-off). Instead treated the already-built,
+already-passing fixture-scoped tests (`test_manifest_invariants.py::test_tc20_baseline_is_eligible` and
+the `frontier_run`-fixture tests in the same file, run scoped/targeted) as the flagship mechanism
+proof — consistent with goal.md's own Constraints ("new tests are synthetic-fixture, file-scoped") —
+and directed the live app at every OTHER J-05/J-06 step the current data state can actually exercise,
+with the burned-slot finding documented verbatim in the dev handoff so the evaluator scores J-05 with
+full context rather than repeating "no live proof" without knowing the structural reason why.
+**Reversible:** yes — a future iteration can still pursue a true live-production demonstration if the
+owner authorizes either an AG-9 exception or a small `database.url` env-override (mirroring
+`TRENDORA_COMPASS_EXPORT_DIR`'s pattern) to run the live drill against a clean, isolated small DB
+instead; neither is built this iteration, and nothing here forecloses either path.
+
+## iter-5 — developer
+
+**Ambiguity/incident:** Step (i)'s own instruction ("remove+backfill the seed-safe last two
+trading days") and TC-5's safety check (reconfirm `GET /api/health`'s `seed_latest_date`
+immediately before removing — matched, 2026-08-12) both assumed 2026-08-11/2026-08-12 were part of
+the immutable committed seed and therefore trivially restorable via `backfill` after a `remove`.
+They are not: `seed_latest_date` is `MAX(DailyPrice.date)` (`app/api/health.py:158,243`) — a live,
+dynamic value, not the static seed-CSV boundary. Direct inspection of a seed CSV
+(`apps/backend/data/seed/prices/A.csv`) shows the true committed seed ends ~2026-07-01;
+2026-08-10/11/12 were themselves live-fetched ("user-added") bars sitting on top of it (provider
+run history ids 525-533). `remove_data` correctly refuses to touch the TRUE committed seed, but
+correctly ALLOWED removing these non-seed bars — and `backfill` can only reprocess bars that still
+exist, not regenerate deleted ones. Executing step (i) as written therefore permanently deleted
+2026-08-11 and 2026-08-12's price bars (confirmed via a read-only query: `daily_prices` now maxes
+at 2026-08-10) with no offline path back (a live re-fetch would need an AG-9 exception, not
+authorized here). This was discovered only after the destructive `POST /api/data/remove` call
+(job id 538) had already run and the restore `backfill` came back `dates_total: 0`.
+**We chose:** Did not attempt a live fetch or any manual DB/WAL recovery to undo it (both out of
+scope / unauthorized / unsupported). Documented the incident verbatim in the dev handoff, recorded
+the true observed TC-13 behavior (a 400 "as_of is after the latest data date" — a different,
+possibly more severe symptom than the carried B2 "quietly rebuilds" finding, but rooted in the
+SAME out-of-scope dated-page as-of-resolution lever), and recorded TC-14/TC-20's 2026-08-11 and
+2026-08-12 assertions as an honest FAIL/blocked rather than working around or hiding the gap. Did
+not retarget the remaining drill steps (iii/iv) at a substitute date, since J-06's steps are
+literally about "that manifest" (the frontier's, from J-05) — substituting would misrepresent which
+as-of the evidence is actually about.
+**Reversible:** the DATA LOSS itself is not (2026-08-11/2026-08-12 now join 2026-08-13/2026-08-14
+as permanently offline-unrecoverable; the effective bar frontier is now 2026-08-10) — future
+iterations must treat 2026-08-10 as the safe frontier and MUST NOT reconfirm safety via
+`seed_latest_date` alone before a Remove; the ONLY reliable check is the committed seed CSVs'
+own max date (or a to-be-built explicit seed-boundary field/endpoint — not built this iteration).
+The SCORING/PROCESS choice above (document honestly, do not paper over) is fully reversible — a
+future iteration or the owner may still choose to pursue an authorized live re-fetch to restore a
+frontier past 2026-08-10.
+
+## iter-5 — owner (checkpoint supersede, 2026-08-20)
+
+**Assumption:** iteration 5's execution checkpoint (`current_step: dev_complete`,
+`next_action: review`) is no longer a valid continuation point, because it was created BEFORE
+`docs/goal.md` gained J-10 (bounded recovery), AG-9's dated single-use fetch exception, AG-17
+(repair never rewrites provenance), and the loop-mechanics insert that gates every lane behind
+J-10. Resuming into iter-5's reviewer lane would have run normal pipeline work against a
+knowingly damaged database, which the amended goal forbids.
+
+**Action taken (owner-directed, not agent-decided):** `session.json` `current_iter` advanced
+5 → 6 so the decomposer re-plans against the amended goal. `last_verdict` left at iter-4's real
+`CONTINUE` — no verdict was invented for iteration 5, and iteration 5 has no `eval.md` because it
+was superseded before evaluation, not evaluated. The engine's `step_invalidate_from decomposer`
+path was deliberately NOT used: its ledger registers `docs/phases/goal-market-compass-iter-5.md`
+as a deletable artifact, so it would have destroyed the spec that instructed the destructive drill.
+Full record: `state/incident-2026-08-20-iter-5-superseded.md`.
+
+**For the iter-6 decomposer:** plan J-10 first. Iter-5's uncommitted working-tree changes are
+still present and are NOT to be reverted wholesale — classify them: Constraints (a) memory-pressure
+gating + `_seed_subset.py`, Constraints (b) `next.config.mjs` 4-worker bound, and the
+`demo_runner.py` visible-element replay fix are reusable and independent of the damaged dataset;
+anything whose evidence was computed against the 2026-08-11/12 dataset is blocked pending J-10
+verification and must not be treated as clean prospective/OOS evidence (AG-17).
+
+**Reversible:** yes — the cursor can be moved back to 5 if the owner later wants iter-5's reviewer
+lane to run (a backup of the pre-change `session.json` was taken). The data loss itself is not
+reversible offline; only J-10's authorized bounded fetch can restore those two dates.
+

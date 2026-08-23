@@ -1,0 +1,63 @@
+{
+  "config_subset": {
+    "compass.delta": {
+      "breadth_min_change_pts": 5.0,
+      "market_score_min_change": 5.0,
+      "max_stock_items": 10,
+      "pbear_bands": [
+        {
+          "label": "calm",
+          "min": 0.0
+        },
+        {
+          "label": "cautious",
+          "min": 0.2
+        },
+        {
+          "label": "tense",
+          "min": 0.4
+        },
+        {
+          "label": "stressed",
+          "min": 0.6
+        }
+      ],
+      "rank_move_min": 2,
+      "rule_version": "v1",
+      "stock_score_min_change": 8.0,
+      "top_k": 5,
+      "velocity_flat_band": 2.0
+    },
+    "compass.manifest": {
+      "availability_margin_seconds": 60,
+      "export_dir": "apps/backend/data/exports/next_session_manifests",
+      "schema_path": "docs/handoffs/trendora-next-session-manifest-v1.schema.json",
+      "schema_version": "v1"
+    },
+    "compass.selection": {
+      "entry_min_score": 70.0,
+      "leadership_min_score": 80.0,
+      "max_candidates": 10,
+      "risk_max_score": 60.0,
+      "rule_version": "v1",
+      "shadow": {
+        "min_score": 75.0
+      },
+      "why_not_cap": 20,
+      "why_not_floor": 75.0
+    }
+  },
+  "config_subset_hash": "10bc4504ed9f28961a6342c3306d8a8eaeceac5ec7d233645540dffb0a653614",
+  "engine_identity": "6261ca1791b59771f3b6b6829142e2cf7c0f33d0fa4ea00a2f1e2c8d1d6b3a6e",
+  "frozen_at": "2026-08-23T12:41:23.207162+00:00",
+  "provenance_config_keys": [
+    "compass.selection",
+    "compass.delta",
+    "compass.manifest"
+  ],
+  "provenance_engine_files": [
+    "apps/backend/app/engine/compass.py",
+    "apps/backend/app/engine/session_delta.py",
+    "apps/backend/app/engine/engine_identity.py"
+  ]
+}
