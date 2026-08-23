@@ -139,3 +139,35 @@ lane can exercise cheaply, so it silently becomes the untested path.
 (`data_manager._refresh_ingest_aggregates`) — plan the remove+backfill drill as a first-class,
 budgeted step, or state up front that the journey cannot close this round.
 
+
+<!-- condense.sh 2026-08-23T21:20:10Z: moved 2 entries (keep-iters=5) -->
+
+## iter-4 — 2026-08-20T15:05:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** J-09's ≤2.5 GB VmPeak target was derived from a THEORETICAL calculation
+(`cache_size` 256 MB × `pool_size` 24 = 6.1 GB) without checking this project's own recorded
+floor. `config.yaml:1377`'s `memory_cap_mb` comment already documented 2,691,600 kB (iter-32) and
+3,688,916 kB (iter-38) VmPeak for an isolated heavy warm on the 30y basis, and two cold boots with
+the NEW value peaked at 837,860-1,423,852 kB before any load — so a >2.5 GB floor existed
+independent of the pool cache, and the config change could not have reached the target no matter
+how it was measured. Before committing to a numeric performance target, grep the project's own
+prior measurements (`reports/perf-budgets.md`, the cap comments in `config.yaml`) for an existing
+floor; a theoretical worst-case multiplication is not a baseline.
+**Applies to:** any iteration whose acceptance is a measured resource/latency threshold, and any
+goal.md amendment that sets one.
+
+## iter-4 — 2026-08-20T15:05:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** The deterministic replay golden for J-01 has now produced the IDENTICAL false FAIL in
+two consecutive iterations ("step 03 expected 'Consumer Discretionary' did not appear") — the
+sector cell renders the string wrapped across two DOM lines, which the golden's contiguous-text
+match cannot see (`reports/qa/goal-market-compass-iter-4-evidence/J-01-verify.png` shows the value
+plainly). Reconciling an overturned replay FAIL is a workaround, not a fix: leaving the golden
+broken trains every future evaluator to wave the same row through, so a REAL J-01 failure would be
+dismissed as "the usual false positive". A golden overturned twice must be repaired (match the
+cell's text content, not a contiguous string) in the next iteration that touches the lane.
+**Applies to:** any iteration reading `*-regression-replay-results.md`; any journey whose golden
+asserts on a multi-word value inside a narrow table column.
+

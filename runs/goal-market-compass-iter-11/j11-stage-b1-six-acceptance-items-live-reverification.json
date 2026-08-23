@@ -1,0 +1,26 @@
+{
+  "item_1_schema_matches_manifest_survives_rebuild_contract": {
+    "evidence": "postmigration-ddl.json: table_sql carries no FOREIGN KEY clause",
+    "proven": true
+  },
+  "item_2_deleting_a_scanner_run_requires_no_manifest_delete_or_rewrite": {
+    "evidence": "analytic: SQLite enforces referential actions only when a FOREIGN KEY is DECLARED in the schema; the live schema no longer declares one, so deleting a scanner_runs row can never trigger a cascade/restrict against next_session_manifests, regardless of pragma state -- the exact mechanic already covered by the fixture test_j11_maintenance.py::test_tc3_fk_on_delete_source_run_no_violation_manifest_untouched",
+    "proven": true
+  },
+  "item_3_existing_rows_byte_for_byte_unchanged": {
+    "evidence": "postmigration-row-column-diff.json: equal=true, zero mismatches, 24 rows both sides",
+    "proven": true
+  },
+  "item_4_holds_by_schema_contract_not_merely_pragma_off": {
+    "evidence": "fk-check-pragma-on.json: PRAGMA foreign_keys=ON explicitly issued on a fresh connection, then PRAGMA foreign_key_check(next_session_manifests) -- zero rows, despite the four orphaned source_run_id values remaining stored unchanged",
+    "proven": true
+  },
+  "item_5_a_future_fk_enforced_backend_would_not_invalidate_j11s_deletion": {
+    "evidence": "analytic: the live schema (and the app.models.py declaration) no longer declares a source_run_id -> scanner_runs.id foreign key at all; a stricter/enforced backend (including Postgres) reads the SAME undeclared-constraint contract, so there is no constraint left to violate",
+    "proven": true
+  },
+  "item_6_basis_disclosure_resolves_by_as_of_never_by_fk_dereference": {
+    "evidence": "code inspection: app.engine.compass.basis_disclosure resolves the current run via `select(ScannerRun).where(ScannerRun.asof_date == row.as_of)` and never reads row.source_run_id at all; regression-tested unmodified by test_manifest_invariants.py::test_basis_disclosure_reads_unavailable_when_the_source_run_is_gone and ::test_basis_disclosure_reads_rebuilt_when_the_source_run_is_recreated, plus test_j11_maintenance.py's TC-3..TC-6",
+    "proven": true
+  }
+}

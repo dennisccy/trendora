@@ -207,6 +207,108 @@ def test_basis_disclosure_reads_rebuilt_when_the_source_run_is_recreated(engine,
     assert after == before  # the frozen document is served verbatim, unchanged by the rebuild
 
 
+# --- basis_disclosure fail-closed fix (goal-market-compass iter-11, TC-9..TC-13, docs/goal.md J-11 -----
+# step 11 ruling A4): four degenerate `generation_json` inputs must ALL report the same explicit
+# "unverifiable" status, never fabricate "available", and never raise. The three already-correct
+# branches (rebuilt / unavailable / available-when-matching) stay covered, unchanged, by the two tests
+# directly above this block plus test_api_compass.py and test_j11_maintenance.py's TC-3..TC-6.
+
+
+def test_tc9_basis_disclosure_reports_unverifiable_when_generation_json_is_null(engine, cfg, frontier_run):
+    with Session(engine) as session:
+        run = session.get(ScannerRun, frontier_run)
+        row = compass.get_or_create_manifest(session, run, cfg, producer="ingest_finalize")
+        row.generation_json = None
+        session.add(row)
+        session.commit()
+    with Session(engine) as session:
+        row = session.exec(select(NextSessionManifest)).first()
+        disclosure = compass.basis_disclosure(session, row)  # must not raise
+    assert disclosure["status"] == "unverifiable"
+    assert disclosure["status"] not in ("available", "unavailable", "rebuilt")
+    assert disclosure["detail"] is not None
+
+
+def test_tc10_basis_disclosure_reports_unverifiable_when_generation_json_is_empty_string(engine, cfg, frontier_run):
+    with Session(engine) as session:
+        run = session.get(ScannerRun, frontier_run)
+        row = compass.get_or_create_manifest(session, run, cfg, producer="ingest_finalize")
+        row.generation_json = ""
+        session.add(row)
+        session.commit()
+    with Session(engine) as session:
+        row = session.exec(select(NextSessionManifest)).first()
+        disclosure = compass.basis_disclosure(session, row)  # must not raise
+    assert disclosure["status"] == "unverifiable"
+    assert disclosure["status"] != "available"
+
+
+def test_tc11_basis_disclosure_reports_unverifiable_when_generation_json_is_malformed(engine, cfg, frontier_run):
+    with Session(engine) as session:
+        run = session.get(ScannerRun, frontier_run)
+        row = compass.get_or_create_manifest(session, run, cfg, producer="ingest_finalize")
+        row.generation_json = "{not valid json"
+        session.add(row)
+        session.commit()
+    with Session(engine) as session:
+        row = session.exec(select(NextSessionManifest)).first()
+        disclosure = compass.basis_disclosure(session, row)  # must not raise, even on malformed JSON
+    assert disclosure["status"] == "unverifiable"
+    assert disclosure["status"] != "available"
+
+
+def test_tc12_basis_disclosure_reports_unverifiable_when_source_run_created_at_is_absent(engine, cfg, frontier_run):
+    with Session(engine) as session:
+        run = session.get(ScannerRun, frontier_run)
+        row = compass.get_or_create_manifest(session, run, cfg, producer="ingest_finalize")
+        row.generation_json = json.dumps({"producer": "ingest_finalize", "engine_identity": "stub"})
+        session.add(row)
+        session.commit()
+    with Session(engine) as session:
+        row = session.exec(select(NextSessionManifest)).first()
+        disclosure = compass.basis_disclosure(session, row)  # must not raise
+    assert disclosure["status"] == "unverifiable"
+    assert disclosure["status"] != "available"
+
+
+def test_tc12b_basis_disclosure_reports_unverifiable_when_generation_json_is_a_non_object(engine, cfg, frontier_run):
+    """iter-11 AUDIT: `generation_json` holding VALID JSON that is not an object (a bare scalar or a
+    list) parses cleanly, so it never reaches the malformed-JSON `except`, and then `"source_run_created_at"
+    in <int>` raises TypeError -- escaping the fail-closed guard as a 500 on the served
+    `GET /api/compass` payload rather than an honest status. Ruling A4 admits no such escape ("must
+    never report available", "must not raise"), so every non-object parse must fail closed too."""
+    for degenerate in ("5", '"a string"', "[1, 2, 3]", "null"):
+        with Session(engine) as session:
+            row = session.exec(select(NextSessionManifest)).first()
+            if row is None:
+                run = session.get(ScannerRun, frontier_run)
+                row = compass.get_or_create_manifest(session, run, cfg, producer="ingest_finalize")
+            row.generation_json = degenerate
+            session.add(row)
+            session.commit()
+        with Session(engine) as session:
+            row = session.exec(select(NextSessionManifest)).first()
+            disclosure = compass.basis_disclosure(session, row)  # must not raise
+        assert disclosure["status"] == "unverifiable", degenerate
+        assert disclosure["status"] != "available", degenerate
+
+
+def test_tc13_basis_disclosure_available_branch_still_reports_available_when_recorded_timestamp_matches(
+    engine, cfg, frontier_run
+):
+    """TC-13: the fail-closed fix must not disturb the one already-correct branch not covered by the two
+    tests above this block -- a manifest whose recorded `source_run_created_at` matches the current run's
+    `created_at` exactly still reports `available` (mirrors test_api_compass.py's live assertion of the
+    same fact)."""
+    with Session(engine) as session:
+        run = session.get(ScannerRun, frontier_run)
+        row = compass.get_or_create_manifest(session, run, cfg, producer="ingest_finalize")
+    with Session(engine) as session:
+        row = session.exec(select(NextSessionManifest)).first()
+        disclosure = compass.basis_disclosure(session, row)
+    assert disclosure == {"status": "available", "detail": None}
+
+
 # --- TC-16 (reproducibility) -----------------------------------------------------------------------
 
 

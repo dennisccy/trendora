@@ -1063,7 +1063,11 @@ export interface CompassCaveats {
 /** The read-time-only basis disclosure (never a mutation, never a recompute of the frozen content) —
  *  compares the manifest's recorded source run against the CURRENT stored run for its as_of. */
 export interface CompassBasisDisclosure {
-  status: "available" | "unavailable" | "rebuilt";
+  // goal-market-compass iter-11 (J-11 step 11 ruling A4): "unverifiable" is the fail-closed status
+  // app.engine.compass.basis_disclosure now returns for a manifest with no recorded/readable
+  // generation basis (NULL/empty/malformed generation_json, or one missing source_run_created_at) --
+  // never fabricated as "available". See lib/basis-disclosure-label.ts for the label/variant mapping.
+  status: "available" | "unavailable" | "rebuilt" | "unverifiable";
   detail: string | null;
 }
 

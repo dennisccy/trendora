@@ -6,6 +6,7 @@ import { AlertTriangle, Loader2, RotateCcw, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Disclosure } from "@/components/ui/disclosure";
+import { basisDisclosureLabel } from "@/lib/basis-disclosure-label";
 import { cn } from "@/lib/utils";
 import {
   regenerateManifest,
@@ -32,9 +33,7 @@ function HashChip({ label, value }: { label: string; value: string | null }) {
 }
 
 function BasisLine({ basis }: { basis: CompassResponse["basis"] }) {
-  const variant = basis.status === "available" ? "ok" : basis.status === "rebuilt" ? "warn" : "danger";
-  const label =
-    basis.status === "available" ? "Basis: available" : basis.status === "rebuilt" ? "Basis: rebuilt" : "Basis: unavailable";
+  const { variant, label } = basisDisclosureLabel(basis.status);
   return (
     <div className="flex flex-wrap items-center gap-2 text-xs" data-testid="compass-manifest-basis">
       <Badge variant={variant}>{label}</Badge>

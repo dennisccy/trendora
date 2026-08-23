@@ -1,0 +1,13 @@
+{
+  "index_names": [
+    "ix_next_session_manifests_content_hash",
+    "ix_next_session_manifests_source_run_id",
+    "uq_next_session_manifests_as_of_version"
+  ],
+  "index_sqls": [
+    "CREATE INDEX ix_next_session_manifests_content_hash ON next_session_manifests (content_hash)",
+    "CREATE INDEX ix_next_session_manifests_source_run_id ON next_session_manifests (source_run_id)",
+    "CREATE UNIQUE INDEX uq_next_session_manifests_as_of_version ON next_session_manifests (as_of, version)"
+  ],
+  "table_sql": "CREATE TABLE \"next_session_manifests\" (\n\tid INTEGER NOT NULL, \n\tas_of DATE NOT NULL, \n\tversion INTEGER NOT NULL, \n\tsource_run_id INTEGER NOT NULL, \n\tsession_delta_json VARCHAR NOT NULL, \n\tnarrative_json VARCHAR NOT NULL, \n\tselection_json VARCHAR NOT NULL, \n\tcontent_hash VARCHAR NOT NULL, \n\tcreated_at DATETIME NOT NULL, \n\tmode VARCHAR, \n\tfrozen BOOLEAN NOT NULL, \n\tgeneration_json VARCHAR, \n\tengine_identity VARCHAR, \n\tcandidate_rule_hash VARCHAR, \n\tcandidate_rule_config_json VARCHAR, \n\tcohort_rule_hash VARCHAR, \n\tcohort_rule_config_json VARCHAR, \n\tmanifest_config_hash VARCHAR, \n\tmanifest_config_subset_json VARCHAR, \n\tdataset_json VARCHAR, \n\tuniverse_json VARCHAR, \n\tcomparison_cohort_json VARCHAR, \n\tnear_threshold_shadow_json VARCHAR, \n\tcaveats_json VARCHAR, \n\tprospective_eligible BOOLEAN NOT NULL, \n\tavailable_at_utc DATETIME, \n\tmanifest_hash VARCHAR, \n\texport_path VARCHAR, \n\tPRIMARY KEY (id)\n)"
+}

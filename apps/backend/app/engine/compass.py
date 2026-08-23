@@ -1098,16 +1098,47 @@ def list_manifest_versions(session: Session, as_of: date) -> list[NextSessionMan
 
 
 def basis_disclosure(session: Session, row: NextSessionManifest) -> dict:
-    """Read-time-only comparison (TC-10/TC-11) — NEVER a mutation, NEVER a recompute of the frozen
+    """Read-time-only comparison (TC-9..TC-13) — NEVER a mutation, NEVER a recompute of the frozen
     content. Compares the manifest's recorded `source_run_created_at` against the CURRENT stored run for
     this `as_of` (never the dataset-version stamp alone, which a rebuild can reproduce byte-identically).
-    `{"status": "available"|"unavailable"|"rebuilt", "detail": str|None}`."""
+    `{"status": "available"|"unavailable"|"rebuilt"|"unverifiable", "detail": str|None}`.
+
+    Fail-closed fix (docs/goal.md J-11 step 11 ruling A4, owner 2026-08-23 — withdraws iter-10's "needs
+    no change" reading): the ORIGINAL implementation short-circuited `not row.generation_json` straight
+    to `{"status": "available"}`, which FABRICATES "basis intact" for a manifest with no recorded basis
+    at all (verified live: the 2026-08-12 version-1 manifest reported `available` while 8 of 24 live
+    manifests carry `generation_json` NULL — an AG-1 violation on a served surface). `basis_disclosure`
+    must never report a confident "available" claim it cannot actually back. Four degenerate branches
+    now all return the SAME explicit `"unverifiable"` status instead — never `"available"`, never a
+    raised exception:
+      - `generation_json` is NULL or an empty string (TC-9/TC-10) — no recorded basis to compare at all;
+      - `generation_json` is not valid JSON (TC-11) — malformed, caught explicitly, never propagated;
+      - `generation_json` parses but is not a JSON object, or is an object that omits the
+        `source_run_created_at` key (TC-12) — present but incomplete, exactly as unverifiable as
+        absent. The non-object case is guarded explicitly: `"key" in <non-dict>` raises TypeError,
+        which would escape this fail-closed guard as a 500 on the served payload.
+    The three already-correct branches — unavailable (no current run), rebuilt (recorded timestamp
+    differs from the current run's), and available (recorded timestamp matches) — are unchanged
+    (TC-13)."""
     current_run = session.exec(select(ScannerRun).where(ScannerRun.asof_date == row.as_of)).first()
     if current_run is None:
         return {"status": "unavailable", "detail": "the underlying scanner run for this as-of is no longer stored"}
     if not row.generation_json:
-        return {"status": "available", "detail": None}  # pre-freeze-era row -- no recorded basis to compare
-    generation = json.loads(row.generation_json)
+        # NULL or empty string -- no recorded basis to compare. Fail closed: never "available".
+        return {"status": "unverifiable", "detail": "no generation basis was recorded for this manifest"}
+    try:
+        generation = json.loads(row.generation_json)
+    except (ValueError, TypeError):
+        # malformed (not valid JSON) -- must not raise; fail closed the same as a missing basis.
+        return {"status": "unverifiable", "detail": "the recorded generation basis is malformed and cannot be read"}
+    if not isinstance(generation, dict) or "source_run_created_at" not in generation:
+        # Well-formed JSON, but either not an OBJECT at all (a bare scalar/list -- `"key" in 5` raises
+        # TypeError, which would escape this fail-closed guard as a 500 on the served `GET /api/compass`
+        # payload) or an object missing the one field this comparison depends on. Both are the same
+        # fact: a basis is recorded but cannot be used. Fail closed, never raise (ruling A4: "when
+        # `generation_json` is missing, empty, or malformed, or when `source_run_created_at` is absent
+        # ... must NEVER report available").
+        return {"status": "unverifiable", "detail": "the recorded generation basis omits the source run timestamp"}
     recorded = generation.get("source_run_created_at")
     current = _utc_isoformat(current_run.created_at)
     if recorded is not None and recorded != current:

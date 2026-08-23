@@ -1,0 +1,14 @@
+{
+  "changed_tables": [],
+  "db_file_after": {
+    "mtime": 1787522416.0778868,
+    "path": "/home/dennis-chan/Git/trendora/apps/backend/data/trendora.db",
+    "size_bytes": 8365871104
+  },
+  "db_file_before": {
+    "mtime": 1787482245.3511636,
+    "path": "/home/dennis-chan/Git/trendora/apps/backend/data/trendora.db",
+    "size_bytes": 8365871104
+  },
+  "no_table_other_than_next_session_manifests_written": true
+}

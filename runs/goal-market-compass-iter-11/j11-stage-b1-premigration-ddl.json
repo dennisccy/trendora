@@ -1,0 +1,13 @@
+{
+  "index_names": [
+    "ix_next_session_manifests_content_hash",
+    "ix_next_session_manifests_source_run_id",
+    "uq_next_session_manifests_as_of_version"
+  ],
+  "index_sqls": [
+    "CREATE INDEX ix_next_session_manifests_content_hash ON next_session_manifests (content_hash)",
+    "CREATE INDEX ix_next_session_manifests_source_run_id ON next_session_manifests (source_run_id)",
+    "CREATE UNIQUE INDEX uq_next_session_manifests_as_of_version ON next_session_manifests (as_of, version)"
+  ],
+  "table_sql": "CREATE TABLE next_session_manifests (\n\tid INTEGER NOT NULL, \n\tas_of DATE NOT NULL, \n\tsource_run_id INTEGER NOT NULL, \n\tsession_delta_json VARCHAR NOT NULL, \n\tnarrative_json VARCHAR NOT NULL, \n\tselection_json VARCHAR NOT NULL, \n\tcontent_hash VARCHAR NOT NULL, \n\tcreated_at DATETIME NOT NULL, version INTEGER NOT NULL DEFAULT 1, mode VARCHAR, frozen BOOLEAN NOT NULL DEFAULT 0, generation_json VARCHAR, engine_identity VARCHAR, candidate_rule_hash VARCHAR, candidate_rule_config_json VARCHAR, cohort_rule_hash VARCHAR, cohort_rule_config_json VARCHAR, manifest_config_hash VARCHAR, manifest_config_subset_json VARCHAR, dataset_json VARCHAR, universe_json VARCHAR, comparison_cohort_json VARCHAR, near_threshold_shadow_json VARCHAR, caveats_json VARCHAR, prospective_eligible BOOLEAN NOT NULL DEFAULT 0, available_at_utc DATETIME, manifest_hash VARCHAR, export_path VARCHAR, \n\tPRIMARY KEY (id), \n\tFOREIGN KEY(source_run_id) REFERENCES scanner_runs (id)\n)"
+}

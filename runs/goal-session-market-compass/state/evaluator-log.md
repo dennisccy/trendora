@@ -607,3 +607,90 @@ open and non-blocking: whether 3.44 GB is acceptable for J-09 "The backend fits 
 "next-session focus" is acceptable; and whether MNST joins the recovery list. ONE STANDING FRAMEWORK NOTE:
 the defect that let the forbidden test lane run three times is still unfixed in `scripts/automation/`; two
 iterations running have avoided it with the maintenance-isolation contract rather than by curing it.
+
+## Iteration 11 — goal-market-compass-iter-11
+
+**Date:** 2026-08-23T23:45:00Z
+**Verdict:** REGRESSION
+**Depth dispatched:** full (`runs/goal-session-market-compass/iter-11/depth-dispatched` reads `full`,
+matching the spec's own `Depth: full` line — the silent full→lean demotion that fired in iters 2, 6 and
+8 did NOT recur, for the third iteration running, and neither did the forbidden browser/replay lane;
+the engine recorded its refusal in `iter-11/maintenance-isolation-refusals`)
+
+**Journey deltas:**
+- Newly passing: none
+- Newly failing: none. **Regressed: none.**
+- **Re-verified against CHANGED goal text: J-10** "Bounded recovery of the two deleted trading days" —
+  `journeys-changed.md` flagged the drift (`007e17cb…` → `42ad1807…`); the new text is the owner's
+  dated "J-10 CLOSED — residual set accepted" block, which accepts exactly the state iteration 9
+  reached. Re-derived read-only by me and re-stamped with the current hash. Stays `passing`.
+- **Advanced within `partial`: J-11** — this iteration's sole target. Stage B1 is now complete: the
+  bounded live-schema migration and the `basis_disclosure` fail-closed fix both landed and both hold
+  on the live database. Stages C-G untouched by design. Re-stamped `9124b395…`.
+- Carried, NOT re-verified (maintenance isolation — browser QA and the replay lane were forbidden by
+  contract, so every journey keeps its prior recorded status): J-01, J-04 stay `passing`; J-02, J-03,
+  J-05, J-06, J-09 stay `partial`; J-07, J-08 stay `failing`.
+- Anti-goal violations: **ONE NEW, CRITICAL, UNRESOLVED — AG-18.** The owner-authorised migration
+  removed the FK constraint AND dropped three `DEFAULT` clauses AND moved `version` from column
+  ordinal 9 to 3, against a bound that reads "and nothing else". Ledger: 5 total, 1 unresolved.
+  AG-1, AG-9, AG-10, AG-12 and AG-17 were the others at real risk and all five held, each verified by
+  my own read-only queries.
+- Coherence: COHERENCE-PASS. Deterministic scan: CLEAN. Review: PASS. QA: PASS. Audit:
+  PASS_WITH_GAPS (B1 IMPORTANT — the residual schema delta, owner decision required).
+
+**Reasoning:** The two things this iteration was asked to prove are proven, and I did not take them
+from anyone's prose — I opened the live database read-only and re-derived every figure. The link that
+blocked the big repair is gone from the table definition; with the strict checking switched ON the
+database reports no broken references at all; all 24 saved briefing records came through with every
+one of their 28 values identical, including the four "orphan" references the owner insisted must be
+kept; the three original indexes are the only indexes; every other table in the database has exactly
+the row count it had before; and the destructive stage has not started. The honesty fix is real too:
+eight records that never recorded how they were built used to tell readers "the original basis is
+intact", and I checked each one — all eight now say "unverifiable" instead. That was a false claim on
+a page people read, and it is closed. So why halt? Because the one change the owner authorised did
+more than the authorisation allowed. Besides removing the link, it also dropped three "default value"
+rules and moved one column into a different position, because the code rebuilt the table from the
+program's model instead of from the real table definition it had already saved. I confirmed that
+myself by comparing the saved before-picture with the live definition. Nothing was lost and nothing
+is broken — I checked that the start-up routine will not try to re-add anything, and that no code
+writes to this table with raw statements — but the owner's words were "and nothing else", and this is
+on the real database where it cannot be taken back without a second permission. Why REGRESSION and not
+STALLED? Both would halt, but STALLED says "waiting for an answer" while the truth is stronger: the
+live database is outside its written permission, unrepaired, and the very next step is the destructive
+clear — the same class of action that permanently destroyed data in iteration 5. The owner should
+acknowledge the breach explicitly before that starts. Why not CONTINUE? The gate the owner wrote (A6)
+is not cleared, and the goal file shuts every other lane until this repair's final stage passes, so
+there is no other legal work. Two process facts belong in the record: the independent auditor found
+this, while the developer, the reviewer and the quality check all missed it — the third iteration
+running where the auditor catches something the other two lanes assert as verified — and the quality
+check stated in writing that everything was committed to version control when nothing was.
+
+**Next-step recommendation:** ONE DECISION IS NEEDED FROM THE OWNER, and everything waits on it. The
+authorised change to the manifest table also dropped three default-value rules and moved one column.
+Pick one: (a) accept it in writing in `docs/goal.md` — the reassuring facts, all verified by me: no
+stored value moved, the dropped defaults are never read, the table now has the shape a freshly built
+database has always had, and the start-up routine will not re-add anything; (b) order a corrective
+rebuild restoring the three rules and the original column order, which is a SECOND write to the live
+7.8 GB database and needs its own permission, evidence and audit — I recommend against it, since it
+doubles the risk to restore rules nothing reads; or (c) record it as an accepted deviation, which is
+(a) in shorter form. AFTER the answer, the next iteration is J-11 stages C to G at full depth, alone:
+one writer, no web server, no browser tests. Four things must travel with it — clear both stale layers
+(the stored daily summaries for 11 and 12 August AND the caches built over different data); watch AVB,
+whose restored prices sit on the stored scale while its trading volume does not, so any figure
+multiplying price by volume reads about 2.79 times too high on those two days; do not re-run the
+recovery script (download permission is used up and the script has no guard); and confirm that this
+iteration's migration script, its ten evidence files and the fixes actually reach version control —
+none of them are committed as I write this. THREE SMALLER ITEMS: fix the iteration metadata that
+declares a frontend present while the test designer worked as if it were not; when the browser lane
+reopens at Stage G, re-check J-05 "Each close freezes one manifest", J-06 "A frozen manifest never
+changes" and J-08 "Market page moves over intact" first, noting that the new "unverifiable" badge has
+never been rendered by a browser because the eight records that would trigger it sit behind an older,
+also-honest message; and reconcile a NEW observation of mine — three manifest export files recorded in
+the database (versions 2, 3 and 4 for 12 August) are missing from disk, and four export files exist
+for dates with no manifest record, both conditions dating from 20 August, three days before this
+iteration. FIVE OLDER OWNER QUESTIONS remain open and non-blocking: whether 3.44 GB is acceptable for
+J-09 "The backend fits the host"; J-06's "underlying run unavailable" wording; the rewording of J-01's
+first two test steps; whether an empty "next-session focus" is acceptable; and whether MNST joins the
+recovery list. ONE STANDING FRAMEWORK NOTE: the defect that let the forbidden test lane run three
+times is still unfixed in `scripts/automation/`; three iterations running have avoided it with the
+maintenance-isolation contract rather than curing it.

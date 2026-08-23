@@ -54,32 +54,11 @@ cohort lists) to need an element-scoped capture rather than a full-page one.
 (`data_manager._refresh_ingest_aggregates`) — plan the remove+backfill drill as a first-class,
 budgeted step, or state up front that the journey cannot close this round.
 
-## iter-4 — 2026-08-20T15:05:00Z
-
-**Verdict:** CONTINUE
-**Lesson:** J-09's ≤2.5 GB VmPeak target was derived from a THEORETICAL calculation
-(`cache_size` 256 MB × `pool_size` 24 = 6.1 GB) without checking this project's own recorded
-floor. `config.yaml:1377`'s `memory_cap_mb` comment already documented 2,691,600 kB (iter-32) and
-3,688,916 kB (iter-38) VmPeak for an isolated heavy warm on the 30y basis, and two cold boots with
-the NEW value peaked at 837,860-1,423,852 kB before any load — so a >2.5 GB floor existed
-independent of the pool cache, and the config change could not have reached the target no matter
-how it was measured. Before committing to a numeric performance target, grep the project's own
-prior measurements (`reports/perf-budgets.md`, the cap comments in `config.yaml`) for an existing
-floor; a theoretical worst-case multiplication is not a baseline.
+## iter-4 — 2026-08-20T15:05:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration whose acceptance is a measured resource/latency threshold, and any
 goal.md amendment that sets one.
 
-## iter-4 — 2026-08-20T15:05:00Z
-
-**Verdict:** CONTINUE
-**Lesson:** The deterministic replay golden for J-01 has now produced the IDENTICAL false FAIL in
-two consecutive iterations ("step 03 expected 'Consumer Discretionary' did not appear") — the
-sector cell renders the string wrapped across two DOM lines, which the golden's contiguous-text
-match cannot see (`reports/qa/goal-market-compass-iter-4-evidence/J-01-verify.png` shows the value
-plainly). Reconciling an overturned replay FAIL is a workaround, not a fix: leaving the golden
-broken trains every future evaluator to wave the same row through, so a REAL J-01 failure would be
-dismissed as "the usual false positive". A golden overturned twice must be repaired (match the
-cell's text content, not a contiguous string) in the next iteration that touches the lane.
+## iter-4 — 2026-08-20T15:05:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration reading `*-regression-replay-results.md`; any journey whose golden
 asserts on a multi-word value inside a narrow table column.
 
@@ -215,3 +194,23 @@ and the TC-5 orphan test covered only the latter.
 live artifact (`sqlite_master`, `pragma_foreign_key_check`) and not only against a metadata-built fixture;
 and any fail-closed read path, where the missing-field branch deserves its own test alongside the
 missing-row branch.
+
+## iter-11 — 2026-08-23T23:45:00Z
+
+**Verdict:** REGRESSION
+**Lesson:** A SQLite "drop a constraint" rebuild has TWO possible sources of truth for the replacement
+table — the captured live DDL and the ORM model — and they are not the same object. `create_shadow_table`
+(`apps/backend/app/engine/j11_schema_migration.py:172-192`) captured the live DDL with `fetch_object_ddl`,
+reissued the captured INDEXES verbatim, and then built the TABLE from `NextSessionManifest.__table__`,
+so every difference between the live table's accumulated history (`app/db.py::_COLUMN_ADDS`
+server-side `DEFAULT`s, original column order) and the model's shape silently rode along with the one
+authorized change. The developer caught two consequences of that choice (four spurious indexes, a
+duplicate autoindex) and guarded them with a test — proof they were reasoning about exactly this class
+of drift — but never asserted the `CREATE TABLE` body itself was otherwise unchanged, so the reviewer
+and QA both re-verified only "the FK clause is gone" and the delta reached the live 7.8 GB database.
+**Rule for next time: a bounded schema migration must diff the whole pre/post `CREATE TABLE` text as an
+acceptance item, not just assert the absence of the one clause it set out to remove — and rebuild from
+what it captured, not from a second source of truth.**
+**Applies to:** any iteration performing a table rebuild/migration on a live SQLite database, any work
+touching `apps/backend/app/engine/j11_schema_migration.py` or `app/db.py`'s additive-schema path, and
+any acceptance item phrased as "removes X and nothing else".

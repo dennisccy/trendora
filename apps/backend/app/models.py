@@ -818,18 +818,22 @@ class NextSessionManifest(SQLModel, table=True):
     # confirm-gated regenerate mints version N+1 for an existing as_of. Pre-iter-3 rows backfill 1.
     version: int = Field(default=1)
     # goal-market-compass iter-10 (J-11 Stage B1): the LIVE `FOREIGN KEY(source_run_id) REFERENCES
-    # scanner_runs (id)` DDL is DROPPED from the model declaration here (model-declaration change only --
-    # no live-DB migration; the already-created live table keeps its existing DDL untouched, per
-    # `.claude/project-template.md`'s additive-ALTER-only schema-evolution rule). This was a LATENT
+    # scanner_runs (id)` DDL is DROPPED from the model declaration here (iter-10: model-declaration change
+    # only, no live-DB migration yet. iter-11 (J-11 Stage B1-completion, ruling A1): the owner
+    # subsequently AUTHORIZED and this iteration PERFORMED the bounded live-schema migration too -- a
+    # mechanical constraint-only table rebuild via `app.engine.j11_schema_migration` /
+    # `scripts/run_j11_stage_b1_manifest_schema_migration.py`, proven row/column-identical on the LIVE
+    # database before and after (evidence under `runs/goal-market-compass-iter-11/`). The live table now
+    # matches this model declaration exactly -- no more model/live-DDL divergence). This was a LATENT
     # contradiction, not a new one: enforcement was already OFF on the live DB (`PRAGMA foreign_keys` reads
     # `0` -- `app.db._apply_sqlite_pragmas` never issues `PRAGMA foreign_keys=ON`), and
-    # `PRAGMA foreign_key_check(next_session_manifests)` already reports 12 violations on the live DB
-    # today, all on incident-dated manifests -- so the FK declaration was never actually enforced; it was
-    # only ever aspirational. Declaring it here as `foreign_key=...` documents a contract the design does
-    # NOT want: AG-12 (manifest immutability) requires a manifest to survive its source `ScannerRun` being
-    # deleted and canonically rebuilt (J-11 Stages C/D, a LATER iteration), and a rebuilt run legitimately
-    # gets a fresh row (or, since `scanner_runs.id` is a plain SQLite rowid alias with no `AUTOINCREMENT`
-    # and no `sqlite_sequence` table, can even REUSE a freed numeric id).
+    # `PRAGMA foreign_key_check(next_session_manifests)` already reported 12 violations on the live DB
+    # before the iter-11 migration, all on incident-dated manifests -- so the FK declaration was never
+    # actually enforced; it was only ever aspirational. Declaring it here as `foreign_key=...` documented a
+    # contract the design does NOT want: AG-12 (manifest immutability) requires a manifest to survive its
+    # source `ScannerRun` being deleted and canonically rebuilt (J-11 Stages C/D, a LATER iteration), and a
+    # rebuilt run legitimately gets a fresh row (or, since `scanner_runs.id` is a plain SQLite rowid alias
+    # with no `AUTOINCREMENT` and no `sqlite_sequence` table, can even REUSE a freed numeric id).
     #
     # Intended end state (docs/goal.md J-11 step 11, verbatim): "`source_run_id` remains stored historical
     # provenance; it is not required to dereference to a live `ScannerRun` forever; manifest survival must
@@ -840,11 +844,15 @@ class NextSessionManifest(SQLModel, table=True):
     #
     # Reconciliation after a delete/rebuild is therefore by `as_of` + `source_run_created_at` (carried
     # inside `generation_json`) + the frozen `engine_identity` -- NEVER by dereferencing `source_run_id`.
-    # `app.engine.compass.basis_disclosure` already implements exactly this (it resolves the CURRENT run
-    # by `as_of` and compares `source_run_created_at` against that run's `created_at` -- it never reads
-    # `source_run_id` at all) and needs NO change here. `source_run_id` stays `index=True` (still a useful
+    # `app.engine.compass.basis_disclosure`'s DESIGN already implements exactly this (it resolves the
+    # CURRENT run by `as_of` and compares `source_run_created_at` against that run's `created_at` -- it
+    # never reads `source_run_id` at all) and needs no change to that design here. Its IMPLEMENTATION,
+    # however, had a fail-closed defect the owner's 2026-08-23 correction withdraws the earlier "needs no
+    # change" reading on (docs/goal.md ruling A4): it fabricated `{"status": "available"}` for a manifest
+    # with no recorded generation basis at all, rather than an honest unverifiable state. Fixed directly in
+    # `basis_disclosure` (iter-11) -- not here. `source_run_id` stays `index=True` (still a useful
     # lookup/audit column) and its VALUE is still written once and never mutated (AG-12) -- only the live
-    # `FOREIGN KEY` constraint declaration is removed.
+    # `FOREIGN KEY` constraint declaration was removed (iter-11).
     source_run_id: int = Field(index=True)
     session_delta_json: str
     narrative_json: str

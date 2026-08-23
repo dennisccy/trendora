@@ -1,6 +1,6 @@
 # Iteration State — market-compass
 
-**After iteration:** 10 · **Date:** 2026-08-23 · **Verdict:** STALLED
+**After iteration:** 11 · **Date:** 2026-08-23 · **Verdict:** REGRESSION
 
 ## Journeys
 
@@ -8,32 +8,33 @@
 
 ## Active blockers
 
-- **OWNER DECISION (halts the session).** J-11 Stage C may not begin: `docs/goal.md` J-11 step 11 needs all
-  six acceptance items proven; items 1 and 4 are false on the live DB — `sqlite_master` for
-  `next_session_manifests` still ends in `FOREIGN KEY(source_run_id) REFERENCES scanner_runs (id)`,
-  `PRAGMA foreign_keys`=0, `pragma_foreign_key_check` returns 12. Options: (a) dated goal.md amendment
-  accepting model/metadata-level satisfaction (no manifest points at any run Stage C deletes — risk nil
-  today); (b) authorise a bounded 24-row live-table rewrite (write to the 7.8 GB DB, own isolation +
-  byte-survival proof); (c) reword item 1. Detail: `iter-10/eval.md` Halt Justification.
-- **Owner, same decision point:** may the `basis_disclosure` empty-`generation_json` fix land before Stage
-  G (changes served basis for 10 manifests, `apps/backend/app/engine/compass.py:1108-1109`)? May the
-  attempt-identity check stay blind to `scanner.py`/`scoring.py`?
-- **Contract gate (not a defect):** `docs/goal.md` Loop-mechanics shuts every product/research/browser lane
-  until J-11 Stage G passes — J-01..J-09 cannot be worked on or measured before then. Framework, unfixed:
-  the forbidden-lane defect in `scripts/automation/` (suppressed 2 iterations by maintenance isolation, not
-  cured). Owner, non-blocking (5, unchanged): J-09 3.44 GB; J-06 "underlying run unavailable"; J-01
-  test-step rewording; empty next-session focus; MNST.
+- **OWNER DECISION (blocking everything).** The authorized `next_session_manifests` migration removed
+  the FK constraint **and** dropped three `DEFAULT` clauses (`version`, `frozen`, `prospective_eligible`)
+  **and** moved `version` from ordinal 9 to 3 — beyond ruling A1 / AG-18's "and nothing else". Live,
+  unrepairable without a second authorization; no stored value changed (24 rows × 28 columns verified).
+  Options: accept in writing / corrective rebuild / record as an accepted deviation. Evidence:
+  `runs/goal-market-compass-iter-11/j11-stage-b1-premigration-ddl.json` vs live `sqlite_master`; audit
+  finding B1. **Ruling A6's Stage C gate is NOT cleared.**
+- Maintenance isolation (ruling A5) stays ACTIVE: no app boot, no browser QA, no replay lane until
+  Stage G. `docs/goal.md`'s Loop-mechanics gate shuts every other product/research lane until then.
+- Uncommitted: the migration script, its 10 evidence files and both fixes (QA wrongly claimed otherwise).
 
 ## Last 2 verdicts
 
-- iter 10: STALLED — Stage B/B2 delivered and independently re-derived; Stage C's own gate proven unmet on
-  the live DB, and every unblock path is an owner decision (`docs/goal.md` says stop and ask).
-- iter 9: CONTINUE — J-10 reached raw-layer terminal state (585/587 restored, EA+EQR named unrestorable).
+- iter 11: REGRESSION — Stage B1 genuinely completed and re-verified live (FK gone, 24/24 rows
+  identical, `basis_disclosure` fails closed on all 8 no-basis rows), but the migration exceeded its
+  written authorization on the live DB and that breach is unresolved.
+- iter 10: STALLED — two Stage-C precondition items were false on the live DB; every unblock path was
+  an owner decision. That decision arrived as rulings A1-A7 and drove iter-11.
 
 ## Do not redo
 
-- Stage B inventory + Stage B2 frozen identity/consistency helper: DONE, verified read-only — `apps/backend/app/engine/j11_maintenance.py` + `runs/goal-market-compass-iter-10/j11-*.json`.
-- FK-declaration drop + verbatim end-state comment: DONE — `apps/backend/app/models.py:820`; `compass.basis_disclosure` needs no change for rebuild/id-reuse; never "fix up" `source_run_id`.
-- TC-3..TC-7 fixture tests (degenerate-orphan + id-reuse included): DONE, 9/9 — `apps/backend/tests/test_j11_maintenance.py`.
-- J-10 CLOSED at the raw layer; never re-run `run_j10_population_recovery.py` (AG-9 exception exhausted, no guard). AVB ~2.79x close*volume caveat belongs to Stage D/G.
-- `test_no_magic_numbers.py` failure is pre-existing (`indicators.py`/`forward_testing.py`/`research.py`) — out of scope.
+- **J-10 is CLOSED** (owner, 2026-08-23): 585 restored / EA + EQR unrestorable. Do not reopen, retry,
+  or re-fetch; AG-9's exception is exhausted. Re-verified read-only in iter-11.
+- **The live FK removal is DONE** — no `FOREIGN KEY` clause, `foreign_key_check` empty under
+  `PRAGMA foreign_keys=ON`. Do not migrate again except as an owner-ordered corrective rebuild.
+- **`basis_disclosure` fail-closed fix is DONE** (`compass.py`, ruling A4): four degenerate branches
+  return `"unverifiable"` (+ the auditor's non-object guard); 96 targeted tests pass.
+- **Frontend `basis.status` 4-literal union + `lib/basis-disclosure-label.ts` are DONE** (tsc clean).
+- Stages B (inventory) and B2 (frozen engine identity) shipped in iter-10 — do not rebuild them.
+- Never run the full backend suite, boot any service, or copy `trendora.db`.

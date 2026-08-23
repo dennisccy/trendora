@@ -1,0 +1,33 @@
+{
+  "db_file": {
+    "mtime": 1787522416.0778868,
+    "path": "/home/dennis-chan/Git/trendora/apps/backend/data/trendora.db",
+    "size_bytes": 8365871104
+  },
+  "tables": {
+    "availability_cache": 1,
+    "coverage_snapshot": 1,
+    "daily_prices": 3310374,
+    "data_provider_runs": 549,
+    "etfs": 36,
+    "event_study_cache": 18,
+    "forward_aggregate_cache": 333,
+    "forward_returns": 6800539,
+    "import_checkpoints": 37,
+    "index_series_cache": 1,
+    "industries": 0,
+    "macro_series": 5428,
+    "market_phase_cache": 1290,
+    "membership_timeline_cache": 1,
+    "next_session_manifests": 24,
+    "scanner_results": 1327944,
+    "scanner_runs": 3121,
+    "sector_scores": 96751,
+    "sectors": 11,
+    "stocks": 122,
+    "theme_members": 138,
+    "theme_scores": 34331,
+    "themes": 11,
+    "watchlist": 6
+  }
+}

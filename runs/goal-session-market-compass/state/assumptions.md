@@ -579,3 +579,70 @@ full so nothing is lost by halting.
 **Reversible:** yes — the owner can answer with a single dated line in `docs/goal.md` and `--resume`;
 nothing here deletes evidence, changes a status, or forecloses the CONTINUE reading if the owner prefers
 the follow-up fixes to land first.
+
+## iter-11 — goal-decomposer (scoping A4's "the UI must render the honest placeholder" under active maintenance isolation)
+
+**Ambiguity:** Ruling A4 (`docs/goal.md` J-11 step 11, owner 2026-08-23) states the `basis_disclosure`
+fail-closed fix "must return an explicit unverifiable/unknown state and the UI must render the honest
+'not yet proven'-class placeholder" as part of the Stage C precondition. Ruling A5, in the same set of
+rulings, keeps maintenance isolation ACTIVE for the whole iteration — no application-service boot, no
+browser-QA lane. `docs/goal.md` does not say whether A4's UI half must land in THIS iteration (typed and
+unit-tested, but unbootable/unverifiable-by-render) or may be deferred whole to Stage G, when the app
+can boot again.
+**We chose:** Land the minimal type/label change now — `apps/frontend/lib/api.ts`'s
+`CompassBasisDisclosure.status` union plus a small pure label/variant function extracted from
+`compass-manifest-strip.tsx` under `apps/frontend/lib/`, verified only by TypeScript type-checking and a
+plain node-script `.test.ts` (the project's existing no-boot frontend-logic-test pattern). This satisfies
+A4's UI clause without violating A5 (neither a dev server nor a browser is started), and avoids a second
+scope-creep trip back into this file at Stage G for a change with zero coupling to the destructive
+rebuild. No page render, dev-server boot, or browser-qa evidence is produced or claimed this iteration;
+the live rendered proof still belongs to Stage G alongside J-01/J-02/J-03.
+**Reversible:** yes — the exact literal chosen for the new status value is a one-line edit to a type
+union plus its label map if it ever needs to change, and nothing stored depends on it (`basis_disclosure`
+is read-time-only, never persisted); no data or evidence is created that a later choice would need to
+undo.
+
+## iter-11 — goal-evaluator (REGRESSION rather than STALLED for the AG-18 scope breach)
+
+**Ambiguity:** The decision tree returns REGRESSION on "a **critical** anti-goal violation [that] is
+unresolved" and STALLED when "every unblock path for the current blocker is a human-owned action".
+Both describe this iteration. AG-18 is tagged *(critical)* by the owner and its "removes the FK
+constraint and **nothing else**" bound was demonstrably exceeded on the live database and is NOT
+undone. But AG-18's own text names exactly one REGRESSION trigger — "A changed stored value is a
+REGRESSION, never a note" — and no stored value changed (I compared all 24 rows x 28 columns twice,
+read-only). The owner's prescribed response to an unresolvable J-11 question is "STOP before J-11 and
+surface it as an owner decision", which is STALLED's shape and is what iteration 10 returned for the
+same table.
+**We chose:** REGRESSION. Reasons: (a) the methodology's fail-closed rule — when unsure whether a
+violation is critical, treat it as critical and say so — and I am genuinely unsure, since the breach
+is of a scope bound rather than any of the five generic critical classes (secrets, paid dependency,
+license, backdoor, fabricated data); (b) the violated state is still materialised on the canonical
+7.8 GB database and cannot be reversed without a second owner authorization, so "unresolved" is true
+in the sense the iter-8 precedent used it (there, the damage HAD been undone byte-for-byte, so that
+iteration returned CONTINUE); (c) the very next authorized step is the destructive derived-state
+clear — the same class of action that permanently destroyed data in iteration 5 — and forcing an
+explicit `--acknowledge-regression` before it is the safe direction. Nothing else turns on the choice:
+both verdicts halt, the owner decision required is identical, and the eval states plainly that no
+journey broke and no stored value changed.
+**Reversible:** yes — if the owner reads the deviation as inside the authorization (option 1 in the
+recommendation), a single dated line in `docs/goal.md` plus `--acknowledge-regression` resumes the
+session with nothing repaired and nothing lost; the ledger entry can then be marked resolved by the
+next evaluator with the owner's acceptance as its evidence.
+
+## iter-11 — goal-evaluator (re-verifying J-10 against changed goal text on a maintenance-isolated iteration)
+
+**Ambiguity:** `journeys-changed.md` voids J-10's prior pass until it is re-verified "at the same
+evidence bar as a status change — a results row + screenshot against the CURRENT text", while the
+maintenance-isolation carve-out forbids any browser lane this iteration and says no journey may be
+promoted on it. `docs/goal.md` separately WAIVES J-10's walkthrough and names written artifacts plus
+database state as its substitute evidence set, so no screenshot can ever exist for it.
+**We chose:** Kept J-10 `passing` and stamped the new hash `42ad1807…`, on evidence I produced myself
+this iteration: read-only live queries showing 585 distinct symbols on each of 2026-08-11 and
+2026-08-12, EA and EQR holding zero rows, the price frontier still 2026-08-12 with nothing after it,
+`daily_prices` unchanged at 3,310,374 since iteration 9, and `data_provider_runs` still 549 (no new
+fetch). The changed goal text is the owner's own acceptance of exactly that state, so the current text
+is satisfied by the current database. This is not a promotion — the status is unchanged — and the
+screenshot rail cannot apply to a journey whose walkthrough the goal file waives (same reading iter-9
+logged when it first scored J-10 passing).
+**Reversible:** yes — J-11 Stage G is the first legally-runnable verification lane after this, and
+J-10 can be re-scored there at no cost if the owner reads the rail literally.

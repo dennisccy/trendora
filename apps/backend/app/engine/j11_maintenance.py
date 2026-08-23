@@ -18,8 +18,13 @@ tooling only:
     mismatch hides.
 
 Nothing here deletes, updates, or inserts a snapshot/manifest/price row. `app.engine.compass.
-basis_disclosure` already resolves current-run identity by `as_of` + `source_run_created_at` and needs
-no change from this module (see the comment on `NextSessionManifest.source_run_id` in `app/models.py`).
+basis_disclosure`'s DESIGN of resolving current-run identity by `as_of` + `source_run_created_at`
+(never by dereferencing `source_run_id`) is correct and needs no change here — but its IMPLEMENTATION
+had a fail-closed defect the owner's 2026-08-23 correction withdraws the earlier "needs no change"
+reading on: `basis_disclosure` fabricated `{"status": "available"}` for a manifest with no recorded
+generation basis at all. That defect is fixed directly in `app.engine.compass.basis_disclosure`
+(goal-market-compass iter-11, J-11 step 11 ruling A4) — not in this module, which stays read-only/pure
+precondition tooling as described above.
 """
 from __future__ import annotations
 

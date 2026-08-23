@@ -868,6 +868,17 @@ manifest artifact (it must be self-describing and self-caveating).
       introduced without an owner amendment. If some symbols ultimately cannot be restored under the
       fixed methodology, surface the **exact residual set and the per-symbol reasons** for
       owner/reviewer decision rather than silently lowering the coverage requirement.
+    - **J-10 CLOSED — residual set accepted (owner, 2026-08-23).** The owner/reviewer decision the
+      completion rule above calls for has now been made. **J-10 is raw-layer terminal at 585 restored
+      / 2 explicitly unrestorable.** The final fail-closed residual set is exactly:
+      - **EA** — Yahoo has no trading data past 2026-08-10; a real delisting, not a gate failure.
+      - **EQR** — only 1 comparable calibration pair, below the fixed 3-pair floor; the gate correctly
+        refused to write.
+      This is an acceptance of a **named, per-symbol-reasoned residual set**, NOT a partial-completion
+      threshold: no "enough symbols" number is introduced, and the ban on inventing one stands. Do not
+      reopen J-10 to retry EA or EQR, do not fetch further data for them under J-10, and do not treat
+      this acceptance as licence to lower coverage for any future population. AG-9's live-fetch
+      exception for J-10 is **exhausted** — it authorizes nothing further.
     - **Recorded finding — the one-series rule worked, and a vendor-provenance correction
       (iteration 8; corrected 2026-08-21 by the out-of-band audit — read the correction, it changes
       what the result means):** running the comparison and the restore through the same raw-close
@@ -1133,10 +1144,19 @@ manifest artifact (it must be self-describing and self-caveating).
        `available_at_utc`, or `prospective_eligible`. The implementer must determine the safest
        schema/migration strategy and **prove it before the destructive phase**. This repository has no
        Alembic, so a table rewrite must not be prescribed casually — any approach must be shown to
-       preserve every historical artifact byte-for-byte. Reassuringly, the read path already does the
-       right thing and needs no change: `compass.basis_disclosure` (`compass.py:1100-1115`) resolves
-       the current run **by `as_of`** and compares the recorded `source_run_created_at` against that
-       run's `created_at` — it never dereferences `source_run_id`.
+       preserve every historical artifact byte-for-byte. The read path's **design** is right and stays
+       authoritative: `compass.basis_disclosure` (`compass.py:1100-1115`) resolves the current run **by
+       `as_of`** and compares the recorded `source_run_created_at` against that run's `created_at` — it
+       never dereferences `source_run_id`. **Correction (owner, 2026-08-23): its implementation is
+       nevertheless defective and must be fixed — the earlier "needs no change" reading is withdrawn.**
+       `compass.py:1108-1109` short-circuits to `{"status": "available"}` when `generation_json` is
+       empty, so a manifest with no recorded basis reports its original basis as intact. Verified live:
+       the 2026-08-12 version-1 manifest (recorded source run 3081, long gone; current run 3148) reports
+       `available` while its five sibling versions correctly report `rebuilt`, and **8 of 24 live
+       manifests carry `generation_json` NULL** (count corrected 2026-08-23 from the "10" first recorded
+       by the iteration-10 evaluator; re-verified read-only: 24 rows total, 8 NULL, 0 empty-string).
+       `basis_disclosure` rides on every `GET /api/compass` payload,
+       so this is a fabricated-state defect on a served surface — precisely the class AG-1 forbids.
        **Stage C may not begin until all six of these are proven:**
        1. the live schema's manifest/run relationship matches the documented
           manifest-survives-rebuild contract;
@@ -1157,6 +1177,60 @@ manifest artifact (it must be self-describing and self-caveating).
        "repair" an orphaned foreign key.
        **If this contradiction cannot be resolved safely inside the current repository without a risky
        migration, STOP before J-11 and surface it as an owner decision.**
+       **That STOP fired at iteration 10 and the owner has now decided (owner, 2026-08-23).** Verified
+       live at that point: the table DDL still ends in `FOREIGN KEY(source_run_id) REFERENCES
+       scanner_runs (id)`, `PRAGMA foreign_keys` reads `0`, and `pragma_foreign_key_check` returns 12
+       violations — so acceptance items 1 and 4 were false on the live database, and the iter-10
+       `models.py` declaration change fixed only metadata-built databases, not the live file Stage C
+       deletes from. The ruling:
+       - **A1 — Bounded live-schema migration is AUTHORIZED.** A narrowly bounded live-schema migration
+         of `next_session_manifests` **only** is authorized, for the **sole** purpose of removing the
+         `source_run_id -> scanner_runs.id` foreign-key constraint. SQLite cannot drop a constraint in
+         place, so the mechanical table rebuild (create constraint-free table → copy rows → drop old →
+         rename) is authorized **as a mechanical relocation**. No other table's schema may be altered
+         under this authorization, and this is the **only** destructive-schema operation authorized
+         anywhere in this goal. It is not a precedent for any other table or any later convenience.
+       - **A2 — Absolute preservation.** All **24** manifest rows and **every stored value** must
+         survive **exactly**. `source_run_id` **values are preserved as stored historical provenance**
+         — only the constraint is removed — including the orphaned ids (3048, 3049, 3081, 3112), which
+         must keep their recorded values and must **not** be nulled, rebound, or "repaired". **No
+         manifest may be regenerated, rebound, rehashed, upgraded, deleted, or newly minted** (see
+         AG-18). AG-12 and AG-17 are **not** waived: the rebuild is byte-preserving relocation, never
+         mutation. Any changed stored value is an AG-12 violation and a REGRESSION, not a fixable note.
+       - **A3 — Proof obligations, all on the LIVE database, all before Stage C.**
+         1. **Pre/post full-row equality:** dump all 24 rows × all columns to a persisted evidence
+            artifact **before** the migration, re-dump **after**, and prove equality per row and per
+            column (not an aggregate-only check — iteration 9's lesson). Row count 24 → 24.
+         2. The six acceptance items above are then re-proven against the live database, not against a
+            fixture. Item 4 in particular must be demonstrated with `PRAGMA foreign_keys=ON`, since
+            "it works because FK checking is off" is exactly what item 4 excludes.
+         3. `sqlite_master` DDL for `next_session_manifests` contains no `FOREIGN KEY` clause, and
+            `pragma_foreign_key_check(next_session_manifests)` returns **zero** rows.
+         4. Mutation accounting: prove no table other than `next_session_manifests` was written.
+       - **A4 — `basis_disclosure` fail-closed fix is a Stage C precondition.** Before Stage C, fix the
+         defect recorded above so the read path **fails closed**: when `generation_json` is missing,
+         empty, or malformed, or when `source_run_created_at` is absent, `basis_disclosure` must **never**
+         report `available`. It must return an explicit unverifiable/unknown state and the UI must render
+         the honest "not yet proven"-class placeholder — never a confident claim that the original basis
+         is intact (AG-1). Cover each degenerate input with its own test, and re-verify read-only against
+         the 8 live manifests that carry `generation_json` NULL. Treat the *count* as evidence to
+         re-derive, not to trust: verify it yourself read-only rather than quoting this line.
+       - **A5 — Maintenance isolation stays ACTIVE.** No application-service boot, no browser-QA lane,
+         and no deterministic-replay lane, unchanged, until Stage G. The migration iteration is the
+         **single** authorized exception to "zero writes to `trendora.db`", and its writes are bounded to
+         the `next_session_manifests` rebuild alone. One controlled writer, no backend warmup, and the
+         7.8 GB file is never copied or opened for write by anything else.
+       - **A6 — Hard gate on Stage C.** **Stage C may not begin until BOTH the schema migration and the
+         `basis_disclosure` fix have passed reviewer, QA, and auditor review AND live read-only
+         verification.** This gate is **in addition to** the six acceptance items, not a substitute for
+         them. Reviewer and QA marking the DoD "complete" is not sufficient evidence — at iteration 10
+         both did so while two acceptance items were false on the live database; the claim must be
+         re-derived from the live database by the verifying agent.
+       - **A7 — Failure semantics.** If pre/post row equality cannot be proven, roll the table back to
+         its pre-migration state, write the evidence, and STOP for owner review. Never proceed to Stage C
+         from a partially migrated or unproven table.
+       This work is **Stage B1-completion**, a separate iteration (or iterations) before Stage C — it is
+       not part of the Stage C destructive unit and does not start it.
     12. **Stage B2 — freeze ONE engine identity for the whole attempt (owner, 2026-08-21).** J-11's
        claim is that the incident set ends up as one internally consistent current-engine derivation;
        that claim must be testable. Before Stage C, freeze the intended current engine identity and
@@ -1409,6 +1483,14 @@ manifest artifact (it must be self-describing and self-caveating).
   drill result, its handoff, the reviewer/QA evidence already produced, and the explicit statement that the
   committed seed could not restore these dates MUST NOT be deleted, rewritten, or silently superseded.
   Repairing the database never rewrites historical causality. *(critical)*
+- **AG-18 — The authorized manifest migration preserves everything (owner, 2026-08-23):** the bounded
+  `next_session_manifests` schema migration authorized in J-11 step 11 (ruling A1) removes the
+  `source_run_id` foreign-key constraint and **nothing else**. No manifest may be **regenerated,
+  rebound, rehashed, upgraded, deleted, or newly minted** by it or around it. All 24 rows and every
+  stored column value — `as_of`, `source_run_id` (orphans included), `generation_json`, `content_hash`,
+  `manifest_hash`, `version`, `available_at_utc`, `prospective_eligible` — survive exactly, proven by
+  persisted pre/post per-row evidence. No other table's schema may be altered under that authorization.
+  A changed stored value is a REGRESSION, never a note. *(critical)*
 
 ## Loop mechanics (for the iteration planner)
 
