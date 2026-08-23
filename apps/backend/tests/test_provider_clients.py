@@ -88,6 +88,20 @@ _YAHOO_OK = {
 }
 
 
+def test_yahoo_and_stooq_declare_distinct_source_labels():
+    """goal-market-compass iter-9 (J-10 gap #2): the minimal, non-invasive provider-identity field
+    `app.engine.j10_recovery.run_gated_recovery`'s fetch_provider/convention_provider mismatch guard
+    reads (`base.PriceProvider.source`). A provider that doesn't declare one (the base class default,
+    and every other concrete provider in this catalog) stays `None` -- unchanged behavior."""
+    from app.data_providers.base import PriceProvider
+    from app.data_providers.stooq_provider import StooqProvider
+
+    assert YahooProvider.source == "yahoo"
+    assert StooqProvider.source == "stooq"
+    assert PriceProvider.source is None
+    assert TiingoProvider.source is None  # a provider that declares no source keeps the base default
+
+
 def test_yahoo_parses_valid_json_into_sorted_bars():
     client = _FakeClient(payload=_YAHOO_OK)
     bars = YahooProvider(client=client).get_daily("AAPL", start=date(2024, 1, 2), end=date(2024, 1, 4))

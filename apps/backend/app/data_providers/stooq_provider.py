@@ -40,6 +40,10 @@ def to_stooq_symbol(symbol: str) -> str:
 
 
 class StooqProvider(PriceProvider):
+    # goal-market-compass iter-9 (J-10 gap #2): the provider-identity label `run_gated_recovery`'s
+    # fetch_provider/convention_provider mismatch guard compares (`base.PriceProvider.source`).
+    source = "stooq"
+
     def __init__(
         self,
         *,

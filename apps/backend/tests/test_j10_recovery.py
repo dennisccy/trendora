@@ -50,6 +50,7 @@ from app.engine.j10_recovery import (
     convention_evidence_to_dict,
     run_bounded_recovery_backfill,
     run_bounded_recovery_fetch,
+    run_gated_population_recovery,
     run_gated_recovery,
     still_missing_symbols,
     validate_recovery_scope,
@@ -209,14 +210,19 @@ def test_fetch_restores_only_the_missing_rows_and_never_touches_survivors(tmp_pa
         ))
         session.commit()
 
-    provider = _RecordingProvider()
+    inner = _RecordingProvider()
+    # iter-9 (gap #3): run_bounded_recovery_fetch now refuses any symbol with no recorded passing
+    # bridge factor -- wrap the recording provider in a _BridgeApplyingProvider with factor 1.0 (a
+    # no-op transform) so this test's own fetch-mechanics assertions (missing-only, survivor-untouched)
+    # are exercised through the SAME gated path the real driver uses.
+    provider = j10_recovery._BridgeApplyingProvider(inner, {"MSFT": 1.0})
     with Session(engine) as session:
         # iter-7: RECOVERY_SOURCE ("yahoo") is needs_key: false in the config catalog — no api_key needed.
         outcome = run_bounded_recovery_fetch(session, engine, cfg, provider=provider)
 
     assert outcome.already_complete is False
     assert outcome.requested_symbols == ["MSFT"]  # AAPL fully covered — never re-requested
-    assert provider.requested_symbols == ["MSFT"]  # the provider itself was only asked for MSFT
+    assert inner.requested_symbols == ["MSFT"]  # the underlying provider was only asked for MSFT
 
     with Session(engine) as session:
         aapl_start = session.exec(
@@ -248,13 +254,16 @@ def test_fetch_symbols_param_intersects_with_still_missing_for_idempotency(tmp_p
         session.add(DailyPrice(symbol="AAPL", date=RECOVERY_END, open=1, high=1, low=1, close=1.0, volume=1))
         session.commit()
 
-    provider = _RecordingProvider()
+    inner = _RecordingProvider()
+    # iter-9 (gap #3): same gating requirement as the sibling test above -- wrap in a no-op (factor 1.0)
+    # _BridgeApplyingProvider so this idempotency test still exercises the real, now-gated fetch path.
+    provider = j10_recovery._BridgeApplyingProvider(inner, {"AAPL": 1.0, "MSFT": 1.0})
     with Session(engine) as session:
         # caller names BOTH symbols, but AAPL is already fully restored
         outcome = run_bounded_recovery_fetch(session, engine, cfg, provider=provider, symbols=["AAPL", "MSFT"])
 
     assert outcome.requested_symbols == ["MSFT"]
-    assert provider.requested_symbols == ["MSFT"]
+    assert inner.requested_symbols == ["MSFT"]
 
 
 def test_second_invocation_after_full_recovery_is_a_true_zero_work_noop(tmp_path):
@@ -670,7 +679,9 @@ def test_gated_recovery_stops_when_zero_symbols_pass(tmp_path, monkeypatch):
 
     provider = _FakeDailyProvider({"AAPL": {d0: 200.0, d1: 100.0}})  # ratio drifts 1.0 -> 2.0: mismatch
     with Session(engine) as session:
-        outcome = run_gated_recovery(session, engine, cfg, convention_provider=provider)
+        outcome = run_gated_recovery(
+            session, engine, cfg, convention_provider=provider, evidence_path=tmp_path / "evidence.json",
+        )
 
     by_symbol = {v.symbol: v for v in outcome.convention_check.verdicts}
     assert by_symbol["AAPL"].verdict == "mismatch"
@@ -714,7 +725,9 @@ def test_gated_recovery_restores_only_passing_symbols_leaves_failing_ones_missin
         },
     })
     with Session(engine) as session:
-        outcome = run_gated_recovery(session, engine, cfg, convention_provider=provider)
+        outcome = run_gated_recovery(
+            session, engine, cfg, convention_provider=provider, evidence_path=tmp_path / "evidence.json",
+        )
 
     by_symbol = {v.symbol: v for v in outcome.convention_check.verdicts}
     assert by_symbol["AAPL"].verdict == "agree"
@@ -757,11 +770,17 @@ def test_gated_recovery_second_invocation_after_partial_success_only_refetches_m
     all_dates = window + [RECOVERY_START, RECOVERY_END]
     provider = _FakeDailyProvider({"AAPL": {d: 200.0 for d in all_dates}})
     with Session(engine) as session:
-        first = run_gated_recovery(session, engine, cfg, convention_provider=provider)
+        first = run_gated_recovery(
+            session, engine, cfg, convention_provider=provider,
+            evidence_path=tmp_path / "evidence-1.json",
+        )
     assert first.fetch.requested_symbols == ["AAPL"]
 
     with Session(engine) as session:
-        second = run_gated_recovery(session, engine, cfg, convention_provider=provider)
+        second = run_gated_recovery(
+            session, engine, cfg, convention_provider=provider,
+            evidence_path=tmp_path / "evidence-2.json",
+        )
     assert second.fetch.already_complete is True
     assert second.fetch.requested_symbols == []
     # get_daily was called 3 times total: calibration(1), restore(1), calibration(2) -- never restore(2)
@@ -777,3 +796,275 @@ def test_gated_recovery_has_no_threshold_or_scope_override_parameters():
     assert params == {
         "session", "engine", "config", "convention_provider", "fetch_provider", "api_key", "evidence_path",
     }
+
+
+# ==================================================================================================
+# iter-9 gap #1: evidence_path is now REQUIRED on both production entry points -- each test constructs
+# an ACTUAL missing-argument call (the iter-7 lesson: a guard is only proven fail-closed when a test
+# meets the exact degenerate input it will meet in production), not a signature inspection alone.
+# ==================================================================================================
+def test_run_gated_recovery_requires_evidence_path_missing_arg_refused(tmp_path):
+    """TC-6: omitting evidence_path is refused by Python's own keyword-argument binding BEFORE
+    run_gated_recovery's body -- and therefore the convention check or any fetch -- ever executes."""
+    engine = _engine(tmp_path)
+    cfg = _cfg()
+    provider = _NeverCalledProvider()  # fails the test immediately if get_daily is ever reached
+    with Session(engine) as session:
+        with pytest.raises(TypeError, match="evidence_path"):
+            run_gated_recovery(session, engine, cfg, convention_provider=provider)  # type: ignore[call-arg]
+
+
+def test_run_gated_population_recovery_requires_evidence_path_missing_arg_refused(tmp_path):
+    """TC-6, population entry point: the identical missing-argument refusal -- both public functions
+    delegate to the same `_run_gated_recovery_core`, so both must enforce this identically."""
+    engine = _engine(tmp_path)
+    cfg = _cfg()
+    provider = _NeverCalledProvider()
+    with Session(engine) as session:
+        with pytest.raises(TypeError, match="evidence_path"):
+            run_gated_population_recovery(session, engine, cfg, convention_provider=provider)  # type: ignore[call-arg]
+
+
+# ==================================================================================================
+# iter-9 gap #2: the fetch_provider/convention_provider source-mismatch guard (B2/B5 at the call
+# boundary). Pure unit tests on the helper itself (the exact degenerate conditions), plus one
+# integration test proving it is actually wired into run_gated_recovery.
+# ==================================================================================================
+class _YahooLikeProvider(PriceProvider):
+    source = "yahoo"
+
+    def get_daily(self, symbol, start=None, end=None):
+        raise AssertionError(f"get_daily called for {symbol!r} -- never reached by these unit tests")
+
+
+class _StooqLikeProvider(PriceProvider):
+    source = "stooq"
+
+    def get_daily(self, symbol, start=None, end=None):
+        raise AssertionError(f"get_daily called for {symbol!r} -- never reached by these unit tests")
+
+
+def test_check_fetch_provider_source_matches_skips_when_fetch_provider_omitted():
+    """TC-7 regression half: fetch_provider=None (the default -> convention_provider itself) is ALWAYS
+    accepted, regardless of convention_provider's declared source -- 'must keep working exactly as
+    today.'"""
+    j10_recovery._check_fetch_provider_source_matches(_YahooLikeProvider(), None)  # must not raise
+
+
+def test_check_fetch_provider_source_matches_accepts_the_same_source():
+    j10_recovery._check_fetch_provider_source_matches(
+        _YahooLikeProvider(), _YahooLikeProvider()
+    )  # two distinct instances, same declared source -- must not raise
+
+
+def test_check_fetch_provider_source_matches_refuses_a_mismatch():
+    """TC-7: the exact degenerate condition -- a fetch_provider whose source disagrees with
+    convention_provider's."""
+    with pytest.raises(RecoveryScopeError, match="does not match"):
+        j10_recovery._check_fetch_provider_source_matches(_YahooLikeProvider(), _StooqLikeProvider())
+
+
+def test_run_gated_recovery_refuses_a_fetch_provider_source_mismatch_end_to_end(tmp_path):
+    """TC-7, integration: the mismatch guard is actually wired into run_gated_recovery -- refused
+    BEFORE any convention check or fetch runs (neither provider's get_daily is ever called, and no
+    evidence file is written)."""
+    engine = _engine(tmp_path)
+    cfg = _cfg()
+    evidence_path = tmp_path / "evidence.json"
+    with Session(engine) as session:
+        with pytest.raises(RecoveryScopeError, match="does not match"):
+            run_gated_recovery(
+                session, engine, cfg,
+                convention_provider=_YahooLikeProvider(), fetch_provider=_StooqLikeProvider(),
+                evidence_path=evidence_path,
+            )
+    assert not evidence_path.exists()  # refused before evidence was ever persisted
+
+
+# ==================================================================================================
+# iter-9 gap #3 (audit B6): run_bounded_recovery_fetch's un-gated back door -- closed structurally.
+# ==================================================================================================
+def test_run_bounded_recovery_fetch_refuses_a_raw_unwrapped_provider(tmp_path, monkeypatch):
+    """TC-8: a direct call with a raw, non-bridge-gated provider (including provider=None's catalog
+    default) is refused before any network call -- the back door can no longer insert an untransformed
+    row for a symbol that never passed the per-symbol convention gate."""
+    monkeypatch.setattr(j10_recovery, "RECOVERY_SYMBOLS", frozenset({"AAPL"}))
+    engine = _engine(tmp_path)
+    cfg = _cfg()
+    with Session(engine) as session:
+        with pytest.raises(RecoveryScopeError, match="no passing bridge factor"):
+            run_bounded_recovery_fetch(session, engine, cfg, provider=_NeverCalledProvider())
+    with Session(engine) as session:
+        assert session.exec(select(DailyPrice)).all() == []
+
+
+def test_run_bounded_recovery_fetch_refuses_a_bridge_provider_missing_this_symbols_factor(tmp_path, monkeypatch):
+    """TC-8: even a legitimate _BridgeApplyingProvider refuses a REQUESTED symbol it has no recorded
+    factor for -- the check is per-symbol, not merely per-provider-type. AAPL has a passing factor;
+    MSFT (also requested in the same call) does not -- the WHOLE call is refused, zero rows for
+    either symbol (never a partial insert of only the gated ones)."""
+    monkeypatch.setattr(j10_recovery, "RECOVERY_SYMBOLS", frozenset({"AAPL", "MSFT"}))
+    engine = _engine(tmp_path)
+    cfg = _cfg()
+    gated = j10_recovery._BridgeApplyingProvider(_NeverCalledProvider(), {"AAPL": 1.0})
+    with Session(engine) as session:
+        with pytest.raises(RecoveryScopeError, match="no passing bridge factor"):
+            run_bounded_recovery_fetch(session, engine, cfg, provider=gated, symbols=["AAPL", "MSFT"])
+    with Session(engine) as session:
+        assert session.exec(select(DailyPrice)).all() == []
+
+
+# ==================================================================================================
+# run_gated_population_recovery — iter-9: the SAME fixed gate evaluated over the LIVE recovery-
+# population remainder (still_missing_symbols()), a fully distinct axis from the frozen 20-name
+# CONVENTION_CHECK_SAMPLE_SYMBOLS methodology sample (goal.md step 2b's binding invariant).
+# ==================================================================================================
+def test_gated_population_recovery_has_no_threshold_or_scope_override_parameters():
+    """Structural mirror of run_gated_recovery's own signature pin -- the population entry point
+    accepts the identical parameter set; the population is ALWAYS still_missing_symbols(), computed
+    internally -- no sample/threshold override is exposed to any caller."""
+    import inspect
+    params = set(inspect.signature(run_gated_population_recovery).parameters)
+    assert params == {
+        "session", "engine", "config", "convention_provider", "fetch_provider", "api_key", "evidence_path",
+    }
+
+
+def test_population_recovery_samples_still_missing_symbols_never_the_frozen_sample(tmp_path, monkeypatch):
+    """The population entry point's sample is still_missing_symbols(), never
+    CONVENTION_CHECK_SAMPLE_SYMBOLS -- monkeypatch the frozen constant to a symbol OUTSIDE the
+    (also monkeypatched) RECOVERY_SYMBOLS universe; if the population pass ever read it, the provider
+    would be asked for a symbol this test never seeded, proving the axes really are distinct."""
+    monkeypatch.setattr(j10_recovery, "RECOVERY_SYMBOLS", frozenset({"AAPL", "MSFT"}))
+    monkeypatch.setattr(j10_recovery, "CONVENTION_CHECK_SAMPLE_SYMBOLS", ("NVDA",))
+    engine = _engine(tmp_path)
+    cfg = _cfg()
+    window = [date(2026, 8, 6), date(2026, 8, 7), CONVENTION_CHECK_WINDOW_END]
+    with Session(engine) as session:
+        for sym in ("AAPL", "MSFT"):
+            for d in window:
+                session.add(DailyPrice(symbol=sym, date=d, open=1, high=1, low=1, close=200.0, volume=1))
+        session.commit()
+
+    provider = _FakeDailyProvider({"AAPL": {d: 200.0 for d in window}, "MSFT": {d: 200.0 for d in window}})
+    with Session(engine) as session:
+        outcome = run_gated_population_recovery(
+            session, engine, cfg, convention_provider=provider, evidence_path=tmp_path / "evidence.json",
+        )
+    sampled = {v.symbol for v in outcome.convention_check.verdicts}
+    assert sampled == {"AAPL", "MSFT"}
+    # both symbols agree (identical stored/fallback series) and are therefore also fetched -- so each
+    # appears twice (calibration + restoration); the load-bearing assertion is that NVDA (the frozen
+    # methodology sample, monkeypatched here) is never requested at all.
+    assert set(provider.requested_symbols) == {"AAPL", "MSFT"}
+    assert "NVDA" not in provider.requested_symbols
+
+
+def test_population_recovery_restores_agree_leaves_mismatch_and_inconclusive_missing(tmp_path, monkeypatch):
+    """The core population-pass proof: three still-missing symbols get three independent verdicts --
+    AAPL agrees (exact-match series), MSFT mismatches (a drifting ratio), GOOG is inconclusive (zero
+    fallback data at all). Only AAPL is restored; MSFT/GOOG get zero rows and a named, reasoned
+    verdict (the "requested but not restored" record the driver reads). SPY is seeded directly with
+    both recovery dates already present so it is excluded from the population and only serves as the
+    backfill's benchmark."""
+    monkeypatch.setattr(j10_recovery, "RECOVERY_SYMBOLS", frozenset({"AAPL", "MSFT", "GOOG", "SPY"}))
+    engine = _engine(tmp_path)
+    cfg = _cfg()
+    window = [date(2026, 8, 6), date(2026, 8, 7), CONVENTION_CHECK_WINDOW_END]
+    with Session(engine) as session:
+        for sym, price in (("AAPL", 200.0), ("MSFT", 90.0), ("GOOG", 150.0), ("SPY", 500.0)):
+            for d in window:
+                session.add(DailyPrice(symbol=sym, date=d, open=price, high=price, low=price, close=price, volume=1))
+        for d in (RECOVERY_START, RECOVERY_END):
+            session.add(DailyPrice(symbol="SPY", date=d, open=500, high=500, low=500, close=500.0, volume=1))
+        session.commit()
+
+    provider = _FakeDailyProvider({
+        "AAPL": {**{d: 200.0 for d in window}, RECOVERY_START: 201.0, RECOVERY_END: 202.0},  # exact -> agree
+        "MSFT": {window[0]: 45.0, window[1]: 44.0, window[2]: 40.0},  # drifting ratio -> mismatch
+        # GOOG: deliberately absent from the fallback series entirely -> inconclusive (zero pairs)
+    })
+    with Session(engine) as session:
+        outcome = run_gated_population_recovery(
+            session, engine, cfg, convention_provider=provider, evidence_path=tmp_path / "evidence.json",
+        )
+
+    by_symbol = {v.symbol: v for v in outcome.convention_check.verdicts}
+    assert by_symbol["AAPL"].verdict == "agree"
+    assert by_symbol["MSFT"].verdict == "mismatch" and by_symbol["MSFT"].reason
+    assert by_symbol["GOOG"].verdict == "inconclusive" and by_symbol["GOOG"].reason
+    assert outcome.fetch.requested_symbols == ["AAPL"]
+
+    with Session(engine) as session:
+        aapl_rows = session.exec(
+            select(DailyPrice).where(DailyPrice.symbol == "AAPL", DailyPrice.date >= RECOVERY_START)
+        ).all()
+        msft_rows = session.exec(
+            select(DailyPrice).where(DailyPrice.symbol == "MSFT", DailyPrice.date >= RECOVERY_START)
+        ).all()
+        goog_rows = session.exec(
+            select(DailyPrice).where(DailyPrice.symbol == "GOOG", DailyPrice.date >= RECOVERY_START)
+        ).all()
+    assert sorted(r.close for r in aapl_rows) == [201.0, 202.0]
+    assert msft_rows == [] and goog_rows == []
+
+
+def test_population_recovery_excludes_a_symbol_already_fully_restored(tmp_path, monkeypatch):
+    """TC-4 (population form): a symbol with BOTH recovery dates already present is excluded from the
+    population SAMPLE itself -- never re-calibrated, never re-fetched, never re-evaluated. Proves the
+    "already-restored symbols are excluded" guarantee generalizes to any complete population member,
+    not just the frozen 20 from iteration 8."""
+    monkeypatch.setattr(j10_recovery, "RECOVERY_SYMBOLS", frozenset({"AAPL", "MSFT"}))
+    engine = _engine(tmp_path)
+    cfg = _cfg()
+    with Session(engine) as session:
+        session.add(DailyPrice(symbol="AAPL", date=RECOVERY_START, open=1, high=1, low=1, close=100.0, volume=1))
+        session.add(DailyPrice(symbol="AAPL", date=RECOVERY_END, open=1, high=1, low=1, close=101.0, volume=1))
+        # MSFT needs at least one stored row on/before CONVENTION_CHECK_WINDOW_END so the LIVE window
+        # (derived from daily_prices, never hardcoded) is non-empty -- otherwise the whole batch would
+        # short-circuit to zero verdicts regardless of which symbols are sampled, and this test would
+        # prove nothing about AAPL's exclusion specifically.
+        session.add(DailyPrice(
+            symbol="MSFT", date=CONVENTION_CHECK_WINDOW_END, open=1, high=1, low=1, close=90.0, volume=1
+        ))
+        session.commit()
+
+    class _FailsIfAaplRequested(PriceProvider):
+        def get_daily(self, symbol, start=None, end=None):
+            if symbol == "AAPL":
+                pytest.fail("AAPL is already fully restored -- must never be re-sampled or re-fetched")
+            return []
+
+    with Session(engine) as session:
+        outcome = run_gated_population_recovery(
+            session, engine, cfg, convention_provider=_FailsIfAaplRequested(),
+            evidence_path=tmp_path / "evidence.json",
+        )
+    sampled = {v.symbol for v in outcome.convention_check.verdicts}
+    assert sampled == {"MSFT"}  # AAPL excluded from the sample entirely
+
+    with Session(engine) as session:
+        aapl_rows = session.exec(select(DailyPrice).where(DailyPrice.symbol == "AAPL")).all()
+    assert sorted(r.close for r in aapl_rows) == [100.0, 101.0]  # byte-unchanged
+
+
+def test_population_recovery_is_a_clean_noop_when_nothing_is_missing(tmp_path, monkeypatch):
+    """TC-9 at the unit level: when still_missing_symbols() is already empty (every RECOVERY_SYMBOLS
+    member fully restored), run_gated_population_recovery stops honestly -- zero convention-check
+    calls, zero fetch, zero backfill -- the idempotent re-run guarantee the real driver relies on."""
+    monkeypatch.setattr(j10_recovery, "RECOVERY_SYMBOLS", frozenset({"AAPL"}))
+    engine = _engine(tmp_path)
+    cfg = _cfg()
+    with Session(engine) as session:
+        session.add(DailyPrice(symbol="AAPL", date=RECOVERY_START, open=1, high=1, low=1, close=1, volume=1))
+        session.add(DailyPrice(symbol="AAPL", date=RECOVERY_END, open=1, high=1, low=1, close=1, volume=1))
+        session.commit()
+
+    with Session(engine) as session:
+        outcome = run_gated_population_recovery(
+            session, engine, cfg, convention_provider=_NeverCalledProvider(),
+            evidence_path=tmp_path / "evidence.json",
+        )
+    assert outcome.convention_check.verdicts == ()
+    assert outcome.stopped_reason is not None
+    assert outcome.fetch is None and outcome.backfill is None

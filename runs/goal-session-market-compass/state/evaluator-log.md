@@ -456,3 +456,78 @@ history at 1/2 July, made by ordinary downloads in mid-August — outside this r
 future supplier-comparison work must start from it. ONE HOUSEKEEPING NOTE: the deterministic closure
 gate failed on missing bookkeeping files (`runs/goal-market-compass-iter-8/plan.md` and the
 implementation-summary stub), not on anything about the product.
+
+## Iteration 9 — goal-market-compass-iter-9
+
+**Date:** 2026-08-23T13:05:00Z
+**Verdict:** CONTINUE
+**Depth dispatched:** full (`iter-9/depth-dispatched` reads `full`, matching the spec's own `Depth: full`
++ `Depth enforcement: required` lines — the silent full→lean demotion that fired in iters 2, 6 and 8 did
+NOT recur, and neither did the forbidden browser/replay lane)
+
+**Journey deltas:**
+- **Newly passing: J-10** "Bounded recovery of the two deleted trading days" — this iteration's sole
+  target, fourth consecutive turn on it. Raw-layer terminal state reached: 585 of 587 authorized company
+  codes now carry both 2026-08-11 and 2026-08-12 bars (20 from iter-8 + 565 this run); the other two, EA
+  and EQR, are named unrestorable with evidenced external reasons and hold zero rows. Stamped with the
+  current goal text hash `007e17cb...` (replacing iter-8's `ba6ee6fd...`).
+- Newly failing: none. **Regressed: none.**
+- Carried, NOT re-verified (maintenance isolation — browser QA and the replay lane were forbidden by
+  contract, so every journey keeps its prior recorded status): J-01, J-04 stay `passing`; J-02, J-03,
+  J-05, J-06, J-09 stay `partial`; J-07, J-08 stay `failing`; J-11 stays `unknown`.
+- J-11's hard prerequisite is now satisfied — it is the next actionable journey.
+- Anti-goal violations: **NONE new.** Ledger unchanged at 4, all resolved. AG-9, AG-12 and AG-17 were
+  the three at real risk and all three held, each verified by my own read-only queries and checksums.
+
+**Reasoning:** The deleted data is back. I did not take that from the reports — I queried the database
+myself, read-only, and confirmed every material figure: 585 rows on 11 August and 585 on 12 August with
+an overlap of exactly 585 company codes; the total row count implies other-date rows are unchanged at
+3,309,204, so no other day gained or lost anything; the latest date is still 12 August with zero rows
+after it; and all 1,170 restored rows sit in one unbroken block at the very end of the table with
+nothing else above them, which proves they were added, not written over anything. Two further checks
+settled the questions that mattered most. The fetch plan for this run holds 566 names and shares NOT ONE
+with the 20 restored last time, so the earlier work was never touched or re-downloaded. And reading the
+authorized name list straight out of the source file gives exactly 587, of which the evidence file
+covers 567 and the remaining 20 are last turn's — so every single authorized name has one final answer:
+585 restored, 2 refused. That is exactly what the owner's completion rule demands, with no invented
+"good enough" number, and I confirmed no threshold or name list was edited: the change set contains not
+a single altered line for any of the six frozen settings. Why passing rather than partial, when there is
+no picture? Because the goal file itself waives the picture for this journey and names four written
+proofs in its place — all four exist and I re-derived each from the database rather than from anyone's
+prose. Scoring it partial would also invite a re-opening that the goal file forbids, since the only ways
+to "finish" EA and EQR are a third supplier (banned) or a fresh download (needs new written permission).
+Two honesty problems were found and fixed inside the run, and both are worth recording: the written
+record claimed every restored price was converted by a factor of exactly 1.0, which quietly erased AVB —
+the ONE company actually converted, by 2.793, and the only row whose correctness depends on that
+arithmetic — and it called the final re-run a "no writes at all" check when its own table counted that
+run's writes. The independent auditor caught both; the reviewer and the quality check had each repeated
+the developer's wording instead of re-deriving it. I verified the corrections myself and they now read
+correctly. The database was right the whole time; only the description of it was wrong. Why CONTINUE and
+not a halt? Nothing that worked stopped working, no data is wrong, no rule was broken, the structure
+check passed and the security scan was clean. Why not ESCALATE? This run already used the careful mode
+and the careful mode is what caught the problem. Why not STALLED? The next step is written engineering
+work the owner has already specified in full.
+
+**Next-step recommendation:** Build J-11 "Incident-bounded clean regeneration of derived state" next, at
+full depth, alone. The raw data is repaired but the pages people read still show results computed from
+the old, incomplete data — J-11 is what fixes that, in the owner's own stages A to G. Four things must
+travel with it. FIRST, clear both stale layers, not one: the stored daily summaries for 11 and 12 August
+are still the ones built when only 20 companies had prices, while six background caches were already
+refreshed using all 585; rebuilding only the summaries leaves the mixture in place. SECOND, watch AVB —
+its prices were converted onto the stored scale but its trading volume deliberately was not, so any sum
+that multiplies price by volume reads it about 2.79 times too high on those two days; check what that
+does to its ranking in the rebuilt results. THIRD, do not re-run the recovery script: permission for
+live downloads is now used up, and the script will still try to download because it has no guard. FOURTH,
+confirm the new script and the evidence file actually reach the repository — they are on disk but not yet
+saved into version control, and the goal file says that evidence file is the only acceptable record of
+how the prices were checked. Full depth is required, not preferred: the goal file forbids the destructive
+rebuild in the light mode, and the careful mode's auditor has now caught something real that the reviewer
+and quality check both missed three turns running. The destructive part must run alone — one writer, no
+servers, no browser tests — and only after it finishes may the browser check of J-01 "Sector labels are
+honest", J-02 "What changed since the previous session" and J-03 "Plain-English summary with cited facts"
+run for the first time since the damage; those belong to stage G and to nothing earlier. FIVE OLDER OWNER
+QUESTIONS still open and still not blocking: whether 3.44 GB is acceptable for J-09; J-06's "underlying
+run unavailable" wording; the rewording of J-01's first two test steps; whether an empty "next-session
+focus" is acceptable; and whether MNST joins the recovery list. ONE STANDING FRAMEWORK NOTE: the defect
+that let the forbidden test lane run three times is still unfixed in `scripts/automation/`; this run
+avoided it with the new maintenance-isolation contract rather than by curing it.

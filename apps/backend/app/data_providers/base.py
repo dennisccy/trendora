@@ -10,7 +10,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import date as date_cls
-from typing import Optional, Sequence
+from typing import ClassVar, Optional, Sequence
 
 
 class ProviderUnavailableError(Exception):
@@ -40,6 +40,16 @@ class Bar:
 
 
 class PriceProvider(ABC):
+    # goal-market-compass iter-9 (J-10 gap #2, audit B5): an OPTIONAL provider-identity label — `None`
+    # for every provider that doesn't declare one (no behavior change for any pre-existing subclass).
+    # A subclass that names a real, distinct vendor SHOULD set this to that vendor's catalog id (e.g.
+    # `YahooProvider.source = "yahoo"`) so a caller comparing two provider INSTANCES can tell whether
+    # they are the same vendor without importing every concrete provider class. This is the minimal,
+    # non-invasive field `app.engine.j10_recovery.run_gated_recovery`'s `fetch_provider`/
+    # `convention_provider` mismatch guard reads (`getattr(provider, "source", None)`) — added ONLY for
+    # that guard; it does not change `get_daily`'s contract or any other caller.
+    source: ClassVar[Optional[str]] = None
+
     @abstractmethod
     def get_daily(
         self,

@@ -3,70 +3,6 @@
 Append-only. Each entry records a scoring decision that required interpreting an
 ambiguous goal, so the owner can veto it early.
 
-## iter-4 — goal-decomposer
-
-**Ambiguity:** J-09 step 2 says "Re-run the standing-warm measurement that recorded 4,837,420 kB
-VmPeak (the perf-budget drill's pool warm-up path) against a backend started via
-`bash scripts/start-backend.sh`". The original 4,837,420 kB figure (`reports/perf-budgets.md:12018-
-12055`) came from a ~31-minute, opt-in-gated live drill
-(`test_start_backend_phase_by_phase_vmpeak_profile_under_pool_pressure`,
-`TRENDORA_RUN_HEAVY_INGEST_TEST=1`) that triggered a real `backfill` + finalize tail under 5
-concurrent pressure workers — but that same source explicitly found "the peak was driven by the
-pool's own connection warm-up... plus the backfill's own brief scan, not by any individual
-finalize-tail phase," and J-09's own "Why" section states "the pool's own connection warm-up IS the
-peak." goal.md does not say whether "re-run the standing-warm measurement" requires repeating the
-FULL heavy drill (backfill + finalize tail, ~31 min wall time) or just the lighter pool-connection-
-warm-up mechanism the original drill itself identified as the actual driver.
-**We chose:** Directed the developer toward the LIGHTER path: start the backend fresh, drive enough
-concurrent read traffic to open the pool's persistent connections (reusing the existing pool-
-pressure/concurrent-load harness that the concurrent-load check already exercises), and read VmPeak
-at that standing-warm point — without requiring the full ~31-minute backfill+finalize-tail drill.
-This is grounded in the drill's own finding (pool warm-up, not finalize-tail compute, drove the
-peak) and reduces the chance of a repeat host incident from a heavy, long-running live job on a host
-that froze once already today — exactly the risk J-09 exists to reduce. The heavier drill remains an
-explicit fallback if the lighter path under-measures.
-**Reversible:** yes — if the reviewer/evaluator finds the lighter measurement doesn't reproduce a
-comparable peak, the full heavy drill remains available (still opt-in-gated, still host-guard-
-protected) as the fallback named in the iteration spec.
-
-## iter-4 — goal-evaluator
-
-**Ambiguity:** J-09's Acceptance says "if the ≤ 2.5 GB target is missed, record the honest measured
-figure and **stop for owner review** — never widen the target to pass". The target WAS missed
-(3,439,100 kB vs 2,621,440 kB). goal.md does not say whether "stop" means halt the goal-mode loop
-(a STALLED-class human-owned blocker, decision tree C.2) or stop tuning and escalate the result to
-the owner while other work continues.
-**We chose:** Read it as "stop tuning and report", not "halt the session" — verdict CONTINUE with
-the owner decision flagged at the top of eval.md, the evaluator-log recommendation, and
-iteration-state.md. Three things decided it: (1) the sentence's own trailing clause ("never widen
-the target to pass") makes its subject the MEASURER's conduct, i.e. an anti-goodharting rule, not
-loop control; (2) the iteration spec operationalised it the same way — TC-6 and the DEFINITION OF
-DONE both treat "record the honest figure + flag for owner review" as a COMPLETION path for the
-iteration, and the developer executed exactly that; (3) C.2 requires EVERY unblock path to be
-human-owned, and one is not — goal.md's own Constraints (c) (`_BarCache.prefill` re-bound, "AG-8
-restored") is dev-workable, sanctioned, and targets the exact residual the developer measured, while
-J-05 through J-08 do not depend on this number at all. Consequence: the loop keeps running, but the
-owner ruling is now the first item in the next-step recommendation, and no agent may move the 2.5 GB
-target without it.
-**Reversible:** yes — if the owner wants the session held until the memory question is settled, a
-`/goal-pause` or a goal.md edit halts it with nothing lost; no code was written on the strength of
-this reading.
-
-## iter-4 — goal-evaluator
-
-**Ambiguity:** J-09 has four of five acceptance steps met with evidence (config scope, dated
-append, concurrent-load, byte-identity) and one unmet — the measured VmPeak, which is the journey's
-headline promise. The status vocabulary offers `failing` ("verified failing") and `partial` ("only
-some assertion steps passed") with no rule for a journey whose supporting steps all pass while its
-single defining number misses.
-**We chose:** Scored J-09 `partial`, not `failing`, following the precedent logged for J-06 at
-iter-3: `partial` records the real shape (a genuine, honestly-measured 28.9% reduction landed and
-no served value moved), the unmet step is written out verbatim in eval.md and in the journey note
-so nothing is hidden, and neither label supports GOAL_ACHIEVED — so the choice costs nothing at the
-deterministic gate and preserves diagnosis detail. Scoring it `failing` would also misdescribe an
-iteration whose most valuable output was an accurate number reported against its author's interest.
-**Reversible:** yes
-
 ## iter-5 — goal-decomposer
 
 **Ambiguity:** J-05 step 2's flagship claim (a manifest minted by `ingest_finalize` with `mode:
@@ -619,3 +555,51 @@ named, external, non-methodology reason.
 revision before dispatch) can tighten DEFINITION OF DONE to require 100% attempted-and-classified with
 zero exceptions; nothing in this iteration's design forecloses that, and any named residual remains
 individually processable by the same idempotent driver on a later pass.
+
+## iter-9 — goal-evaluator (promoting J-10 to `passing` on a maintenance-isolated iteration)
+
+**Ambiguity:** The evaluation methodology's maintenance-isolation carve-out (A.3, second bullet) states
+unconditionally that "an isolated iteration produced no browser evidence, so no journey may be promoted
+TO `passing`/`already_passing` on it." Its stated premise is the ABSENCE of browser evidence. J-10 is a
+journey for which `docs/goal.md` explicitly WAIVES the walkthrough/browser requirement ("Walkthrough:
+waived — raw-layer incident repair with no UI surface change of its own") and names a substitute evidence
+set in its place: the raw-recovery provenance record, bounded-scope verification, canonical
+price-coverage evidence, and complete mutation reconciliation. The rule's premise therefore does not
+describe a missing requirement for this journey, but the rule's wording admits no exception.
+**We chose:** Scored J-10 `passing`. Reasoning: (a) the rail exists to stop promotion on ABSENT evidence,
+and J-10's contractually-required evidence is not absent — all four named artifacts exist and I
+re-derived every load-bearing figure from primary sources (live read-only SQL against
+`apps/backend/data/trendora.db`, the persisted per-pair evidence artifact, and `RECOVERY_SYMBOLS` parsed
+out of `j10_recovery.py`), never from an agent's prose; (b) `docs/goal.md`'s J-10 Completion rule is
+satisfied on its own explicit terms — all 587 population members hold exactly one final disposition (585
+restored under the byte-unchanged fixed gate, EA and EQR named unrestorable with evidenced external
+reasons), with no invented partial-completion threshold; (c) session precedent already accepts a
+non-screenshot evidence path for a waived-walkthrough journey (J-09 is carried against
+`reports/perf-budgets.md:12114-12236`); (d) scoring it `partial` would create pressure to "finish" a
+journey whose only remaining completion routes are forbidden (a third vendor) or require a new dated
+owner amendment (another live fetch), which is a worse failure than the one the rail guards against.
+Nothing mechanical turns on the choice today — the verdict is CONTINUE either way, since J-02, J-03,
+J-05, J-06, J-09 are `partial`, J-07/J-08 `failing` and J-11 `unknown`, so GOAL_ACHIEVED is blocked
+several times over.
+**Reversible:** yes — J-11 Stage G is the first legally-runnable verification lane after this, and J-10
+can be re-scored `partial` there at no cost if the owner reads the rail literally or if Stage G surfaces
+a raw-layer defect; nothing here deletes evidence, softens the ledger, or forecloses a re-measurement.
+
+## iter-9 — goal-evaluator (J-01 and J-04 held at `passing` while the derived basis became mixed)
+
+**Ambiguity:** iter-8's evaluator already held these two at `passing` under evidence durability while
+flagging that the DATA had moved beneath them. This iteration moved it much further (20 → 585 symbols on
+the two recovery dates) AND created a genuinely mixed derived basis: the 2026-08-11/12 `ScannerRun`s are
+still iter-8's 20-symbol-basis snapshots (verified unchanged — `created_at` 2026-08-21, both backfills
+create-once no-ops) while six aggregate caches were refreshed over the 585-symbol basis (audit B6). J-01
+asserts sector coverage at the latest as-of and J-04 asserts candidate reasons over that same basis, so
+the risk to both is now concretely larger — yet maintenance isolation forbids any lane that could measure
+it, and the methodology's isolation rule says journeys keep their prior status.
+**We chose:** Kept both at `passing`, unchanged, and recorded the enlarged mixed-basis risk explicitly in
+each journey's `gap` field rather than inventing a downgrade. Same reasoning the iter-6 and iter-8
+evaluators used: iter-6's downgrade of J-02/J-03 rested on positive read-only proof that the named data
+was GONE; here there is no positive evidence of breakage, only an untested and now-mixed basis, and
+fabricating a downgrade is as dishonest as fabricating a pass. Both must be re-measured at J-11 Stage G,
+which `docs/goal.md` makes their exclusive owner.
+**Reversible:** yes — the first legal browser/replay run at J-11 Stage G settles both empirically, and
+either can be downgraded there with real evidence behind it.

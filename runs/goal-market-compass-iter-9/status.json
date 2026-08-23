@@ -1,13 +1,44 @@
 {
   "phase": "goal-market-compass-iter-9",
-  "status": "in_progress",
-  "current_step": "starting",
-  "updated_at": "2026-08-21T13:08:20.417321Z",
+  "status": "complete",
+  "current_step": "closure_passed",
+  "updated_at": "2026-08-23T11:41:32.902028Z",
   "started_at": "2026-08-21T13:08:20.290451Z",
   "cli": "claude",
   "blockers": [],
-  "changed_files": [],
-  "tests_run": false,
+  "changed_files": [
+    "apps/backend/app/engine/j10_recovery.py",
+    "apps/backend/app/data_providers/base.py",
+    "apps/backend/app/data_providers/yahoo_provider.py",
+    "apps/backend/app/data_providers/stooq_provider.py",
+    "apps/backend/scripts/run_j10_population_recovery.py",
+    "apps/backend/tests/test_j10_recovery.py",
+    "apps/backend/tests/test_provider_clients.py",
+    "runs/goal-market-compass-iter-9/j10-population-evidence.json",
+    "runs/goal-market-compass-iter-9/j10-population-summary.json",
+    "runs/goal-market-compass-iter-9/j10-population-recovery.log",
+    "docs/handoffs/goal-market-compass-iter-9-dev.md",
+    "reports/phase-goal-market-compass-iter-9-implementation-summary.md",
+    "runs/goal-market-compass-iter-9/status.json"
+  ],
+  "tests_run": true,
   "browser_checks_run": false,
-  "next_action": "none"
+  "live_recovery_run": {
+    "population_sampled": 567,
+    "agree": 566,
+    "mismatch": 0,
+    "inconclusive": 1,
+    "actually_restored_this_iteration": 565,
+    "not_restored": [
+      "EA",
+      "EQR"
+    ],
+    "total_restored_of_587": 585,
+    "daily_prices_rows_inserted": 1130,
+    "scanner_runs_created_for_recovery_dates": false,
+    "ag9_exception_exhausted": true,
+    "ag12_holds": true,
+    "ag17_holds": true
+  },
+  "next_action": "review"
 }

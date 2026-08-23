@@ -735,7 +735,15 @@ def run_bounded_recovery_fetch(
     a prior partial attempt is excluded even if the caller's list still names it). `None` (the
     default) preserves the exact original behavior — every pre-iter-8 caller/test is unaffected. This
     is how `run_gated_recovery` restricts the real fetch to only the symbols that passed the per-
-    symbol convention gate, without a second write/request path."""
+    symbol convention gate, without a second write/request path.
+
+    iter-9 (J-10 gap #3 / audit B6): EVERY requested symbol must already carry a recorded passing
+    bridge factor — i.e. `provider` must be a `_BridgeApplyingProvider` built from a passing verdict
+    for that symbol, or the whole call raises `RecoveryScopeError` before any network call. A raw/
+    unwrapped provider (including the `provider=None` catalog-resolved default) has zero recorded
+    factors, so it can no longer insert anything for a recovery-scope symbol. The only legitimate way
+    to reach this function with a real recovery-scope request is through `run_gated_recovery` /
+    `run_gated_population_recovery`, which always supply a `_BridgeApplyingProvider`."""
     missing = still_missing_symbols(session)
     target = sorted(set(symbols) & set(missing)) if symbols is not None else missing
     if not target:
@@ -743,6 +751,24 @@ def run_bounded_recovery_fetch(
     validate_recovery_scope(
         start=RECOVERY_START, end=RECOVERY_END, symbols=target, source=RECOVERY_SOURCE
     )
+    # iter-9 (J-10 gap #3 / audit B6): close the un-gated back door. `provider` only ever carries a
+    # RECORDED passing bridge factor for a symbol when it is a `_BridgeApplyingProvider` built from a
+    # passing convention-check verdict (the ONLY place this module constructs one — inside
+    # `_run_gated_recovery_core`, run_gated_recovery's/run_gated_population_recovery's shared body). Any
+    # other provider (a raw client, or none at all) has recorded bridge factors for ZERO symbols, so
+    # EVERY requested symbol is "ungated" and the whole request is refused before any network call —
+    # this function can no longer insert an untransformed row for a recovery-scope symbol that never
+    # passed the per-symbol path-agreement + stable-bridge gate, structurally, not by caller discipline.
+    gated_factors = provider._bridge_factors if isinstance(provider, _BridgeApplyingProvider) else {}
+    ungated = sorted(s for s in target if s not in gated_factors)
+    if ungated:
+        raise RecoveryScopeError(
+            f"J-10 recovery: refusing {len(ungated)} symbol(s) with no passing bridge factor on "
+            f"record: {ungated[:10]}{' ...' if len(ungated) > 10 else ''} -- run_bounded_recovery_fetch "
+            f"only ever inserts a symbol that reached verdict=='agree' through the per-symbol convention "
+            f"gate (call run_gated_recovery / run_gated_population_recovery instead of this function "
+            f"directly for a real recovery-scope fetch)"
+        )
     data_manager.validate_job_request(
         "fetch", RECOVERY_START, RECOVERY_END, config, source=RECOVERY_SOURCE, api_key=api_key,
     )
@@ -828,47 +854,73 @@ class GatedRecoveryOutcome:
     stopped_reason: Optional[str] = None
 
 
-def run_gated_recovery(
+def _check_fetch_provider_source_matches(
+    convention_provider: PriceProvider, fetch_provider: Optional[PriceProvider]
+) -> None:
+    """iter-9 (J-10 gap #2 / audit B5): closes B2's "one series, end to end" rule at the CALL BOUNDARY,
+    not just by docstring. `fetch_provider is None` (the default -> `convention_provider` itself) is
+    always fine — trivially the same object, so this check is skipped entirely (an omitted
+    `fetch_provider` "must keep working exactly as today", per goal.md). When a caller DOES supply a
+    distinct `fetch_provider`, its `.source` (see `base.PriceProvider.source`) must equal
+    `convention_provider`'s — a mismatch means the bridge would be CALIBRATED on one vendor's series
+    and APPLIED to fetch a DIFFERENT vendor's series, silently re-introducing the exact crossover risk
+    B2 closed for the method/field axis. Neither provider's `get_daily` is ever called by this check
+    (a pure attribute comparison) — the refusal happens before any convention check or fetch."""
+    if fetch_provider is None:
+        return
+    convention_source = getattr(convention_provider, "source", None)
+    fetch_source = getattr(fetch_provider, "source", None)
+    if fetch_source != convention_source:
+        raise RecoveryScopeError(
+            f"J-10 recovery: fetch_provider source {fetch_source!r} does not match "
+            f"convention_provider source {convention_source!r} — refusing before any convention check "
+            f"or fetch (B2: calibration and restoration must read the same vendor's series, end to end)"
+        )
+
+
+def _run_gated_recovery_core(
     session: Session,
     engine: Engine,
     config: Config,
     *,
     convention_provider: PriceProvider,
-    fetch_provider: Optional[PriceProvider] = None,
-    api_key: Optional[str] = None,
-    evidence_path: Optional[Path] = None,
+    fetch_provider: Optional[PriceProvider],
+    api_key: Optional[str],
+    evidence_path: Path,
+    sample_symbols: Optional[Sequence[str]],
 ) -> GatedRecoveryOutcome:
-    """The ONE J-10 retry entry point (steps 2a->3), iter-8 REDESIGN. B5: the ONLY parameters this
-    production entry point accepts are provider OBJECTS, the optional `api_key`, and the optional
-    evidence-artifact write location — no tolerance, dispersion-bound, sample, or window override
-    exists here at all (contrast the iter-7 signature, which exposed all four). `check_adjustment_
-    convention_per_symbol` is always called with its own default (module-constant) sample and a LIVE
-    DB-derived window — there is no code path by which a caller loosens either without a source diff
-    to review.
+    """The shared body of BOTH J-10 production entry points (`run_gated_recovery`'s frozen 20-name
+    methodology sample, `run_gated_population_recovery`'s live recovery-population remainder) — the ONE
+    place the causal ordering gate (check -> persist evidence -> collect passing -> fetch -> backfill),
+    the B2 provider-mismatch guard, and the mandatory evidence artifact are implemented, so both entry
+    points enforce every closed gap identically instead of duplicating the logic (and risking one
+    getting the fix and the other not). `sample_symbols=None` defers to `check_adjustment_convention_
+    per_symbol`'s own default (the frozen `CONVENTION_CHECK_SAMPLE_SYMBOLS`); a caller-supplied sequence
+    (the population pass) overrides it — this function applies NO threshold/dispersion/window override
+    either way, exactly like the iter-8 production entry point it replaces.
 
     Order of operations, structurally enforced (not by convention):
-      1. Run the per-symbol check against `convention_provider` (read-only, in-memory).
-      2. If `evidence_path` is given, persist the FULL per-pair evidence (B3) — BEFORE a single
-         verdict is used for anything else (TC-7). The real driver ALWAYS passes a real path; most
-         tests omit it (no filesystem side effect) unless they specifically test persistence.
-      3. Collect symbols with verdict=="agree" and their bridge factors. Zero -> stop, `stopped_reason`
-         set, no fetch/backfill call of any kind (TC-10) — the fetch/backfill calls below sit
-         textually inside the `if not passing` branch's fallthrough, so no code path below the
-         verdict check can reach them when nothing passed.
-      4. Otherwise: fetch ONLY the passing symbols (intersected with what's still actually missing,
-         for idempotency) through a `_BridgeApplyingProvider` wrapping `fetch_provider` (defaulting to
-         `convention_provider` itself — the SAME instance/method used for calibration, reinforcing
-         B2), via the EXISTING `run_bounded_recovery_fetch` -> `data_manager.run_data_job` write path
-         (no second insert path), then run the existing backfill.
-
-    `fetch_provider` defaulting to `convention_provider` when omitted is a DELIBERATE change from the
-    iter-7 signature (there, omitting it meant "let data_manager resolve its own catalog provider" —
-    that is no longer possible here, because the bridge transform must wrap a CONCRETE provider
-    instance). Every current caller passes both explicitly anyway."""
-    check = check_adjustment_convention_per_symbol(session, provider=convention_provider)
-    if evidence_path is not None:
-        evidence_path.parent.mkdir(parents=True, exist_ok=True)
-        evidence_path.write_text(json.dumps(convention_evidence_to_dict(check), indent=2, sort_keys=True))
+      1. Refuse a `fetch_provider`/`convention_provider` source mismatch (B2/B5, iter-9) — before
+         anything else runs.
+      2. Run the per-symbol check against `convention_provider` (read-only, in-memory) over
+         `sample_symbols`.
+      3. Persist the FULL per-pair evidence (B3) to the now-MANDATORY `evidence_path` — BEFORE a single
+         verdict is used for anything else (TC-7/iter-9 gap #1).
+      4. Collect symbols with verdict=="agree" and their bridge factors. Zero -> stop, `stopped_reason`
+         set, no fetch/backfill call of any kind (TC-10).
+      5. Otherwise: fetch ONLY the passing symbols (intersected with what's still actually missing, for
+         idempotency) through a `_BridgeApplyingProvider` wrapping `fetch_provider` (defaulting to
+         `convention_provider` itself), via the EXISTING `run_bounded_recovery_fetch` ->
+         `data_manager.run_data_job` write path (no second insert path), then run the existing
+         backfill."""
+    _check_fetch_provider_source_matches(convention_provider, fetch_provider)
+    check = check_adjustment_convention_per_symbol(
+        session, provider=convention_provider, sample_symbols=sample_symbols
+    )
+    # iter-9 (gap #1 / audit B4): evidence_path is now a REQUIRED Path (see both public signatures
+    # below) — persistence is no longer conditional on the caller remembering to pass one.
+    evidence_path.parent.mkdir(parents=True, exist_ok=True)
+    evidence_path.write_text(json.dumps(convention_evidence_to_dict(check), indent=2, sort_keys=True))
 
     passing = {v.symbol: v.bridge_factor for v in check.verdicts if v.verdict == "agree"}
     if not passing:
@@ -885,3 +937,76 @@ def run_gated_recovery(
     )
     backfill = run_bounded_recovery_backfill(session, engine, config)
     return GatedRecoveryOutcome(convention_check=check, fetch=fetch, backfill=backfill)
+
+
+def run_gated_recovery(
+    session: Session,
+    engine: Engine,
+    config: Config,
+    *,
+    convention_provider: PriceProvider,
+    fetch_provider: Optional[PriceProvider] = None,
+    api_key: Optional[str] = None,
+    evidence_path: Path,
+) -> GatedRecoveryOutcome:
+    """The J-10 METHODOLOGY-VALIDATION entry point (steps 2a->3), iter-8 REDESIGN, iter-9 hardened.
+    Always runs the per-symbol gate over the FROZEN `CONVENTION_CHECK_SAMPLE_SYMBOLS` (20 names) — never
+    the recovery population; that is `run_gated_population_recovery`'s job, a fully distinct axis
+    (goal.md step 2b's binding invariant: the methodology-validation sample is never re-run/re-widened
+    as a validation exercise). B5: the ONLY parameters this production entry point accepts are provider
+    OBJECTS, the optional `api_key`, and the (now mandatory, iter-9 gap #1) evidence-artifact write
+    location — no tolerance, dispersion-bound, sample, or window override exists here at all (contrast
+    the iter-7 signature, which exposed all four).
+
+    iter-9: `evidence_path` lost its default — omitting it is refused by Python's own argument binding
+    before this function's body (and therefore the convention check) ever executes (TC-6/gap #1). A
+    `fetch_provider` whose `.source` does not match `convention_provider`'s is refused before any
+    convention check or fetch (TC-7/gap #2, see `_check_fetch_provider_source_matches`).
+    `fetch_provider` defaulting to `convention_provider` when omitted is unchanged from iter-8 (there is
+    no code path by which `run_bounded_recovery_fetch` — see its own iter-9 docstring update — can be
+    reached with an ungated symbol either, gap #3)."""
+    return _run_gated_recovery_core(
+        session, engine, config,
+        convention_provider=convention_provider, fetch_provider=fetch_provider,
+        api_key=api_key, evidence_path=evidence_path, sample_symbols=None,
+    )
+
+
+def run_gated_population_recovery(
+    session: Session,
+    engine: Engine,
+    config: Config,
+    *,
+    convention_provider: PriceProvider,
+    fetch_provider: Optional[PriceProvider] = None,
+    api_key: Optional[str] = None,
+    evidence_path: Path,
+) -> GatedRecoveryOutcome:
+    """iter-9's NEW J-10 POPULATION entry point — runs the SAME fixed per-symbol gate
+    (`_compute_symbol_verdict`, the SAME `PATH_AGREEMENT_TOLERANCE`/`BRIDGE_DISPERSION_BOUND`/
+    `MIN_COMPARABLE_PAIRS_PER_SYMBOL`, the SAME live window derivation) as `run_gated_recovery`, but
+    over the LIVE recovery-population remainder (`still_missing_symbols()`) instead of the frozen
+    20-name `CONVENTION_CHECK_SAMPLE_SYMBOLS` — a fully distinct axis from that methodology-validation
+    sample, which this function never reads, widens, or re-derives (goal.md step 2b's binding
+    invariant: "the prohibition on widening or redrawing the methodology-validation sample does not
+    restrict execution over the already frozen J-10 recovery population").
+
+    Idempotent by construction: `still_missing_symbols()` is computed FRESH at call time (BEFORE the
+    convention check runs), so a symbol already fully restored (the 20 from iteration 8, or any
+    population member a prior population-pass invocation already restored) is excluded from the SAMPLE
+    itself — never re-calibrated, never re-fetched, never re-evaluated (TC-4/TC-9). Every symbol in the
+    computed sample gets exactly one recorded verdict (TC-1); an `agree` verdict is restored (bridge-
+    transformed, both recovery-date bars, idempotently); a `mismatch`/`inconclusive` verdict yields zero
+    rows and its `SymbolConventionVerdict.reason` is the "requested but not restored" explanation
+    (TC-3) — the caller (the committed driver script) reads `outcome.convention_check.verdicts` to build
+    that list; this function persists the raw evidence, not a human-facing summary.
+
+    Same B2/B5/B6 guarantees as `run_gated_recovery` (delegates to the SAME `_run_gated_recovery_core`):
+    `evidence_path` is mandatory, a `fetch_provider` source mismatch is refused before any work, and
+    `run_bounded_recovery_fetch` itself refuses any symbol without a recorded passing bridge factor."""
+    population = still_missing_symbols(session)
+    return _run_gated_recovery_core(
+        session, engine, config,
+        convention_provider=convention_provider, fetch_provider=fetch_provider,
+        api_key=api_key, evidence_path=evidence_path, sample_symbols=population,
+    )

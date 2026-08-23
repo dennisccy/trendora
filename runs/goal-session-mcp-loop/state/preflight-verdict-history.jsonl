@@ -270,3 +270,19 @@
 {"reasons": [], "reference": "2024-07-08", "verdict": "GO"}
 {"reasons": ["No servable snapshot: the database is unreachable or no run is persisted for the latest data date."], "reference": "2026-08-12", "verdict": "NO-GO"}
 {"reasons": [], "reference": "2026-08-12", "verdict": "GO"}
+{"reasons": ["No servable snapshot: the database is unreachable or no run is persisted for the latest data date."], "reference": "2026-08-10", "verdict": "NO-GO"}
+{"reasons": [], "reference": "2026-08-12", "verdict": "GO"}
+{"reasons": ["No servable snapshot: the database is unreachable or no run is persisted for the latest data date."], "reference": "2026-08-10", "verdict": "NO-GO"}
+{"reasons": [], "reference": "2026-08-12", "verdict": "GO"}
+{"reasons": ["No servable snapshot: the database is unreachable or no run is persisted for the latest data date."], "reference": "2026-08-10", "verdict": "NO-GO"}
+{"reasons": [], "reference": "2026-08-12", "verdict": "GO"}
+{"reasons": ["No servable snapshot: the database is unreachable or no run is persisted for the latest data date."], "reference": "2026-08-10", "verdict": "NO-GO"}
+{"reasons": [], "reference": "2026-08-12", "verdict": "GO"}
+{"reasons": ["No servable snapshot: the database is unreachable or no run is persisted for the latest data date."], "reference": "2026-08-10", "verdict": "NO-GO"}
+{"reasons": [], "reference": "2026-08-12", "verdict": "GO"}
+{"reasons": ["No servable snapshot: the database is unreachable or no run is persisted for the latest data date."], "reference": "2026-08-10", "verdict": "NO-GO"}
+{"reasons": [], "reference": "2026-08-12", "verdict": "GO"}
+{"reasons": ["No servable snapshot: the database is unreachable or no run is persisted for the latest data date."], "reference": "2026-08-10", "verdict": "NO-GO"}
+{"reasons": [], "reference": "2026-08-12", "verdict": "GO"}
+{"reasons": ["No servable snapshot: the database is unreachable or no run is persisted for the latest data date."], "reference": "2026-08-10", "verdict": "NO-GO"}
+{"reasons": [], "reference": "2026-08-12", "verdict": "GO"}

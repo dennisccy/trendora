@@ -31,43 +31,16 @@ acceptance test skip on the gate it is meant to prove independence from.
 range first, and prefer the backend's own boot/persist path over a destructive remove+rebuild cycle
 to obtain a fresh run.
 
-## iter-2 — 2026-08-20T09:05:00Z
-
-**Verdict:** ESCALATE
-**Lesson:** The engine dispatched this iteration LEAN even though the spec's own metadata said
-`Depth: full` and the iter-1 evaluator's recommendation was binding-full. Nothing warned anyone —
-the depth divergence is only visible by comparing `runs/goal-session-market-compass/iter-2/depth-dispatched`
-("lean") against the spec's `**Depth:** full` line. The cost was silent: the auditor, ux-regression,
-closure and demo/walkthrough lanes never ran, so four journeys inherited a `[NEW]`-walkthrough gap
-they did not need to have, and the developer's explicit "this is a product-quality question for
-review/audit/the evaluator to triage" (zero candidates on the frontier date) reached no auditor.
+## iter-2 — 2026-08-20T09:05:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration whose spec metadata says `Depth: full` — the evaluator should diff
 `depth-dispatched` against the spec's Depth line during the evidence walk and treat a downgrade as
 an ESCALATE trigger, not just note it.
 
-## iter-2 — 2026-08-20T09:05:00Z
-
-**Verdict:** ESCALATE
-**Lesson:** The strongest AG-3 ("displayed numbers are correct") evidence in this iteration cost
-nothing extra: because the three new compass cards were placed ABOVE the untouched legacy dashboard
-body on the same page, one full-page screenshot contains both the new cited fact (regime_score 73.24,
-severity 25.84, breadth 59.84/66.39) and the pre-existing canonical tile serving the same value.
-Cross-checking within a single image is stronger than any prose claim and needs no running backend —
-worth preserving deliberately until J-08 relocates the dashboard body to `/market`, after which the
-two surfaces separate and this free cross-check disappears.
+## iter-2 — 2026-08-20T09:05:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iter touching `apps/frontend/app/page.tsx` layout, and specifically J-07/J-08's
 Today-page recomposition and `/market` relocation.
 
-## iter-2 — 2026-08-20T09:05:00Z
-
-**Verdict:** ESCALATE
-**Lesson:** The runtime banned-language guard (`_assert_no_banned_language`,
-`apps/backend/app/engine/compass.py:175`) is called only from `build_narrative` (`:208`) — it never
-sees the candidate reason, caution or why-not strings produced by `evaluate_selection`. That is
-exactly where advice-flavoured wording actually appeared ("ATR is 2.23% of price — sized risk
-accordingly", `compass.py:294`), because reasons/cautions are free-form f-strings assembled in code
-rather than config templates. A guard that covers the safest text and skips the riskiest text reads
-as coverage but is not.
+## iter-2 — 2026-08-20T09:05:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iter adding user-facing generated prose under `app/engine/compass.py`, and the
 J-05/J-06 manifest work that will serialise these same strings into an exported artifact.
 
@@ -212,3 +185,33 @@ evaluator must check the lane actually stayed shut rather than trusting a prior 
 **Applies to:** every remaining market-compass iteration while the lane gate is open (J-10's 567-symbol
 continuation, all of J-11), and any goal whose `docs/goal.md` forbids a pipeline lane rather than a
 code path.
+
+## iter-9 — 2026-08-23T13:05:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** A summary statistic of the form "all N were X" is exactly where the single counter-example
+gets erased — and the counter-example is always the row that actually needed review. The iter-9 handoff
+reported `bridge_factor == 1.0` for all 566 agreeing symbols; the persisted evidence artifact records
+`AVB` at `2.7930001225759193`, and AVB's two rows are the ONLY values in the 1,170-row batch produced by
+the bridge arithmetic at all (structurally confirmed: they are the only two whose OHLC values are not
+float32-exact). The safety argument the handoff built on "all 1.0 ⇒ same-vendor tautology ⇒ no scale
+break possible" was therefore false for precisely the one symbol where a scale break was possible. When
+a handoff states a uniform value across a population, open the per-row artifact and query for
+`!= that value` before accepting it.
+**Applies to:** any iteration whose acceptance rests on a population-wide uniform figure (all bridge
+factors, all hashes equal, all deltas zero, 100% coverage) — especially J-11's "all 11 rebuilt runs share
+the frozen engine_identity" and its cache-invalidation proofs.
+
+## iter-9 — 2026-08-23T13:05:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** The reviewer and QA both re-stated the developer's framing verbatim (`issues: []`, TC-2 row
+"all 1.0") on the one fact that was wrong, while independently re-running tests and re-querying row
+counts that were right. Re-deriving *counts* is not re-deriving *claims*: the two lanes checked what the
+handoff pointed them at and inherited its interpretation of what those numbers meant. Only the audit lane
+re-derived the claim from primary sources. This is the third consecutive iteration (7, 8, 9) where the
+audit caught something both earlier lanes missed — treat "reviewer PASS + QA PASS" as evidence about
+mechanics, never about narrative.
+**Applies to:** any iteration where full depth is optional; and specifically J-11, whose acceptance is a
+long list of narrative claims ("no stale cache survives", "no new historical manifest appears") that a
+row-count check cannot confirm.

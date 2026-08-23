@@ -64,6 +64,10 @@ QUOTE_BATCH = 40
 
 
 class YahooProvider(PriceProvider):
+    # goal-market-compass iter-9 (J-10 gap #2): the provider-identity label `run_gated_recovery`'s
+    # fetch_provider/convention_provider mismatch guard compares (`base.PriceProvider.source`).
+    source = "yahoo"
+
     def __init__(self, *, client: Optional[httpx.Client] = None, timeout: float = HTTP_TIMEOUT_SECONDS):
         self._client = client
         self._timeout = timeout
