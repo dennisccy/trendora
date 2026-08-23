@@ -603,3 +603,26 @@ fabricating a downgrade is as dishonest as fabricating a pass. Both must be re-m
 which `docs/goal.md` makes their exclusive owner.
 **Reversible:** yes — the first legal browser/replay run at J-11 Stage G settles both empirically, and
 either can be downgraded there with real evidence behind it.
+
+## iter-10 — goal-decomposer (splitting J-11 at the B/B1/B2 → C-G boundary instead of one iteration)
+
+**Ambiguity:** `docs/goal.md`'s J-11 sequencing describes Stages A through G as one journey, and its
+"Failure and retry semantics" step states plainly that "the unit of work is the whole 11-date set" —
+but that unit is explicitly scoped to the DESTRUCTIVE phase: "Once the destructive phase (Stage C) has
+begun..." and "a partial C→G execution is never represented as accepted J-11 progress." Stage B1 is
+separately described as a hard precondition ("Stage C may not begin until all six of these are
+proven"), and Stages B/B2 are read-only inventory/identity-freezing steps with zero database writes.
+`docs/goal.md` does not state whether B/B1/B2 must ship in the same iteration as C-G.
+**We chose:** Scoped this iteration to Stages B, B1, and B2 only — the pre-reset inventory, the
+manifest↔ScannerRun schema-contract reconciliation (with its six acceptance items proven by fixture
+tests), and the frozen attempt engine/config identity — and deferred Stages C through G (the actual
+destructive clear, regeneration, forward-return repair, cache invalidation, and verification) to a
+later iteration. This mirrors how J-10 itself was safely chunked across iterations 7, 8, and 9; keeps
+this iteration to a single risk class (zero writes to `trendora.db`, no boot warmup, no browser/replay
+lane); and is exactly what Stage C's own precondition requires regardless of how the work is chunked
+across iterations. The "whole 11-date set is the retry unit" rule is unaffected — it governs the
+destructive phase this iteration does not touch.
+**Reversible:** yes — a future decomposer could still choose to deliver all of B through G in one
+iteration if the combined risk is judged acceptable; nothing in this iteration's scope forecloses that,
+and no destructive action is taken here that would need to be undone. The B/B1/B2 artifacts and tests
+this iteration produces are the same required precondition either way.
