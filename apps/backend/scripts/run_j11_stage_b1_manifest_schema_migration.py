@@ -121,7 +121,9 @@ def main() -> int:
     print(f"pre-migration row count: {row_count_before}", file=sys.stderr)
 
     # --- the rebuild itself: create shadow, copy, verify-then-swap (or abort) ----------------------
-    shadow = migration.create_shadow_table(engine)
+    # goal-market-compass iter-12 (ruling A10 fix): the shadow table is now built from the CAPTURED
+    # original DDL text (`original_ddl["table_sql"]`), never from `NextSessionManifest.__table__`.
+    shadow = migration.create_shadow_table(engine, original_ddl["table_sql"])
     migration.copy_rows_to_shadow(engine, shadow)
     result = migration.verify_and_finalize(engine, shadow, pre_dump, original_ddl["index_sqls"])
 

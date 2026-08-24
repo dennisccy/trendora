@@ -309,6 +309,114 @@ def test_tc13_basis_disclosure_available_branch_still_reports_available_when_rec
     assert disclosure == {"status": "available", "detail": None}
 
 
+# --- A4-bis: the recorded-TIMESTAMP-VALUE fail-open (goal-market-compass iter-12, docs/goal.md J-11 -----
+# step 11 ruling A4-bis, owner 2026-08-24). The iter-11 fix above closed every branch that examines
+# `generation_json`'s SHAPE (missing/empty/malformed/non-object/key-absent). It left the VALUE of a
+# PRESENT `source_run_created_at` key unchecked: `recorded = generation.get(...)` followed by
+# `if recorded is not None and recorded != current: rebuilt` / `else: available` meant a key present
+# with JSON value `null` fell through to "available" (still fail-open), and an empty or unparseable
+# string was reported as "rebuilt" by raw string inequality -- asserting a rebuild that was never
+# established. These tests cover the A4-bis status table; valid-matched -> available is already covered
+# by test_tc13_basis_disclosure_available_branch_still_reports_available_when_recorded_timestamp_matches
+# above and no-current-run -> unavailable is already covered by
+# test_basis_disclosure_reads_unavailable_when_the_source_run_is_gone above -- both re-confirmed
+# unchanged by this fix and not duplicated here.
+
+
+def test_a4bis_recorded_timestamp_null_value_is_unverifiable_not_available(engine, cfg, frontier_run):
+    """A4-bis (TC-13): a `source_run_created_at` key present with JSON value `null` must report
+    `unverifiable`, never `available` -- the exact fail-open the ORIGINAL `recorded is not None` guard
+    let through."""
+    with Session(engine) as session:
+        run = session.get(ScannerRun, frontier_run)
+        row = compass.get_or_create_manifest(session, run, cfg, producer="ingest_finalize")
+        row.generation_json = json.dumps({"producer": "ingest_finalize", "source_run_created_at": None})
+        session.add(row)
+        session.commit()
+    with Session(engine) as session:
+        row = session.exec(select(NextSessionManifest)).first()
+        disclosure = compass.basis_disclosure(session, row)  # must not raise
+    assert disclosure["status"] == "unverifiable"
+    assert disclosure["status"] != "available"
+
+
+def test_a4bis_recorded_timestamp_empty_string_is_unverifiable_not_rebuilt(engine, cfg, frontier_run):
+    """A4-bis (TC-14): an empty-string `source_run_created_at` is unusable, not a valid timestamp that
+    happens to differ -- must report `unverifiable`, never the confident `rebuilt` claim a raw string
+    inequality against "" would have produced."""
+    with Session(engine) as session:
+        run = session.get(ScannerRun, frontier_run)
+        row = compass.get_or_create_manifest(session, run, cfg, producer="ingest_finalize")
+        row.generation_json = json.dumps({"producer": "ingest_finalize", "source_run_created_at": ""})
+        session.add(row)
+        session.commit()
+    with Session(engine) as session:
+        row = session.exec(select(NextSessionManifest)).first()
+        disclosure = compass.basis_disclosure(session, row)  # must not raise
+    assert disclosure["status"] == "unverifiable"
+    assert disclosure["status"] not in ("available", "rebuilt")
+
+
+def test_a4bis_recorded_timestamp_unparseable_string_is_unverifiable_not_rebuilt(engine, cfg, frontier_run):
+    """A4-bis (TC-15): a `source_run_created_at` value that is not parseable as the canonical UTC
+    timestamp representation (e.g. "garbage") must report `unverifiable`, never `rebuilt` -- the
+    ORIGINAL raw-string-inequality comparison would have called this "rebuilt", asserting a rebuild the
+    value never actually establishes."""
+    with Session(engine) as session:
+        run = session.get(ScannerRun, frontier_run)
+        row = compass.get_or_create_manifest(session, run, cfg, producer="ingest_finalize")
+        row.generation_json = json.dumps(
+            {"producer": "ingest_finalize", "source_run_created_at": "garbage"}
+        )
+        session.add(row)
+        session.commit()
+    with Session(engine) as session:
+        row = session.exec(select(NextSessionManifest)).first()
+        disclosure = compass.basis_disclosure(session, row)  # must not raise
+    assert disclosure["status"] == "unverifiable"
+    assert disclosure["status"] not in ("available", "rebuilt")
+
+
+def test_a4bis_recorded_timestamp_valid_but_mismatched_is_rebuilt(engine, cfg, frontier_run):
+    """A4-bis (TC-16): a VALID, PARSEABLE `source_run_created_at` that does not equal the current run's
+    canonicalized `created_at` still reports `rebuilt` -- the fail-closed validation gates entry to the
+    mismatch branch, it does not disturb it."""
+    with Session(engine) as session:
+        run = session.get(ScannerRun, frontier_run)
+        row = compass.get_or_create_manifest(session, run, cfg, producer="ingest_finalize")
+        row.generation_json = json.dumps(
+            {"producer": "ingest_finalize", "source_run_created_at": "2020-01-01T00:00:00+00:00"}
+        )
+        session.add(row)
+        session.commit()
+    with Session(engine) as session:
+        row = session.exec(select(NextSessionManifest)).first()
+        disclosure = compass.basis_disclosure(session, row)
+    assert disclosure["status"] == "rebuilt"
+
+
+def test_a4bis_full_generation_json_degenerate_matrix_never_available(engine, cfg, frontier_run):
+    """A4-bis (widened TC-19 matrix): the required minimum degenerate-input set -- NULL, empty string,
+    malformed JSON, `[]`, `{}` -- re-run after this fix, each still resolves to `unverifiable`, never
+    raises, and never reports `available`. `[]` and `{}` were not previously exercised by their own name
+    (iter-11's tests used "5" / a populated non-object dict / a non-empty list); added here for the
+    explicit minimum matrix this iteration's spec names."""
+    for degenerate in (None, "", "{not valid json", "[]", "{}"):
+        with Session(engine) as session:
+            row = session.exec(select(NextSessionManifest)).first()
+            if row is None:
+                run = session.get(ScannerRun, frontier_run)
+                row = compass.get_or_create_manifest(session, run, cfg, producer="ingest_finalize")
+            row.generation_json = degenerate
+            session.add(row)
+            session.commit()
+        with Session(engine) as session:
+            row = session.exec(select(NextSessionManifest)).first()
+            disclosure = compass.basis_disclosure(session, row)  # must not raise
+        assert disclosure["status"] == "unverifiable", degenerate
+        assert disclosure["status"] != "available", degenerate
+
+
 # --- TC-16 (reproducibility) -----------------------------------------------------------------------
 
 

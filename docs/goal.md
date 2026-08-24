@@ -749,7 +749,10 @@ manifest artifact (it must be self-describing and self-caveating).
        For any symbol: **`mismatch` or `inconclusive` ⇒ zero rows written for that symbol.** Do not
        loosen thresholds after seeing failures. Do not substitute a different methodology for
        troublesome symbols without a later explicit goal amendment.
-    2d. **Continue from 20/587 — do not restart.** The 20 already-restored symbols stay restored if
+    2d. **Continue from 20/587 — do not restart.** *(HISTORICAL, owner 2026-08-24: this instruction was
+        executed and is spent — iteration 9 carried 20/587 to the terminal 585/587. J-10 is CLOSED; this
+        paragraph is not a live instruction and must not be read as authorizing further recovery work.)*
+        The 20 already-restored symbols stay restored if
        they satisfy the corrected J-10 contract and the audit findings. Do not delete or revert them
        merely to restart the recovery. Treat current state as **20 validly restored · 567 still
        pending individual evaluation**, and make the next recovery pass **idempotent** over the
@@ -791,6 +794,11 @@ manifest artifact (it must be self-describing and self-caveating).
        > Completing the remaining 567 raw-price rows does not automatically refresh the already-existing
        > 2026-08-11 / 2026-08-12 `ScannerRun`s. They remain derived from the partial raw basis until
        > J-11 deliberately clears and regenerates them.
+       **(Status update, owner 2026-08-24: those 567 rows WERE completed in iteration 9 — J-10 is closed
+       at 585 restored. Nothing here is outstanding work. The conclusion nevertheless still binds: those
+       two `ScannerRun`s were created over the partial basis and are STILL stale, so J-11 Stage C/D must
+       clear and regenerate them. Read this paragraph as the reason they are stale, never as a claim that
+       raw-price rows remain to be fetched.)**
        They are therefore **not** final reconstructed snapshots, and J-10 must not describe them as
        such. **Status of those rows, recorded explicitly:**
        > Any `ScannerRun` for 2026-08-11 or 2026-08-12 created before J-10's final raw-input recovery
@@ -940,11 +948,15 @@ manifest artifact (it must be self-describing and self-caveating).
     snapshot row format inside the incident set.
   - **Prerequisite — J-10 first, hard gate.** J-11 does NOT replace or bypass J-10. J-10 still owns
     restoration of the canonical `daily_prices` rows for 2026-08-11 and 2026-08-12 across the proven
-    587-symbol population (**currently 20 restored / 567 pending**). J-11 may not begin until **the
-    authorized J-10 raw-input recovery has reached its accepted terminal state and the canonical
-    daily-price coverage needed by every incident date has been verified.** Never run the derived
-    rebuild against a knowingly incomplete price layer, and never lower J-10's acceptance criteria to
-    unblock this journey.
+    587-symbol population. **J-10 prerequisite SATISFIED (owner, 2026-08-24): the raw layer is terminal
+    at 585 restored, with EA and EQR explicitly accepted as unrestorable, and AG-9's recovery-fetch
+    authorization is exhausted** — see the "J-10 CLOSED — residual set accepted" bullet in J-10. The
+    superseded status line this bullet used to carry ("currently 20 restored / 567 pending") described
+    the state at iteration 6 and is **stale**; it is corrected here rather than deleted so the lineage
+    stays legible. **J-10 is closed and MUST NOT be reopened** — not by the decomposer, not to retry EA
+    or EQR, not to "finish the remaining 567", which no longer exist. The original gate still binds for
+    its own sake: never run the derived rebuild against a knowingly incomplete price layer, and never
+    lower J-10's acceptance criteria to unblock this journey.
   - **The incident date set — all 11, not the 8 currently absent.** From the authoritative removal
     audit (`data_provider_runs` id=538, whose own cascade record lists them):
     `2026-05-12, 2026-05-13, 2026-07-10, 2026-07-13, 2026-07-24, 2026-07-27, 2026-08-03, 2026-08-05,
@@ -1215,6 +1227,33 @@ manifest artifact (it must be self-describing and self-caveating).
          is intact (AG-1). Cover each degenerate input with its own test, and re-verify read-only against
          the 8 live manifests that carry `generation_json` NULL. Treat the *count* as evidence to
          re-derive, not to trust: verify it yourself read-only rather than quoting this line.
+         **A4-bis — the recorded-timestamp cases must also fail closed (owner, 2026-08-24).** The iter-11
+         fix closed the missing/empty/malformed/non-object/key-absent branches but left the *value* of
+         `source_run_created_at` unchecked: `recorded = generation.get(...)` followed by
+         `if recorded is not None and recorded != current: return rebuilt` / `return available` means a
+         key present with value `null` falls through to **`available`** — still fail-open — and an empty
+         or unparseable string is reported as **`rebuilt`**, which asserts a rebuild that was never
+         established. A key whose value is `null` does not provide a verifiable source timestamp. Required
+         behaviour, complete:
+         | recorded `source_run_created_at` | status |
+         |---|---|
+         | absent | `unverifiable` |
+         | `null` | `unverifiable` |
+         | empty / unusable | `unverifiable` |
+         | present but unparseable as the expected timestamp representation | `unverifiable` |
+         | valid timestamp ≠ current run's | `rebuilt` |
+         | valid timestamp = current run's | `available` |
+         | no current `ScannerRun` for the `as_of` | `unavailable` |
+         **Never report `available` unless an actual recorded timestamp exists and matches the current
+         run.** Do not compare arbitrary strings as though they were valid timestamps — validate the
+         recorded value into the same canonical UTC representation the writer and the current-run
+         comparison use; if it cannot be parsed, the answer is `unverifiable`, **not** `rebuilt` and
+         certainly not `available`. The semantic question is whether the original basis can be *proven*;
+         unreadable provenance means unverifiable. Keep this change narrow. Test at minimum: NULL, `""`,
+         malformed JSON, `[]`, `{}`, `{"source_run_created_at": null}`, `{"source_run_created_at": ""}`,
+         `{"source_run_created_at": "garbage"}`, valid-mismatched, valid-matched, and no-current-run. Then
+         re-run the read-only classification across all 24 live manifests without mutating them and report
+         the exact new distribution — the live count is evidence to re-derive, never a hardcoded expectation.
        - **A5 — Maintenance isolation stays ACTIVE.** No application-service boot, no browser-QA lane,
          and no deterministic-replay lane, unchanged, until Stage G. The migration iteration is the
          **single** authorized exception to "zero writes to `trendora.db`", and its writes are bounded to
@@ -1231,6 +1270,80 @@ manifest artifact (it must be self-describing and self-caveating).
          from a partially migrated or unproven table.
        This work is **Stage B1-completion**, a separate iteration (or iterations) before Stage C — it is
        not part of the Stage C destructive unit and does not start it.
+
+       **OWNER RULING — iter-11 DDL residual accepted (owner, 2026-08-24).** The iter-11 live migration
+       successfully removed the unwanted `source_run_id -> scanner_runs.id` foreign key and preserved all
+       24 manifest rows and every stored value, **but it also changed four DDL properties beyond the
+       original A1/AG-18 authorization.** The owner accepts **exactly** these four already-materialized
+       residual differences, and nothing else:
+       | # | property | before | after |
+       |---|---|---|---|
+       | 1 | `version` | `INTEGER NOT NULL DEFAULT 1` | `INTEGER NOT NULL` |
+       | 2 | `frozen` | `BOOLEAN NOT NULL DEFAULT 0` | `BOOLEAN NOT NULL` |
+       | 3 | `prospective_eligible` | `BOOLEAN NOT NULL DEFAULT 0` | `BOOLEAN NOT NULL` |
+       | 4 | `version` column ordinal | 9 | 3 |
+       **A second live rewrite is NOT authorized** merely to restore those historical DDL details. The
+       reason for accepting rather than rewriting is risk minimization, all independently verified: all 24
+       rows survived; all 24 × 28 stored cells were proven identical; every `source_run_id` value is
+       unchanged; the unwanted live FK is gone; FK enforcement can be enabled with zero manifest/run
+       violations; the three removed defaults are not required by the current canonical SQLModel writer;
+       the ordinal change carries no intended semantic meaning; and a second destructive table rewrite
+       would add live operational risk for low-value restoration of historical DDL shape.
+       - **A8 — What this acceptance is NOT.** It is a narrow, enumerated, post-incident acceptance of
+         four known residual differences. It is **NOT** a general waiver of AG-18; **NOT** permission for
+         further schema drift; **NOT** permission to mutate any manifest value; **NOT** permission to
+         perform another live rewrite; **NOT** permission to broaden Stage B1; and **NOT** a claim that
+         the migration originally stayed within its authorization. **The iter-11 migration DID exceed the
+         original A1/AG-18 schema bound — record that fact honestly.** The four residual differences are
+         **not desirable**; they are merely accepted as the current bounded end state. The accepted
+         residual set **must not become a precedent**.
+       - **A9 — B1 live end state (the operative contract).**
+         > manifest values unchanged · `source_run_id` FK absent · original indexes preserved ·
+         > known four-item DDL residual accepted · no second corrective live rewrite required
+       - **A10 — Migration implementation must derive from captured live DDL (future safety only).** Root
+         cause of the residual: `j11_schema_migration.py` captured the original live DDL but then built
+         the replacement table from `NextSessionManifest.__table__.to_metadata(...)`, reconstructing MODEL
+         shape rather than LIVE historical shape. A future migration must produce **the original live
+         `CREATE TABLE`, MINUS ONLY the `FOREIGN KEY(source_run_id) REFERENCES scanner_runs(id)` clause**:
+         take the captured original DDL as the authoritative physical schema source, transform only that
+         one FK clause, create the shadow table from the transformed DDL, copy rows by explicit column
+         name, and reissue the original indexes verbatim. Never generate the table body from SQLModel
+         metadata; never hand-author the replacement schema independently. Column names, order, types,
+         nullability, server defaults, primary key, unrelated constraints and indexes must all be
+         untouched. **The transformation fails closed** if the expected FK clause cannot be identified
+         exactly — no broad regex that could silently remove an unrelated constraint. This fix is for
+         correctness, testability and future retry safety; **it must NOT be run against the live database.**
+       - **A11 — Deferred to Stage G, not blockers, not to be mutated.** (a) The `preFreezeEra` branch in
+         the manifest strip currently masks the new `unverifiable` badge on live rows. If that branch
+         remains honest and fail-closed it is a **Stage G product-verification item**, not a Stage C
+         blocker, and no UI/browser work may be pulled forward into a cleanup iteration; if it is actually
+         misleading or fail-open, surface the exact contradiction and STOP rather than broadening
+         silently. (b) Manifest export-file discrepancies (recorded `export_path` values with no file on
+         disk; files on disk for dates with no manifest row) predate this work: do **not** repair or
+         delete files, mint manifests, or change `export_path`. Record it as an immutable-evidence
+         reconciliation item for Stage G; only if inspection shows it makes Stage C unsafe should it be
+         surfaced as a blocker.
+       - **A12 — Stage C READY gate.** Stage C may be marked READY only when ALL of these hold, and the
+         iteration must return the explicit owner-facing line `J-11 STAGE C READY: YES / NO`:
+         J-10 closed with no stale `20/567` operative wording remaining; the exact four-item DDL residual
+         accepted and documented; the live manifest FK still absent; 24 manifest rows still unchanged; the
+         migration utility fixed for future exact-DDL-minus-FK behaviour; `basis_disclosure` null/malformed
+         timestamp cases failing closed; the `models.py` comment no longer falsely claiming an exact
+         physical match; maintenance isolation still active; all targeted tests passing; **zero live-database
+         writes** in the cleanup iteration; and no new blocker discovered. **Stage C is still NOT executed
+         in that iteration** — it waits for an explicit owner instruction to resume.
+       - **A13 — Live database is READ-ONLY for the B1 cleanup iteration.** Expected live writes: **ZERO**.
+         No further `DROP TABLE`, table swap, corrective `ALTER`, ordinal reconstruction, manifest-row copy,
+         or any schema mutation to `next_session_manifests`. Verify before and after — `daily_prices`,
+         `scanner_runs`, manifest row count, manifest values, manifest live DDL, indexes, `forward_returns`,
+         provider runs, and any user state already tracked in the Stage B inventory — using the strongest
+         practical read-only fingerprinting the J-11 evidence framework already provides. **Do not claim
+         "no write" from row counts alone.**
+       - **A14 — iter-11's REGRESSION verdict stands.** Do not rewrite or delete it. This acceptance
+         resolves only whether the already-materialized residual must be undone; it does **not**
+         retroactively turn iter-11 into a clean PASS. The honest lineage to preserve is: *iter-11
+         migration — primary goal succeeded, stored state preserved, unauthorized DDL residual detected,
+         REGRESSION recorded, owner later accepted the exact residual instead of ordering a second rewrite.*
     12. **Stage B2 — freeze ONE engine identity for the whole attempt (owner, 2026-08-21).** J-11's
        claim is that the incident set ends up as one internally consistent current-engine derivation;
        that claim must be testable. Before Stage C, freeze the intended current engine identity and
@@ -1272,8 +1385,11 @@ manifest artifact (it must be self-describing and self-caveating).
        destructive scope (11 dates, allowlisted tables), complete-attempt restart semantics (above),
        pre/post inventories, and fail-closed verification. Do not specify or imply "transaction
        rollback" unless and until the implementation actually supports it.
-  - Sequencing (explicit): **A** finish J-10's canonical input repair (567 remaining under the fixed
-    per-symbol gate → verify 2026-08-11/12 coverage → close the temporary fetch authorization) →
+  - Sequencing (explicit; **operative form as of 2026-08-24** — the pre-iteration-9 form began "finish
+    J-10's canonical input repair (567 remaining)", which is now stale and satisfied): **A** J-10 terminal
+    prerequisite **already satisfied** (585 restored; EA/EQR accepted unrestorable; AG-9 exhausted; the
+    temporary fetch authorization is closed) → **B/B1/B2 completed in iterations 10-11, to be re-verified
+    rather than redone** →
     **B** freeze a read-only pre-reset inventory (the exact 11-date target set; row counts by relevant
     table and date; `daily_prices` coverage/fingerprint; manifest count and hashes; manifest export
     fingerprints where practical; `data_provider_runs` audit state; the certified-ledger file hash;
@@ -1490,7 +1606,17 @@ manifest artifact (it must be self-describing and self-caveating).
   stored column value — `as_of`, `source_run_id` (orphans included), `generation_json`, `content_hash`,
   `manifest_hash`, `version`, `available_at_utc`, `prospective_eligible` — survive exactly, proven by
   persisted pre/post per-row evidence. No other table's schema may be altered under that authorization.
-  A changed stored value is a REGRESSION, never a note. *(critical)*
+  A changed stored value is a REGRESSION, never a note.
+  **Bounded exception on record (owner, 2026-08-24) — narrowing nothing.** The iter-11 migration **did
+  exceed** this rule: it removed three server-side defaults (`version`, `frozen`, `prospective_eligible`)
+  and moved `version` from column ordinal 9 to 3. That event was **detected** (by the auditor, after the
+  developer, reviewer and QA all missed it), **enumerated** exactly, **reviewed**, and **accepted by the
+  owner after the fact** as an already-materialized end state — explicitly in preference to a second
+  live rewrite, on risk grounds. It is **not generalized**. AG-18 continues to prohibit schema drift
+  beyond an explicitly authorized migration; future migrations remain subject to strict schema-delta
+  proof, must derive the replacement table body from the captured live DDL rather than from ORM metadata
+  (ruling A10), and must fail closed when the targeted clause cannot be identified exactly. **The
+  accepted residual set is not a precedent and may not be cited as one.** *(critical)*
 
 ## Loop mechanics (for the iteration planner)
 

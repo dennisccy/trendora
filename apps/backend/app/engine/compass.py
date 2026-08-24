@@ -1098,28 +1098,37 @@ def list_manifest_versions(session: Session, as_of: date) -> list[NextSessionMan
 
 
 def basis_disclosure(session: Session, row: NextSessionManifest) -> dict:
-    """Read-time-only comparison (TC-9..TC-13) — NEVER a mutation, NEVER a recompute of the frozen
+    """Read-time-only comparison (TC-9..TC-19) — NEVER a mutation, NEVER a recompute of the frozen
     content. Compares the manifest's recorded `source_run_created_at` against the CURRENT stored run for
     this `as_of` (never the dataset-version stamp alone, which a rebuild can reproduce byte-identically).
     `{"status": "available"|"unavailable"|"rebuilt"|"unverifiable", "detail": str|None}`.
 
-    Fail-closed fix (docs/goal.md J-11 step 11 ruling A4, owner 2026-08-23 — withdraws iter-10's "needs
-    no change" reading): the ORIGINAL implementation short-circuited `not row.generation_json` straight
-    to `{"status": "available"}`, which FABRICATES "basis intact" for a manifest with no recorded basis
-    at all (verified live: the 2026-08-12 version-1 manifest reported `available` while 8 of 24 live
-    manifests carry `generation_json` NULL — an AG-1 violation on a served surface). `basis_disclosure`
-    must never report a confident "available" claim it cannot actually back. Four degenerate branches
-    now all return the SAME explicit `"unverifiable"` status instead — never `"available"`, never a
-    raised exception:
-      - `generation_json` is NULL or an empty string (TC-9/TC-10) — no recorded basis to compare at all;
-      - `generation_json` is not valid JSON (TC-11) — malformed, caught explicitly, never propagated;
-      - `generation_json` parses but is not a JSON object, or is an object that omits the
-        `source_run_created_at` key (TC-12) — present but incomplete, exactly as unverifiable as
-        absent. The non-object case is guarded explicitly: `"key" in <non-dict>` raises TypeError,
-        which would escape this fail-closed guard as a 500 on the served payload.
-    The three already-correct branches — unavailable (no current run), rebuilt (recorded timestamp
-    differs from the current run's), and available (recorded timestamp matches) — are unchanged
-    (TC-13)."""
+    Fail-closed fix, part 1 (docs/goal.md J-11 step 11 ruling A4, owner 2026-08-23 — withdraws iter-10's
+    "needs no change" reading): the ORIGINAL implementation short-circuited `not row.generation_json`
+    straight to `{"status": "available"}`, which FABRICATES "basis intact" for a manifest with no
+    recorded basis at all. Four degenerate branches — `generation_json` NULL/empty (TC-9/TC-10),
+    malformed JSON (TC-11), and well-formed JSON that is not an object or omits
+    `source_run_created_at` (TC-12) — all return the SAME explicit `"unverifiable"` status, never
+    `"available"`, never a raised exception.
+
+    Fail-closed fix, part 2 — ruling A4-bis (owner 2026-08-24): part 1 closed the branches above `recorded
+    = generation.get("source_run_created_at")`, but left the VALUE of `recorded` unchecked: the original
+    code was `if recorded is not None and recorded != current: rebuilt` / `else: available`, so a key
+    present with JSON value `null` fell through to `available` (still fail-open), and an empty or
+    unparseable string was reported as `rebuilt` — asserting a rebuild that was never established, by raw
+    string inequality rather than a real timestamp comparison. `recorded` is now validated BEFORE any
+    match/mismatch branch is reached (iter-7's ordering lesson: the fail-closed floor must sit before the
+    comparison, never after) — `None`, a non-string, or an empty/whitespace-only string is `unverifiable`
+    (no verifiable timestamp at all); a string that fails to parse via `datetime.fromisoformat` is
+    `unverifiable` (TC-15, e.g. `"garbage"`); only a value that PARSES is re-canonicalized through the
+    SAME `_utc_isoformat` helper the writer used to produce `current` (never a raw string compare) and
+    then compared — equal is `available` (TC-17), unequal is `rebuilt` (TC-16). The complete status
+    table (docs/goal.md A4-bis):
+      absent / `null` / empty / unusable / unparseable  -> `unverifiable`
+      valid timestamp != current run's                  -> `rebuilt`
+      valid timestamp == current run's                  -> `available`
+      no current `ScannerRun` for this as-of             -> `unavailable` (unchanged, TC-18)
+    Never report `available` unless an actual recorded timestamp exists AND matches the current run."""
     current_run = session.exec(select(ScannerRun).where(ScannerRun.asof_date == row.as_of)).first()
     if current_run is None:
         return {"status": "unavailable", "detail": "the underlying scanner run for this as-of is no longer stored"}
@@ -1139,9 +1148,31 @@ def basis_disclosure(session: Session, row: NextSessionManifest) -> dict:
         # `generation_json` is missing, empty, or malformed, or when `source_run_created_at` is absent
         # ... must NEVER report available").
         return {"status": "unverifiable", "detail": "the recorded generation basis omits the source run timestamp"}
+
     recorded = generation.get("source_run_created_at")
     current = _utc_isoformat(current_run.created_at)
-    if recorded is not None and recorded != current:
+
+    # A4-bis, validated BEFORE any match/mismatch branch: `null`, a non-string, or an empty/unusable
+    # string carries no verifiable timestamp at all -- fail closed, never "available", never "rebuilt"
+    # by virtue of a raw string inequality against a value that was never a real timestamp.
+    if recorded is None or not isinstance(recorded, str) or not recorded.strip():
+        return {
+            "status": "unverifiable",
+            "detail": "the recorded source run timestamp is null or empty and cannot be verified",
+        }
+    try:
+        recorded_dt = datetime.fromisoformat(recorded)
+    except (ValueError, TypeError):
+        # present but not parseable as the expected timestamp representation -- fail closed, never
+        # "rebuilt" (that would assert a rebuild this value never actually establishes).
+        return {
+            "status": "unverifiable",
+            "detail": "the recorded source run timestamp could not be parsed and cannot be verified",
+        }
+    # Re-canonicalize the PARSED value through the SAME helper the writer used to produce `current` --
+    # never a raw string compare between two independently-formatted timestamps.
+    recorded_canonical = _utc_isoformat(recorded_dt)
+    if recorded_canonical != current:
         return {"status": "rebuilt", "detail": "the source scanner run was recreated after this manifest was frozen"}
     return {"status": "available", "detail": None}
 

@@ -819,21 +819,39 @@ class NextSessionManifest(SQLModel, table=True):
     version: int = Field(default=1)
     # goal-market-compass iter-10 (J-11 Stage B1): the LIVE `FOREIGN KEY(source_run_id) REFERENCES
     # scanner_runs (id)` DDL is DROPPED from the model declaration here (iter-10: model-declaration change
-    # only, no live-DB migration yet. iter-11 (J-11 Stage B1-completion, ruling A1): the owner
+    # only, no live-DB migration yet). iter-11 (J-11 Stage B1-completion, ruling A1): the owner
     # subsequently AUTHORIZED and this iteration PERFORMED the bounded live-schema migration too -- a
     # mechanical constraint-only table rebuild via `app.engine.j11_schema_migration` /
     # `scripts/run_j11_stage_b1_manifest_schema_migration.py`, proven row/column-identical on the LIVE
-    # database before and after (evidence under `runs/goal-market-compass-iter-11/`). The live table now
-    # matches this model declaration exactly -- no more model/live-DDL divergence). This was a LATENT
-    # contradiction, not a new one: enforcement was already OFF on the live DB (`PRAGMA foreign_keys` reads
-    # `0` -- `app.db._apply_sqlite_pragmas` never issues `PRAGMA foreign_keys=ON`), and
-    # `PRAGMA foreign_key_check(next_session_manifests)` already reported 12 violations on the live DB
-    # before the iter-11 migration, all on incident-dated manifests -- so the FK declaration was never
-    # actually enforced; it was only ever aspirational. Declaring it here as `foreign_key=...` documented a
-    # contract the design does NOT want: AG-12 (manifest immutability) requires a manifest to survive its
-    # source `ScannerRun` being deleted and canonically rebuilt (J-11 Stages C/D, a LATER iteration), and a
-    # rebuilt run legitimately gets a fresh row (or, since `scanner_runs.id` is a plain SQLite rowid alias
-    # with no `AUTOINCREMENT` and no `sqlite_sequence` table, can even REUSE a freed numeric id).
+    # database before and after (evidence under `runs/goal-market-compass-iter-11/`).
+    #
+    # CORRECTED (goal-market-compass iter-12, owner ruling A8/A9, 2026-08-24 -- withdraws the claim this
+    # comment used to make here, that "the live table now matches this model declaration exactly, no more
+    # model/live-DDL divergence"). That claim was FALSE: the iter-11 migration rebuilt the live table's
+    # BODY from `NextSessionManifest.__table__.to_metadata(...)` (MODEL shape) rather than the captured
+    # live DDL (LIVE historical shape), which silently dropped three server-side `DEFAULT` clauses
+    # (`version`, `frozen`, `prospective_eligible`) and moved `version` from column ordinal 9 to 3 --
+    # beyond ruling A1/AG-18's "removes the FK constraint and NOTHING else" bound. The owner's 2026-08-24
+    # ruling ACCEPTS this exact, already-materialized four-item residual on the live database rather than
+    # ordering a second live rewrite (explicitly NOT a general waiver, NOT a precedent, and NOT permission
+    # for further drift -- ruling A8). The TRUE end state: the live table matches the INTENDED
+    # *referential contract* below -- `source_run_id` carries no live FOREIGN KEY constraint and remains
+    # `index=True` historical provenance -- but it does NOT physically match this model's generated DDL in
+    # every historical detail. Both facts are permanent and accepted; neither is grounds to reintroduce
+    # the FK or to rewrite the live table again (`app.engine.j11_schema_migration` was separately fixed in
+    # iter-12, ruling A10, to derive any FUTURE rebuild from captured live DDL rather than ORM metadata --
+    # but that fix is not itself a live rewrite and does not retroactively change today's live shape).
+    #
+    # This was a LATENT contradiction, not a new one: enforcement was already OFF on the live DB
+    # (`PRAGMA foreign_keys` reads `0` -- `app.db._apply_sqlite_pragmas` never issues
+    # `PRAGMA foreign_keys=ON`), and `PRAGMA foreign_key_check(next_session_manifests)` already reported
+    # 12 violations on the live DB before the iter-11 migration, all on incident-dated manifests -- so the
+    # FK declaration was never actually enforced; it was only ever aspirational. Declaring it here as
+    # `foreign_key=...` documented a contract the design does NOT want: AG-12 (manifest immutability)
+    # requires a manifest to survive its source `ScannerRun` being deleted and canonically rebuilt (J-11
+    # Stages C/D, a LATER iteration), and a rebuilt run legitimately gets a fresh row (or, since
+    # `scanner_runs.id` is a plain SQLite rowid alias with no `AUTOINCREMENT` and no `sqlite_sequence`
+    # table, can even REUSE a freed numeric id).
     #
     # Intended end state (docs/goal.md J-11 step 11, verbatim): "`source_run_id` remains stored historical
     # provenance; it is not required to dereference to a live `ScannerRun` forever; manifest survival must
