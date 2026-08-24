@@ -8,8 +8,8 @@ scripts/automation/lib/retro_collect.sh — no model wrote this. Counters marked
 
 - **Terminal status:** STALLED
 - **Final verdict:** STALLED
-- **Iterations used:** 13
-- **Halted at (UTC):** 2026-08-24T15:16:35.391553Z
+- **Iterations used:** 14
+- **Halted at (UTC):** 2026-08-24T18:54:25.337766Z
 
 ## Verdict sequence
 
@@ -28,6 +28,7 @@ iter 9: CONTINUE
 iter 10: STALLED
 iter 11: REGRESSION
 iter 12: STALLED
+iter 13: STALLED
 ```
 
 ## Agent economics
@@ -300,25 +301,41 @@ Per-step wall breakdown (analyze_telemetry.py --wall):
       (resume-skipped: goal-decomposer)
       pump-wait                  0.3m
       unattributed (glue)        0.1m  (wall − agents(active) − quota)
-  session: 12 completed iteration(s), mean wall 113.9m
-      total reviewer                   918.8m
-      total developer                  741.1m
-      total orchestrator               399.8m
-      total goal-decomposer            241.6m
-      total goal-evaluator             173.8m
+  goal-market-compass-iter-13  depth=full  verdict=STALLED  wall=144.3m
+      developer                   27.0m  calls=1
+      auditor                     26.4m  calls=1
+      goal-decomposer             17.9m  calls=1
+      goal-evaluator              17.9m  calls=1
+      orchestrator                 9.4m  calls=1
+      qa                           9.3m  calls=1
+      reviewer                     9.2m  calls=1
+      coherence-auditor            9.1m  calls=1
+      ui-test-designer             9.0m  calls=1
+      iteration-summarizer         9.0m  calls=1
+      [engine] full-pipeline      90.4m  (contains agent time above)
+      [engine] showcase-join       0.0m  (contains agent time above)
+      pump-wait                  0.8m
+      OVER BUDGET at post-dev-fanout: 3817s > 3600s (mode=trim)
+      unattributed (glue)        0.2m  (wall − agents(active) − quota)
+  session: 13 completed iteration(s), mean wall 116.3m
+      total reviewer                   928.0m
+      total developer                  768.2m
+      total orchestrator               409.2m
+      total goal-decomposer            259.5m
+      total goal-evaluator             191.7m
+      total auditor                    166.7m
       total browser-qa-agent           145.4m
-      total auditor                    140.4m
-      total iteration-summarizer       100.5m
-      total coherence-auditor           98.8m
-      total qa                          94.5m
+      total iteration-summarizer       109.5m
+      total coherence-auditor          107.9m
+      total qa                         103.8m
+      total ui-test-designer            44.1m
       total ui-impact-analyst           39.1m
-      total ui-test-designer            35.1m
       total demo-narrator               21.3m
       total readme-maintainer           10.1m
       total ux-regression-reviewer       7.2m
       total browser-qa-replay            6.5m
       total AWAITING_PUMP paused gaps: 501.7m
-      halts: AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, STALLED, REGRESSION_HALT, STALLED
+      halts: AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, STALLED, REGRESSION_HALT, STALLED, STALLED
 ```
 
 ## Friction counters
@@ -332,26 +349,26 @@ Per-step wall breakdown (analyze_telemetry.py --wall):
 Last 20 lines of state/lessons.md:
 
 ```
-iteration snapshot for the journey's own line range instead of trusting the hash alone.
+(iteration 12's certified artifact records no identity at all) is a gate that always passes.
+**Applies to:** any iteration that freezes an identity/fingerprint for a multi-iteration attempt —
+especially J-11 Stage D, whose whole correctness claim is "all 11 rebuilt runs share ONE frozen
+identity"; and generally to any preflight/gate artifact: for every field captured, state whether it is
+compared, and against what.
 
-## iter-12 — 2026-08-24T14:45:22Z
+## iter-13 — 2026-08-24T19:36:00Z
 
 **Verdict:** STALLED
-**Lesson:** "Zero live writes" was proven this iteration by a before/after fingerprint pair that
-bracketed only 101 seconds of a 90-minute iteration (`j11-stage-b1-cleanup-fingerprint-diff.json`:
-before 10:50:08Z, after 10:51:49Z; `status.json` `started_at` 10:25:29Z) — the auditor caught the
-overclaim (T2) and the dev handoff's "run once at the START and once at the END" wording was simply
-false. The claim survives only because a much cheaper instrument is stronger: the SQLite main-file
-mtime (1787522416 = 2026-08-23 23:00:16, iter-11's own last write) plus a 0-byte write-ahead log proves
-no committed write reached the file by ANY route across the whole iteration, without a purpose-built
-capture at all. In WAL mode both halves are needed: an uncheckpointed write hides in the `-wal` file
-(main mtime unchanged), and a checkpoint would move the main mtime — so mtime-unchanged AND WAL-empty
-together are conclusive, while either alone is not. The `-shm`/`-wal` mtimes move on any read-only open
-and are NOT evidence of a write.
-**Applies to:** any iteration claiming zero writes to `apps/backend/data/trendora.db` — J-11 Stage C's
-mutation accounting above all, and any future maintenance-isolation iteration. Record the file mtime +
-size + WAL size at the true start and end, and treat a purpose-built fingerprint pair as corroboration,
-never as the primary instrument.
+**Lesson:** A bounded delete's strongest proof is not the count that moved but the counts that did NOT.
+Against iteration 12's COMMITTED baseline, exactly 5 of 24 tables moved and by exactly the pre-declared
+amounts, 19 were identical, no table appeared or vanished, and residue for the deleted run ids was 0 in
+all four child tables — and because Stage C issues no INSERT on any path (grep-verified: no INSERT,
+UPDATE or `session.add` in the new module or script), delta == |enumerated set| AND residue == 0 proves
+the removed set is exactly the intended set. A pre/post count pair alone could have masked a swap; this
+combination cannot. Cheapest instrument in the whole check: the db file's mtime at the TRUE process
+start equalled the prior iteration's own recorded "after" mtime, and the file still carries the
+true-end mtime now — one `stat` proving the single authorized write was the only write.
+**Applies to:** any future destructive maintenance iteration (J-11 Stages D/E/F), and any "we wrote
+nothing" or "we wrote only X" claim on `trendora.db`.
 ```
 
 ## Halt context
@@ -362,6 +379,6 @@ session.json halt-relevant fields:
 {
   "status": "STALLED",
   "last_verdict": "STALLED",
-  "parked_wip_sha": "eb185682"
+  "parked_wip_sha": "2c4acda3"
 }
 ```

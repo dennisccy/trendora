@@ -1,11 +1,11 @@
 # Goal Session Summary — market-compass
 
 **Final verdict:** STALLED
-**Total iterations:** 13
-**Wall time (seconds):** 3242
+**Total iterations:** 14
+**Wall time (seconds):** 8665
 **Quota pauses:** 0
 **Started:** 2026-08-19T21:31:52.886915Z
-**Finished:** 2026-08-24T15:16:35.391553Z
+**Finished:** 2026-08-24T18:54:25.337766Z
 
 ## Branch
 
@@ -28,7 +28,7 @@ This session pushed iteration commits to `goal/market-compass`. Open a PR with:
 | J-07 | failing | - |
 | J-08 | failing | - |
 | J-09 | partial | - |
-| J-10 | passing | goal-market-compass-iter-11 |
+| J-10 | passing | goal-market-compass-iter-13 |
 | J-11 | partial | - |
 
 ## Anti-goal violations
@@ -292,23 +292,39 @@ See `runs/goal-session-market-compass/telemetry.jsonl` for the structured event 
       (resume-skipped: goal-decomposer)
       pump-wait                  0.3m
       unattributed (glue)        0.1m  (wall − agents(active) − quota)
-  session: 12 completed iteration(s), mean wall 113.9m
-      total reviewer                   918.8m
-      total developer                  741.1m
-      total orchestrator               399.8m
-      total goal-decomposer            241.6m
-      total goal-evaluator             173.8m
+  goal-market-compass-iter-13  depth=full  verdict=STALLED  wall=144.3m
+      developer                   27.0m  calls=1
+      auditor                     26.4m  calls=1
+      goal-decomposer             17.9m  calls=1
+      goal-evaluator              17.9m  calls=1
+      orchestrator                 9.4m  calls=1
+      qa                           9.3m  calls=1
+      reviewer                     9.2m  calls=1
+      coherence-auditor            9.1m  calls=1
+      ui-test-designer             9.0m  calls=1
+      iteration-summarizer         9.0m  calls=1
+      [engine] full-pipeline      90.4m  (contains agent time above)
+      [engine] showcase-join       0.0m  (contains agent time above)
+      pump-wait                  0.8m
+      OVER BUDGET at post-dev-fanout: 3817s > 3600s (mode=trim)
+      unattributed (glue)        0.2m  (wall − agents(active) − quota)
+  session: 13 completed iteration(s), mean wall 116.3m
+      total reviewer                   928.0m
+      total developer                  768.2m
+      total orchestrator               409.2m
+      total goal-decomposer            259.5m
+      total goal-evaluator             191.7m
+      total auditor                    166.7m
       total browser-qa-agent           145.4m
-      total auditor                    140.4m
-      total iteration-summarizer       100.5m
-      total coherence-auditor           98.8m
-      total qa                          94.5m
+      total iteration-summarizer       109.5m
+      total coherence-auditor          107.9m
+      total qa                         103.8m
+      total ui-test-designer            44.1m
       total ui-impact-analyst           39.1m
-      total ui-test-designer            35.1m
       total demo-narrator               21.3m
       total readme-maintainer           10.1m
       total ux-regression-reviewer       7.2m
       total browser-qa-replay            6.5m
       total AWAITING_PUMP paused gaps: 501.7m
-      halts: AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, STALLED, REGRESSION_HALT, STALLED
+      halts: AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, STALLED, REGRESSION_HALT, STALLED, STALLED
 ```
