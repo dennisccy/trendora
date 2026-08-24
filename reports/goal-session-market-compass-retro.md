@@ -6,34 +6,41 @@
 > Codes: P0/P1/P2 = how urgent · Effort S/M/L = how much work · Risk LOW/MED/HIGH
 > = chance a change breaks something else.
 
-**Session:** market-compass · **Terminal status:** STALLED · **Iterations:** 11
+**Session:** market-compass · **Terminal status:** REGRESSION_HALT · **Iterations:** 12
 
 ## Candidate items
 
-### RETRO-1 · Reviewer agent wall-time dominance
+### RETRO-1 · browser-qa stage budget overflow in lean iterations
 - **Proposed:** P1 · Effort M · Risk LOW
-- **Problem:** The reviewer agent consumed 900.5 minutes total, the largest of any agent and 31% more than developer (687.8m). This suggests reviewer is either a bottleneck or running inefficient loops that could be optimized.
-- **Evidence:** Agent economics — "total reviewer 900.5m", "total developer 687.8m"; Wall breakdown — "iter-6: reviewer 152.5m calls=1", "iter-7: reviewer 373.9m calls=2 failures=1", "iter-8: reviewer 300.0m calls=1 failures=1"
-- **Sketch:** Profile reviewer per-iteration execution: check if it's waiting on dependencies, re-reviewing same artifact, or running unnecessarily deep checks. Options: cache review outputs across retry attempts, parallelize independent review checks, shorten review depth for low-risk paths.
-- **Verify idea:** Next similar-scope goal session should show reviewer wall-time ≤ developer wall-time (or within 10% margin).
+- **Problem:** The browser-qa stage hits the 3600s quota limit in 4 lean-depth iterations (1, 2, 4, 6), suggesting the stage is consistently underbudgeted or tasks are serially queued instead of parallel.
+- **Evidence:** Wall-time report — "OVER BUDGET at browser-qa: 5705s > 3600s" (iter 1, 2), "OVER BUDGET at browser-qa: 3864s > 3600s" (iter 4), "OVER BUDGET at browser-qa: 12205s > 3600s" (iter 6)
+- **Sketch:** Profile browser-qa and browser-qa-replay execution; check whether replay is queued serially after qa instead of in parallel. Increase lean-mode browser-qa quota to 5500s or parallelize replay track.
+- **Verify idea:** Run lean-depth iterations and confirm browser-qa wall times stay under quota; measure OVER BUDGET message count.
 
-### RETRO-2 · Repeated stage budget overages
+### RETRO-2 · post-dev-fanout stage budget overflow in full iterations
 - **Proposed:** P1 · Effort M · Risk MED
-- **Problem:** Eight of eleven iterations exceeded their per-stage time budgets (1–3 hours each), forcing automatic trimming. This recurring friction prevents the pipeline from staying within its resource envelope.
-- **Evidence:** Friction counters (wall breakdown) — "OVER BUDGET at qa-loop: 4178s > 3600s (mode=trim)" (iter-1), "OVER BUDGET at browser-qa: 5705s > 3600s (mode=trim)" (iter-2), "OVER BUDGET at post-dev-fanout: 4769s > 3600s (mode=trim)" (iter-3), "OVER BUDGET at post-dev-fanout: 4319s > 3600s (mode=trim)" (iter-7), "OVER BUDGET at post-dev-fanout: 4809s > 3600s (mode=trim)" (iter-9), "OVER BUDGET at goal-evaluator: 3757s > 3600s (mode=trim)" (iter-10), plus iters 4 and 6
-- **Sketch:** Review stage budgets in .claude/workflow.md or engine config. Determine if consistently-overrunning stages (browser-qa, post-dev-fanout, goal-evaluator) need higher budgets, fewer parallel agents, or reduced scope. Implement early-exit heuristics if progress stalls before budget exhaustion.
-- **Verify idea:** Next session should show ≤2 OVER BUDGET warnings (one-off spikes acceptable, recurring pattern unacceptable).
+- **Problem:** The post-dev-fanout stage exceeds its 3600s quota in all 4 full-depth iterations that reach it (3, 7, 9, 11), suggesting parallel fanout tasks are competing for resources or the quota is too tight.
+- **Evidence:** Wall-time report — "OVER BUDGET at post-dev-fanout: 4769s > 3600s" (iter 3), "4319s > 3600s" (iter 7), "4809s > 3600s" (iter 9), "3752s > 3600s" (iter 11)
+- **Sketch:** Measure CPU/memory utilization during post-dev-fanout; consider descheduling optional agents (auditor, qa, ui-impact-analyst) for certain iteration types, or raise full-depth fanout quota to 5000s.
+- **Verify idea:** Confirm post-dev-fanout iterations complete within quota and CPU utilization stays even across parallel agents.
 
-### RETRO-3 · AWAITING_PUMP halts and pump-wait latency
-- **Proposed:** P0 · Effort M · Risk MED
-- **Problem:** Three AWAITING_PUMP halts accumulated 501.7 minutes (8.4 hours) of stalled wall time. This infrastructure friction suggests pump availability or dispatch latency is blocking session progress repeatedly.
-- **Evidence:** Wall breakdown — "total AWAITING_PUMP paused gaps: 501.7m"; "halts: AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, STALLED"; iter-7 "pump-wait 373.9m", iter-9 "pump-wait 341.1m"
-- **Sketch:** Correlate AWAITING_PUMP instances with pump availability and dispatch-queue logs. Likely causes: pump restart loops, slow dispatch queuing, or dispatch-to-ready latency. Remedies: add pump heartbeat monitoring, implement dispatch backpressure, or trial an in-process pump variant for small sessions.
-- **Verify idea:** Next session should have zero AWAITING_PUMP halts (or ≤1 brief transient with <10m wait).
+### RETRO-3 · Incomplete/interrupted iteration attempts lack clear halt reason
+- **Proposed:** P1 · Effort S · Risk LOW
+- **Problem:** Multiple iterations show failed attempts that restart before producing a final verdict (iter 1, 3, 8, 9, 10), consuming extra wall time and obscuring why the restart occurred.
+- **Evidence:** Wall-time report — "(incomplete/interrupted attempt)" blocks appearing before final verdicts; example: iter 1 shows two failed attempts before CONTINUE, iter 9 shows two failed attempts before CONTINUE
+- **Sketch:** Add deterministic logging to dispatch/resume to emit why an attempt halted (timeout, agent crash, pump disconnect, user pause, etc.). Export reason to telemetry structured field.
+- **Verify idea:** New sessions should have zero incomplete attempts for clean runs; check telemetry for reason frequency and alert on unexpected patterns.
 
-### RETRO-4 · Fixture-test insufficiency for live-DB schema validation
-- **Proposed:** P0 · Effort M · Risk LOW
-- **Problem:** Acceptance criteria passed fixture-DB tests but failed on live schema: FK constraints remained in live DDL while code assumed they were dropped, and degenerate inputs (row exists, field missing) were not tested. Reviewer and QA relied on fixture tests; only auditor checked live DDL and caught the gap.
-- **Evidence:** Lessons tail — iter-10: "A 'schema contract proven by fixture-DB tests' can be fully green and still be false on the production database", "Both the reviewer and QA recorded that DoD item complete on the strength of the passing fixture tests; only the auditor queried the live DDL", "TC-5 orphan test covered only the latter [missing-row branch]"
-- **Sketch:** For acceptance items involving live schema or fail-closed read paths: (a) add a pre-approval verification step that checks live-DB artifacts (sqlite_master, pragma_foreign_key_check) before marking DoD complete; (b) extend test suites to cover degenerate cases (row exists but field missing) alongside missing-row cases; (c) update reviewer/QA instructions to explicitly require live-DB checks for schema-related acceptance items.
-- **Verify idea:** Next session's equivalent acceptance items should cite live-DB checks in reviewer/QA/auditor verdicts, or acceptance criteria explicitly exclude live-schema validation.
+### RETRO-4 · Reviewer wall-time dominance and failure pattern
+- **Proposed:** P2 · Effort M · Risk MED
+- **Problem:** Reviewer accumulated 909.6m total wall time, exceeding developer's 714.1m by 27%. Two iterations (7, 8) show reviewer failures with extreme wall times (373.9m, 300.0m), suggesting tasks timeout or get stuck.
+- **Evidence:** Agent economics table — "reviewer | 5 invocations"; Wall-time report — "reviewer 373.9m calls=1 failures=1" (iter 7), "reviewer 300.0m calls=1 failures=1" (iter 8); total reviewer 909.6m vs developer 714.1m
+- **Sketch:** Profile reviewer task hot paths; consider breaking large reviews into parallel subtracks or add progress-check timeouts. Investigate why iter 7 and 8 reviewer calls failed.
+- **Verify idea:** Confirm reviewer wall time per invocation < 90m and failure count drops to zero; reviewer time should be ≤ developer time.
+
+### RETRO-5 · AWAITING_PUMP gaps total 501.7m, indicating pump starvation
+- **Proposed:** P2 · Effort S · Risk LOW
+- **Problem:** The pump spent 501.7m idle (over 8 hours, 13% of total wall time) in AWAITING_PUMP state. Halt context lists 3 AWAITING_PUMP halts, showing the pump restarted due to starvation multiple times.
+- **Evidence:** Wall-time report tail — "total AWAITING_PUMP paused gaps: 501.7m"; Halt context — "halts: AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, STALLED, REGRESSION_HALT"
+- **Sketch:** Instrument pump entry/exit points to log what state it waits for (decomposer ready? evaluator ready?). Add per-iteration AWAITING_PUMP budgets (target < 50m) and alert if exceeded.
+- **Verify idea:** Run with pump instrumentation; confirm new sessions show < 50m AWAITING_PUMP per iteration; check telemetry for bottleneck (decomposer vs evaluator latency).

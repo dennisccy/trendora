@@ -1,18 +1,18 @@
 # Goal Session Summary — market-compass
 
-**Final verdict:** STALLED
-**Total iterations:** 11
-**Wall time (seconds):** 5335
+**Final verdict:** REGRESSION_HALT
+**Total iterations:** 12
+**Wall time (seconds):** 8595
 **Quota pauses:** 0
 **Started:** 2026-08-19T21:31:52.886915Z
-**Finished:** 2026-08-23T13:57:45.926973Z
+**Finished:** 2026-08-23T23:43:26.934013Z
 
 ## Branch
 
 This session pushed iteration commits to `goal/market-compass`. Open a PR with:
 
     gh pr create --base main --head goal/market-compass \
-      --title "feat: market-compass — STALLED" \
+      --title "feat: market-compass — REGRESSION_HALT" \
       --body-file runs/goal-session-market-compass/summary.md
 
 ## Final journey state
@@ -28,7 +28,7 @@ This session pushed iteration commits to `goal/market-compass`. Open a PR with:
 | J-07 | failing | - |
 | J-08 | failing | - |
 | J-09 | partial | - |
-| J-10 | passing | goal-market-compass-iter-9 |
+| J-10 | passing | goal-market-compass-iter-11 |
 | J-11 | partial | - |
 
 ## Anti-goal violations
@@ -37,6 +37,7 @@ This session pushed iteration commits to `goal/market-compass`. Open a PR with:
 - [critical] AG-12 - Manifest immutability: a stored next_session_manifests row and its exported file are never mutated or deleted by any later ingest, rebuild, data removal, config change, or code change. (iter goal-market-compass-iter-3)
 - [critical] AG-9 - Offline-deterministic ingest: ingest jobs run only against the committed seed / local provider fixtures - no live external network calls or paid data services without an explicit goal.md amendment. || Dated exception (owner, 2026-08-20): '...If the implementation cannot prove a request stays inside this scope, it MUST stop rather than broaden the fetch.' || J-10 step 2a (text in force during that iteration): '...If the conventions do not demonstrably agree within a stated tolerance - or if the comparison cannot be performed at all - insert nothing and STOP for owner review.' (iter goal-market-compass-iter-7)
 - [critical] AG-17 - Repair never rewrites provenance (owner, 2026-08-20): ... The incident record itself is evidence: the iter-5 drill result, its handoff, the reviewer/QA evidence already produced, and the explicit statement that the committed seed could not restore these dates MUST NOT be deleted, rewritten, or silently superseded. (iter goal-market-compass-iter-8)
+- [critical] AG-18 — The authorized manifest migration preserves everything (owner, 2026-08-23): the bounded next_session_manifests schema migration authorized in J-11 step 11 (ruling A1) removes the source_run_id foreign-key constraint and nothing else. ... No other table's schema may be altered under that authorization. A changed stored value is a REGRESSION, never a note. (iter goal-market-compass-iter-11)
 
 ## Telemetry
 
@@ -252,22 +253,39 @@ See `runs/goal-session-market-compass/telemetry.jsonl` for the structured event 
       pump-wait                  0.8m
       OVER BUDGET at goal-evaluator: 3757s > 3600s (mode=trim)
       unattributed (glue)        0.1m  (wall − agents(active) − quota)
-  session: 10 completed iteration(s), mean wall 117.0m
-      total reviewer                   900.5m
-      total developer                  687.8m
-      total orchestrator               381.6m
-      total goal-decomposer            214.0m
+  goal-market-compass-iter-11  depth=full  verdict=REGRESSION  wall=143.2m
+      developer                   26.3m  calls=1
+      auditor                     18.1m  calls=1
+      goal-decomposer             18.0m  calls=1
+      goal-evaluator              17.7m  calls=1
+      ui-test-designer            17.6m  calls=1
+      qa                           9.2m  calls=1
+      orchestrator                 9.1m  calls=1
+      reviewer                     9.1m  calls=1
+      coherence-auditor            9.0m  calls=1
+      iteration-summarizer         8.8m  calls=1
+      [engine] full-pipeline      89.5m  (contains agent time above)
+      [engine] showcase-join       0.0m  (contains agent time above)
+      pump-wait                  0.6m
+      OVER BUDGET at post-dev-fanout: 3752s > 3600s (mode=trim)
+      unattributed (glue)        0.2m  (wall − agents(active) − quota)
+  session: 11 completed iteration(s), mean wall 119.4m
+      total reviewer                   909.6m
+      total developer                  714.1m
+      total orchestrator               390.6m
+      total goal-decomposer            232.0m
+      total goal-evaluator             147.2m
       total browser-qa-agent           145.4m
-      total goal-evaluator             129.5m
-      total auditor                    104.7m
-      total iteration-summarizer        82.6m
-      total qa                          76.2m
-      total coherence-auditor           71.5m
+      total auditor                    122.7m
+      total iteration-summarizer        91.5m
+      total qa                          85.4m
+      total coherence-auditor           80.5m
       total ui-impact-analyst           39.1m
       total demo-narrator               21.3m
+      total ui-test-designer            17.6m
       total ux-regression-reviewer       7.2m
       total browser-qa-replay            6.5m
       total readme-maintainer            1.2m
       total AWAITING_PUMP paused gaps: 501.7m
-      halts: AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, STALLED
+      halts: AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, STALLED, REGRESSION_HALT
 ```

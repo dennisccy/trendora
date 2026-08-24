@@ -6,10 +6,10 @@ scripts/automation/lib/retro_collect.sh — no model wrote this. Counters marked
 
 ## Outcome
 
-- **Terminal status:** STALLED
-- **Final verdict:** STALLED
-- **Iterations used:** 11
-- **Halted at (UTC):** 2026-08-23T13:57:45.926973Z
+- **Terminal status:** REGRESSION_HALT
+- **Final verdict:** REGRESSION
+- **Iterations used:** 12
+- **Halted at (UTC):** 2026-08-23T23:43:26.934013Z
 
 ## Verdict sequence
 
@@ -26,6 +26,7 @@ iter 7: CONTINUE
 iter 8: CONTINUE
 iter 9: CONTINUE
 iter 10: STALLED
+iter 11: REGRESSION
 ```
 
 ## Agent economics
@@ -259,24 +260,41 @@ Per-step wall breakdown (analyze_telemetry.py --wall):
       pump-wait                  0.8m
       OVER BUDGET at goal-evaluator: 3757s > 3600s (mode=trim)
       unattributed (glue)        0.1m  (wall − agents(active) − quota)
-  session: 10 completed iteration(s), mean wall 117.0m
-      total reviewer                   900.5m
-      total developer                  687.8m
-      total orchestrator               381.6m
-      total goal-decomposer            214.0m
+  goal-market-compass-iter-11  depth=full  verdict=REGRESSION  wall=143.2m
+      developer                   26.3m  calls=1
+      auditor                     18.1m  calls=1
+      goal-decomposer             18.0m  calls=1
+      goal-evaluator              17.7m  calls=1
+      ui-test-designer            17.6m  calls=1
+      qa                           9.2m  calls=1
+      orchestrator                 9.1m  calls=1
+      reviewer                     9.1m  calls=1
+      coherence-auditor            9.0m  calls=1
+      iteration-summarizer         8.8m  calls=1
+      [engine] full-pipeline      89.5m  (contains agent time above)
+      [engine] showcase-join       0.0m  (contains agent time above)
+      pump-wait                  0.6m
+      OVER BUDGET at post-dev-fanout: 3752s > 3600s (mode=trim)
+      unattributed (glue)        0.2m  (wall − agents(active) − quota)
+  session: 11 completed iteration(s), mean wall 119.4m
+      total reviewer                   909.6m
+      total developer                  714.1m
+      total orchestrator               390.6m
+      total goal-decomposer            232.0m
+      total goal-evaluator             147.2m
       total browser-qa-agent           145.4m
-      total goal-evaluator             129.5m
-      total auditor                    104.7m
-      total iteration-summarizer        82.6m
-      total qa                          76.2m
-      total coherence-auditor           71.5m
+      total auditor                    122.7m
+      total iteration-summarizer        91.5m
+      total qa                          85.4m
+      total coherence-auditor           80.5m
       total ui-impact-analyst           39.1m
       total demo-narrator               21.3m
+      total ui-test-designer            17.6m
       total ux-regression-reviewer       7.2m
       total browser-qa-replay            6.5m
       total readme-maintainer            1.2m
       total AWAITING_PUMP paused gaps: 501.7m
-      halts: AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, STALLED
+      halts: AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, STALLED, REGRESSION_HALT
 ```
 
 ## Friction counters
@@ -290,26 +308,26 @@ Per-step wall breakdown (analyze_telemetry.py --wall):
 Last 20 lines of state/lessons.md:
 
 ```
-long list of narrative claims ("no stale cache survives", "no new historical manifest appears") that a
-row-count check cannot confirm.
 
-## iter-10 — 2026-08-23T13:36:00Z
+## iter-11 — 2026-08-23T23:45:00Z
 
-**Verdict:** STALLED
-**Lesson:** A "schema contract proven by fixture-DB tests" can be fully green and still be false on the
-production database: `apps/backend/app/models.py`'s FK-declaration drop makes the manifest↔run contract
-true for any DB built from current SQLModel metadata, while the live `next_session_manifests` DDL still
-carries `FOREIGN KEY(source_run_id) REFERENCES scanner_runs (id)` with `PRAGMA foreign_keys=0` and 12
-standing `foreign_key_check` violations. Both the reviewer and QA recorded that DoD item complete on the
-strength of the passing fixture tests; only the auditor queried the live DDL. Second, smaller edge from
-the same iteration: `compass.basis_disclosure`'s `if not row.generation_json: return {"status":
-"available"}` short-circuit (`compass.py:1108-1109`) fabricates an honest-looking state on 10 of 24 live
-manifests — the degenerate input that bites is "row exists but records no basis", not "no row at all",
-and the TC-5 orphan test covered only the latter.
-**Applies to:** any iteration whose acceptance items say "the LIVE schema/database" — verify against the
-live artifact (`sqlite_master`, `pragma_foreign_key_check`) and not only against a metadata-built fixture;
-and any fail-closed read path, where the missing-field branch deserves its own test alongside the
-missing-row branch.
+**Verdict:** REGRESSION
+**Lesson:** A SQLite "drop a constraint" rebuild has TWO possible sources of truth for the replacement
+table — the captured live DDL and the ORM model — and they are not the same object. `create_shadow_table`
+(`apps/backend/app/engine/j11_schema_migration.py:172-192`) captured the live DDL with `fetch_object_ddl`,
+reissued the captured INDEXES verbatim, and then built the TABLE from `NextSessionManifest.__table__`,
+so every difference between the live table's accumulated history (`app/db.py::_COLUMN_ADDS`
+server-side `DEFAULT`s, original column order) and the model's shape silently rode along with the one
+authorized change. The developer caught two consequences of that choice (four spurious indexes, a
+duplicate autoindex) and guarded them with a test — proof they were reasoning about exactly this class
+of drift — but never asserted the `CREATE TABLE` body itself was otherwise unchanged, so the reviewer
+and QA both re-verified only "the FK clause is gone" and the delta reached the live 7.8 GB database.
+**Rule for next time: a bounded schema migration must diff the whole pre/post `CREATE TABLE` text as an
+acceptance item, not just assert the absence of the one clause it set out to remove — and rebuild from
+what it captured, not from a second source of truth.**
+**Applies to:** any iteration performing a table rebuild/migration on a live SQLite database, any work
+touching `apps/backend/app/engine/j11_schema_migration.py` or `app/db.py`'s additive-schema path, and
+any acceptance item phrased as "removes X and nothing else".
 ```
 
 ## Halt context
@@ -318,8 +336,8 @@ session.json halt-relevant fields:
 
 ```json
 {
-  "status": "STALLED",
-  "last_verdict": "STALLED",
-  "parked_wip_sha": "f08e05d6"
+  "status": "REGRESSION_HALT",
+  "last_verdict": "REGRESSION",
+  "parked_wip_sha": "a7380009"
 }
 ```
