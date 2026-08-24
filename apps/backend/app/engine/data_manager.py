@@ -43,7 +43,7 @@ from contextlib import nullcontext
 from dataclasses import dataclass, field
 from datetime import date as date_cls, datetime, timedelta, timezone
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Callable, Iterable, Optional
 
 from sqlalchemy import delete, func, insert
 from sqlalchemy.engine import Engine
@@ -2234,6 +2234,92 @@ def clear_snapshot_set(session: Session) -> dict:
             f"rebuild clear corrupted the price seed: {bars_before} bars before, {bars_after} after"
         )
     return {"runs_cleared": runs_cleared, "bars_before": bars_before, "bars_after": bars_after}
+
+
+# --------------------------------------------------------------------------------------------------
+# goal-market-compass iter-13 -- J-11 Stage C: the bounded, EXACT-DATE-FILTERED specialization of
+# `clear_snapshot_set` above (docs/goal.md J-11 step 11's OWNER AUTHORIZATION block, ruling C6: "Use
+# `clear_snapshot_dates(EXACT_INCIDENT_DATE_SET)` ... never `clear_snapshot_set()`"). SAME
+# child-before-parent deletion order, SAME whole-row-delete discipline, SAME `daily_prices`-untouched
+# assertion -- but scoped to only the `ScannerRun`s whose `asof_date` is IN `exact_date_set`, never the
+# entire snapshot history. This function NEVER calls `clear_snapshot_set` (which takes no date filter).
+# --------------------------------------------------------------------------------------------------
+def clear_snapshot_dates(session: Session, exact_date_set: Iterable[date_cls]) -> dict:
+    """DELETE only the Layer-2 derived-state rows owned (by `run_id`) by a `ScannerRun` whose
+    `asof_date` is one of `exact_date_set` (J-11 Stage C). For each date: freshly queries the CURRENT
+    `ScannerRun` for that `asof_date` (never a cached/prior inventory -- iter-9's "never inherit a prior
+    claim without re-checking it" lesson); no run -> a documented zero-row no-op for that date, never an
+    error; a run exists -> deletes every `ForwardReturn` / `ScannerResult` / `SectorScoreRow` /
+    `ThemeScoreRow` row whose `run_id` equals that run's id, then the `ScannerRun` row itself --
+    children before parents, mirroring `clear_snapshot_set`'s own order exactly. Never deletes a row
+    keyed only by `measured_date`/other-date membership outside this run-owned scope -- that population
+    is either already absent (the original incident's own defensive sweep already removed it) or Stage
+    E's repair target, never Stage C's (runs/goal-session-market-compass/state/assumptions.md, iter-13
+    entry #1).
+
+    Asserts the `daily_prices` row count is identical immediately before and after the WHOLE batch
+    (mirrors `clear_snapshot_set`'s `bars_before == bars_after` invariant; `daily_prices` is never even
+    referenced by a DELETE here). Never calls `compass.get_or_create_manifest`, `scanner.run_scan`,
+    `scanner.persist_run_payload`, or `_refresh_ingest_aggregates` -- issues DELETE statements only
+    (ruling C8: Stage C is deletion only).
+
+    Returns `{per_date: {date_iso: {run_id, deleted: {table: count}}}, totals: {table: count},
+    bars_before, bars_after}` -- the caller's own mutation-accounting evidence is built from this plus
+    the pre-declared intended-delete-set (`app.engine.j11_stage_c.capture_intended_delete_set`), never
+    from a second independent count."""
+    bars_before = int(session.scalar(select(func.count()).select_from(DailyPrice)) or 0)
+    per_date: dict[str, dict] = {}
+    totals: dict[str, int] = {
+        "scanner_runs": 0,
+        "forward_returns": 0,
+        "scanner_results": 0,
+        "sector_scores": 0,
+        "theme_scores": 0,
+    }
+    for one_date in exact_date_set:
+        key = one_date.isoformat()
+        run = session.exec(select(ScannerRun).where(ScannerRun.asof_date == one_date)).first()
+        if run is None:
+            per_date[key] = {
+                "run_id": None,
+                "deleted": {
+                    "scanner_runs": 0, "forward_returns": 0, "scanner_results": 0,
+                    "sector_scores": 0, "theme_scores": 0,
+                },
+            }
+            continue
+        run_id = run.id
+        deleted = {
+            "forward_returns": int(
+                session.scalar(select(func.count()).select_from(ForwardReturn).where(ForwardReturn.run_id == run_id)) or 0
+            ),
+            "scanner_results": int(
+                session.scalar(select(func.count()).select_from(ScannerResult).where(ScannerResult.run_id == run_id)) or 0
+            ),
+            "sector_scores": int(
+                session.scalar(select(func.count()).select_from(SectorScoreRow).where(SectorScoreRow.run_id == run_id)) or 0
+            ),
+            "theme_scores": int(
+                session.scalar(select(func.count()).select_from(ThemeScoreRow).where(ThemeScoreRow.run_id == run_id)) or 0
+            ),
+        }
+        # children first (FK order), then the parent run. Whole-row deletes; daily_prices never referenced.
+        session.execute(delete(ForwardReturn).where(ForwardReturn.run_id == run_id))
+        session.execute(delete(ScannerResult).where(ScannerResult.run_id == run_id))
+        session.execute(delete(SectorScoreRow).where(SectorScoreRow.run_id == run_id))
+        session.execute(delete(ThemeScoreRow).where(ThemeScoreRow.run_id == run_id))
+        session.execute(delete(ScannerRun).where(ScannerRun.id == run_id))
+        deleted["scanner_runs"] = 1
+        per_date[key] = {"run_id": run_id, "deleted": deleted}
+        for table_name, count_value in deleted.items():
+            totals[table_name] += count_value
+    session.commit()
+    bars_after = int(session.scalar(select(func.count()).select_from(DailyPrice)) or 0)
+    if bars_after != bars_before:
+        raise RuntimeError(
+            f"Stage C bounded clear corrupted the price seed: {bars_before} bars before, {bars_after} after"
+        )
+    return {"per_date": per_date, "totals": totals, "bars_before": bars_before, "bars_after": bars_after}
 
 
 # --------------------------------------------------------------------------------------------------

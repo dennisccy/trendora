@@ -208,3 +208,23 @@ instead of a dead end.
 **Applies to:** any journey involving a live data refetch, backfill, or vendor migration; any code
 adding a provider-scoped recovery path.
 
+
+<!-- condense.sh 2026-08-24T16:29:59Z: moved 1 entries (keep-iters=5) -->
+
+## iter-7 — 2026-08-21T01:05:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** A fail-closed gate needs a minimum-EVIDENCE floor, not just a threshold: iteration 7's
+`check_adjustment_convention` skipped any sampled pair whose *stored* side was missing (correct on its
+own — never fabricate) and then fell through an empty pair list straight to `verdict="agree"`, reason
+`"all 0 sampled pairs within 0.7500% relative delta"` — so "nothing contradicted it" was reported as
+"positively proven", and the auditor reproduced `run_gated_recovery` writing rows on that vacuum. The
+trigger condition was *rows unexpectedly missing*, i.e. precisely the damage the gate exists to guard
+against, and the reason every test missed it is that all nine new tests seeded a complete fixture: a
+guard is only proven fail-closed when a test constructs the degenerate input the guard will actually
+meet in production. Placement matters too — the floor must sit AFTER the disagreement branch, or a real
+out-of-tolerance pair gets downgraded to "cannot tell" by an unrelated coverage gap.
+**Applies to:** any fail-closed gate, precondition check or verification step whose verdict ladder can
+be reached with an empty/partial input set — especially incident-recovery and data-repair paths, where
+the missing data IS the trigger; also any iteration whose new tests all seed complete fixtures.
+

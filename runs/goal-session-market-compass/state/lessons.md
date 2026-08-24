@@ -72,19 +72,7 @@ directions); any iteration spec that names a Full trigger.
 **Applies to:** any journey involving a live data refetch, backfill, or vendor migration; any code
 adding a provider-scoped recovery path.
 
-## iter-7 — 2026-08-21T01:05:00Z
-
-**Verdict:** CONTINUE
-**Lesson:** A fail-closed gate needs a minimum-EVIDENCE floor, not just a threshold: iteration 7's
-`check_adjustment_convention` skipped any sampled pair whose *stored* side was missing (correct on its
-own — never fabricate) and then fell through an empty pair list straight to `verdict="agree"`, reason
-`"all 0 sampled pairs within 0.7500% relative delta"` — so "nothing contradicted it" was reported as
-"positively proven", and the auditor reproduced `run_gated_recovery` writing rows on that vacuum. The
-trigger condition was *rows unexpectedly missing*, i.e. precisely the damage the gate exists to guard
-against, and the reason every test missed it is that all nine new tests seeded a complete fixture: a
-guard is only proven fail-closed when a test constructs the degenerate input the guard will actually
-meet in production. Placement matters too — the floor must sit AFTER the disagreement branch, or a real
-out-of-tolerance pair gets downgraded to "cannot tell" by an unrelated coverage gap.
+## iter-7 — 2026-08-21T01:05:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any fail-closed gate, precondition check or verification step whose verdict ladder can
 be reached with an empty/partial input set — especially incident-recovery and data-repair paths, where
 the missing data IS the trigger; also any iteration whose new tests all seed complete fixtures.
@@ -227,3 +215,35 @@ and are NOT evidence of a write.
 mutation accounting above all, and any future maintenance-isolation iteration. Record the file mtime +
 size + WAL size at the true start and end, and treat a purpose-built fingerprint pair as corroboration,
 never as the primary instrument.
+
+## iter-13 — 2026-08-24T19:35:00Z
+
+**Verdict:** STALLED
+**Lesson:** A "frozen" identity is only frozen against the world, not against yourself: iteration 10
+froze `engine_identity=6261ca17…`, then iterations 11 and 12 edited `apps/backend/app/engine/compass.py`
+— one of `config.yaml`'s three `provenance.engine_files` — and iteration 13's re-derivation returned
+`53d2ffd1…` (I recomputed it independently). The repair's own safety fixes silently invalidated the
+repair's own baseline. Worse, the preflight comparison gate (`app/engine/j11_stage_c.py:264-334`)
+CAPTURED both identities and never COMPARED either — 11 checks, none touching
+`stage_c_attempt_identity` — so the drift was invisible to the developer, reviewer and QA and only the
+auditor caught it. Capturing an invariant's value is not checking it, and a gate that cannot compare
+(iteration 12's certified artifact records no identity at all) is a gate that always passes.
+**Applies to:** any iteration that freezes an identity/fingerprint for a multi-iteration attempt —
+especially J-11 Stage D, whose whole correctness claim is "all 11 rebuilt runs share ONE frozen
+identity"; and generally to any preflight/gate artifact: for every field captured, state whether it is
+compared, and against what.
+
+## iter-13 — 2026-08-24T19:36:00Z
+
+**Verdict:** STALLED
+**Lesson:** A bounded delete's strongest proof is not the count that moved but the counts that did NOT.
+Against iteration 12's COMMITTED baseline, exactly 5 of 24 tables moved and by exactly the pre-declared
+amounts, 19 were identical, no table appeared or vanished, and residue for the deleted run ids was 0 in
+all four child tables — and because Stage C issues no INSERT on any path (grep-verified: no INSERT,
+UPDATE or `session.add` in the new module or script), delta == |enumerated set| AND residue == 0 proves
+the removed set is exactly the intended set. A pre/post count pair alone could have masked a swap; this
+combination cannot. Cheapest instrument in the whole check: the db file's mtime at the TRUE process
+start equalled the prior iteration's own recorded "after" mtime, and the file still carries the
+true-end mtime now — one `stat` proving the single authorized write was the only write.
+**Applies to:** any future destructive maintenance iteration (J-11 Stages D/E/F), and any "we wrote
+nothing" or "we wrote only X" claim on `trendora.db`.

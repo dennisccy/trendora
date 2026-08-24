@@ -787,3 +787,92 @@ two test steps; whether an empty "next-session focus" is acceptable; and whether
 list. ONE STANDING FRAMEWORK NOTE: the defect that let a forbidden test lane run is still unfixed in
 `scripts/automation/`; four iterations running have avoided it with the maintenance-isolation contract
 rather than curing it.
+
+## Iteration 13 — goal-market-compass-iter-13
+
+**Date:** 2026-08-24T19:35:00Z
+**Verdict:** STALLED
+**Depth dispatched:** full (`runs/goal-session-market-compass/iter-13/depth-dispatched` reads `full`,
+matching the spec's own `Depth: full` line — the silent full→lean demotion that fired in iters 2, 6 and 8
+did NOT recur, for the fifth iteration running, and neither did the forbidden browser/replay lane; the
+engine recorded its refusal in `iter-13/maintenance-isolation-refusals` at 2026-08-24T17:42:45Z)
+
+**Owner-facing lines:** `J-11 STAGE C COMPLETE: YES` · `J-11 STAGE D AUTHORIZED: NO`
+
+**Journey deltas:**
+- Newly passing: none
+- Newly failing: none. **Regressed: none.**
+- **Advanced within `partial`: J-11** "Incident-bounded clean regeneration of derived state" — this
+  iteration's sole target. **Stage C is COMPLETE and independently verified.** Stages D-G untouched by
+  design and NOT authorized. Re-stamped `df587775…` (was `d3f6f105…` — the owner's 2026-08-24 Stage C
+  authorization block changed J-11's text).
+- **Re-derived read-only, status unchanged: J-10** "Bounded recovery of the two deleted trading days" —
+  585 symbols on each of 2026-08-11/12, EA/EQR still zero (the accepted residual), frontier 2026-08-12,
+  `daily_prices` 3,310,374 with a fingerprint byte-identical to iteration 12's committed baseline,
+  `data_provider_runs` 549 with an identical id-set. Stays `passing`; hash unchanged (`42ad1807…`).
+  Note: the recovery-era 2026-08-11/12 runs (ids 3150/3148) were deleted by Stage C — goal.md itself
+  calls those "temporary until J-11 replaces them", so that is the contract executing, not a loss.
+- Carried, NOT re-verified (maintenance isolation — browser QA and the replay lane were forbidden by
+  contract, so every journey keeps its prior recorded status): J-01, J-04 stay `passing`; J-02, J-03,
+  J-05, J-06, J-09 stay `partial`; J-07, J-08 stay `failing`.
+- Anti-goal violations: **NONE new.** Ledger unchanged at 5 total, **0 unresolved.** AG-5, AG-9, AG-12,
+  AG-17 and AG-18 were the five at real risk and all five held, each verified by my own read-only
+  queries and fingerprints against iteration 12's COMMITTED certified baseline (`78df5309`).
+- Coherence: COHERENCE-PASS. Deterministic scan: CLEAN. Review: PASS. QA: PASS. Audit: PASS_WITH_GAPS
+  (B1 IMPORTANT, fixed in-iteration; B2/B3/B5 and T1/T2/T3 gaps, all Stage D preconditions).
+
+**Reasoning:** The one destructive action the owner authorised was carried out exactly as written, and I
+did not take that from anyone's prose — I opened the 8.4 GB database read-only and re-counted every
+figure against the saved picture from the previous run. All eleven damaged days now hold no calculated
+results at all. Exactly five tables moved, by exactly the amounts declared in advance, and the other
+nineteen are identical; no table was added or dropped; no leftover row anywhere points at a deleted day;
+and the prices, the twenty-four saved briefings (all 28 values on every one of them), the watchlist and
+the audit records are untouched. The write itself is honest: the file's timestamp at the true start of
+the run equals the previous iteration's own recorded finish exactly, the end timestamp reflects the one
+authorised write, and the file still carries that same timestamp and size now — so nothing has written
+since and every later check was genuinely read-only. Two honesty problems were found inside the run, both
+by the independent auditor while the developer, the reviewer and the quality check all reported the
+opposite — the fourth iteration running where that happens. FIRST, the frozen "engine identity" the
+repair is supposed to be measured against has drifted since it was certified three iterations ago:
+`6261ca17…` became `53d2ffd1…`. I recomputed it myself and confirmed the new value. The cause is that one
+of the three files the identity is built from is the very file the last two iterations edited. It changes
+nothing about a deletion, which reads no identity, but the safety gate CAPTURED the identity and never
+COMPARED it — which is precisely why nothing flagged it — and the next stage's entire correctness claim
+is that every rebuilt day carries one single identity. SECOND, a written assumption claimed a group of
+forward-return rows was already gone; I counted 16,614 of them still present on surviving days. The
+decision built on that wrong belief was nevertheless the right one, and the code does the right thing. So
+why halt when nothing is wrong? Because the owner's own rule ends this stage with "stop the engine" and
+requires a separate, fresh instruction before the next one, exactly as this stage waited for one; because
+the goal file shuts every other lane until this repair's final stage passes, so a "keep going" verdict
+would only let the engine plan the very stage the owner has not authorised; and because that stage writes
+again to the canonical database this whole repair exists to fix. Why not REGRESSION? Nothing that worked
+stopped working, nothing outside the authorised set moved, and no critical rule was broken. Why not
+ESCALATE? This run already used the careful full depth, and the careful depth is what caught the drift.
+
+**Next-step recommendation:** ONE INSTRUCTION IS NEEDED FROM THE OWNER. Pick one: (a) instruct the engine
+to start Stage D — the rebuild of the eleven days — and `--resume`; (b) order a small, non-destructive
+hardening run FIRST; or (c) change the plan in `docs/goal.md`. THREE THINGS MUST BE SETTLED BEFORE ANY
+REBUILD, and none is the developer's to decide alone. FIRST, say in writing which frozen identity the
+rebuilt days are checked against, and confirm the 34 surviving days already stamped with the older value
+are left alone (3,083 more carry no stamp at all; 34 + 3,083 = 3,117, the full surviving population — I
+re-derived that split). SECOND, close the blind spot in the safety gate that captures the identity but
+never compares it; today the comparison is not merely unimplemented, it is impossible, because the
+certified baseline records no identity at all. THIRD, close the missing safety tests: nine of the gate's
+eleven checks have no failure test, its passing test compares a copy against itself, and the "refuse
+without the confirm flag" path and the four failure exits have no test — the next stage reuses that exact
+skeleton. FOUR FACTS TRAVEL WITH WHICHEVER OPTION IS CHOSEN. (1) The application's "Latest" day has moved
+back about three weeks — the newest stored day is now 2026-07-23 — because the four newest days were
+among the eleven cleared; expected, authorised, and it reverses when the rebuild runs. (2) The stored
+caches still hold their old answers but their keys no longer match today's data (`r3147-f6797728` now
+versus `r3150-f6800539` before), so they are currently ignored rather than wrongly served — the danger
+returns during the rebuild, when the key could land back on an old value byte-for-byte, which is exactly
+the trap the goal file names. (3) The surviving 16,614 forward-return rows on retained days are history
+the contract forbids deleting and are NOT the same population the later repair stage fills. (4) AVB's
+restored prices sit on the stored scale while its volume does not, so any figure multiplying price by
+volume reads about 2.79 times too high on 11 and 12 August. ALSO PENDING, PURELY MECHANICAL: nothing from
+this iteration is in version control yet, so no version number can be quoted for that checklist item.
+FIVE OLDER OWNER QUESTIONS remain open and non-blocking: whether 3.44 GB is acceptable for J-09; J-06's
+"underlying run unavailable" wording; the rewording of J-01's first two test steps; whether an empty
+"next-session focus" is acceptable; and whether MNST joins the recovery list. ONE STANDING FRAMEWORK
+NOTE: the defect that once let a forbidden test lane run is still unfixed in `scripts/automation/`; five
+iterations running have avoided it with the maintenance-isolation contract rather than curing it.

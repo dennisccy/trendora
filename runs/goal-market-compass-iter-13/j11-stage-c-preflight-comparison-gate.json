@@ -1,0 +1,27 @@
+{
+  "all_invariants_hold": true,
+  "checks": {
+    "c1_date_set_boundary_ok": true,
+    "daily_prices_fingerprint_unchanged": true,
+    "data_provider_runs_count_unchanged": true,
+    "manifest_ddl_unchanged_from_certified": true,
+    "manifest_indexes_unchanged": true,
+    "manifest_row_count_matches_certified": true,
+    "manifest_values_unchanged": true,
+    "no_live_fk_on_source_run_id": true,
+    "per_date_scanner_run_inventory_unchanged": true,
+    "source_run_id_values_unchanged": true,
+    "watchlist_count_unchanged": true
+  },
+  "generated_at": "2026-08-24T17:13:40.199163+00:00",
+  "manifest_dump_diff": {
+    "equal": true,
+    "extra_ids": [],
+    "mismatches": [],
+    "missing_ids": [],
+    "post_row_count": 24,
+    "pre_row_count": 24
+  },
+  "material_mismatch": false,
+  "per_date_scanner_run_mismatches": []
+}
