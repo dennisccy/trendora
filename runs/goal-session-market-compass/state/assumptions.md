@@ -3,101 +3,6 @@
 Append-only. Each entry records a scoring decision that required interpreting an
 ambiguous goal, so the owner can veto it early.
 
-## iter-7 — goal-decomposer
-
-**Ambiguity:** project-template.md's architecture principle says every threshold/tunable lives in
-`config.yaml` (no magic numbers). J-10 step 2a's fail-closed adjustment-convention check needs a
-numeric tolerance plus a sample size / comparison-window size to decide "agree" vs "mismatch" vs
-"inconclusive". goal.md does not say whether this check's own tuning literals count as a
-`config.yaml` threshold or as single-use incident-response constants like `RECOVERY_DATES` /
-`RECOVERY_SYMBOLS` (whose config-vs-literal question iter-6's decomposer already resolved the same
-way, accepted without objection by the iter-6 coherence-auditor).
-**We chose:** Directed the developer to keep the tolerance, sample size, and comparison-window
-size as inline literals scoped to the convention-check function in `j10_recovery.py`, not new
-`config.yaml` keys — same reasoning as the iter-6 precedent: this check exists only to gate one
-single-use, self-closing AG-9 exception, and promoting its tuning value to a standing
-`config.yaml` entry would misrepresent a one-time incident-response check as a reusable, tunable
-feature.
-**Reversible:** yes — if the reviewer/coherence-auditor judges this differently, moving the values
-into a config block is a small, low-risk follow-up edit that changes no behavior.
-
-## iter-7 — goal-decomposer
-
-**Ambiguity:** J-10 step 5(f) requires proving "J-01/J-02/J-03 replay clean" before closing the
-exception, and the prior evaluator's next-step recommendation suggested re-checking J-01-J-04 with
-the browser lane in the SAME turn once the days are back. goal.md does not say whether step 5(f)'s
-"replay clean" must be satisfied by the pipeline's browser-QA/deterministic-replay lane
-specifically, or may be satisfied by the developer's own direct, deterministic checks (read-only DB
-queries + direct API calls) - the same method iteration 6 already used successfully for its own
-step 5 table.
-**We chose:** Read step 5(f) as satisfiable by the developer's own direct checks this iteration
-(two `GET /api/compass` calls + DB queries), and explicitly deferred ALL browser-QA/replay
-re-verification of J-01-J-04 to iteration 8, regardless of whether this iteration's recovery
-succeeds - deviating from the prior evaluator's suggestion to bundle the browser recheck into this
-same turn. Reasoning: this session has hit "a QA lane ran against a database whose damage status
-was still being resolved" twice already (iter-2, iter-6); making the browser-QA lane's
-participation in THIS iteration strictly zero (rather than conditional on this iteration's own
-live-fetch outcome) removes that entire risk class from this iteration's blast radius at the cost
-of one extra iteration of delay on four already-overdue walkthroughs.
-**Reversible:** yes - a future iteration (iteration 8, or this one re-planned) can still run the
-browser lane against J-01-J-04 at any time once the owner/evaluator is satisfied recovery held;
-nothing here forecloses that, and no code or data decision depends on this scoping choice.
-
-## iter-7 — developer (convention check returned a borderline mismatch; tolerance NOT adjusted after seeing it)
-
-**Finding (not an ambiguity — an evidentiary result requiring a stop/proceed judgment):** The real
-convention check (20 sample symbols x the 5 most recent surviving days, 2026-08-04..2026-08-10, 88
-pairs total) against the live DB with a real `YahooProvider.get_adjusted_close` returned
-**mismatch**: 76/88 pairs matched exactly (delta 0.0), XOM's 4 pairs all showed a uniform ~0.6433%
-delta (within the 0.75% tolerance), and CVX's 5 pairs all showed a uniform ~0.8652% delta — just
-over the 0.75% tolerance. Within each symbol, the delta's spread across its own pairs is
-~0.00004 percentage points (five independent trading days), which is the signature of one real,
-proportionally-applied dividend adjustment, not cross-vendor noise or a data error — i.e.,
-technically persuasive evidence that Yahoo's `adjclose` convention IS the same back-adjustment
-convention as Stooq's, and that 0.75% is simply tighter than CVX's actual quarterly-dividend
-magnitude for this window.
-**We chose:** Did NOT widen the tolerance after seeing this result. `CONVENTION_CHECK_TOLERANCE`
-(0.75%) was fixed in code BEFORE any real-DB run, matching goal.md's own proposed default, per its
-explicit instruction: "must NOT iteratively loosen it after seeing a borderline or failing result
-just to force a pass." Regardless of how well-reasoned the dividend-signature explanation is,
-changing the tolerance NOW would be indistinguishable in process terms from the exact anti-pattern
-the spec names — the discipline has to hold even when the post-hoc justification looks solid, or
-it is not a real discipline. Treated the result as a genuine `mismatch` verdict: made zero writes
-(`run_bounded_recovery_fetch`/`run_bounded_recovery_backfill` never called —
-`run_gated_recovery`'s own textual/causal gate enforces this structurally, not just by
-convention), recorded the honest stop in the dev handoff with every sampled pair's observed delta,
-and did not attempt Stooq or a third vendor. This is exactly the "insert nothing and STOP for
-owner review" outcome J-10 step 2a and the dispatching coordinator's instruction #8 both call for.
-**Reversible:** yes — an owner-reviewed, dated tolerance change (e.g., to a value comfortably above
-CVX's observed ~0.865% while still far below a genuine methodology error like a missed split, or a
-larger/differently-composed sample) would let a future retry of this SAME idempotent, still-fully-
-missing 587-symbol/2-date scope pass the gate; nothing this iteration does forecloses that, and no
-code beyond the single `CONVENTION_CHECK_TOLERANCE` literal (or the sample) would need to change.
-
-## iter-7 — goal-evaluator (which goal text J-10 is scored against, and which hash is stamped)
-
-**Ambiguity:** The owner rewrote J-10 step 2a in `docs/goal.md` *during* this iteration (uncommitted
-working-tree edit, made in response to this iteration's own measurement): the absolute-level tolerance
-was replaced by a precommitted path-agreement + stable multiplicative-bridge test, plus three new binding
-rules (apply the bridge before insertion; one series end to end; persisted per-pair evidence as the sole
-calibration input; zero usable pairs can never produce `agree`). The iteration-7 code predates all of it.
-No `journeys-changed.md` was produced — that note only covers recorded-*passing* journeys, and J-10 is
-`partial` — so nothing told me which text governs. My instructions say `spec_hash` asserts "this status
-was verified against exactly this goal text", while the dispatching coordinator told me to judge the
-implementation against the text as it stood for this iteration. Those two pull in opposite directions.
-**We chose:** Judged the developer's *conduct and implementation* against the OLD text (they built what
-was specified, and the honest fail-closed stop is a correct outcome under it), but recorded the status
-against the CURRENT text and stamped the CURRENT hash
-(`95e93e724d4d9ec81117fec6a2bd08c6b517db8c777a202bc998b1f7016bf395`). This is safe because J-10 is
-`partial` under BOTH wordings — the new text only adds unmet requirements — so the stamp asserts nothing
-the evidence does not support, and the four still-unimplemented new requirements are written out verbatim
-in the journey's `gap` field so iteration 8 inherits them explicitly. I also verified with
-`goal_gate.py hash-journeys` that J-01..J-09 are byte-identical to their recorded hashes, so no other
-journey's prior pass was silently voided by the amendment.
-**Reversible:** yes — if the owner disagrees, J-10's `spec_hash` can be reverted to the old value or
-cleared with no effect on any gate (`partial` blocks GOAL_ACHIEVED either way); only the recorded
-"verified against which text" annotation would change.
-
 ## iter-8 — goal-decomposer (no precommitted numeric default for the redesigned two-part test)
 
 **Ambiguity:** J-10 step 2a's redesigned two-part test (path agreement + stable multiplicative
@@ -523,3 +428,52 @@ asserts a status" reading independently rather than trust this entry (iter-9's l
 misleading, or finds the overlap is not actually complete), the spec's own TC-23 requires the iteration to
 STOP and surface the exact contradiction rather than silently proceed; nothing is deleted, mutated, or
 foreclosed by filing it to Stage G, and the frontend component is untouched either way this iteration.
+
+## iter-12 — goal-evaluator (marking the iter-11 AG-18 breach `resolved` on an owner acceptance rather than a repair)
+
+**Ambiguity:** The methodology's ledger schema carries a boolean `resolved`, and the session's only
+precedent for flipping it (iter-8) did so after the damage was undone byte-for-byte. Here the
+already-materialized DDL residual is NOT undone and never will be — the owner's dated 2026-08-24 ruling
+accepts exactly four enumerated differences and explicitly declines a second live rewrite on risk
+grounds, while A8 states in the same breath that the acceptance is "NOT a general waiver", "NOT a
+precedent", and "NOT a claim that the migration originally stayed within its authorization", and A14
+keeps iter-11's REGRESSION verdict standing. `docs/goal.md` does not say whether an accepted-but-unrepaired
+breach counts as `resolved` in the evaluator's ledger.
+**We chose:** `resolved: true`, with the entry's `iter`, `severity: critical` and full original evidence
+text preserved verbatim and the owner's acceptance appended as the resolution reason. Reasoning: (a) the
+`resolved` flag drives the decision tree's REGRESSION branch ("a critical anti-goal violation is
+unresolved"), and its operative question is whether the violation still demands action — the owner has
+answered that it does not, so leaving it `false` would force a second REGRESSION halt for a decision
+already made, which is the "infinite loop on vague criteria" failure the framework names first; (b) the
+honest record is preserved in three places rather than erased — the ledger entry keeps its severity and
+its iteration, this eval states plainly that iter-11 exceeded its authorization, and iter-11's REGRESSION
+verdict is untouched; (c) AG-18's own text is unchanged and still prohibits future drift, so nothing is
+generalized by the flag. What I explicitly did NOT do: soften iter-11's verdict, remove the entry, or
+downgrade its severity.
+**Reversible:** yes — the flag is one boolean in `journey-history.json` and the full original evidence
+text is retained, so a later evaluator (or the owner) can flip it back at no cost if the owner reads
+"resolved" as requiring an actual repair; nothing is deleted and no status changes either way.
+
+## iter-12 — goal-evaluator (STALLED rather than CONTINUE on an iteration where every prerequisite HOLDS)
+
+**Ambiguity:** The dispatching coordinator's framing pairs `STALLED` with "a concrete unresolved
+prerequisite remains" — and none does: all thirteen of ruling A12's readiness items hold, and I
+re-derived each from the live database. On that framing the expected label is `CONTINUE` (with Stage C
+ready). But the methodology's decision tree defines STALLED as "every unblock path for the current
+blocker is a **human-owned action** … an irreversible step needing sanction … this applies even on the
+first blocked iteration", and C.2 sits ABOVE C.5 (CONTINUE) with first-match-wins.
+**We chose:** STALLED, with the Halt Justification saying in its first sentence that nothing is wrong or
+missing. Reasoning: (a) ruling A12's own closing sentence is an explicit human gate — "Stage C is still
+NOT executed in that iteration — it waits for an explicit owner instruction to resume" — so the blocker's
+OWNERSHIP, not its difficulty, decides the branch (the mcp-loop iter-16 worked example makes exactly this
+distinction: green tests did not make the verdict CONTINUE); (b) the mechanical consequence matters —
+CONTINUE lets the engine decompose iteration 13, and iteration 13 can only be Stage C, i.e. an
+irreversible destructive clear of the canonical 8.4 GB database begun without the sanction the owner's own
+ruling requires, and the dispatching note independently forbids decomposing iteration 13; (c) there is no
+substitute work — `docs/goal.md`'s Loop-mechanics gate shuts every other product/research/browser lane
+until Stage G passes, and ruling A8 forbids broadening Stage B1, so a CONTINUE iteration would be motion
+that does not move the blocker; (d) iteration 10 returned STALLED on the same table for the same
+structural reason, so the session's own precedent is consistent.
+**Reversible:** yes — the owner answers with one dated line in `docs/goal.md` (or an instruction plus
+`--resume`) and the session continues with nothing repaired, nothing lost, and no status changed; the
+readiness answer `J-11 STAGE C READY: YES` is recorded either way.

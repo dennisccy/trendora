@@ -1,6 +1,6 @@
 # Iteration diff (bounded)
 
-Files changed: 9. Shown in full: 9.
+Files changed: 10. Shown in full: 10.
 
 ```diff
 diff --git a/apps/backend/app/engine/compass.py b/apps/backend/app/engine/compass.py
@@ -437,6 +437,419 @@ index 74cb0d4a..10668ec3 100644
      #
      # Intended end state (docs/goal.md J-11 step 11, verbatim): "`source_run_id` remains stored historical
      # provenance; it is not required to dereference to a live `ScannerRun` forever; manifest survival must
+diff --git a/apps/backend/scripts/run_j11_stage_b1_cleanup_fingerprint.py b/apps/backend/scripts/run_j11_stage_b1_cleanup_fingerprint.py
+new file mode 100644
+index 00000000..49bf4c6a
+--- /dev/null
++++ b/apps/backend/scripts/run_j11_stage_b1_cleanup_fingerprint.py
+@@ -0,0 +1,129 @@
++"""goal-market-compass iter-12 -- J-11 Stage B1 CLEANUP: read-only before/after fingerprint of the LIVE
++database (ruling A13: "Expected live writes: ZERO... verify before and after... using the strongest
++practical read-only fingerprinting the J-11 evidence framework already provides. Do not claim 'no write'
++from row counts alone.").
++
++Reuses the existing primitives directly rather than inventing new ones (per this iteration's plan):
++  - `app.engine.j11_schema_migration.capture_full_db_snapshot` -- every table's row count + db file
++    mtime/size.
++  - `app.engine.j11_schema_migration.fetch_object_ddl` -- the manifest table's own `CREATE TABLE` text
++    plus its named indexes' `CREATE INDEX` text, read verbatim from `sqlite_master`.
++  - `app.engine.j11_schema_migration.dump_table` -- every row x every column of
++    `next_session_manifests`, ordered by `id`.
++  - `app.engine.j11_maintenance.capture_pre_reset_inventory` -- the `daily_prices` row-count + content
++    fingerprint construction (row_count, min_date, max_date, id_sum, ohlcv_sum -> sha256), plus
++    `data_provider_runs`/`watchlist` row counts and the certified/staging ledger file hashes, all in one
++    read-only call.
++
++Opens the live database through an ACTUAL read-only SQLite handle -- `file:<path>?mode=ro` (SQLite-level
++read-only open; any write attempt raises `OperationalError`) plus an explicit `PRAGMA query_only=ON` on
++every connection (belt-and-braces) -- never the pooled `app.db.get_engine()` writable engine this
++iteration, since Stage B1 cleanup's live database contract is READ-ONLY (ruling A13), unlike iter-10/11's
++scripts which were the ONE authorized writer for their own bounded operations.
++
++Usage (run twice -- once before this iteration's work, once after -- then diffed by
++`run_j11_stage_b1_cleanup_fingerprint_diff.py`):
++    apps/backend/.venv/bin/python apps/backend/scripts/run_j11_stage_b1_cleanup_fingerprint.py \\
++        --output-path runs/goal-market-compass-iter-12/j11-stage-b1-cleanup-fingerprint-before.json
++"""
++from __future__ import annotations
++
++import argparse
++import json
++import sys
++from datetime import datetime, timezone
++from pathlib import Path
++
++# scripts/ -> backend -> apps -> repo root
++BACKEND_DIR = Path(__file__).resolve().parents[1]
++REPO_ROOT = BACKEND_DIR.parents[1]
++sys.path.insert(0, str(BACKEND_DIR))
++
++from sqlalchemy import create_engine, event  # noqa: E402
++from sqlmodel import Session  # noqa: E402
++
++from app.config import load_config  # noqa: E402
++from app.db import resolve_database_url  # noqa: E402
++from app.engine import j11_schema_migration as migration  # noqa: E402
++from app.engine.j11_maintenance import capture_pre_reset_inventory  # noqa: E402
++from app.models import NextSessionManifest  # noqa: E402
++
++
++def _db_file_path(database_url: str) -> "Path | None":
++    prefix = "sqlite:///"
++    if not database_url.startswith(prefix):
++        return None
++    raw = database_url[len(prefix):]
++    if not raw or raw == ":memory:":
++        return None
++    path = Path(raw)
++    return path if path.is_absolute() else (REPO_ROOT / path)
++
++
++def _read_only_engine(db_path: Path):
++    """An ACTUAL read-only SQLite connection -- `mode=ro` at the SQLite C-API level (any write attempt
++    raises `sqlite3.OperationalError: attempt to write a readonly database`) plus an explicit
++    `PRAGMA query_only=ON` issued on every new connection (defense in depth), mirroring the pattern this
++    repo's own iter-11 audit used for its live read-only checks and
++    `apps/backend/tests/_seed_subset.py`'s `_attach_real_db_readonly`."""
++    url = f"sqlite:///file:{db_path}?mode=ro&uri=true"
++    engine = create_engine(url, connect_args={"check_same_thread": False})
++
++    @event.listens_for(engine, "connect")
++    def _set_query_only(dbapi_connection, _record):
++        dbapi_connection.execute("PRAGMA query_only=ON")
++
++    return engine
++
++
++def capture_fingerprint(engine, db_path: Path) -> dict:
++    full_snapshot = migration.capture_full_db_snapshot(engine, db_path)
++    manifest_ddl = migration.fetch_object_ddl(engine, migration.TABLE_NAME)
++    manifest_dump = migration.dump_table(engine, NextSessionManifest.__table__)
++    with Session(engine) as session:
++        pre_reset_inventory = capture_pre_reset_inventory(session)
++    return {
++        "captured_at": datetime.now(timezone.utc).isoformat(),
++        "full_db_snapshot": full_snapshot,
++        "manifest_ddl": manifest_ddl,
++        "manifest_dump": manifest_dump,
++        "manifest_row_count": len(manifest_dump),
++        "pre_reset_inventory": pre_reset_inventory,
++    }
++
++
++def main() -> int:
++    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
++    parser.add_argument("--output-path", type=Path, required=True)
++    args = parser.parse_args()
++
++    cfg = load_config()
++    resolved_url = resolve_database_url(cfg.database.url)
++    db_path = _db_file_path(resolved_url)
++    if db_path is None or not db_path.exists():
++        print(f"FAIL: could not resolve a live sqlite db file from {resolved_url!r}", file=sys.stderr)
++        return 1
++    print(f"database (READ-ONLY handle, mode=ro + PRAGMA query_only=ON): {db_path}", file=sys.stderr)
++
++    mtime_before = db_path.stat().st_mtime
++    engine = _read_only_engine(db_path)
++    fingerprint = capture_fingerprint(engine, db_path)
++    mtime_after = db_path.stat().st_mtime
++    fingerprint["db_file_mtime_before_capture"] = mtime_before
++    fingerprint["db_file_mtime_after_capture"] = mtime_after
++    fingerprint["db_file_mtime_unchanged_by_this_capture"] = mtime_before == mtime_after
++
++    args.output_path.parent.mkdir(parents=True, exist_ok=True)
++    args.output_path.write_text(json.dumps(fingerprint, indent=2, sort_keys=True, default=str))
++    print(f"wrote {args.output_path}", file=sys.stderr)
++    print(
++        f"manifest_row_count={fingerprint['manifest_row_count']} "
++        f"daily_prices_row_count={fingerprint['pre_reset_inventory']['daily_prices']['row_count']} "
++        f"mtime_unchanged_by_this_capture={fingerprint['db_file_mtime_unchanged_by_this_capture']}",
++        file=sys.stderr,
++    )
++    return 0
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())
+diff --git a/apps/backend/scripts/run_j11_stage_b1_cleanup_fingerprint_diff.py b/apps/backend/scripts/run_j11_stage_b1_cleanup_fingerprint_diff.py
+new file mode 100644
+index 00000000..350ae09d
+--- /dev/null
++++ b/apps/backend/scripts/run_j11_stage_b1_cleanup_fingerprint_diff.py
+@@ -0,0 +1,81 @@
++"""goal-market-compass iter-12 -- J-11 Stage B1 CLEANUP: diff two fingerprint artifacts produced by
++`run_j11_stage_b1_cleanup_fingerprint.py` (TC-22: "given a read-only fingerprint... taken at the start of
++this iteration's work and an identical fingerprint taken at the end, when the two are diffed, then every
++one of them is identical").
++
++Excludes ONLY the fields that legitimately differ between two capture RUNS of the same unchanged
++database -- the capture act's own timestamps -- never database CONTENT. Everything else (every table's
++row count, the db file mtime/size, the manifest table's full DDL/index text, every manifest row's every
++column value, the `daily_prices` row-count + content fingerprint, and the `data_provider_runs`/
++`watchlist` counts) must be byte-identical or this script reports a non-empty diff and exits non-zero.
++
++Usage:
++    apps/backend/.venv/bin/python apps/backend/scripts/run_j11_stage_b1_cleanup_fingerprint_diff.py \\
++        --before runs/goal-market-compass-iter-12/j11-stage-b1-cleanup-fingerprint-before.json \\
++        --after runs/goal-market-compass-iter-12/j11-stage-b1-cleanup-fingerprint-after.json \\
++        --output-path runs/goal-market-compass-iter-12/j11-stage-b1-cleanup-fingerprint-diff.json
++"""
++from __future__ import annotations
++
++import argparse
++import json
++import sys
++from pathlib import Path
++
++# Fields that legitimately differ between two capture RUNS of the SAME unchanged database (the wall-clock
++# instant each capture ran at) -- never database content. Listed explicitly and matched by exact
++# dotted-path so nothing else is silently ignored.
++_IGNORED_PATHS = {
++    "captured_at",
++    "pre_reset_inventory.captured_at",
++    "db_file_mtime_before_capture",
++    "db_file_mtime_after_capture",
++}
++
++
++def _diff(a: dict, b: dict, path: str = "") -> list[dict]:
++    diffs: list[dict] = []
++    for key in sorted(set(a) | set(b)):
++        p = f"{path}.{key}" if path else key
++        av, bv = a.get(key), b.get(key)
++        if isinstance(av, dict) and isinstance(bv, dict):
++            diffs.extend(_diff(av, bv, p))
++        elif av != bv:
++            diffs.append({"path": p, "before": av, "after": bv})
++    return diffs
++
++
++def main() -> int:
++    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
++    parser.add_argument("--before", type=Path, required=True)
++    parser.add_argument("--after", type=Path, required=True)
++    parser.add_argument("--output-path", type=Path, required=True)
++    args = parser.parse_args()
++
++    before = json.loads(args.before.read_text())
++    after = json.loads(args.after.read_text())
++
++    diffs = [d for d in _diff(before, after) if d["path"] not in _IGNORED_PATHS]
++    result = {
++        "diffs": diffs,
++        "identical_except_capture_timestamps": len(diffs) == 0,
++        "ignored_paths": sorted(_IGNORED_PATHS),
++        "before_captured_at": before.get("captured_at"),
++        "after_captured_at": after.get("captured_at"),
++        "before_path": str(args.before),
++        "after_path": str(args.after),
++    }
++
++    args.output_path.parent.mkdir(parents=True, exist_ok=True)
++    args.output_path.write_text(json.dumps(result, indent=2, sort_keys=True, default=str))
++    print(f"wrote {args.output_path}", file=sys.stderr)
++    print(f"identical_except_capture_timestamps={result['identical_except_capture_timestamps']}", file=sys.stderr)
++    if diffs:
++        print("DIFFS FOUND:", file=sys.stderr)
++        for d in diffs:
++            print(f"  {d['path']}: before={d['before']!r} after={d['after']!r}", file=sys.stderr)
++    return 0 if result["identical_except_capture_timestamps"] else 1
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())
+diff --git a/apps/backend/scripts/run_j11_stage_b1_live_reverification.py b/apps/backend/scripts/run_j11_stage_b1_live_reverification.py
+new file mode 100644
+index 00000000..b0ffe158
+--- /dev/null
++++ b/apps/backend/scripts/run_j11_stage_b1_live_reverification.py
+@@ -0,0 +1,185 @@
++"""goal-market-compass iter-12 -- J-11 Stage B1 CLEANUP: read-only live re-verification of
++
++  (TC-20) the FIXED `app.engine.compass.basis_disclosure`'s status distribution across all 24 live
++  `next_session_manifests` rows -- independently re-derived, never copied from the plan/spec, and
++  asserting none of the degenerate-`generation_json` rows reports `available`.
++
++  (TC-23) the `preFreezeEra` branch honesty question (ruling A11a) -- a fresh read-only query for live
++  manifests where `generation_json` is NULL/empty/malformed AND `mode IS NULL`, independently re-deriving
++  whether that set is complete, partial, or empty relative to the total `mode IS NULL` count.
++
++Opens the live database through an ACTUAL read-only SQLite handle (`file:<path>?mode=ro` +
++`PRAGMA query_only=ON`), mirroring `run_j11_stage_b1_cleanup_fingerprint.py`'s helper. `basis_disclosure`
++itself only ever issues SELECTs (never a write) -- confirmed by the read-only handle itself: any write
++attempt anywhere in this call graph would raise `OperationalError` rather than silently succeeding.
++
++Usage:
++    apps/backend/.venv/bin/python apps/backend/scripts/run_j11_stage_b1_live_reverification.py \\
++        --output-path runs/goal-market-compass-iter-12/j11-stage-b1-live-reverification.json
++"""
++from __future__ import annotations
++
++import argparse
++import json
++import sys
++from collections import Counter
++from datetime import datetime, timezone
++from pathlib import Path
++
++# scripts/ -> backend -> apps -> repo root
++BACKEND_DIR = Path(__file__).resolve().parents[1]
++REPO_ROOT = BACKEND_DIR.parents[1]
++sys.path.insert(0, str(BACKEND_DIR))
++
++from sqlalchemy import create_engine, event, func, text  # noqa: E402
++from sqlmodel import Session, select  # noqa: E402
++
++from app.config import load_config  # noqa: E402
++from app.db import resolve_database_url  # noqa: E402
++from app.engine import compass  # noqa: E402
++from app.models import NextSessionManifest  # noqa: E402
++
++
++def _db_file_path(database_url: str) -> "Path | None":
++    prefix = "sqlite:///"
++    if not database_url.startswith(prefix):
++        return None
++    raw = database_url[len(prefix):]
++    if not raw or raw == ":memory:":
++        return None
++    path = Path(raw)
++    return path if path.is_absolute() else (REPO_ROOT / path)
++
++
++def _read_only_engine(db_path: Path):
++    url = f"sqlite:///file:{db_path}?mode=ro&uri=true"
++    engine = create_engine(url, connect_args={"check_same_thread": False})
++
++    @event.listens_for(engine, "connect")
++    def _set_query_only(dbapi_connection, _record):
++        dbapi_connection.execute("PRAGMA query_only=ON")
++
++    return engine
++
++
++def _is_degenerate_generation_json(value) -> bool:
++    """NULL, empty string, or malformed/non-object/key-absent JSON -- the exact predicate
++    `basis_disclosure`'s fail-closed guards apply, re-derived independently here (never assumed) for the
++    TC-23 overlap question. Mirrors `basis_disclosure`'s own guard logic exactly (no second formula)."""
++    if not value:
++        return True
++    try:
++        parsed = json.loads(value)
++    except (ValueError, TypeError):
++        return True
++    return not isinstance(parsed, dict) or "source_run_created_at" not in parsed
++
++
++def reverify_basis_disclosure_distribution(session: Session) -> dict:
++    """TC-20: run the FIXED `basis_disclosure` read-only against every live manifest row, tally the
++    resulting status distribution, and separately tally it restricted to the rows whose `generation_json`
++    is degenerate (NULL/empty/malformed/non-object/key-absent) -- asserting none of those report
++    `available` (the exact fail-open this iteration's A4/A4-bis fixes close)."""
++    rows = session.exec(select(NextSessionManifest).order_by(NextSessionManifest.as_of, NextSessionManifest.version)).all()
++    overall = Counter()
++    degenerate_generation_json = Counter()
++    per_row = []
++    for row in rows:
++        disclosure = compass.basis_disclosure(session, row)
++        overall[disclosure["status"]] += 1
++        degenerate = _is_degenerate_generation_json(row.generation_json)
++        if degenerate:
++            degenerate_generation_json[disclosure["status"]] += 1
++        per_row.append(
++            {
++                "id": row.id,
++                "as_of": row.as_of.isoformat(),
++                "version": row.version,
++                "mode": row.mode,
++                "generation_json_degenerate": degenerate,
++                "basis_status": disclosure["status"],
++                "basis_detail": disclosure["detail"],
++            }
++        )
++    return {
++        "total_manifest_rows": len(rows),
++        "overall_status_distribution": dict(overall),
++        "degenerate_generation_json_status_distribution": dict(degenerate_generation_json),
++        "no_degenerate_row_reports_available": degenerate_generation_json.get("available", 0) == 0,
++        "per_row": per_row,
++    }
++
++
++def reverify_pre_freeze_era_overlap(session: Session) -> dict:
++    """TC-23: independently re-derive (a) the count of live manifests where `generation_json` is
++    degenerate AND `mode IS NULL` (the `preFreezeEra` predicate in `compass-manifest-strip.tsx`), (b) the
++    total `mode IS NULL` count, and (c) whether the overlap is complete (every `mode IS NULL` row is also
++    generation_json-degenerate and vice versa), partial, or empty. Read-only re-derivation only -- never
++    copied from a prior iteration's or this iteration's own plan."""
++    mode_null_count = session.scalar(select(func.count()).select_from(NextSessionManifest).where(NextSessionManifest.mode.is_(None)))
++    rows = session.exec(select(NextSessionManifest)).all()
++    mode_null_ids = {row.id for row in rows if row.mode is None}
++    degenerate_ids = {row.id for row in rows if _is_degenerate_generation_json(row.generation_json)}
++    overlap = mode_null_ids & degenerate_ids
++    only_mode_null = mode_null_ids - degenerate_ids
++    only_degenerate = degenerate_ids - mode_null_ids
++    complete_overlap = mode_null_ids == degenerate_ids and len(mode_null_ids) > 0
++    return {
++        "mode_is_null_count": int(mode_null_count or 0),
++        "generation_json_degenerate_count": len(degenerate_ids),
++        "overlap_count": len(overlap),
++        "mode_is_null_but_not_degenerate_ids": sorted(only_mode_null),
++        "degenerate_but_mode_is_not_null_ids": sorted(only_degenerate),
++        "complete_overlap": complete_overlap,
++    }
++
++
++def main() -> int:
++    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
++    parser.add_argument("--output-path", type=Path, required=True)
++    args = parser.parse_args()
++
++    cfg = load_config()
++    resolved_url = resolve_database_url(cfg.database.url)
++    db_path = _db_file_path(resolved_url)
++    if db_path is None or not db_path.exists():
++        print(f"FAIL: could not resolve a live sqlite db file from {resolved_url!r}", file=sys.stderr)
++        return 1
++    print(f"database (READ-ONLY handle, mode=ro + PRAGMA query_only=ON): {db_path}", file=sys.stderr)
++
++    mtime_before = db_path.stat().st_mtime
++    engine = _read_only_engine(db_path)
++    with Session(engine) as session:
++        tc20 = reverify_basis_disclosure_distribution(session)
++        tc23 = reverify_pre_freeze_era_overlap(session)
++    mtime_after = db_path.stat().st_mtime
++
++    result = {
++        "captured_at": datetime.now(timezone.utc).isoformat(),
++        "tc20_basis_disclosure_live_reverification": tc20,
++        "tc23_pre_freeze_era_overlap_reverification": tc23,
++        "db_file_mtime_before": mtime_before,
++        "db_file_mtime_after": mtime_after,
++        "db_file_mtime_unchanged": mtime_before == mtime_after,
++    }
++
++    args.output_path.parent.mkdir(parents=True, exist_ok=True)
++    args.output_path.write_text(json.dumps(result, indent=2, sort_keys=True, default=str))
++    print(f"wrote {args.output_path}", file=sys.stderr)
++    print(
++        f"TC-20 overall={tc20['overall_status_distribution']} "
++        f"degenerate={tc20['degenerate_generation_json_status_distribution']} "
++        f"no_degenerate_available={tc20['no_degenerate_row_reports_available']}",
++        file=sys.stderr,
++    )
++    print(
++        f"TC-23 mode_null={tc23['mode_is_null_count']} degenerate={tc23['generation_json_degenerate_count']} "
++        f"overlap={tc23['overlap_count']} complete={tc23['complete_overlap']}",
++        file=sys.stderr,
++    )
++    print(f"mtime_unchanged={result['db_file_mtime_unchanged']}", file=sys.stderr)
++    return 0 if tc20["no_degenerate_row_reports_available"] else 1
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())
 diff --git a/apps/backend/scripts/run_j11_stage_b1_manifest_schema_migration.py b/apps/backend/scripts/run_j11_stage_b1_manifest_schema_migration.py
 index 69d3e13a..0da3d455 100644
 --- a/apps/backend/scripts/run_j11_stage_b1_manifest_schema_migration.py
@@ -887,417 +1300,20 @@ index aade4b37..3df682b4 100644
  # --- TC-16 (reproducibility) -----------------------------------------------------------------------
  
  
-diff --git a/apps/backend/scripts/run_j11_stage_b1_cleanup_fingerprint.py b/apps/backend/scripts/run_j11_stage_b1_cleanup_fingerprint.py
-new file mode 100644
-index 00000000..49bf4c6a
---- /dev/null
-+++ b/apps/backend/scripts/run_j11_stage_b1_cleanup_fingerprint.py
-@@ -0,0 +1,129 @@
-+"""goal-market-compass iter-12 -- J-11 Stage B1 CLEANUP: read-only before/after fingerprint of the LIVE
-+database (ruling A13: "Expected live writes: ZERO... verify before and after... using the strongest
-+practical read-only fingerprinting the J-11 evidence framework already provides. Do not claim 'no write'
-+from row counts alone.").
-+
-+Reuses the existing primitives directly rather than inventing new ones (per this iteration's plan):
-+  - `app.engine.j11_schema_migration.capture_full_db_snapshot` -- every table's row count + db file
-+    mtime/size.
-+  - `app.engine.j11_schema_migration.fetch_object_ddl` -- the manifest table's own `CREATE TABLE` text
-+    plus its named indexes' `CREATE INDEX` text, read verbatim from `sqlite_master`.
-+  - `app.engine.j11_schema_migration.dump_table` -- every row x every column of
-+    `next_session_manifests`, ordered by `id`.
-+  - `app.engine.j11_maintenance.capture_pre_reset_inventory` -- the `daily_prices` row-count + content
-+    fingerprint construction (row_count, min_date, max_date, id_sum, ohlcv_sum -> sha256), plus
-+    `data_provider_runs`/`watchlist` row counts and the certified/staging ledger file hashes, all in one
-+    read-only call.
-+
-+Opens the live database through an ACTUAL read-only SQLite handle -- `file:<path>?mode=ro` (SQLite-level
-+read-only open; any write attempt raises `OperationalError`) plus an explicit `PRAGMA query_only=ON` on
-+every connection (belt-and-braces) -- never the pooled `app.db.get_engine()` writable engine this
-+iteration, since Stage B1 cleanup's live database contract is READ-ONLY (ruling A13), unlike iter-10/11's
-+scripts which were the ONE authorized writer for their own bounded operations.
-+
-+Usage (run twice -- once before this iteration's work, once after -- then diffed by
-+`run_j11_stage_b1_cleanup_fingerprint_diff.py`):
-+    apps/backend/.venv/bin/python apps/backend/scripts/run_j11_stage_b1_cleanup_fingerprint.py \\
-+        --output-path runs/goal-market-compass-iter-12/j11-stage-b1-cleanup-fingerprint-before.json
-+"""
-+from __future__ import annotations
-+
-+import argparse
-+import json
-+import sys
-+from datetime import datetime, timezone
-+from pathlib import Path
-+
-+# scripts/ -> backend -> apps -> repo root
-+BACKEND_DIR = Path(__file__).resolve().parents[1]
-+REPO_ROOT = BACKEND_DIR.parents[1]
-+sys.path.insert(0, str(BACKEND_DIR))
-+
-+from sqlalchemy import create_engine, event  # noqa: E402
-+from sqlmodel import Session  # noqa: E402
-+
-+from app.config import load_config  # noqa: E402
-+from app.db import resolve_database_url  # noqa: E402
-+from app.engine import j11_schema_migration as migration  # noqa: E402
-+from app.engine.j11_maintenance import capture_pre_reset_inventory  # noqa: E402
-+from app.models import NextSessionManifest  # noqa: E402
-+
-+
-+def _db_file_path(database_url: str) -> "Path | None":
-+    prefix = "sqlite:///"
-+    if not database_url.startswith(prefix):
-+        return None
-+    raw = database_url[len(prefix):]
-+    if not raw or raw == ":memory:":
-+        return None
-+    path = Path(raw)
-+    return path if path.is_absolute() else (REPO_ROOT / path)
-+
-+
-+def _read_only_engine(db_path: Path):
-+    """An ACTUAL read-only SQLite connection -- `mode=ro` at the SQLite C-API level (any write attempt
-+    raises `sqlite3.OperationalError: attempt to write a readonly database`) plus an explicit
-+    `PRAGMA query_only=ON` issued on every new connection (defense in depth), mirroring the pattern this
-+    repo's own iter-11 audit used for its live read-only checks and
-+    `apps/backend/tests/_seed_subset.py`'s `_attach_real_db_readonly`."""
-+    url = f"sqlite:///file:{db_path}?mode=ro&uri=true"
-+    engine = create_engine(url, connect_args={"check_same_thread": False})
-+
-+    @event.listens_for(engine, "connect")
-+    def _set_query_only(dbapi_connection, _record):
-+        dbapi_connection.execute("PRAGMA query_only=ON")
-+
-+    return engine
-+
-+
-+def capture_fingerprint(engine, db_path: Path) -> dict:
-+    full_snapshot = migration.capture_full_db_snapshot(engine, db_path)
-+    manifest_ddl = migration.fetch_object_ddl(engine, migration.TABLE_NAME)
-+    manifest_dump = migration.dump_table(engine, NextSessionManifest.__table__)
-+    with Session(engine) as session:
-+        pre_reset_inventory = capture_pre_reset_inventory(session)
-+    return {
-+        "captured_at": datetime.now(timezone.utc).isoformat(),
-+        "full_db_snapshot": full_snapshot,
-+        "manifest_ddl": manifest_ddl,
-+        "manifest_dump": manifest_dump,
-+        "manifest_row_count": len(manifest_dump),
-+        "pre_reset_inventory": pre_reset_inventory,
-+    }
-+
-+
-+def main() -> int:
-+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-+    parser.add_argument("--output-path", type=Path, required=True)
-+    args = parser.parse_args()
-+
-+    cfg = load_config()
-+    resolved_url = resolve_database_url(cfg.database.url)
-+    db_path = _db_file_path(resolved_url)
-+    if db_path is None or not db_path.exists():
-+        print(f"FAIL: could not resolve a live sqlite db file from {resolved_url!r}", file=sys.stderr)
-+        return 1
-+    print(f"database (READ-ONLY handle, mode=ro + PRAGMA query_only=ON): {db_path}", file=sys.stderr)
-+
-+    mtime_before = db_path.stat().st_mtime
-+    engine = _read_only_engine(db_path)
-+    fingerprint = capture_fingerprint(engine, db_path)
-+    mtime_after = db_path.stat().st_mtime
-+    fingerprint["db_file_mtime_before_capture"] = mtime_before
-+    fingerprint["db_file_mtime_after_capture"] = mtime_after
-+    fingerprint["db_file_mtime_unchanged_by_this_capture"] = mtime_before == mtime_after
-+
-+    args.output_path.parent.mkdir(parents=True, exist_ok=True)
-+    args.output_path.write_text(json.dumps(fingerprint, indent=2, sort_keys=True, default=str))
-+    print(f"wrote {args.output_path}", file=sys.stderr)
-+    print(
-+        f"manifest_row_count={fingerprint['manifest_row_count']} "
-+        f"daily_prices_row_count={fingerprint['pre_reset_inventory']['daily_prices']['row_count']} "
-+        f"mtime_unchanged_by_this_capture={fingerprint['db_file_mtime_unchanged_by_this_capture']}",
-+        file=sys.stderr,
-+    )
-+    return 0
-+
-+
-+if __name__ == "__main__":
-+    raise SystemExit(main())
-diff --git a/apps/backend/scripts/run_j11_stage_b1_cleanup_fingerprint_diff.py b/apps/backend/scripts/run_j11_stage_b1_cleanup_fingerprint_diff.py
-new file mode 100644
-index 00000000..350ae09d
---- /dev/null
-+++ b/apps/backend/scripts/run_j11_stage_b1_cleanup_fingerprint_diff.py
-@@ -0,0 +1,81 @@
-+"""goal-market-compass iter-12 -- J-11 Stage B1 CLEANUP: diff two fingerprint artifacts produced by
-+`run_j11_stage_b1_cleanup_fingerprint.py` (TC-22: "given a read-only fingerprint... taken at the start of
-+this iteration's work and an identical fingerprint taken at the end, when the two are diffed, then every
-+one of them is identical").
-+
-+Excludes ONLY the fields that legitimately differ between two capture RUNS of the same unchanged
-+database -- the capture act's own timestamps -- never database CONTENT. Everything else (every table's
-+row count, the db file mtime/size, the manifest table's full DDL/index text, every manifest row's every
-+column value, the `daily_prices` row-count + content fingerprint, and the `data_provider_runs`/
-+`watchlist` counts) must be byte-identical or this script reports a non-empty diff and exits non-zero.
-+
-+Usage:
-+    apps/backend/.venv/bin/python apps/backend/scripts/run_j11_stage_b1_cleanup_fingerprint_diff.py \\
-+        --before runs/goal-market-compass-iter-12/j11-stage-b1-cleanup-fingerprint-before.json \\
-+        --after runs/goal-market-compass-iter-12/j11-stage-b1-cleanup-fingerprint-after.json \\
-+        --output-path runs/goal-market-compass-iter-12/j11-stage-b1-cleanup-fingerprint-diff.json
-+"""
-+from __future__ import annotations
-+
-+import argparse
-+import json
-+import sys
-+from pathlib import Path
-+
-+# Fields that legitimately differ between two capture RUNS of the SAME unchanged database (the wall-clock
-+# instant each capture ran at) -- never database content. Listed explicitly and matched by exact
-+# dotted-path so nothing else is silently ignored.
-+_IGNORED_PATHS = {
-+    "captured_at",
-+    "pre_reset_inventory.captured_at",
-+    "db_file_mtime_before_capture",
-+    "db_file_mtime_after_capture",
-+}
-+
-+
-+def _diff(a: dict, b: dict, path: str = "") -> list[dict]:
-+    diffs: list[dict] = []
-+    for key in sorted(set(a) | set(b)):
-+        p = f"{path}.{key}" if path else key
-+        av, bv = a.get(key), b.get(key)
-+        if isinstance(av, dict) and isinstance(bv, dict):
-+            diffs.extend(_diff(av, bv, p))
-+        elif av != bv:
-+            diffs.append({"path": p, "before": av, "after": bv})
-+    return diffs
-+
-+
-+def main() -> int:
-+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-+    parser.add_argument("--before", type=Path, required=True)
-+    parser.add_argument("--after", type=Path, required=True)
-+    parser.add_argument("--output-path", type=Path, required=True)
-+    args = parser.parse_args()
-+
-+    before = json.loads(args.before.read_text())
-+    after = json.loads(args.after.read_text())
-+
-+    diffs = [d for d in _diff(before, after) if d["path"] not in _IGNORED_PATHS]
-+    result = {
-+        "diffs": diffs,
-+        "identical_except_capture_timestamps": len(diffs) == 0,
-+        "ignored_paths": sorted(_IGNORED_PATHS),
-+        "before_captured_at": before.get("captured_at"),
-+        "after_captured_at": after.get("captured_at"),
-+        "before_path": str(args.before),
-+        "after_path": str(args.after),
-+    }
-+
-+    args.output_path.parent.mkdir(parents=True, exist_ok=True)
-+    args.output_path.write_text(json.dumps(result, indent=2, sort_keys=True, default=str))
-+    print(f"wrote {args.output_path}", file=sys.stderr)
-+    print(f"identical_except_capture_timestamps={result['identical_except_capture_timestamps']}", file=sys.stderr)
-+    if diffs:
-+        print("DIFFS FOUND:", file=sys.stderr)
-+        for d in diffs:
-+            print(f"  {d['path']}: before={d['before']!r} after={d['after']!r}", file=sys.stderr)
-+    return 0 if result["identical_except_capture_timestamps"] else 1
-+
-+
-+if __name__ == "__main__":
-+    raise SystemExit(main())
-diff --git a/apps/backend/scripts/run_j11_stage_b1_live_reverification.py b/apps/backend/scripts/run_j11_stage_b1_live_reverification.py
-new file mode 100644
-index 00000000..b0ffe158
---- /dev/null
-+++ b/apps/backend/scripts/run_j11_stage_b1_live_reverification.py
-@@ -0,0 +1,185 @@
-+"""goal-market-compass iter-12 -- J-11 Stage B1 CLEANUP: read-only live re-verification of
-+
-+  (TC-20) the FIXED `app.engine.compass.basis_disclosure`'s status distribution across all 24 live
-+  `next_session_manifests` rows -- independently re-derived, never copied from the plan/spec, and
-+  asserting none of the degenerate-`generation_json` rows reports `available`.
-+
-+  (TC-23) the `preFreezeEra` branch honesty question (ruling A11a) -- a fresh read-only query for live
-+  manifests where `generation_json` is NULL/empty/malformed AND `mode IS NULL`, independently re-deriving
-+  whether that set is complete, partial, or empty relative to the total `mode IS NULL` count.
-+
-+Opens the live database through an ACTUAL read-only SQLite handle (`file:<path>?mode=ro` +
-+`PRAGMA query_only=ON`), mirroring `run_j11_stage_b1_cleanup_fingerprint.py`'s helper. `basis_disclosure`
-+itself only ever issues SELECTs (never a write) -- confirmed by the read-only handle itself: any write
-+attempt anywhere in this call graph would raise `OperationalError` rather than silently succeeding.
-+
-+Usage:
-+    apps/backend/.venv/bin/python apps/backend/scripts/run_j11_stage_b1_live_reverification.py \\
-+        --output-path runs/goal-market-compass-iter-12/j11-stage-b1-live-reverification.json
-+"""
-+from __future__ import annotations
-+
-+import argparse
-+import json
-+import sys
-+from collections import Counter
-+from datetime import datetime, timezone
-+from pathlib import Path
-+
-+# scripts/ -> backend -> apps -> repo root
-+BACKEND_DIR = Path(__file__).resolve().parents[1]
-+REPO_ROOT = BACKEND_DIR.parents[1]
-+sys.path.insert(0, str(BACKEND_DIR))
-+
-+from sqlalchemy import create_engine, event, func, text  # noqa: E402
-+from sqlmodel import Session, select  # noqa: E402
-+
-+from app.config import load_config  # noqa: E402
-+from app.db import resolve_database_url  # noqa: E402
-+from app.engine import compass  # noqa: E402
-+from app.models import NextSessionManifest  # noqa: E402
-+
-+
-+def _db_file_path(database_url: str) -> "Path | None":
-+    prefix = "sqlite:///"
-+    if not database_url.startswith(prefix):
-+        return None
-+    raw = database_url[len(prefix):]
-+    if not raw or raw == ":memory:":
-+        return None
-+    path = Path(raw)
-+    return path if path.is_absolute() else (REPO_ROOT / path)
-+
-+
-+def _read_only_engine(db_path: Path):
-+    url = f"sqlite:///file:{db_path}?mode=ro&uri=true"
-+    engine = create_engine(url, connect_args={"check_same_thread": False})
-+
-+    @event.listens_for(engine, "connect")
-+    def _set_query_only(dbapi_connection, _record):
-+        dbapi_connection.execute("PRAGMA query_only=ON")
-+
-+    return engine
-+
-+
-+def _is_degenerate_generation_json(value) -> bool:
-+    """NULL, empty string, or malformed/non-object/key-absent JSON -- the exact predicate
-+    `basis_disclosure`'s fail-closed guards apply, re-derived independently here (never assumed) for the
-+    TC-23 overlap question. Mirrors `basis_disclosure`'s own guard logic exactly (no second formula)."""
-+    if not value:
-+        return True
-+    try:
-+        parsed = json.loads(value)
-+    except (ValueError, TypeError):
-+        return True
-+    return not isinstance(parsed, dict) or "source_run_created_at" not in parsed
-+
-+
-+def reverify_basis_disclosure_distribution(session: Session) -> dict:
-+    """TC-20: run the FIXED `basis_disclosure` read-only against every live manifest row, tally the
-+    resulting status distribution, and separately tally it restricted to the rows whose `generation_json`
-+    is degenerate (NULL/empty/malformed/non-object/key-absent) -- asserting none of those report
-+    `available` (the exact fail-open this iteration's A4/A4-bis fixes close)."""
-+    rows = session.exec(select(NextSessionManifest).order_by(NextSessionManifest.as_of, NextSessionManifest.version)).all()
-+    overall = Counter()
-+    degenerate_generation_json = Counter()
-+    per_row = []
-+    for row in rows:
-+        disclosure = compass.basis_disclosure(session, row)
-+        overall[disclosure["status"]] += 1
-+        degenerate = _is_degenerate_generation_json(row.generation_json)
-+        if degenerate:
-+            degenerate_generation_json[disclosure["status"]] += 1
-+        per_row.append(
-+            {
-+                "id": row.id,
-+                "as_of": row.as_of.isoformat(),
-+                "version": row.version,
-+                "mode": row.mode,
-+                "generation_json_degenerate": degenerate,
-+                "basis_status": disclosure["status"],
-+                "basis_detail": disclosure["detail"],
-+            }
-+        )
-+    return {
-+        "total_manifest_rows": len(rows),
-+        "overall_status_distribution": dict(overall),
-+        "degenerate_generation_json_status_distribution": dict(degenerate_generation_json),
-+        "no_degenerate_row_reports_available": degenerate_generation_json.get("available", 0) == 0,
-+        "per_row": per_row,
-+    }
-+
-+
-+def reverify_pre_freeze_era_overlap(session: Session) -> dict:
-+    """TC-23: independently re-derive (a) the count of live manifests where `generation_json` is
-+    degenerate AND `mode IS NULL` (the `preFreezeEra` predicate in `compass-manifest-strip.tsx`), (b) the
-+    total `mode IS NULL` count, and (c) whether the overlap is complete (every `mode IS NULL` row is also
-+    generation_json-degenerate and vice versa), partial, or empty. Read-only re-derivation only -- never
-+    copied from a prior iteration's or this iteration's own plan."""
-+    mode_null_count = session.scalar(select(func.count()).select_from(NextSessionManifest).where(NextSessionManifest.mode.is_(None)))
-+    rows = session.exec(select(NextSessionManifest)).all()
-+    mode_null_ids = {row.id for row in rows if row.mode is None}
-+    degenerate_ids = {row.id for row in rows if _is_degenerate_generation_json(row.generation_json)}
-+    overlap = mode_null_ids & degenerate_ids
-+    only_mode_null = mode_null_ids - degenerate_ids
-+    only_degenerate = degenerate_ids - mode_null_ids
-+    complete_overlap = mode_null_ids == degenerate_ids and len(mode_null_ids) > 0
-+    return {
-+        "mode_is_null_count": int(mode_null_count or 0),
-+        "generation_json_degenerate_count": len(degenerate_ids),
-+        "overlap_count": len(overlap),
-+        "mode_is_null_but_not_degenerate_ids": sorted(only_mode_null),
-+        "degenerate_but_mode_is_not_null_ids": sorted(only_degenerate),
-+        "complete_overlap": complete_overlap,
-+    }
-+
-+
-+def main() -> int:
-+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-+    parser.add_argument("--output-path", type=Path, required=True)
-+    args = parser.parse_args()
-+
-+    cfg = load_config()
-+    resolved_url = resolve_database_url(cfg.database.url)
-+    db_path = _db_file_path(resolved_url)
-+    if db_path is None or not db_path.exists():
-+        print(f"FAIL: could not resolve a live sqlite db file from {resolved_url!r}", file=sys.stderr)
-+        return 1
-+    print(f"database (READ-ONLY handle, mode=ro + PRAGMA query_only=ON): {db_path}", file=sys.stderr)
-+
-+    mtime_before = db_path.stat().st_mtime
-+    engine = _read_only_engine(db_path)
-+    with Session(engine) as session:
-+        tc20 = reverify_basis_disclosure_distribution(session)
-+        tc23 = reverify_pre_freeze_era_overlap(session)
-+    mtime_after = db_path.stat().st_mtime
-+
-+    result = {
-+        "captured_at": datetime.now(timezone.utc).isoformat(),
-+        "tc20_basis_disclosure_live_reverification": tc20,
-+        "tc23_pre_freeze_era_overlap_reverification": tc23,
-+        "db_file_mtime_before": mtime_before,
-+        "db_file_mtime_after": mtime_after,
-+        "db_file_mtime_unchanged": mtime_before == mtime_after,
-+    }
-+
-+    args.output_path.parent.mkdir(parents=True, exist_ok=True)
-+    args.output_path.write_text(json.dumps(result, indent=2, sort_keys=True, default=str))
-+    print(f"wrote {args.output_path}", file=sys.stderr)
-+    print(
-+        f"TC-20 overall={tc20['overall_status_distribution']} "
-+        f"degenerate={tc20['degenerate_generation_json_status_distribution']} "
-+        f"no_degenerate_available={tc20['no_degenerate_row_reports_available']}",
-+        file=sys.stderr,
-+    )
-+    print(
-+        f"TC-23 mode_null={tc23['mode_is_null_count']} degenerate={tc23['generation_json_degenerate_count']} "
-+        f"overlap={tc23['overlap_count']} complete={tc23['complete_overlap']}",
-+        file=sys.stderr,
-+    )
-+    print(f"mtime_unchanged={result['db_file_mtime_unchanged']}", file=sys.stderr)
-+    return 0 if tc20["no_degenerate_row_reports_available"] else 1
-+
-+
-+if __name__ == "__main__":
-+    raise SystemExit(main())
+diff --git a/docs/goal.md b/docs/goal.md
+index 2579dedc..dfe2b99d 100644
+--- a/docs/goal.md
++++ b/docs/goal.md
+@@ -749,7 +749,10 @@ manifest artifact (it must be self-describing and self-caveating).
+        For any symbol: **`mismatch` or `inconclusive` ⇒ zero rows written for that symbol.** Do not
+        loosen thresholds after seeing failures. Do not substitute a different methodology for
+        troublesome symbols without a later explicit goal amendment.
+-    2d. **Continue from 20/587 — do not restart.** The 20 already-restored symbols stay restored if
++    2d. **Continue from 20/587 — do not restart.** *(HISTORICAL, owner 2026-08-24: this instruction was
++        executed and is spent — iteration 9 carried 20/587 to the terminal 585/587. J-10 is CLOSED; this
++        paragraph is not a live instruction and must not be read as authorizing further recovery work.)*
++        The 20 already-restored symbols stay restored if
+        they satisfy the corrected J-10 contract and the audit findings. Do not delete or revert them
+        merely to restart the recovery. Treat current state as **20 validly restored · 567 still
+        pending individual evaluation**, and make the next recovery pass **idempotent** over the
 ```

@@ -694,3 +694,96 @@ first two test steps; whether an empty "next-session focus" is acceptable; and w
 recovery list. ONE STANDING FRAMEWORK NOTE: the defect that let the forbidden test lane run three
 times is still unfixed in `scripts/automation/`; three iterations running have avoided it with the
 maintenance-isolation contract rather than curing it.
+
+## Iteration 12 — goal-market-compass-iter-12
+
+**Date:** 2026-08-24T14:45:21Z
+**Verdict:** STALLED
+**Depth dispatched:** full (`runs/goal-session-market-compass/iter-12/depth-dispatched` reads `full`,
+matching the spec's own `Depth: full` line — the silent full→lean demotion that fired in iters 2, 6 and 8
+did NOT recur, for the fourth iteration running, and neither did the forbidden browser/replay lane; the
+engine recorded its refusal in `iter-12/maintenance-isolation-refusals`)
+
+**Journey deltas:**
+- Newly passing: none
+- Newly failing: none. **Regressed: none.**
+- **Advanced within `partial`: J-11** "Incident-bounded clean regeneration of derived state" — this
+  iteration's sole target. Stage B1 is now COMPLETE and clean: the migration utility derives future
+  replacement tables from captured live DDL and fails closed; `basis_disclosure`'s A4-bis timestamp-value
+  fail-open is closed; the `models.py` provenance comment is honest. Stages C-G untouched by design.
+  Re-stamped `d3f6f105…` (was `9124b395…` — the owner's 2026-08-24 rulings changed J-11's text).
+- **Re-derived read-only, status unchanged: J-10** "Bounded recovery of the two deleted trading days" —
+  585 symbols on each of 2026-08-11/12, frontier still 2026-08-12, `daily_prices` 3,310,374 unchanged,
+  `data_provider_runs` 549 (no new fetch). Stays `passing`; hash unchanged (`42ad1807…`).
+- Carried, NOT re-verified (maintenance isolation — browser QA and the replay lane were forbidden by
+  contract, so every journey keeps its prior recorded status): J-01, J-04 stay `passing`; J-02, J-03,
+  J-05, J-06, J-09 stay `partial`; J-07, J-08 stay `failing`.
+- Anti-goal violations: **NONE new. The iter-11 AG-18 breach is now RESOLVED — by explicit owner
+  acceptance, not by repair** (`docs/goal.md` J-11 step 11 "OWNER RULING — iter-11 DDL residual accepted"
+  + A8/A9 + AG-18's "Bounded exception on record"). Ledger: 5 total, **0 unresolved**. Recorded honestly:
+  the acceptance is narrow and enumerated, NOT a general AG-18 waiver, NOT a precedent, and does NOT make
+  iter-11 compliant (A8); **iter-11's REGRESSION verdict stands (A14)**.
+- Coherence: COHERENCE-PASS. Deterministic scan: CLEAN. Review: PASS. QA: PASS. Audit: PASS_WITH_GAPS
+  (B1 IMPORTANT — future-migration precondition; B2-B5, T1-T3, P1-P2 observations).
+
+**Reasoning:** The four small jobs the owner asked for are genuinely done, and the real database was never
+written to. I did not take that from the reports — I opened the database read-only and re-derived every
+figure. The file has not been modified since the night of 23 August, which is before this iteration began,
+its write-ahead log is empty, and every table holds exactly the row count it held after iteration 11. The
+two safety fixes are real. The tool that rebuilds a database table now copies the table's own real
+definition instead of reconstructing it from the program's model, and it refuses to run at all unless it
+finds exactly the one thing it is meant to remove — which also means it now refuses to run against today's
+table, since that thing is already gone. The badge that tells a reader whether a saved briefing's
+underlying data is still trustworthy can no longer say "trustworthy" when it has nothing to base that on;
+I re-counted the live results myself with my own implementation of the owner's rule and got the same
+answer the team reported: 8 cannot be verified, 9 were rebuilt, 5 are intact, 2 have no underlying data.
+I also re-derived the four accepted database differences from iteration 11's own captured "before"
+picture: the column list is identical, three default-value rules are gone and one column sits in a
+different position — exactly the four the owner accepted, and nothing more. So why halt when nothing is
+wrong? Because the next step is the destructive one — delete and rebuild eleven days of calculated results
+on the canonical 8.4 GB database, the same class of action that permanently destroyed data in iteration 5
+— and the owner's own written rule ends with "it waits for an explicit owner instruction to resume". Every
+way to unblock that is the owner's to take, and the goal file shuts every other lane until this repair's
+final stage passes, so there is no other legal work meanwhile. Why not CONTINUE? Continuing would let the
+engine plan iteration 13, and iteration 13 can only be the destructive stage — starting it without the
+sanction the owner's ruling requires. Why not REGRESSION? Nothing that worked stopped working, no stored
+value changed, and the one outstanding breach is now closed by the owner's dated acceptance. Why not
+ESCALATE? This turn already ran in the careful mode, and the careful mode is what produced the findings.
+Two things belong in the record. First, I independently assessed the auditor's remaining gap rather than
+accepting it: the table-rebuild tool's copy step and its proof step both read the program model's column
+list, so a future column that exists in the real table but not in the model would be silently emptied AND
+silently unchecked — real, but with **no causal path into the destructive stage**, because that stage
+rebuilds no table schema at all and the tool has no call site outside its own tests and one standalone
+script. It is a precondition on a future authorized live run, not a blocker. Second, the deferred items
+are genuinely deferrable: the badge-masking branch asserts no status at all (I read the component and
+re-derived the complete 8-of-8 overlap myself), and the export-file discrepancies are four days older than
+this work and sit in files the destructive stage never touches.
+
+**Next-step recommendation:** ONE WORD IS NEEDED FROM THE OWNER: go, or not yet. Every safety condition
+the owner wrote is met and I verified all thirteen myself against the real database. Pick one: (a) instruct
+the engine to start Stage C and `--resume` — the readiness answer is YES; (b) ask first for the
+future-migration gap to be closed (the copy step and the proof step should read the real table's columns,
+not the program model's) — it cannot cause harm today, but the owner may prefer it fixed before rather
+than after; or (c) change the plan in `docs/goal.md`. AFTER the answer, the next iteration is J-11 Stages C
+to G at full depth, alone: one writer, no web server, no browser tests. Five things must travel with it —
+clear BOTH stale layers (the stored daily summaries for 11 and 12 August AND the caches built over
+different data); watch AVB, whose restored prices sit on the stored scale while its trading volume does
+not, so any figure multiplying price by volume reads about 2.79 times too high on those two days; do not
+re-run the recovery script (download permission is used up and the script has no guard); do not run the
+table-rebuild tool against the real database; and re-freeze the engine identity and re-inventory at the
+start of the attempt, since Stages B and B2 were delivered two iterations ago and the retry rules require
+it anyway. THREE SMALL OPTIONAL ITEMS for whenever those files are next touched: the plain-language
+summary calls the four accepted database differences "harmless" while the owner's own words are "not
+desirable … merely accepted"; an aside comment in `models.py` credits only the earlier half of the badge
+fix; and the badge tests have no case for a recorded timestamp that is a number rather than text (the code
+handles it correctly). ONE NEW NON-BLOCKING FRAMEWORK FINDING: the automatic check that notices owner
+edits to a journey's text covers only the last ~60 lines of J-10's block — I probed it line by line — so
+the owner's 24 August edit to J-10 did not trip the drift alarm. Harmless this time (the edit only marks a
+finished instruction as historical, and I re-checked J-10 against the database anyway), but the alarm is
+quieter than it looks; the cause appears to be a nested bullet inside J-10 that begins with the same
+`- **J-10` shape as a journey heading. FIVE OLDER OWNER QUESTIONS remain open and non-blocking: whether
+3.44 GB is acceptable for J-09; J-06's "underlying run unavailable" wording; the rewording of J-01's first
+two test steps; whether an empty "next-session focus" is acceptable; and whether MNST joins the recovery
+list. ONE STANDING FRAMEWORK NOTE: the defect that let a forbidden test lane run is still unfixed in
+`scripts/automation/`; four iterations running have avoided it with the maintenance-isolation contract
+rather than curing it.

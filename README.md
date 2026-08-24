@@ -105,21 +105,21 @@ npm install
 ./scripts/dev.sh
 ```
 
-Starts the backend and frontend on deterministic per-project ports (printed to the terminal) and watches for file changes. Ports default to **8255** (backend) and **3255** (frontend); set `CHAIN_BACKEND_PORT` / `CHAIN_FRONTEND_PORT` to override. This script's backend subshell applies the same machine safety limits as `start-backend.sh` below (memory ceiling, `MALLOC_ARENA_MAX`, and — when `project-extensions/host-guard/host-guard.env` exists and `HOST_GUARD_ENABLED=1` — CPU-core pinning and BLAS/OMP/numexpr thread caps); if that file is absent or disabled, behavior is unchanged. The frontend subshell is never restricted.
+Starts the backend and frontend on deterministic per-project ports (printed to the terminal) and watches for file changes. Ports default to **8000** (backend) and **3000** (frontend); set `CHAIN_BACKEND_PORT` / `CHAIN_FRONTEND_PORT` to override. This script's backend subshell applies the same machine safety limits as `start-backend.sh` below (memory ceiling, `MALLOC_ARENA_MAX`, and — when `project-extensions/host-guard/host-guard.env` exists and `HOST_GUARD_ENABLED=1` — CPU-core pinning and BLAS/OMP/numexpr thread caps); if that file is absent or disabled, behavior is unchanged. The frontend subshell is never restricted.
 
 ### Start the backend (manually)
 
 ```bash
 cd apps/backend
 source .venv/bin/activate
-uvicorn main:app --reload --host 0.0.0.0 --port 8255
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 ### Start the frontend (manually)
 
 ```bash
 cd apps/frontend
-NEXT_PUBLIC_API_URL=http://localhost:8255 npx next dev -p 3255
+NEXT_PUBLIC_API_URL=http://localhost:8000 npx next dev -p 3000
 ```
 
 ### Start backend + frontend (hardened, no auto-reload)
@@ -154,7 +154,7 @@ instead, e.g. `.venv/bin/python -m pytest tests/test_regime.py -v`.
 
 | Service | URL |
 |---------|-----|
-| Frontend | http://localhost:3255 |
-| Backend API | http://localhost:8255 |
-| Health check | http://localhost:8255/api/health |
+| Frontend | http://localhost:3000 |
+| Backend API | http://localhost:8000 |
+| Health check | http://localhost:8000/api/health |
 <!-- /AUTO:how-to-run -->
