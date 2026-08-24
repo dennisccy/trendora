@@ -1,18 +1,18 @@
 # Goal Session Summary — market-compass
 
-**Final verdict:** REGRESSION_HALT
+**Final verdict:** ABORTED
 **Total iterations:** 12
-**Wall time (seconds):** 8595
+**Wall time (seconds):** 13638
 **Quota pauses:** 0
 **Started:** 2026-08-19T21:31:52.886915Z
-**Finished:** 2026-08-23T23:43:26.934013Z
+**Finished:** 2026-08-24T14:03:04.091583Z
 
 ## Branch
 
 This session pushed iteration commits to `goal/market-compass`. Open a PR with:
 
     gh pr create --base main --head goal/market-compass \
-      --title "feat: market-compass — REGRESSION_HALT" \
+      --title "feat: market-compass — ABORTED" \
       --body-file runs/goal-session-market-compass/summary.md
 
 ## Final journey state
@@ -269,20 +269,33 @@ See `runs/goal-session-market-compass/telemetry.jsonl` for the structured event 
       pump-wait                  0.6m
       OVER BUDGET at post-dev-fanout: 3752s > 3600s (mode=trim)
       unattributed (glue)        0.2m  (wall − agents(active) − quota)
+  goal-market-compass-iter-12  depth=full  verdict=?  wall=?  (incomplete/interrupted attempt)
+      developer                   27.0m  calls=1
+      auditor                     17.6m  calls=1
+      ui-test-designer            17.5m  calls=1
+      goal-decomposer              9.6m  calls=1
+      orchestrator                 9.2m  calls=1
+      reviewer                     9.1m  calls=1
+      qa                           9.1m  calls=1
+      coherence-auditor            9.0m  calls=1
+      [engine] full-pipeline      89.7m  (contains agent time above)
+      [engine] showcase-join       0.0m  (contains agent time above)
+      pump-wait                  0.5m
+      OVER BUDGET at qa-loop: 4348s > 3600s (mode=trim)
   session: 11 completed iteration(s), mean wall 119.4m
-      total reviewer                   909.6m
-      total developer                  714.1m
-      total orchestrator               390.6m
-      total goal-decomposer            232.0m
+      total reviewer                   918.8m
+      total developer                  741.1m
+      total orchestrator               399.8m
+      total goal-decomposer            241.6m
       total goal-evaluator             147.2m
       total browser-qa-agent           145.4m
-      total auditor                    122.7m
+      total auditor                    140.4m
+      total qa                          94.5m
       total iteration-summarizer        91.5m
-      total qa                          85.4m
-      total coherence-auditor           80.5m
+      total coherence-auditor           89.6m
       total ui-impact-analyst           39.1m
+      total ui-test-designer            35.1m
       total demo-narrator               21.3m
-      total ui-test-designer            17.6m
       total ux-regression-reviewer       7.2m
       total browser-qa-replay            6.5m
       total readme-maintainer            1.2m

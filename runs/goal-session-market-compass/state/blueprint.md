@@ -139,3 +139,18 @@ nothing else (AG-18) — a constraint-only change with all 24 rows' stored value
 Data Contract row, endpoint, or IA entry changes as a result, since no computing module, serving
 endpoint, or displayed field's identity moves. See `docs/phases/goal-market-compass-iter-11.md` and
 `runs/goal-session-market-compass/state/assumptions.md` (iter-11 entry) for full detail.
+
+**iter-12 update (2026-08-24 — additive, no IA change, no Data Contract row change):** the FREEZE/INTEGRITY
+block row's `basis_disclosure` sub-contributor (named explicitly since the iter-11 update) is narrowed
+further under owner ruling A4-bis (2026-08-24): the existing `unverifiable` literal (still the same
+4-member `basis.status` union registered in iter-11 — `"available" | "unavailable" | "rebuilt" |
+"unverifiable"`) now also covers a *recorded-but-invalid* `source_run_created_at` value (JSON `null`,
+empty/unusable string, or an unparseable string), not only a missing/malformed `generation_json` block.
+Same function, same endpoint (`GET /api/compass`, `basis` field) — no new literal, no new producer, no new
+route. This iteration also fixes (fixture-only; never run against the live database) the `j11_schema_migration`
+utility's shadow-table construction to derive from captured live DDL text rather than ORM metadata (ruling
+A10, future-safety-only — no live schema change this iteration), and corrects a false provenance comment in
+`app/models.py` (`source_run_id`) per ruling A8/A9's accepted four-item DDL residual. No Data Contract row,
+endpoint, or IA entry changes as a result — the live `next_session_manifests` table itself is untouched this
+iteration (zero live writes, proven read-only before/after). See `docs/phases/goal-market-compass-iter-12.md`
+and `runs/goal-session-market-compass/state/assumptions.md` (iter-12 entry) for full detail.

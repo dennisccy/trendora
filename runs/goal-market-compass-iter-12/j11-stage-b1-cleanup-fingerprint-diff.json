@@ -1,0 +1,14 @@
+{
+  "after_captured_at": "2026-08-24T10:51:49.557545+00:00",
+  "after_path": "runs/goal-market-compass-iter-12/j11-stage-b1-cleanup-fingerprint-after.json",
+  "before_captured_at": "2026-08-24T10:50:08.545891+00:00",
+  "before_path": "runs/goal-market-compass-iter-12/j11-stage-b1-cleanup-fingerprint-before.json",
+  "diffs": [],
+  "identical_except_capture_timestamps": true,
+  "ignored_paths": [
+    "captured_at",
+    "db_file_mtime_after_capture",
+    "db_file_mtime_before_capture",
+    "pre_reset_inventory.captured_at"
+  ]
+}

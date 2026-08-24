@@ -171,3 +171,40 @@ cell's text content, not a contiguous string) in the next iteration that touches
 **Applies to:** any iteration reading `*-regression-replay-results.md`; any journey whose golden
 asserts on a multi-word value inside a narrow table column.
 
+
+<!-- condense.sh 2026-08-24T10:15:45Z: moved 2 entries (keep-iters=5) -->
+
+## iter-6 — 2026-08-20T22:15:00Z
+
+**Verdict:** ESCALATE
+**Lesson:** A goal-level lane gate written in `docs/goal.md` prose ("no browser-QA lane may run
+against the damaged database") is NOT enforced by the engine: when the depth arbiter silently
+demoted iter-6 full→lean under a "full-cap", lean depth auto-enabled
+`CHAIN_LEAN_PARALLEL_BROWSER_QA`, which fired the forbidden replay against the damaged DB at
+18:15-18:16Z and produced FAIL rows for J-02/J-03 that looked exactly like a fresh regression. Two
+compounding traps followed: the merge step reconciled the damaged-DB FAILs down to SKIP but left the
+damaged-DB PASSes (J-01, J-04) standing as clean rows — a one-sided read of evidence the contract
+declares unusable in BOTH directions; and a "full" depth requested by an iteration spec is advisory,
+not binding, so the audit lane silently skipped the one change whose entire purpose was preventing a
+repeat of a live-fetch scope violation. Only ESCALATE makes the next `full` binding.
+**Applies to:** any iteration whose `docs/goal.md` declares a lane gate or dataset quarantine; any
+evaluator reading a merged results file after a depth demotion (check `iter-<N>/depth-dispatched`
+against the spec's `**Depth:**` line FIRST, and treat quarantined evidence as unusable in both
+directions); any iteration spec that names a Full trigger.
+
+## iter-6 — 2026-08-20T22:16:00Z
+
+**Verdict:** ESCALATE
+**Lesson:** "Refetch from the same vendor the rows came from" is the wrong default for incident
+recovery — the vendor IS often the reason recovery is needed. Stooq went from working to serving a
+SHA-256 proof-of-work JS challenge on `https://stooq.com/q/d/l/`, so all 587 requests 404'd
+including AAPL, and no non-browser HTTP client can ever pass it. The seemingly obvious fallback
+(`LocalStooqArchiveProvider`, `data/d_us_txt/`) is structurally useless for this class of repair: it
+is the same one-time bulk download already baked into the committed seed, so it ends at the seed
+boundary (2026-07-01) and can NEVER cover a post-seed date. Pin a recovery journey's vendor as a
+single named constant (`j10_recovery.py:83 RECOVERY_SOURCE`) so a vendor swap is a one-line change
+plus an owner amendment, not a rewrite — that is exactly what made this block a one-iteration delay
+instead of a dead end.
+**Applies to:** any journey involving a live data refetch, backfill, or vendor migration; any code
+adding a provider-scoped recovery path.
+

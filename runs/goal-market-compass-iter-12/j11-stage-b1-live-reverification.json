@@ -1,0 +1,245 @@
+{
+  "captured_at": "2026-08-24T10:50:38.957576+00:00",
+  "db_file_mtime_after": 1787522416.2308807,
+  "db_file_mtime_before": 1787522416.2308807,
+  "db_file_mtime_unchanged": true,
+  "tc20_basis_disclosure_live_reverification": {
+    "degenerate_generation_json_status_distribution": {
+      "unverifiable": 8
+    },
+    "no_degenerate_row_reports_available": true,
+    "overall_status_distribution": {
+      "available": 5,
+      "rebuilt": 9,
+      "unavailable": 2,
+      "unverifiable": 8
+    },
+    "per_row": [
+      {
+        "as_of": "1996-02-01",
+        "basis_detail": "no generation basis was recorded for this manifest",
+        "basis_status": "unverifiable",
+        "generation_json_degenerate": true,
+        "id": 8,
+        "mode": null,
+        "version": 1
+      },
+      {
+        "as_of": "2001-04-17",
+        "basis_detail": "no generation basis was recorded for this manifest",
+        "basis_status": "unverifiable",
+        "generation_json_degenerate": true,
+        "id": 7,
+        "mode": null,
+        "version": 1
+      },
+      {
+        "as_of": "2005-04-01",
+        "basis_detail": "no generation basis was recorded for this manifest",
+        "basis_status": "unverifiable",
+        "generation_json_degenerate": true,
+        "id": 6,
+        "mode": null,
+        "version": 1
+      },
+      {
+        "as_of": "2018-11-20",
+        "basis_detail": null,
+        "basis_status": "available",
+        "generation_json_degenerate": false,
+        "id": 24,
+        "mode": "retrospective",
+        "version": 1
+      },
+      {
+        "as_of": "2020-03-20",
+        "basis_detail": null,
+        "basis_status": "available",
+        "generation_json_degenerate": false,
+        "id": 19,
+        "mode": "retrospective",
+        "version": 1
+      },
+      {
+        "as_of": "2022-06-15",
+        "basis_detail": null,
+        "basis_status": "available",
+        "generation_json_degenerate": false,
+        "id": 18,
+        "mode": "retrospective",
+        "version": 1
+      },
+      {
+        "as_of": "2025-04-15",
+        "basis_detail": null,
+        "basis_status": "available",
+        "generation_json_degenerate": false,
+        "id": 17,
+        "mode": "retrospective",
+        "version": 1
+      },
+      {
+        "as_of": "2026-03-30",
+        "basis_detail": "no generation basis was recorded for this manifest",
+        "basis_status": "unverifiable",
+        "generation_json_degenerate": true,
+        "id": 5,
+        "mode": null,
+        "version": 1
+      },
+      {
+        "as_of": "2026-03-31",
+        "basis_detail": "no generation basis was recorded for this manifest",
+        "basis_status": "unverifiable",
+        "generation_json_degenerate": true,
+        "id": 4,
+        "mode": null,
+        "version": 1
+      },
+      {
+        "as_of": "2026-04-01",
+        "basis_detail": "no generation basis was recorded for this manifest",
+        "basis_status": "unverifiable",
+        "generation_json_degenerate": true,
+        "id": 3,
+        "mode": null,
+        "version": 1
+      },
+      {
+        "as_of": "2026-07-01",
+        "basis_detail": null,
+        "basis_status": "available",
+        "generation_json_degenerate": false,
+        "id": 22,
+        "mode": "retrospective",
+        "version": 1
+      },
+      {
+        "as_of": "2026-07-23",
+        "basis_detail": "no generation basis was recorded for this manifest",
+        "basis_status": "unverifiable",
+        "generation_json_degenerate": true,
+        "id": 2,
+        "mode": null,
+        "version": 1
+      },
+      {
+        "as_of": "2026-08-05",
+        "basis_detail": "the underlying scanner run for this as-of is no longer stored",
+        "basis_status": "unavailable",
+        "generation_json_degenerate": false,
+        "id": 12,
+        "mode": "retrospective",
+        "version": 1
+      },
+      {
+        "as_of": "2026-08-05",
+        "basis_detail": "the underlying scanner run for this as-of is no longer stored",
+        "basis_status": "unavailable",
+        "generation_json_degenerate": false,
+        "id": 14,
+        "mode": "retrospective",
+        "version": 2
+      },
+      {
+        "as_of": "2026-08-10",
+        "basis_detail": "the source scanner run was recreated after this manifest was frozen",
+        "basis_status": "rebuilt",
+        "generation_json_degenerate": false,
+        "id": 21,
+        "mode": "retrospective",
+        "version": 1
+      },
+      {
+        "as_of": "2026-08-11",
+        "basis_detail": "the source scanner run was recreated after this manifest was frozen",
+        "basis_status": "rebuilt",
+        "generation_json_degenerate": false,
+        "id": 15,
+        "mode": "retrospective",
+        "version": 1
+      },
+      {
+        "as_of": "2026-08-11",
+        "basis_detail": "the source scanner run was recreated after this manifest was frozen",
+        "basis_status": "rebuilt",
+        "generation_json_degenerate": false,
+        "id": 16,
+        "mode": "retrospective",
+        "version": 2
+      },
+      {
+        "as_of": "2026-08-11",
+        "basis_detail": "the source scanner run was recreated after this manifest was frozen",
+        "basis_status": "rebuilt",
+        "generation_json_degenerate": false,
+        "id": 20,
+        "mode": "retrospective",
+        "version": 3
+      },
+      {
+        "as_of": "2026-08-12",
+        "basis_detail": "no generation basis was recorded for this manifest",
+        "basis_status": "unverifiable",
+        "generation_json_degenerate": true,
+        "id": 1,
+        "mode": null,
+        "version": 1
+      },
+      {
+        "as_of": "2026-08-12",
+        "basis_detail": "the source scanner run was recreated after this manifest was frozen",
+        "basis_status": "rebuilt",
+        "generation_json_degenerate": false,
+        "id": 9,
+        "mode": "at_ingest",
+        "version": 2
+      },
+      {
+        "as_of": "2026-08-12",
+        "basis_detail": "the source scanner run was recreated after this manifest was frozen",
+        "basis_status": "rebuilt",
+        "generation_json_degenerate": false,
+        "id": 10,
+        "mode": "at_ingest",
+        "version": 3
+      },
+      {
+        "as_of": "2026-08-12",
+        "basis_detail": "the source scanner run was recreated after this manifest was frozen",
+        "basis_status": "rebuilt",
+        "generation_json_degenerate": false,
+        "id": 11,
+        "mode": "at_ingest",
+        "version": 4
+      },
+      {
+        "as_of": "2026-08-12",
+        "basis_detail": "the source scanner run was recreated after this manifest was frozen",
+        "basis_status": "rebuilt",
+        "generation_json_degenerate": false,
+        "id": 13,
+        "mode": "at_ingest",
+        "version": 5
+      },
+      {
+        "as_of": "2026-08-12",
+        "basis_detail": "the source scanner run was recreated after this manifest was frozen",
+        "basis_status": "rebuilt",
+        "generation_json_degenerate": false,
+        "id": 23,
+        "mode": "at_ingest",
+        "version": 6
+      }
+    ],
+    "total_manifest_rows": 24
+  },
+  "tc23_pre_freeze_era_overlap_reverification": {
+    "complete_overlap": true,
+    "degenerate_but_mode_is_not_null_ids": [],
+    "generation_json_degenerate_count": 8,
+    "mode_is_null_but_not_degenerate_ids": [],
+    "mode_is_null_count": 8,
+    "overlap_count": 8
+  }
+}

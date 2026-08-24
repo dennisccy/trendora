@@ -382,3 +382,153 @@ verification and must not be treated as clean prospective/OOS evidence (AG-17).
 lane to run (a backup of the pre-change `session.json` was taken). The data loss itself is not
 reversible offline; only J-10's authorized bounded fetch can restore those two dates.
 
+
+<!-- condense.sh 2026-08-24T10:15:45Z: moved 6 entries (keep-iters=5) -->
+
+## iter-6 — goal-decomposer
+
+**Ambiguity:** J-10's own title and acceptance text scope recovery to "the two trading days the iter-5
+drill deleted" and require "no third date is touched", but the iter-5 dev handoff shows the drill's
+`remove_data` cascade rule actually removed `ScannerRun` snapshots for eleven dates, not two:
+2026-05-12, 2026-05-13, 2026-07-10, 2026-07-13, 2026-07-24, 2026-07-27, 2026-08-03, 2026-08-05,
+2026-08-10, 2026-08-11, 2026-08-12 (the first nine lost only their derived snapshot — their underlying
+`daily_prices` bars are intact, so an offline backfill could restore them with no AG-9 exception
+needed). goal.md's own "Why" narrative for J-10 mentions only the two named dates and does not address
+this wider, already-documented cascade footprint.
+**We chose:** Scoped this iteration's Target journey (and its DEFINITION OF DONE / TESTING
+REQUIREMENTS, see TC-18) to rebuild ONLY 2026-08-11 and 2026-08-12's `ScannerRun` snapshots, leaving
+the other nine cascade-collateral dates unrepaired, reading J-10's "no third date is touched" bound
+literally rather than expanding it to cover the full documented blast radius. This follows the text as
+written and avoids unilaterally widening an incident-response journey's scope without owner sign-off,
+even though the wider repair would be technically safe (no live fetch needed for those nine). Flagged
+explicitly in the iteration spec's BACKGROUND and NOTES so the evaluator/owner can see the residual gap
+and decide whether a future iteration should close it.
+**Reversible:** yes — a later iteration (or a goal.md amendment naming the other nine dates) can
+rebuild those snapshots at any time via a plain offline backfill; nothing this iteration does forecloses
+that, and no live fetch or AG-9 exception would be needed to do it.
+
+## iter-6 — goal-decomposer
+
+**Ambiguity:** project-template.md's architecture principle and goal.md's own "Config-only thresholds"
+Constraint both say every new threshold/cap/path lives in `config.yaml`. J-10's recovery fetch has two
+fixed calendar dates and a derived symbol list baked into its fail-closed scope guard. Neither goal.md
+nor project-template.md says whether a single-use, self-closing, incident-response exception's own
+bounding literals count as a "threshold" that must be promoted to global config, or whether they are
+migration-script-style constants that properly live inside the one-time recovery code itself.
+**We chose:** Directed the developer to treat the two dates and the derived symbol list as
+incident-specific literals scoped to the single-use guard/script, not new `config.yaml` keys. Reasoning:
+AG-9's own exception text calls this "not a standing 'recovery fetch allowed' path" — adding a
+standing, named `config.yaml` entry for "the recovery date range" would misrepresent a one-time,
+already-exhausted-after-use exception as a permanent, reusable, operator-tunable feature, which reads
+against the exception's own self-closing framing more than it serves the no-magic-numbers principle
+(that principle targets reusable business-logic thresholds, not one-time incident constants).
+**Reversible:** yes — if the reviewer/coherence-auditor judges this differently, moving the two literals
+into a config block is a small, low-risk follow-up edit that changes no behavior.
+
+## iter-6 — developer (missing-set derivation: MNST excluded on conflicting evidence)
+
+**Ambiguity:** J-10 step 1 requires deriving the exact missing `(date, symbol)` rows from surviving
+evidence. Cross-checking three sources — the frozen `next_session_manifests` comparison-cohort payloads
+for as_of 2026-08-11/2026-08-12 (`comparison_cohort_json`), `data_provider_runs` id=538 (the actual
+removal's own audit record), and the live `daily_prices` symbol set on 2026-08-10 (the last surviving
+date) — two of the three agree exactly on a 587-symbol set (`removed_symbol_count: 587` on the removal
+record, and 587 symbols with a 2026-08-10 bar, itself explained as the 2026-08-07 588-symbol set minus
+exactly one name). The third source (the frozen manifest cohort) additionally lists MNST as a scored
+member on BOTH 2026-08-11 and 2026-08-12, with real but price-discontinuous close values ($45.53 /
+$45.98 versus MNST's contemporaneous $90-97 range on 2026-08-07 — consistent with an unadjusted
+stock-split artifact around 2026-08-10, which is also MNST's own current last date in `daily_prices`).
+Removal is a plain `[start, end]` range wipe with no per-symbol filter, so if MNST had held a bar in
+scope at removal time it would have been counted and removed like every other symbol — meaning the two
+contemporaneous, machine-recorded removal-time measurements disagreeing with the older frozen scoring
+snapshot on this ONE symbol cannot be resolved from the evidence available (no DB backup exists to
+settle it directly).
+**We chose:** Excluded MNST from `RECOVERY_SYMBOLS` (587 symbols, not 588) rather than include it on a
+guess. This follows J-10 step 1's own fail-closed instruction ("if that set cannot be established from
+evidence... stop... rather than fetching an unproven guess") and TC-16's per-row pattern literally:
+one specific row's evidence is genuinely ambiguous, so that one row is left out and named explicitly
+(`app/engine/j10_recovery.py`'s `EXCLUDED_UNPROVEN_SYMBOLS`) rather than the whole derivation being
+either widened to guess or abandoned. The two AGREEING sources are both closer in time to the actual
+deletion (a live pre-removal preview and the removal's own outcome record) than the manifest snapshot
+(created whenever the run was originally scored, well before this incident), so they are treated as the
+stronger evidence for "what the drill's OWN removal actually touched."
+**Reversible:** yes — MNST's status can be revisited in a future dated amendment/iteration if the owner
+finds additional evidence (e.g., an external record of when the split-adjustment issue actually
+occurred) that resolves the conflict either way; nothing this iteration does forecloses a later,
+separately-authorized fetch of MNST for these two dates specifically.
+
+## iter-6 — developer (the authorized vendor is unreachable from this environment)
+
+**Finding (not an ambiguity — a hard external constraint):** The bounded fetch was dispatched exactly
+as scoped (`source=stooq`, `start=2026-08-11`, `end=2026-08-12`, `symbols=`the derived 587) via
+`app.engine.j10_recovery.run_bounded_recovery_fetch`, through the existing `data_manager` fetch engine
+— `data_provider_runs` id=541 records the honest outcome: `symbols_ok: 0, symbols_failed: 587, status:
+failed`, every symbol failing with an identical HTTP 404 from `https://stooq.com/q/d/l/`. A direct
+diagnostic `curl` to the same endpoint (same date window, independent of the app's own HTTP client)
+returned HTTP 200 with a JavaScript proof-of-work bot-verification challenge page (SHA-256
+leading-zero puzzle, POST to `/__verify`) instead of CSV data — confirming this is a vendor-side
+anti-bot gate that no non-browser HTTP client can pass, not a per-symbol data gap or a transient rate
+limit (`AAPL`, one of the most liquid tickers that exists, failed identically to every other symbol).
+The project's own `LocalStooqArchiveProvider` (`app/data_providers/local_stooq_archive.py`, `data/
+d_us_txt/`) was checked as a possible alternate reading of "the same vendor" — its on-disk data for
+AAPL ends 2026-07-01 (file mtime 2026-07-02), i.e. it is the same one-time bulk download already fully
+incorporated into the committed seed, and cannot reach 2026-08-11/2026-08-12 either.
+**We chose:** Did NOT substitute a different vendor (e.g. `yahoo`, which `data_provider_runs` ids
+527-533 show DID work from this environment as recently as 2026-08-14) and did NOT attempt to solve or
+route around stooq's bot challenge (that would mean building new anti-bot-circumvention capability, far
+outside "the project's existing provider path" J-10 step 2 names, and outside what AG-9's dated
+exception authorizes — it names `stooq` specifically). Recovery stops here, unexhausted, for owner
+review rather than broadening the fetch to a different vendor or engineering a workaround
+unilaterally — exactly the "stop rather than broaden" instruction J-10 and AG-9 both state as binding.
+Verified (see the iter-6 dev handoff) that the failed attempt left the database byte-identical to its
+pre-attempt state: zero `daily_prices`/`scanner_runs`/`next_session_manifests` rows changed.
+**Reversible:** yes, in both directions — a future retry of the exact same bounded call is safe and
+idempotent (proven in `tests/test_j10_recovery.py`) whenever stooq becomes reachable again, or the
+owner may authorize an alternate vendor via a new dated goal.md amendment (yahoo has recent proof of
+working from this environment) without this iteration's guard code needing to change beyond its
+`RECOVERY_SOURCE` constant and a corresponding goal.md amendment.
+
+## iter-6 — goal-evaluator (a real functional break scored `partial`, not `regressed`)
+
+**Ambiguity:** J-02 and J-03 are recorded `passing` (iter-4) and are functionally broken right now —
+goal.md's own owner-written J-10 "Why" says "J-01/J-02/J-03 — previously passing — fail a live
+replay", and my own read-only query confirms the substrate their verified assertions name is gone
+(`MAX(daily_prices.date)` 2026-08-10, zero rows for 2026-08-11/12, `MAX(scanner_runs.asof_date)`
+2026-08-10). Decision tree C.1 says a journey moving `passing` → `failing` is REGRESSION. But the
+break was caused by iteration 5, which was superseded by the owner BEFORE it was ever evaluated, so
+the transition was never recorded; iteration 6 changed no product code (its new module is imported by
+nothing) and mutated zero rows. The methodology does not say who owns a break that happened in an
+un-evaluated iteration, nor whether the C.1 halt still applies once the human has already
+acknowledged the break and authorised the repair.
+**We chose:** Scored J-02/J-03 `partial` (not `regressed`, not `failing`) and returned ESCALATE, not
+REGRESSION. Reasoning: (1) C.1's trigger is a journey MOVING this iteration — nothing moved on valid
+evidence here; (2) the only fresh failure evidence came from a lane goal.md's Loop-mechanics insert
+#2 forbade, which AG-17 makes unusable, so I based the downgrade on my OWN read-only DB check
+instead; (3) REGRESSION's purpose is to halt for human review, and the human has already reviewed
+this exact break twice — writing J-10, AG-17, the AG-9 exception and the Loop gate, then amending
+goal.md mid-iteration to authorise `yahoo` — so halting would block the repair they just authorised;
+(4) `partial` still blocks GOAL_ACHIEVED at the deterministic gate, so no honesty is lost. I also
+discarded the same lane's PASS rows for J-01/J-04 in the opposite direction and carried those two on
+evidence durability instead, so the quarantine is applied symmetrically.
+**Reversible:** yes — if the owner disagrees, J-02/J-03 can be marked `regressed` and the session
+halted for acknowledgement at any point; nothing here forecloses that, and the honest degradation is
+recorded verbatim in journey-history so the state is not hidden either way.
+
+## iter-6 — goal-evaluator (J-10 scored `partial` with its headline outcome entirely unmet)
+
+**Ambiguity:** J-10's acceptance is "the two dates are restored... and J-01/J-02/J-03 pass a live
+replay again". Zero bars were restored, so the journey's whole reason for existing is unmet — which
+reads as `failing`. But a substantial, independently reproducible subset IS satisfied: step 1's
+missing-set proof (three converging sources on 587 symbols, MNST excluded per TC-16 rather than
+guessed), step 3, step 4's provenance, four of step 5's six checks, step 7, and 15/15 guard tests —
+and the single cause of the miss is an external vendor block, honestly reported against the
+developer's own interest, with zero side effects I verified myself. goal.md does not say how to score
+a journey whose mechanism is complete and correct but whose outcome is blocked externally.
+**We chose:** `partial`, with every unmet item written out verbatim in the journey's `gap` field
+(including step 2a, which the owner added AFTER this code was written and which is therefore not yet
+implemented — `RECOVERY_SOURCE` still reads `"stooq"`). Both `partial` and `failing` block
+GOAL_ACHIEVED identically, so the label costs nothing at the deterministic gate while preserving the
+diagnosis detail the next iteration needs; this follows the precedent already set twice this session
+(iter-3's J-06, iter-4's J-09).
+**Reversible:** yes — the label can be moved to `failing` with no effect on any gate; only the
+recorded diagnosis detail would change.
+
