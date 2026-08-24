@@ -6,10 +6,10 @@ scripts/automation/lib/retro_collect.sh — no model wrote this. Counters marked
 
 ## Outcome
 
-- **Terminal status:** REGRESSION_HALT
-- **Final verdict:** REGRESSION
-- **Iterations used:** 12
-- **Halted at (UTC):** 2026-08-23T23:43:26.934013Z
+- **Terminal status:** STALLED
+- **Final verdict:** STALLED
+- **Iterations used:** 13
+- **Halted at (UTC):** 2026-08-24T15:16:35.391553Z
 
 ## Verdict sequence
 
@@ -27,6 +27,7 @@ iter 8: CONTINUE
 iter 9: CONTINUE
 iter 10: STALLED
 iter 11: REGRESSION
+iter 12: STALLED
 ```
 
 ## Agent economics
@@ -276,25 +277,48 @@ Per-step wall breakdown (analyze_telemetry.py --wall):
       pump-wait                  0.6m
       OVER BUDGET at post-dev-fanout: 3752s > 3600s (mode=trim)
       unattributed (glue)        0.2m  (wall − agents(active) − quota)
-  session: 11 completed iteration(s), mean wall 119.4m
-      total reviewer                   909.6m
-      total developer                  714.1m
-      total orchestrator               390.6m
-      total goal-decomposer            232.0m
-      total goal-evaluator             147.2m
+  goal-market-compass-iter-12  depth=full  verdict=?  wall=?  (incomplete/interrupted attempt)
+      developer                   27.0m  calls=1
+      auditor                     17.6m  calls=1
+      ui-test-designer            17.5m  calls=1
+      goal-decomposer              9.6m  calls=1
+      orchestrator                 9.2m  calls=1
+      reviewer                     9.1m  calls=1
+      qa                           9.1m  calls=1
+      coherence-auditor            9.0m  calls=1
+      [engine] full-pipeline      89.7m  (contains agent time above)
+      [engine] showcase-join       0.0m  (contains agent time above)
+      pump-wait                  0.5m
+      OVER BUDGET at qa-loop: 4348s > 3600s (mode=trim)
+  goal-market-compass-iter-12  depth=full  verdict=STALLED  wall=54.0m
+      goal-evaluator              26.7m  calls=1
+      coherence-auditor            9.3m  calls=1
+      iteration-summarizer         9.1m  calls=1
+      readme-maintainer            8.9m  calls=1
+      [engine] showcase-join       0.0m  (contains agent time above)
+      [engine] full-pipeline       0.0m  (contains agent time above)
+      (resume-skipped: goal-decomposer)
+      pump-wait                  0.3m
+      unattributed (glue)        0.1m  (wall − agents(active) − quota)
+  session: 12 completed iteration(s), mean wall 113.9m
+      total reviewer                   918.8m
+      total developer                  741.1m
+      total orchestrator               399.8m
+      total goal-decomposer            241.6m
+      total goal-evaluator             173.8m
       total browser-qa-agent           145.4m
-      total auditor                    122.7m
-      total iteration-summarizer        91.5m
-      total qa                          85.4m
-      total coherence-auditor           80.5m
+      total auditor                    140.4m
+      total iteration-summarizer       100.5m
+      total coherence-auditor           98.8m
+      total qa                          94.5m
       total ui-impact-analyst           39.1m
+      total ui-test-designer            35.1m
       total demo-narrator               21.3m
-      total ui-test-designer            17.6m
+      total readme-maintainer           10.1m
       total ux-regression-reviewer       7.2m
       total browser-qa-replay            6.5m
-      total readme-maintainer            1.2m
       total AWAITING_PUMP paused gaps: 501.7m
-      halts: AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, STALLED, REGRESSION_HALT
+      halts: AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, STALLED, REGRESSION_HALT, STALLED
 ```
 
 ## Friction counters
@@ -308,26 +332,26 @@ Per-step wall breakdown (analyze_telemetry.py --wall):
 Last 20 lines of state/lessons.md:
 
 ```
+iteration snapshot for the journey's own line range instead of trusting the hash alone.
 
-## iter-11 — 2026-08-23T23:45:00Z
+## iter-12 — 2026-08-24T14:45:22Z
 
-**Verdict:** REGRESSION
-**Lesson:** A SQLite "drop a constraint" rebuild has TWO possible sources of truth for the replacement
-table — the captured live DDL and the ORM model — and they are not the same object. `create_shadow_table`
-(`apps/backend/app/engine/j11_schema_migration.py:172-192`) captured the live DDL with `fetch_object_ddl`,
-reissued the captured INDEXES verbatim, and then built the TABLE from `NextSessionManifest.__table__`,
-so every difference between the live table's accumulated history (`app/db.py::_COLUMN_ADDS`
-server-side `DEFAULT`s, original column order) and the model's shape silently rode along with the one
-authorized change. The developer caught two consequences of that choice (four spurious indexes, a
-duplicate autoindex) and guarded them with a test — proof they were reasoning about exactly this class
-of drift — but never asserted the `CREATE TABLE` body itself was otherwise unchanged, so the reviewer
-and QA both re-verified only "the FK clause is gone" and the delta reached the live 7.8 GB database.
-**Rule for next time: a bounded schema migration must diff the whole pre/post `CREATE TABLE` text as an
-acceptance item, not just assert the absence of the one clause it set out to remove — and rebuild from
-what it captured, not from a second source of truth.**
-**Applies to:** any iteration performing a table rebuild/migration on a live SQLite database, any work
-touching `apps/backend/app/engine/j11_schema_migration.py` or `app/db.py`'s additive-schema path, and
-any acceptance item phrased as "removes X and nothing else".
+**Verdict:** STALLED
+**Lesson:** "Zero live writes" was proven this iteration by a before/after fingerprint pair that
+bracketed only 101 seconds of a 90-minute iteration (`j11-stage-b1-cleanup-fingerprint-diff.json`:
+before 10:50:08Z, after 10:51:49Z; `status.json` `started_at` 10:25:29Z) — the auditor caught the
+overclaim (T2) and the dev handoff's "run once at the START and once at the END" wording was simply
+false. The claim survives only because a much cheaper instrument is stronger: the SQLite main-file
+mtime (1787522416 = 2026-08-23 23:00:16, iter-11's own last write) plus a 0-byte write-ahead log proves
+no committed write reached the file by ANY route across the whole iteration, without a purpose-built
+capture at all. In WAL mode both halves are needed: an uncheckpointed write hides in the `-wal` file
+(main mtime unchanged), and a checkpoint would move the main mtime — so mtime-unchanged AND WAL-empty
+together are conclusive, while either alone is not. The `-shm`/`-wal` mtimes move on any read-only open
+and are NOT evidence of a write.
+**Applies to:** any iteration claiming zero writes to `apps/backend/data/trendora.db` — J-11 Stage C's
+mutation accounting above all, and any future maintenance-isolation iteration. Record the file mtime +
+size + WAL size at the true start and end, and treat a purpose-built fingerprint pair as corroboration,
+never as the primary instrument.
 ```
 
 ## Halt context
@@ -336,8 +360,8 @@ session.json halt-relevant fields:
 
 ```json
 {
-  "status": "REGRESSION_HALT",
-  "last_verdict": "REGRESSION",
-  "parked_wip_sha": "a7380009"
+  "status": "STALLED",
+  "last_verdict": "STALLED",
+  "parked_wip_sha": "eb185682"
 }
 ```
