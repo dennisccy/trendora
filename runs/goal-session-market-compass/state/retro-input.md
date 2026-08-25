@@ -8,8 +8,8 @@ scripts/automation/lib/retro_collect.sh — no model wrote this. Counters marked
 
 - **Terminal status:** STALLED
 - **Final verdict:** STALLED
-- **Iterations used:** 17
-- **Halted at (UTC):** 2026-08-25T17:19:05.300778Z
+- **Iterations used:** 18
+- **Halted at (UTC):** 2026-08-25T20:17:20.079945Z
 
 ## Verdict sequence
 
@@ -32,6 +32,7 @@ iter 13: STALLED
 iter 14: STALLED
 iter 15: STALLED
 iter 16: STALLED
+iter 17: STALLED
 ```
 
 ## Agent economics
@@ -368,25 +369,41 @@ Per-step wall breakdown (analyze_telemetry.py --wall):
       pump-wait                  0.9m
       OVER BUDGET at post-dev-fanout: 5930s > 3600s (mode=trim)
       unattributed (glue)        0.1m  (wall − agents(active) − quota)
-  session: 16 completed iteration(s), mean wall 130.2m
-      total reviewer                   982.7m
-      total developer                  912.2m
-      total orchestrator               437.3m
-      total goal-decomposer            330.8m
-      total goal-evaluator             263.4m
-      total auditor                    239.2m
-      total coherence-auditor          145.6m
+  goal-market-compass-iter-17  depth=full  verdict=STALLED  wall=112.2m
+      developer                   27.4m  calls=1
+      goal-evaluator              15.9m  calls=1
+      goal-decomposer             14.2m  calls=1
+      auditor                     11.8m  calls=1
+      ui-test-designer            10.1m  calls=1
+      orchestrator                 9.2m  calls=1
+      iteration-summarizer         8.8m  calls=1
+      reviewer                     7.8m  calls=1
+      qa                           3.6m  calls=1
+      coherence-auditor            3.1m  calls=1
+      [engine] full-pipeline      70.1m  (contains agent time above)
+      [engine] showcase-join       0.0m  (contains agent time above)
+      pump-wait                  0.9m
+      OVER BUDGET at qa-loop: 4133s > 3600s (mode=trim)
+      unattributed (glue)        0.1m  (wall − agents(active) − quota)
+  session: 17 completed iteration(s), mean wall 129.2m
+      total reviewer                   990.5m
+      total developer                  939.7m
+      total orchestrator               446.6m
+      total goal-decomposer            345.1m
+      total goal-evaluator             279.3m
+      total auditor                    251.0m
+      total coherence-auditor          148.7m
+      total iteration-summarizer       145.8m
       total browser-qa-agent           145.4m
-      total iteration-summarizer       136.9m
-      total qa                         132.0m
-      total ui-test-designer            80.3m
+      total qa                         135.6m
+      total ui-test-designer            90.4m
       total ui-impact-analyst           39.1m
       total demo-narrator               21.3m
       total readme-maintainer           10.1m
       total ux-regression-reviewer       7.2m
       total browser-qa-replay            6.5m
       total AWAITING_PUMP paused gaps: 501.7m
-      halts: AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, STALLED, REGRESSION_HALT, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED
+      halts: AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, STALLED, REGRESSION_HALT, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED
 ```
 
 ## Friction counters
@@ -400,26 +417,26 @@ Per-step wall breakdown (analyze_telemetry.py --wall):
 Last 20 lines of state/lessons.md:
 
 ```
-boot-path or middleware check); also any "prove it on disposable test state" acceptance clause —
-treat it as necessary, never sufficient.
+stated what it means. When a spec's expected value for a safety probe is the UNSAFE value, the test case
+must require the artifact to state the consequence in prose, not just record the boolean.
+**Applies to:** any iteration whose spec asserts an expected value for a probe of a KNOWN-BROKEN or
+quarantined condition — especially `runs/**/j11-*verification*.json`-style evidence and any future
+"confirm the guard is not armed / confirm X is still absent" check.
 
-## iter-16 — 2026-08-25T18:06:00Z
+## iter-17 — 2026-08-25T21:05:00Z
 
 **Verdict:** STALLED
-**Lesson:** Correcting the data invalidated a counterfactual that was written against the
-pre-correction data, and nothing flagged it. `_build_bars_with_transformed_close` substitutes close
-only unless `volume_override` is passed; that was coherent while stored volume was raw, but once the
-AVB volume was corrected to the compensating scale, representation B silently became
-provider-scale close × Trendora-scale volume — a hybrid matching no real state. Its fingerprint is
-unmissable once looked for: A/B came out *exactly* `bridge_factor` on both dates. The spec itself
-sanctioned dropping the override ("the write already landed, so read the corrected rows directly"),
-which is why developer, reviewer and QA all passed it — but the override never fed representation A,
-it fed B. After any state correction, re-derive every counterfactual's inputs; an exactly-round ratio
-between a representation and its counterfactual is the signature of a one-sided rescale, not a finding.
-**Applies to:** any iteration that mutates stored state which an existing diagnostic, A/B trace, or
-counterfactual reads (`j11_avb_diagnostic.py`'s trace functions, `run_j11_iter16_stage_d_readiness.py`),
-and any spec that tells an implementer to drop a substitution argument because "the real data now has
-that value".
+**Lesson:** A cross-check whose inputs are both derived from the correction being checked cannot fail. TC-13
+asked for an A/B dollar-volume ratio "within relative tolerance of 1.0", but
+`ratio = (close_a·volume_a)/((close_a/bf)·volume_b)` cancels `close_a` entirely and reduces to
+`volume_a·bf/volume_b` — and `volume_a` was DEFINED by iter-16 as `round(provider_volume/bf)`. I confirmed
+`round(provider_volume/bf)` equals the stored volume exactly on both dates, so the ratio was algebraically
+pinned to ≈1.0 before anyone ran it, and it reproduces iter-16's own `dollar_volume_ratio_after` digit for
+digit. Before specifying a numeric tolerance check as evidence, substitute the definitions of its inputs and
+confirm the quantity can actually come out wrong.
+**Applies to:** any future J-11/AVB Stage-D readiness or verification spec proposing a ratio/tolerance
+assertion over values in `j11_avb_diagnostic.py` / `j11_avb_correction.py`, and any "independent
+cross-check" claim in `runs/goal-market-compass-iter-*/j11-*.json`.
 ```
 
 ## Halt context
@@ -430,6 +447,6 @@ session.json halt-relevant fields:
 {
   "status": "STALLED",
   "last_verdict": "STALLED",
-  "parked_wip_sha": "693a5e8a"
+  "parked_wip_sha": "7be72b3a"
 }
 ```
