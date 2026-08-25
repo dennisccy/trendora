@@ -3,82 +3,6 @@
 Append-only. Each entry records a scoring decision that required interpreting an
 ambiguous goal, so the owner can veto it early.
 
-## iter-9 — goal-decomposer (single-iteration completion vs. an honestly-named residual)
-
-**Ambiguity:** `docs/goal.md`'s J-10 Completion rule forbids inventing a partial-completion threshold
-and requires every recovery-population symbol to end up either restored or explicitly classified
-fail-closed/unrestorable, but it does not state whether that terminal state must be reached inside
-this single iteration or may legitimately span more than one precommitted batch — iteration 8's own
-dev handoff explicitly offered "run one or more additional precommitted comparison batches ... in a
-future iteration" as one of three honest owner-review paths, and the dispatching coordinator's
-constraint 2 ("every symbol must be restored ... or explicitly classified") does not itself say
-"within one iteration."
-**We chose:** Set this iteration's target as full population coverage — every remaining symbol
-attempted this iteration, per the coordinator's explicit direction and goal.md's Completion rule — while
-phrasing DEFINITION OF DONE/TC-1 and TC-13 to honestly allow a named, by-symbol residual (with the
-blocking reason recorded) if a genuine external blocker (e.g., a Yahoo provider outage or rate limit on
-a specific symbol) prevents evaluating it at all, rather than hard-requiring literal 100% success
-regardless of cause as the pass/fail gate for this exact iteration. AG-9's exception-exhaustion
-statement (step 6) is tied to actually reaching the terminal state, not to merely attempting it, so a
-genuine residual keeps the exception honestly open rather than forcing either a false completion claim
-or a spec that is impossible to satisfy if the external provider itself is flaky for a handful of names.
-This is explicitly NOT a repeat of iteration 8's superseded "expect a partial outcome, and that is
-acceptable" framing (which pre-accepted an arbitrary stopping point after only 20 of 587 were even
-attempted) — here the target is attempting and classifying all 567, with a residual permitted only for a
-named, external, non-methodology reason.
-**Reversible:** yes — if the evaluator judges this reading too lenient, a future iteration (or a
-revision before dispatch) can tighten DEFINITION OF DONE to require 100% attempted-and-classified with
-zero exceptions; nothing in this iteration's design forecloses that, and any named residual remains
-individually processable by the same idempotent driver on a later pass.
-
-## iter-9 — goal-evaluator (promoting J-10 to `passing` on a maintenance-isolated iteration)
-
-**Ambiguity:** The evaluation methodology's maintenance-isolation carve-out (A.3, second bullet) states
-unconditionally that "an isolated iteration produced no browser evidence, so no journey may be promoted
-TO `passing`/`already_passing` on it." Its stated premise is the ABSENCE of browser evidence. J-10 is a
-journey for which `docs/goal.md` explicitly WAIVES the walkthrough/browser requirement ("Walkthrough:
-waived — raw-layer incident repair with no UI surface change of its own") and names a substitute evidence
-set in its place: the raw-recovery provenance record, bounded-scope verification, canonical
-price-coverage evidence, and complete mutation reconciliation. The rule's premise therefore does not
-describe a missing requirement for this journey, but the rule's wording admits no exception.
-**We chose:** Scored J-10 `passing`. Reasoning: (a) the rail exists to stop promotion on ABSENT evidence,
-and J-10's contractually-required evidence is not absent — all four named artifacts exist and I
-re-derived every load-bearing figure from primary sources (live read-only SQL against
-`apps/backend/data/trendora.db`, the persisted per-pair evidence artifact, and `RECOVERY_SYMBOLS` parsed
-out of `j10_recovery.py`), never from an agent's prose; (b) `docs/goal.md`'s J-10 Completion rule is
-satisfied on its own explicit terms — all 587 population members hold exactly one final disposition (585
-restored under the byte-unchanged fixed gate, EA and EQR named unrestorable with evidenced external
-reasons), with no invented partial-completion threshold; (c) session precedent already accepts a
-non-screenshot evidence path for a waived-walkthrough journey (J-09 is carried against
-`reports/perf-budgets.md:12114-12236`); (d) scoring it `partial` would create pressure to "finish" a
-journey whose only remaining completion routes are forbidden (a third vendor) or require a new dated
-owner amendment (another live fetch), which is a worse failure than the one the rail guards against.
-Nothing mechanical turns on the choice today — the verdict is CONTINUE either way, since J-02, J-03,
-J-05, J-06, J-09 are `partial`, J-07/J-08 `failing` and J-11 `unknown`, so GOAL_ACHIEVED is blocked
-several times over.
-**Reversible:** yes — J-11 Stage G is the first legally-runnable verification lane after this, and J-10
-can be re-scored `partial` there at no cost if the owner reads the rail literally or if Stage G surfaces
-a raw-layer defect; nothing here deletes evidence, softens the ledger, or forecloses a re-measurement.
-
-## iter-9 — goal-evaluator (J-01 and J-04 held at `passing` while the derived basis became mixed)
-
-**Ambiguity:** iter-8's evaluator already held these two at `passing` under evidence durability while
-flagging that the DATA had moved beneath them. This iteration moved it much further (20 → 585 symbols on
-the two recovery dates) AND created a genuinely mixed derived basis: the 2026-08-11/12 `ScannerRun`s are
-still iter-8's 20-symbol-basis snapshots (verified unchanged — `created_at` 2026-08-21, both backfills
-create-once no-ops) while six aggregate caches were refreshed over the 585-symbol basis (audit B6). J-01
-asserts sector coverage at the latest as-of and J-04 asserts candidate reasons over that same basis, so
-the risk to both is now concretely larger — yet maintenance isolation forbids any lane that could measure
-it, and the methodology's isolation rule says journeys keep their prior status.
-**We chose:** Kept both at `passing`, unchanged, and recorded the enlarged mixed-basis risk explicitly in
-each journey's `gap` field rather than inventing a downgrade. Same reasoning the iter-6 and iter-8
-evaluators used: iter-6's downgrade of J-02/J-03 rested on positive read-only proof that the named data
-was GONE; here there is no positive evidence of breakage, only an untested and now-mixed basis, and
-fabricating a downgrade is as dishonest as fabricating a pass. Both must be re-measured at J-11 Stage G,
-which `docs/goal.md` makes their exclusive owner.
-**Reversible:** yes — the first legal browser/replay run at J-11 Stage G settles both empirically, and
-either can be downgraded there with real evidence behind it.
-
 ## iter-10 — goal-decomposer (splitting J-11 at the B/B1/B2 → C-G boundary instead of one iteration)
 
 **Ambiguity:** `docs/goal.md`'s J-11 sequencing describes Stages A through G as one journey, and its
@@ -495,3 +419,80 @@ until Stage G. What I explicitly did NOT do: hide the tractable work or call it 
 as its own option and as a mechanical rider.
 **Reversible:** yes — one owner line (or an instruction plus `--resume`) restarts the session with
 nothing repaired, nothing lost and no status changed.
+
+## iter-15 — goal-decomposer (the "compensating" volume hypothesis's exact arithmetic)
+
+**Ambiguity:** The coordinator's Goal 3 asks for "whatever bridge-adjusted comparison tests whether price and volume rebasing compensate" and an "expected inverse volume ratio where relevant," without stating the exact formula. `docs/goal.md`/AG-9's dated exception #2 authorizes the fetch but not a specific compensation formula, and J-10's own evidence never modeled volume at all, so there is no precedent in this codebase for what "compensating" means numerically.
+
+**We chose:** Modeled the compensating hypothesis as a reverse-split-like rebase where price and share-count-traded move inversely: `expected_inverse_volume_ratio = 1 / bridge_factor`, i.e. `volume_ratio = stored_volume/provider_volume` should land near `1/bridge_factor` under "bridged+compensating" (dollar volume `close*volume` approximately conserved across the rebase), versus near `1` under "bridged+raw" (volume never transformed) and near `1` for both ratios under "raw+raw". This spec instructs the tolerance to reuse the SAME relative-tolerance idiom the existing calibration-window price-ratio check already uses, as a named, documented module-level constant.
+
+**Reversible:** yes — this is a diagnostic formula choice, not a decision affecting any persisted row. The spec explicitly requires the developer to treat this as a testable hypothesis validated against the REAL fetched evidence (Goal 2), not an assumption to encode blindly; if the fetched data implies a different rebase mechanic (e.g., a non-inverse relationship), the classifier must follow the actual evidence and the dev handoff must record the correction, per this iteration's own fail-closed, evidence-over-assumption posture.
+
+## iter-15 — goal-decomposer (readiness-time identity re-derivation vs the binding "do not redo" protection on iteration 14's frozen artifact)
+
+**Ambiguity:** `iteration-state.md`'s binding "Do not redo" list protects `runs/goal-market-compass-iter-14/j11-stage-d-attempt-identity.json` ("recompute at Stage D freeze time, never hardcode") and the coordinator's Goal 9 separately asks this iteration to "recompute and report the current engine identity honestly" for readiness purposes while explicitly forbidding treating it as a frozen, reusable Stage D execution identity. It is not stated whether re-deriving the identity again THIS iteration, for a different (readiness-reporting) purpose, counts as "redoing" the protected iteration-14 item.
+
+**We chose:** Re-deriving the identity again this iteration is NOT a violation of the "do not redo" protection, because the protected item is Stage D's own freeze-for-execution act (a specific, consequential, do-not-repeat operational step), not the general capability of computing `engine_identity` read-only. This spec requires the re-derivation to be written to a distinctly-purposed artifact (this iteration's own fresh preflight capture, under `runs/goal-market-compass-iter-15/`) carrying explicit `readiness_time_only: true` / `authorizing: false` / `reusable_for_stage_d_execution: false` fields, and forbids writing it anywhere a future Stage D freeze would read as a pre-existing frozen value — so iteration 14's artifact stays untouched and un-superseded as the historical record of ITS OWN attempt, while this iteration's observation is clearly a new, separate, non-binding reading.
+
+**Reversible:** yes — this is a labeling/scoping choice for a read-only observation; it deletes nothing, mutates nothing, and does not freeze any value a future Stage D could accidentally inherit. If a future decomposer or the owner judges even a readiness-time re-derivation should be avoided, that is a one-line spec change with no prior evidence to unwind.
+
+## iter-15 — goal-evaluator (keeping J-10 `passing` after measuring a real defect in its own output)
+
+**Ambiguity:** J-10 "Bounded recovery of the two deleted trading days" is recorded `passing` and was
+explicitly CLOSED by the owner (`docs/goal.md`, 2026-08-24: "J-10 is closed and MUST NOT be reopened").
+This iteration's authorized fetch proves, for the first time from measurement rather than inference, that
+J-10's own output is defective for AVB: it multiplied the close by the bridge factor 2.7930 and wrote the
+provider's untouched volume beside it, while Trendora's own stored convention on the four surrounding days
+divides volume by the same factor (dollar_volume_ratio ~1.0000 there vs exactly 2.7930 on the two
+recovered dates). So a journey recorded `passing` demonstrably produced two bars whose dollar volume is
+2.793x too high. `docs/goal.md` does not say whether a closed journey's status may be reopened by a later
+measurement of its output.
+
+**We chose:** keep `passing`, do NOT re-stamp `last_verified_iter`, and record the full measurement as a
+prominent caveat in J-10's `gap` plus in `eval.md`'s journey table and the iteration-state digest.
+Reasoning: (a) the methodology's REGRESSION trigger requires a journey to MOVE `passing` -> `failing` from
+this iteration's verification, and under maintenance isolation NO journey was tested at all — the
+methodology's own carve-out says never `failing`/`regressed` on that basis; (b) nothing that worked stopped
+working and no stored value moved — the condition has been in the data unchanged since iteration 9, so
+this iteration measured it rather than caused it; (c) the owner's own ruling closed J-10, and flipping its
+status would reopen it in substance, which the ruling forbids by name; (d) the finding already has a
+correct home with real consequences — it is exactly what J-11's AVB-C gate is blocking on, so it is
+recorded where it actually gates work rather than where it would only relitigate a closed decision. What I
+explicitly did NOT do: soften the finding, describe it as hypothetical, or let `passing` stand without the
+caveat attached — the J-10 gap now states the measurement, the 2.793x figure, and the honest nuance
+(deflated, 2026-08-12 is still a ~96.9th-percentile share day, so only the DOLLAR figure is unambiguously
+wrong; 2026-08-11 is almost entirely a scale artifact) so no later reader can take `passing` to mean AVB's
+recovered bars are on the right basis.
+
+**Reversible:** yes — one string. Every figure, the derivation and the full narrative are preserved in the
+journey history and the evaluator log, so the owner or a later evaluator can reclassify at no cost and with
+nothing to re-derive.
+
+## iter-15 — goal-evaluator (STALLED again, when the tractable non-owner work is now a SAFETY item)
+
+**Ambiguity:** Iterations 13 and 14 both returned STALLED while acknowledging tractable non-owner work
+existed; both times that work was cosmetic-to-moderate (honesty fixes, negative tests) and provably could
+not change the gate's answer. This iteration is different in kind: the tractable work now includes the
+auditor's B1 — a pre-boot guard preventing an irreversible unauthorized write that is ARMED RIGHT NOW and
+can fire from an ordinary act (anyone starting the backend), with no decision required for it to happen.
+That is a much stronger pull toward CONTINUE with a safety target than iters 13/14 faced, and
+`docs/goal.md`'s Loop-mechanics gate arguably permits it ("plus explicit prerequisites such as the
+depth/safety control").
+
+**We chose:** STALLED, with the B1 guard promoted to the FIRST item of the recommendation — ahead of the
+AVB decision itself, and ahead of where the auditor placed it in emphasis. Reasoning: (a) the methodology's
+tree is first-match-wins and C.2 matches — every route through the CURRENT blocker (the AVB convention) is
+owner-owned, and Stage D is an irreversible step needing sanction by the plan's own C10/A12 pattern; (b)
+the B1 guard is not pure engineering — what it should do (refuse to boot? boot read-only? keyed on which
+condition?) is a design decision about application behaviour, and the auditor reached the same conclusion
+independently from a different direction; (c) the mechanical consequence is ASYMMETRIC IN THE SAFE
+DIRECTION here, unlike a normal stall: a stopped engine starts no backend, so halting is strictly safer for
+B1 than continuing, whereas CONTINUE puts the decomposer one step from the unauthorized rebuild; (d) B1
+cannot change the gate's answer either — it protects the gate's preconditions, it does not clear them.
+What I explicitly did NOT do: bury B1, call it out of scope, or leave it at the auditor's priority — I
+raised it above the AVB decision in the recommendation precisely because it is the only item that can go
+wrong without anyone deciding anything.
+
+**Reversible:** yes — one owner line (or an instruction plus `--resume`) restarts the session with nothing
+repaired, nothing lost and no status changed; if the owner prefers the guard built first, that is option
+one of the recommendation and needs no rework here.

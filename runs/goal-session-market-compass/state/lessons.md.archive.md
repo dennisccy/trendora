@@ -265,3 +265,36 @@ evaluator must check the lane actually stayed shut rather than trusting a prior 
 continuation, all of J-11), and any goal whose `docs/goal.md` forbids a pipeline lane rather than a
 code path.
 
+
+<!-- condense.sh 2026-08-25T08:17:52Z: moved 2 entries (keep-iters=5) -->
+
+## iter-9 — 2026-08-23T13:05:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** A summary statistic of the form "all N were X" is exactly where the single counter-example
+gets erased — and the counter-example is always the row that actually needed review. The iter-9 handoff
+reported `bridge_factor == 1.0` for all 566 agreeing symbols; the persisted evidence artifact records
+`AVB` at `2.7930001225759193`, and AVB's two rows are the ONLY values in the 1,170-row batch produced by
+the bridge arithmetic at all (structurally confirmed: they are the only two whose OHLC values are not
+float32-exact). The safety argument the handoff built on "all 1.0 ⇒ same-vendor tautology ⇒ no scale
+break possible" was therefore false for precisely the one symbol where a scale break was possible. When
+a handoff states a uniform value across a population, open the per-row artifact and query for
+`!= that value` before accepting it.
+**Applies to:** any iteration whose acceptance rests on a population-wide uniform figure (all bridge
+factors, all hashes equal, all deltas zero, 100% coverage) — especially J-11's "all 11 rebuilt runs share
+the frozen engine_identity" and its cache-invalidation proofs.
+
+## iter-9 — 2026-08-23T13:05:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** The reviewer and QA both re-stated the developer's framing verbatim (`issues: []`, TC-2 row
+"all 1.0") on the one fact that was wrong, while independently re-running tests and re-querying row
+counts that were right. Re-deriving *counts* is not re-deriving *claims*: the two lanes checked what the
+handoff pointed them at and inherited its interpretation of what those numbers meant. Only the audit lane
+re-derived the claim from primary sources. This is the third consecutive iteration (7, 8, 9) where the
+audit caught something both earlier lanes missed — treat "reviewer PASS + QA PASS" as evidence about
+mechanics, never about narrative.
+**Applies to:** any iteration where full depth is optional; and specifically J-11, whose acceptance is a
+long list of narrative claims ("no stale cache survives", "no new historical manifest appears") that a
+row-count check cannot confirm.
+

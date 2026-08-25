@@ -88,32 +88,12 @@ discontinuity lives there).
 continuation, all of J-11), and any goal whose `docs/goal.md` forbids a pipeline lane rather than a
 code path.
 
-## iter-9 — 2026-08-23T13:05:00Z
-
-**Verdict:** CONTINUE
-**Lesson:** A summary statistic of the form "all N were X" is exactly where the single counter-example
-gets erased — and the counter-example is always the row that actually needed review. The iter-9 handoff
-reported `bridge_factor == 1.0` for all 566 agreeing symbols; the persisted evidence artifact records
-`AVB` at `2.7930001225759193`, and AVB's two rows are the ONLY values in the 1,170-row batch produced by
-the bridge arithmetic at all (structurally confirmed: they are the only two whose OHLC values are not
-float32-exact). The safety argument the handoff built on "all 1.0 ⇒ same-vendor tautology ⇒ no scale
-break possible" was therefore false for precisely the one symbol where a scale break was possible. When
-a handoff states a uniform value across a population, open the per-row artifact and query for
-`!= that value` before accepting it.
+## iter-9 — 2026-08-23T13:05:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration whose acceptance rests on a population-wide uniform figure (all bridge
 factors, all hashes equal, all deltas zero, 100% coverage) — especially J-11's "all 11 rebuilt runs share
 the frozen engine_identity" and its cache-invalidation proofs.
 
-## iter-9 — 2026-08-23T13:05:00Z
-
-**Verdict:** CONTINUE
-**Lesson:** The reviewer and QA both re-stated the developer's framing verbatim (`issues: []`, TC-2 row
-"all 1.0") on the one fact that was wrong, while independently re-running tests and re-querying row
-counts that were right. Re-deriving *counts* is not re-deriving *claims*: the two lanes checked what the
-handoff pointed them at and inherited its interpretation of what those numbers meant. Only the audit lane
-re-derived the claim from primary sources. This is the third consecutive iteration (7, 8, 9) where the
-audit caught something both earlier lanes missed — treat "reviewer PASS + QA PASS" as evidence about
-mechanics, never about narrative.
+## iter-9 — 2026-08-23T13:05:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration where full depth is optional; and specifically J-11, whose acceptance is a
 long list of narrative claims ("no stale cache survives", "no new historical manifest appears") that a
 row-count check cannot confirm.
@@ -254,3 +234,39 @@ factor ~1.0, so the only symbol at risk is the one the test excludes by construc
 **Applies to:** any evaluation where an audit finding is marked "closed on my own evidence" — open the
 cited call site rather than the cited claim, and ask whether the corroborating population actually
 contains the case in question.
+
+## iter-15 — 2026-08-25T11:05:00Z
+
+**Verdict:** STALLED
+**Lesson:** A destructive repair can ARM a trap in code it never touched, by putting two layers out of
+sync. Stage C emptied the derived layer for 11 dates but (correctly) left the raw price layer intact, so
+`SELECT MAX(date) FROM daily_prices` is now `2026-08-12` — an incident date with zero `ScannerRun`s.
+`main.py:100` calls `warmup.ensure_latest_snapshot` on **every** boot, which resolves that same
+`latest_data_date` and calls `run_scan`, which on a missing run falls through to `persist_run_payload`.
+So merely starting the backend now performs exactly the Stage D-class write the whole contract is
+withholding authorization for, before any request arrives — and `GET /api/compass` on an incident as-of
+additionally mints AG-12-immutable manifests for the 7 dates that have none. Both irreversible. Nothing
+in the diff caused this; the *gap between* a cleared derived layer and an untouched raw layer did. Six
+iterations of maintenance isolation have been the only thing preventing it, and that is an operator
+convention, not a code guard.
+**Applies to:** any iteration that clears or rebuilds one storage layer while deliberately preserving
+another — before declaring the clear safe, grep the boot/warmup/resolve paths for anything that derives
+its target from the PRESERVED layer, and check whether the two layers now disagree in a way that makes a
+routine start-up destructive.
+
+## iter-15b — 2026-08-25T11:05:00Z
+
+**Verdict:** STALLED
+**Lesson:** A fingerprint quoted into a spec without its recipe is an unfalsifiable verification target,
+and it costs more than the check was ever worth. The iter-15 spec's TC-1 required matching
+`avb_daily_prices_sha256 = 0257c56d…0b11cd`; the developer honestly recorded "unknown", and the auditor
+tried nine candidate recipes and concluded it "matches nothing on disk" and "could not succeed by
+construction". Both wrong on the reproducibility point: `sha256` over the **concatenated `repr()`** of
+`(symbol,date,open,high,low,close,volume)` for all 5,397 AVB rows ordered by date reproduces it exactly
+(I recomputed it in one attempt once the recipe was stated). There was never a data discrepancy. The
+corollary is the sharper half: an auditor who tries N recipes and concludes "unreproducible" has proven
+only that N recipes failed — that is evidence about the search, not about the artifact.
+**Applies to:** any spec or handoff that quotes a hash/fingerprint as a comparison target — state the
+exact recipe (query, column order, serialization, separator, sort) beside the value, and when a
+fingerprint fails to reproduce, downgrade the conclusion to "recipe unknown" rather than "value
+unreproducible" unless the underlying data is independently shown to differ.

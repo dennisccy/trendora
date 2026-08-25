@@ -966,3 +966,106 @@ NOTES: the defect that once let a forbidden test lane run is still unfixed in `s
 six iterations running have avoided it with the maintenance-isolation contract rather than curing it;
 and `goal_gate.py`'s duplicate-journey-heading defect is still unfixed and must be closed before any
 GOAL_ACHIEVED certification.
+
+## Iteration 15 — goal-market-compass-iter-15
+
+**Date:** 2026-08-25T11:05:00Z
+**Verdict:** STALLED
+**Depth dispatched:** full (`runs/goal-session-market-compass/iter-15/depth-dispatched` reads `full`,
+matching the spec's own `Depth: full` line — the silent full→lean demotion that fired in iters 2, 6 and 8
+did NOT recur, for the seventh iteration running, and neither did the forbidden browser/replay lane; the
+engine recorded its refusal in `iter-15/maintenance-isolation-refusals` at 2026-08-25T10:14:17Z)
+
+**Owner-facing lines:** `J-11 STAGE D READY: NO` · `J-11 STAGE D AUTHORIZED: NO` — and for the first time
+in this session every lane and this evaluator agree on both, with no correction needed from me.
+
+**Journey deltas:**
+- Newly passing: none. Newly failing: none. **Regressed: none.**
+- **Advanced within `partial`: J-11** "Incident-bounded clean regeneration of derived state" — this
+  iteration's sole target. Stage D readiness is now SETTLED as NO on real measured evidence rather than on
+  a price-only assertion. Re-stamped `last_verified_iter` to iter-15; `spec_hash` UNCHANGED at `54e9cdd8…`
+  (the owner's 2026-08-25 edit added AG-9's dated exception #2, which is in the Anti-goals block, not in
+  any journey's text — I re-ran `goal_gate.py hash-journeys` and all 11 hashes are identical to the
+  recorded ones, and no `journeys-changed.md` was emitted). Stages D-G untouched, not started, not
+  authorized.
+- **J-10** "Bounded recovery of the two deleted trading days" — stays `passing`, NOT re-stamped, but now
+  carries a MATERIAL MEASURED CAVEAT about its own output (see below).
+- Carried, NOT re-verified (maintenance isolation — browser QA and the replay lane were forbidden by
+  contract, so every journey keeps its prior recorded status): J-01, J-04, J-10 stay `passing`; J-02,
+  J-03, J-05, J-06, J-09 stay `partial`; J-07, J-08 stay `failing`. Two spot-checks opened (J-01's and
+  J-04's iter-4 screenshots), both consistent with their recorded status.
+- Anti-goal violations: **NONE new.** Ledger unchanged at 6 total, **0 unresolved.** AG-9 was the one at
+  real risk and it HELD — the single bounded fetch is the authorized use of the owner's dated exception #2,
+  not a breach of it.
+- Coherence: COHERENCE-PASS. Deterministic scan: CLEAN. Review: PASS_WITH_NOTES (one MINOR). QA: PASS.
+  Audit: PASS_WITH_GAPS (B1 IMPORTANT; B2/B3 gaps; B4/B5/B6 observations; T1/T2 gaps; T3/T4 positive).
+
+**Reasoning:** The question that has blocked this repair for two iterations is answered, and I did not take
+the answer from anyone's report — I opened the database read-only and recomputed every figure. One company,
+AVB, had two trading days restored earlier. On the four surrounding days Trendora's own stored figures keep
+the money value of trading steady: the price is multiplied by 2.793 and the share count is divided by the
+same 2.793, so price times share count comes out the same as the outside source (ratios 1.00004, 0.99994,
+0.99998, 0.99995). On the two restored days the price was multiplied but the share count was left exactly as
+the outside source gave it — bit for bit — so price times share count reads exactly 2.793 times too high:
+12 August stores $1,860,985,686 against the provider's $666,303,475. That is a measurement now, not a
+suspicion. The check that produced last iteration's wrong answer is genuinely repaired: the comparison used
+to compare a value against itself, and now compares two independently sourced values, and it can come out
+false — it does, on all four surrounding days. I traced the deciding code myself and it reaches its answer
+from general rules with no company, date or expected answer written into it, and it refuses to answer at all
+when evidence is missing. Two honest corrections I made against the material handed to me. FIRST, calling
+12 August purely a scale problem overstates it: after correcting the scale it is still that company's
+roughly 96.9th-percentile share day out of 5,397 stored days, so it was a genuinely busy day and only the
+MONEY figure is unambiguously wrong; 11 August is the one that is almost entirely a scale artifact.
+SECOND, the fingerprint the specification told the team to match, and which the independent auditor
+concluded after nine attempts matched nothing on disk, IS reproducible — I reproduced it exactly — so there
+was never a data discrepancy, only a specification that quoted a fingerprint without saying how to compute
+it. The most consequential thing found this iteration is not the AVB answer at all: merely starting the
+Trendora backend, for any reason, immediately writes a new day's results for 12 August into the real
+database before any page is opened, because the newest stored price day IS one of the eleven emptied days.
+I confirmed that path myself end to end and confirmed the newest price date is 12 August with zero results
+stored. Opening the Today page for one of those days would additionally create permanent saved briefings
+for seven days that never had one. Both are irreversible. The only thing preventing this today is the human
+rule that nobody starts the app. So why halt when nothing is wrong? Because what remains is a decision the
+owner owns — accept the 2.793 difference in writing, correct the stored share counts (a write the current
+plan forbids outright), reword the rule, or change the plan — and because the rebuild itself needs a
+separate fresh owner instruction by the plan's own repeated pattern, while the goal file shuts every other
+lane until this repair's final stage passes. Why not CONTINUE? Continuing lets the engine plan the rebuild,
+the one step not authorised; the real non-owner work that exists (the start-up guard, two small fixes,
+wrong test counts) cannot change the gate's answer, and the guard is itself a design decision about how the
+application should behave. Halting is also strictly safer for that guard, since a stopped engine starts no
+backend. Why not REGRESSION? Nothing that worked stopped working, no stored value moved, no journey was
+tested so none could fail, and the AVB scale problem has been in the data since iteration 9 — this
+iteration measured it, it did not cause it — while the goal file's own owner ruling closed J-10 and forbids
+reopening it. Why not ESCALATE? This run already used full depth, and full depth is what produced the
+finding. One process note worth recording: this is the first iteration in six where the developer, the
+reviewer, the quality check and the independent auditor all reached the same conclusion AND that conclusion
+survived my own re-derivation unchanged.
+
+**Next-step recommendation:** ONE SAFETY JOB AND ONE DECISION. THE SAFETY JOB FIRST, because it is the only
+item that can go wrong on its own: ask for a guard built into start-up that refuses to start Trendora
+normally while any of the eleven emptied days is still empty. Today, anyone starting the backend for any
+reason silently writes 12 August's results into the real database, and it cannot be undone; a check placed
+on the web request is too late, because start-up fires before any request arrives. This must be in place
+before browser testing is switched back on. THE DECISION, about one company's two restored days recording
+the money value of trading 2.793 times too high — pick one: (a) accept it in writing and let the rebuild use
+today's stored figures, with a caveat recorded against 11 and 12 August (the reassuring facts, all checked
+by me: only 2 of the 11 days affected, only one company, and its admission, risk grade and "avoid" status do
+not change); (b) order a correction first — divide that company's stored share count on those two days by
+2.793 — which is a write to the canonical price table the current plan forbids outright, so it needs its own
+dated permission, evidence and audit; (c) reword the rule so a bounded difference of this size does not
+block the rebuild; or (d) change the plan in `docs/goal.md`. WHATEVER IS CHOSEN, the rebuild still needs a
+separate, fresh owner instruction, so this iteration ends `J-11 STAGE D AUTHORIZED: NO`. THREE SMALL
+NON-BLOCKING JOBS ride along whenever the next run happens: make the readiness check compare the database
+fingerprint and not just the clock; fix the message that prints the wrong label when evidence is missing;
+and correct the per-file test counts in the developer's notes (the 157-passing total is right, the breakdown
+is not). ONE CORRECTION FOR THE RECORD: the fingerprint the specification asked the team to match
+(`0257c56d…0b11cd`) IS reproducible and the company's stored data is identical to the owner's capture — the
+specification quoted it without its recipe, which cost the developer and the auditor real effort and
+produced a recorded "mismatch" that was never a data problem; future specifications should quote the recipe
+beside any fingerprint. FIVE OLDER OWNER QUESTIONS remain open and non-blocking: whether 3.44 GB is
+acceptable for J-09; J-06's "underlying run unavailable" wording; the rewording of J-01's first two test
+steps; whether an empty "next-session focus" is acceptable; and whether MNST joins the recovery list. TWO
+STANDING FRAMEWORK NOTES: the defect that once let a forbidden test lane run is still unfixed in
+`scripts/automation/` — seven iterations running have avoided it with the maintenance-isolation contract
+rather than curing it; and `goal_gate.py`'s duplicate-journey-heading defect is still unfixed and must be
+closed before any GOAL_ACHIEVED certification.

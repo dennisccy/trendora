@@ -824,3 +824,82 @@ authorised to continue, over damage that is already undone. Instead the unfixed 
 halt-worthy on its own, this can be re-raised as REGRESSION with `--acknowledge-regression`; nothing
 here erases or softens the recorded ledger entry, which stays `critical`.
 
+
+<!-- condense.sh 2026-08-25T08:17:52Z: moved 3 entries (keep-iters=5) -->
+
+## iter-9 — goal-decomposer (single-iteration completion vs. an honestly-named residual)
+
+**Ambiguity:** `docs/goal.md`'s J-10 Completion rule forbids inventing a partial-completion threshold
+and requires every recovery-population symbol to end up either restored or explicitly classified
+fail-closed/unrestorable, but it does not state whether that terminal state must be reached inside
+this single iteration or may legitimately span more than one precommitted batch — iteration 8's own
+dev handoff explicitly offered "run one or more additional precommitted comparison batches ... in a
+future iteration" as one of three honest owner-review paths, and the dispatching coordinator's
+constraint 2 ("every symbol must be restored ... or explicitly classified") does not itself say
+"within one iteration."
+**We chose:** Set this iteration's target as full population coverage — every remaining symbol
+attempted this iteration, per the coordinator's explicit direction and goal.md's Completion rule — while
+phrasing DEFINITION OF DONE/TC-1 and TC-13 to honestly allow a named, by-symbol residual (with the
+blocking reason recorded) if a genuine external blocker (e.g., a Yahoo provider outage or rate limit on
+a specific symbol) prevents evaluating it at all, rather than hard-requiring literal 100% success
+regardless of cause as the pass/fail gate for this exact iteration. AG-9's exception-exhaustion
+statement (step 6) is tied to actually reaching the terminal state, not to merely attempting it, so a
+genuine residual keeps the exception honestly open rather than forcing either a false completion claim
+or a spec that is impossible to satisfy if the external provider itself is flaky for a handful of names.
+This is explicitly NOT a repeat of iteration 8's superseded "expect a partial outcome, and that is
+acceptable" framing (which pre-accepted an arbitrary stopping point after only 20 of 587 were even
+attempted) — here the target is attempting and classifying all 567, with a residual permitted only for a
+named, external, non-methodology reason.
+**Reversible:** yes — if the evaluator judges this reading too lenient, a future iteration (or a
+revision before dispatch) can tighten DEFINITION OF DONE to require 100% attempted-and-classified with
+zero exceptions; nothing in this iteration's design forecloses that, and any named residual remains
+individually processable by the same idempotent driver on a later pass.
+
+## iter-9 — goal-evaluator (promoting J-10 to `passing` on a maintenance-isolated iteration)
+
+**Ambiguity:** The evaluation methodology's maintenance-isolation carve-out (A.3, second bullet) states
+unconditionally that "an isolated iteration produced no browser evidence, so no journey may be promoted
+TO `passing`/`already_passing` on it." Its stated premise is the ABSENCE of browser evidence. J-10 is a
+journey for which `docs/goal.md` explicitly WAIVES the walkthrough/browser requirement ("Walkthrough:
+waived — raw-layer incident repair with no UI surface change of its own") and names a substitute evidence
+set in its place: the raw-recovery provenance record, bounded-scope verification, canonical
+price-coverage evidence, and complete mutation reconciliation. The rule's premise therefore does not
+describe a missing requirement for this journey, but the rule's wording admits no exception.
+**We chose:** Scored J-10 `passing`. Reasoning: (a) the rail exists to stop promotion on ABSENT evidence,
+and J-10's contractually-required evidence is not absent — all four named artifacts exist and I
+re-derived every load-bearing figure from primary sources (live read-only SQL against
+`apps/backend/data/trendora.db`, the persisted per-pair evidence artifact, and `RECOVERY_SYMBOLS` parsed
+out of `j10_recovery.py`), never from an agent's prose; (b) `docs/goal.md`'s J-10 Completion rule is
+satisfied on its own explicit terms — all 587 population members hold exactly one final disposition (585
+restored under the byte-unchanged fixed gate, EA and EQR named unrestorable with evidenced external
+reasons), with no invented partial-completion threshold; (c) session precedent already accepts a
+non-screenshot evidence path for a waived-walkthrough journey (J-09 is carried against
+`reports/perf-budgets.md:12114-12236`); (d) scoring it `partial` would create pressure to "finish" a
+journey whose only remaining completion routes are forbidden (a third vendor) or require a new dated
+owner amendment (another live fetch), which is a worse failure than the one the rail guards against.
+Nothing mechanical turns on the choice today — the verdict is CONTINUE either way, since J-02, J-03,
+J-05, J-06, J-09 are `partial`, J-07/J-08 `failing` and J-11 `unknown`, so GOAL_ACHIEVED is blocked
+several times over.
+**Reversible:** yes — J-11 Stage G is the first legally-runnable verification lane after this, and J-10
+can be re-scored `partial` there at no cost if the owner reads the rail literally or if Stage G surfaces
+a raw-layer defect; nothing here deletes evidence, softens the ledger, or forecloses a re-measurement.
+
+## iter-9 — goal-evaluator (J-01 and J-04 held at `passing` while the derived basis became mixed)
+
+**Ambiguity:** iter-8's evaluator already held these two at `passing` under evidence durability while
+flagging that the DATA had moved beneath them. This iteration moved it much further (20 → 585 symbols on
+the two recovery dates) AND created a genuinely mixed derived basis: the 2026-08-11/12 `ScannerRun`s are
+still iter-8's 20-symbol-basis snapshots (verified unchanged — `created_at` 2026-08-21, both backfills
+create-once no-ops) while six aggregate caches were refreshed over the 585-symbol basis (audit B6). J-01
+asserts sector coverage at the latest as-of and J-04 asserts candidate reasons over that same basis, so
+the risk to both is now concretely larger — yet maintenance isolation forbids any lane that could measure
+it, and the methodology's isolation rule says journeys keep their prior status.
+**We chose:** Kept both at `passing`, unchanged, and recorded the enlarged mixed-basis risk explicitly in
+each journey's `gap` field rather than inventing a downgrade. Same reasoning the iter-6 and iter-8
+evaluators used: iter-6's downgrade of J-02/J-03 rested on positive read-only proof that the named data
+was GONE; here there is no positive evidence of breakage, only an untested and now-mixed basis, and
+fabricating a downgrade is as dishonest as fabricating a pass. Both must be re-measured at J-11 Stage G,
+which `docs/goal.md` makes their exclusive owner.
+**Reversible:** yes — the first legal browser/replay run at J-11 Stage G settles both empirically, and
+either can be downgraded there with real evidence behind it.
+
