@@ -8,8 +8,8 @@ scripts/automation/lib/retro_collect.sh — no model wrote this. Counters marked
 
 - **Terminal status:** STALLED
 - **Final verdict:** STALLED
-- **Iterations used:** 15
-- **Halted at (UTC):** 2026-08-25T00:18:31.719773Z
+- **Iterations used:** 16
+- **Halted at (UTC):** 2026-08-25T11:18:54.096313Z
 
 ## Verdict sequence
 
@@ -30,6 +30,7 @@ iter 11: REGRESSION
 iter 12: STALLED
 iter 13: STALLED
 iter 14: STALLED
+iter 15: STALLED
 ```
 
 ## Agent economics
@@ -334,25 +335,41 @@ Per-step wall breakdown (analyze_telemetry.py --wall):
       pump-wait                  0.8m
       OVER BUDGET at post-dev-fanout: 6063s > 3600s (mode=trim)
       unattributed (glue)        0.2m  (wall − agents(active) − quota)
-  session: 14 completed iteration(s), mean wall 121.6m
-      total reviewer                   946.8m
-      total developer                  822.9m
-      total orchestrator               418.5m
-      total goal-decomposer            277.6m
-      total goal-evaluator             218.1m
-      total auditor                    193.5m
+  goal-market-compass-iter-15  depth=full  verdict=STALLED  wall=180.9m
+      developer                   44.7m  calls=1
+      goal-decomposer             26.6m  calls=1
+      auditor                     18.6m  calls=1
+      goal-evaluator              18.1m  calls=1
+      reviewer                    17.8m  calls=1
+      ui-test-designer            17.7m  calls=1
+      qa                           9.4m  calls=1
+      orchestrator                 9.4m  calls=1
+      coherence-auditor            9.2m  calls=1
+      iteration-summarizer         9.2m  calls=1
+      [engine] full-pipeline     117.8m  (contains agent time above)
+      [engine] showcase-join       0.0m  (contains agent time above)
+      pump-wait                  0.8m
+      OVER BUDGET at post-dev-fanout: 5916s > 3600s (mode=trim)
+      unattributed (glue)        0.2m  (wall − agents(active) − quota)
+  session: 15 completed iteration(s), mean wall 125.6m
+      total reviewer                   964.6m
+      total developer                  867.6m
+      total orchestrator               427.9m
+      total goal-decomposer            304.2m
+      total goal-evaluator             236.2m
+      total auditor                    212.2m
       total browser-qa-agent           145.4m
-      total iteration-summarizer       118.6m
-      total coherence-auditor          117.1m
-      total qa                         113.1m
-      total ui-test-designer            53.3m
+      total iteration-summarizer       127.7m
+      total coherence-auditor          126.3m
+      total qa                         122.5m
+      total ui-test-designer            71.0m
       total ui-impact-analyst           39.1m
       total demo-narrator               21.3m
       total readme-maintainer           10.1m
       total ux-regression-reviewer       7.2m
       total browser-qa-replay            6.5m
       total AWAITING_PUMP paused gaps: 501.7m
-      halts: AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, STALLED, REGRESSION_HALT, STALLED, STALLED, STALLED
+      halts: AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, STALLED, REGRESSION_HALT, STALLED, STALLED, STALLED, STALLED
 ```
 
 ## Friction counters
@@ -366,26 +383,26 @@ Per-step wall breakdown (analyze_telemetry.py --wall):
 Last 20 lines of state/lessons.md:
 
 ```
-of a question into a "proven" answer that four review lanes accepted.
-**Applies to:** any iteration that adds a classifier, gate, or verdict function — before trusting its
-output, check that every label/branch in its declared vocabulary is reachable from its actual inputs,
-and that no reported "finding" is true by construction.
+another — before declaring the clear safe, grep the boot/warmup/resolve paths for anything that derives
+its target from the PRESERVED layer, and check whether the two layers now disagree in a way that makes a
+routine start-up destructive.
 
-## iter-14b — 2026-08-25T01:15:00Z
+## iter-15b — 2026-08-25T11:05:00Z
 
 **Verdict:** STALLED
-**Lesson:** An auditor who finds a real gap and then closes it "from independent evidence" can close it
-wrongly, and that is harder to catch than the original gap because it arrives wearing the auditor's
-credibility. Here the audit correctly identified that the AVB convention's volume half was untested
-(explicitly: "AVB-D territory, and AVB-D forces NO"), then rescued it by asserting the bridge was
-calibrated against `adjclose`, "which carries no volume" — but `j10_recovery.py:643` calibrates with
-`provider.get_daily`, and `yahoo_provider.py:351-369` reads close and volume from the same
-`indicators.quote[0]` block, so the calibration series is exactly the series the volume came from. The
-second prop, a pool-wide volume check, could not speak to AVB at all: 565 of 566 symbols carry a bridge
-factor ~1.0, so the only symbol at risk is the one the test excludes by construction.
-**Applies to:** any evaluation where an audit finding is marked "closed on my own evidence" — open the
-cited call site rather than the cited claim, and ask whether the corroborating population actually
-contains the case in question.
+**Lesson:** A fingerprint quoted into a spec without its recipe is an unfalsifiable verification target,
+and it costs more than the check was ever worth. The iter-15 spec's TC-1 required matching
+`avb_daily_prices_sha256 = 0257c56d…0b11cd`; the developer honestly recorded "unknown", and the auditor
+tried nine candidate recipes and concluded it "matches nothing on disk" and "could not succeed by
+construction". Both wrong on the reproducibility point: `sha256` over the **concatenated `repr()`** of
+`(symbol,date,open,high,low,close,volume)` for all 5,397 AVB rows ordered by date reproduces it exactly
+(I recomputed it in one attempt once the recipe was stated). There was never a data discrepancy. The
+corollary is the sharper half: an auditor who tries N recipes and concludes "unreproducible" has proven
+only that N recipes failed — that is evidence about the search, not about the artifact.
+**Applies to:** any spec or handoff that quotes a hash/fingerprint as a comparison target — state the
+exact recipe (query, column order, serialization, separator, sort) beside the value, and when a
+fingerprint fails to reproduce, downgrade the conclusion to "recipe unknown" rather than "value
+unreproducible" unless the underlying data is independently shown to differ.
 ```
 
 ## Halt context
@@ -396,6 +413,6 @@ session.json halt-relevant fields:
 {
   "status": "STALLED",
   "last_verdict": "STALLED",
-  "parked_wip_sha": "b2c49192"
+  "parked_wip_sha": "e5370b9a"
 }
 ```
