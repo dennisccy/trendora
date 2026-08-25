@@ -1,11 +1,11 @@
 # Goal Session Summary — market-compass
 
 **Final verdict:** STALLED
-**Total iterations:** 14
-**Wall time (seconds):** 8665
+**Total iterations:** 15
+**Wall time (seconds):** 11469
 **Quota pauses:** 0
 **Started:** 2026-08-19T21:31:52.886915Z
-**Finished:** 2026-08-24T18:54:25.337766Z
+**Finished:** 2026-08-25T00:18:31.719773Z
 
 ## Branch
 
@@ -38,6 +38,7 @@ This session pushed iteration commits to `goal/market-compass`. Open a PR with:
 - [critical] AG-9 - Offline-deterministic ingest: ingest jobs run only against the committed seed / local provider fixtures - no live external network calls or paid data services without an explicit goal.md amendment. || Dated exception (owner, 2026-08-20): '...If the implementation cannot prove a request stays inside this scope, it MUST stop rather than broaden the fetch.' || J-10 step 2a (text in force during that iteration): '...If the conventions do not demonstrably agree within a stated tolerance - or if the comparison cannot be performed at all - insert nothing and STOP for owner review.' (iter goal-market-compass-iter-7)
 - [critical] AG-17 - Repair never rewrites provenance (owner, 2026-08-20): ... The incident record itself is evidence: the iter-5 drill result, its handoff, the reviewer/QA evidence already produced, and the explicit statement that the committed seed could not restore these dates MUST NOT be deleted, rewritten, or silently superseded. (iter goal-market-compass-iter-8)
 - [critical] AG-18 — The authorized manifest migration preserves everything (owner, 2026-08-23): the bounded next_session_manifests schema migration authorized in J-11 step 11 (ruling A1) removes the source_run_id foreign-key constraint and nothing else. ... No other table's schema may be altered under that authorization. A changed stored value is a REGRESSION, never a note. (iter goal-market-compass-iter-11)
+- [critical] AG-17 — Repair never rewrites provenance (owner, 2026-08-20): "The incident record itself is evidence: the iter-5 drill result, its handoff, the reviewer/QA evidence already produced, and the explicit statement that the committed seed could not restore these dates MUST NOT be deleted, rewritten, or silently superseded." (read together with J-11 ruling C5, "do not rewrite ... incident evidence") (iter goal-market-compass-iter-14)
 
 ## Telemetry
 
@@ -308,23 +309,39 @@ See `runs/goal-session-market-compass/telemetry.jsonl` for the structured event 
       pump-wait                  0.8m
       OVER BUDGET at post-dev-fanout: 3817s > 3600s (mode=trim)
       unattributed (glue)        0.2m  (wall − agents(active) − quota)
-  session: 13 completed iteration(s), mean wall 116.3m
-      total reviewer                   928.0m
-      total developer                  768.2m
-      total orchestrator               409.2m
-      total goal-decomposer            259.5m
-      total goal-evaluator             191.7m
-      total auditor                    166.7m
+  goal-market-compass-iter-14  depth=full  verdict=STALLED  wall=191.1m
+      developer                   54.7m  calls=2
+      auditor                     26.8m  calls=1
+      goal-evaluator              26.4m  calls=1
+      reviewer                    18.9m  calls=2
+      goal-decomposer             18.0m  calls=1
+      qa                           9.3m  calls=1
+      orchestrator                 9.3m  calls=1
+      coherence-auditor            9.2m  calls=1
+      ui-test-designer             9.2m  calls=1
+      iteration-summarizer         9.1m  calls=1
+      [engine] full-pipeline     128.3m  (contains agent time above)
+      [engine] showcase-join       0.0m  (contains agent time above)
+      pump-wait                  0.8m
+      OVER BUDGET at post-dev-fanout: 6063s > 3600s (mode=trim)
+      unattributed (glue)        0.2m  (wall − agents(active) − quota)
+  session: 14 completed iteration(s), mean wall 121.6m
+      total reviewer                   946.8m
+      total developer                  822.9m
+      total orchestrator               418.5m
+      total goal-decomposer            277.6m
+      total goal-evaluator             218.1m
+      total auditor                    193.5m
       total browser-qa-agent           145.4m
-      total iteration-summarizer       109.5m
-      total coherence-auditor          107.9m
-      total qa                         103.8m
-      total ui-test-designer            44.1m
+      total iteration-summarizer       118.6m
+      total coherence-auditor          117.1m
+      total qa                         113.1m
+      total ui-test-designer            53.3m
       total ui-impact-analyst           39.1m
       total demo-narrator               21.3m
       total readme-maintainer           10.1m
       total ux-regression-reviewer       7.2m
       total browser-qa-replay            6.5m
       total AWAITING_PUMP paused gaps: 501.7m
-      halts: AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, STALLED, REGRESSION_HALT, STALLED, STALLED
+      halts: AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, STALLED, REGRESSION_HALT, STALLED, STALLED, STALLED
 ```

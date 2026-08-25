@@ -8,8 +8,8 @@ scripts/automation/lib/retro_collect.sh — no model wrote this. Counters marked
 
 - **Terminal status:** STALLED
 - **Final verdict:** STALLED
-- **Iterations used:** 14
-- **Halted at (UTC):** 2026-08-24T18:54:25.337766Z
+- **Iterations used:** 15
+- **Halted at (UTC):** 2026-08-25T00:18:31.719773Z
 
 ## Verdict sequence
 
@@ -29,6 +29,7 @@ iter 10: STALLED
 iter 11: REGRESSION
 iter 12: STALLED
 iter 13: STALLED
+iter 14: STALLED
 ```
 
 ## Agent economics
@@ -317,31 +318,47 @@ Per-step wall breakdown (analyze_telemetry.py --wall):
       pump-wait                  0.8m
       OVER BUDGET at post-dev-fanout: 3817s > 3600s (mode=trim)
       unattributed (glue)        0.2m  (wall − agents(active) − quota)
-  session: 13 completed iteration(s), mean wall 116.3m
-      total reviewer                   928.0m
-      total developer                  768.2m
-      total orchestrator               409.2m
-      total goal-decomposer            259.5m
-      total goal-evaluator             191.7m
-      total auditor                    166.7m
+  goal-market-compass-iter-14  depth=full  verdict=STALLED  wall=191.1m
+      developer                   54.7m  calls=2
+      auditor                     26.8m  calls=1
+      goal-evaluator              26.4m  calls=1
+      reviewer                    18.9m  calls=2
+      goal-decomposer             18.0m  calls=1
+      qa                           9.3m  calls=1
+      orchestrator                 9.3m  calls=1
+      coherence-auditor            9.2m  calls=1
+      ui-test-designer             9.2m  calls=1
+      iteration-summarizer         9.1m  calls=1
+      [engine] full-pipeline     128.3m  (contains agent time above)
+      [engine] showcase-join       0.0m  (contains agent time above)
+      pump-wait                  0.8m
+      OVER BUDGET at post-dev-fanout: 6063s > 3600s (mode=trim)
+      unattributed (glue)        0.2m  (wall − agents(active) − quota)
+  session: 14 completed iteration(s), mean wall 121.6m
+      total reviewer                   946.8m
+      total developer                  822.9m
+      total orchestrator               418.5m
+      total goal-decomposer            277.6m
+      total goal-evaluator             218.1m
+      total auditor                    193.5m
       total browser-qa-agent           145.4m
-      total iteration-summarizer       109.5m
-      total coherence-auditor          107.9m
-      total qa                         103.8m
-      total ui-test-designer            44.1m
+      total iteration-summarizer       118.6m
+      total coherence-auditor          117.1m
+      total qa                         113.1m
+      total ui-test-designer            53.3m
       total ui-impact-analyst           39.1m
       total demo-narrator               21.3m
       total readme-maintainer           10.1m
       total ux-regression-reviewer       7.2m
       total browser-qa-replay            6.5m
       total AWAITING_PUMP paused gaps: 501.7m
-      halts: AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, STALLED, REGRESSION_HALT, STALLED, STALLED
+      halts: AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, STALLED, REGRESSION_HALT, STALLED, STALLED, STALLED
 ```
 
 ## Friction counters
 
 - **Quota pauses:** 0 (source: session.json quota_pause_count / .quota-pause-count)
-- **Attempt-1 review FAILs:** 0 (source: telemetry review_verdict events, attempt 1)
+- **Attempt-1 review FAILs:** 1 (source: telemetry review_verdict events, attempt 1)
 - **Malformed-verdict rewrites:** 0 (source: telemetry deterministic_gate events with an invalid raw verdict; the gates' .malformed-verdict-count only tracks consecutive strikes)
 
 ## Lessons tail
@@ -349,26 +366,26 @@ Per-step wall breakdown (analyze_telemetry.py --wall):
 Last 20 lines of state/lessons.md:
 
 ```
-(iteration 12's certified artifact records no identity at all) is a gate that always passes.
-**Applies to:** any iteration that freezes an identity/fingerprint for a multi-iteration attempt —
-especially J-11 Stage D, whose whole correctness claim is "all 11 rebuilt runs share ONE frozen
-identity"; and generally to any preflight/gate artifact: for every field captured, state whether it is
-compared, and against what.
+of a question into a "proven" answer that four review lanes accepted.
+**Applies to:** any iteration that adds a classifier, gate, or verdict function — before trusting its
+output, check that every label/branch in its declared vocabulary is reachable from its actual inputs,
+and that no reported "finding" is true by construction.
 
-## iter-13 — 2026-08-24T19:36:00Z
+## iter-14b — 2026-08-25T01:15:00Z
 
 **Verdict:** STALLED
-**Lesson:** A bounded delete's strongest proof is not the count that moved but the counts that did NOT.
-Against iteration 12's COMMITTED baseline, exactly 5 of 24 tables moved and by exactly the pre-declared
-amounts, 19 were identical, no table appeared or vanished, and residue for the deleted run ids was 0 in
-all four child tables — and because Stage C issues no INSERT on any path (grep-verified: no INSERT,
-UPDATE or `session.add` in the new module or script), delta == |enumerated set| AND residue == 0 proves
-the removed set is exactly the intended set. A pre/post count pair alone could have masked a swap; this
-combination cannot. Cheapest instrument in the whole check: the db file's mtime at the TRUE process
-start equalled the prior iteration's own recorded "after" mtime, and the file still carries the
-true-end mtime now — one `stat` proving the single authorized write was the only write.
-**Applies to:** any future destructive maintenance iteration (J-11 Stages D/E/F), and any "we wrote
-nothing" or "we wrote only X" claim on `trendora.db`.
+**Lesson:** An auditor who finds a real gap and then closes it "from independent evidence" can close it
+wrongly, and that is harder to catch than the original gap because it arrives wearing the auditor's
+credibility. Here the audit correctly identified that the AVB convention's volume half was untested
+(explicitly: "AVB-D territory, and AVB-D forces NO"), then rescued it by asserting the bridge was
+calibrated against `adjclose`, "which carries no volume" — but `j10_recovery.py:643` calibrates with
+`provider.get_daily`, and `yahoo_provider.py:351-369` reads close and volume from the same
+`indicators.quote[0]` block, so the calibration series is exactly the series the volume came from. The
+second prop, a pool-wide volume check, could not speak to AVB at all: 565 of 566 symbols carry a bridge
+factor ~1.0, so the only symbol at risk is the one the test excludes by construction.
+**Applies to:** any evaluation where an audit finding is marked "closed on my own evidence" — open the
+cited call site rather than the cited claim, and ask whether the corroborating population actually
+contains the case in question.
 ```
 
 ## Halt context
@@ -379,6 +396,6 @@ session.json halt-relevant fields:
 {
   "status": "STALLED",
   "last_verdict": "STALLED",
-  "parked_wip_sha": "2c4acda3"
+  "parked_wip_sha": "b2c49192"
 }
 ```
