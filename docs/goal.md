@@ -1515,6 +1515,127 @@ manifest artifact (it must be self-describing and self-caveating).
        new raw-input baseline → implement and prove the pre-boot guard → re-run Stage D readiness → if
        `J-11 STAGE D READY: YES`, **STOP for owner authorization**. **Stage D remains forbidden until a
        later explicit owner instruction.**
+
+       ### OWNER RULING — J-11 maintenance-boundary lifecycle AUTHORIZED
+       *(owner, 2026-08-25 — binding; supersedes nothing, revokes nothing)*
+
+       Iteration 16 delivered the pre-boot guard as *code* and proved it on disposable fixture state, but
+       the evaluator's adjudication stands: **"proven on disposable test state" is necessary, not
+       sufficient.** On the live database `evaluate_boundary_for_date()` returns `blocked=False` for every
+       date, for the trivial reason that **no `MaintenanceBoundary` row has ever been registered there.**
+       A guard that protects nothing is not a guard. Iteration 16's own status line was therefore honest
+       and remains correct: `J-11 LIVE PRE-BOOT GUARD: NOT ARMED`.
+
+       **I authorize an explicit persisted J-11 maintenance-boundary lifecycle.** Its sole purpose is to
+       make the pre-boot quarantine guard *effective on the live database* rather than merely
+       fixture-proven. This authorization is **operational safety state only** — it buys quarantine
+       enforcement, and nothing else.
+
+       **AUTHORIZATION MATRIX — read these two lines as separate facts:**
+
+       | Item | Status |
+       |---|---|
+       | **J-11 maintenance-boundary lifecycle** (create/activate, later deactivate) | **AUTHORIZED** |
+       | **J-11 Stage D execution** (derived-state regeneration for the 11 dates) | **NOT AUTHORIZED** |
+
+       `J-11 STAGE D AUTHORIZED` must remain **NO**. **A `J-11 STAGE D READY: YES` readiness verdict is
+       not, and must never be rendered as, Stage D authorization.** Readiness is a measurement;
+       authorization is an owner act. Nothing in this ruling starts Stage D, plans Stage D, or licenses a
+       Stage D spec.
+
+       **Exact boundary scope.** The boundary must cover exactly these eleven dates and no others:
+
+       > `2026-05-12` · `2026-05-13` · `2026-07-10` · `2026-07-13` · `2026-07-24` · `2026-07-27` ·
+       > `2026-08-03` · `2026-08-05` · `2026-08-10` · `2026-08-11` · `2026-08-12`
+
+       This set is identical to `app.engine.j11_maintenance.INCIDENT_DATES` (verified equal on
+       2026-08-25). Membership must continue to be **sourced from that constant, never re-typed as a fresh
+       literal** — the same trap step 11 already flagged. Arming must fail rather than broaden the
+       quarantine scope accidentally.
+
+       **Authorized live writes are limited to maintenance-boundary state only.** Do **not** write to
+       `daily_prices`, `scanner_runs`, `scanner_results`, `sector_scores`, `theme_scores`,
+       `forward_returns`, `next_session_manifests`, `data_provider_runs`, provenance, or any other
+       research/business table. Expected live mutation this iteration: **exactly one maintenance-boundary
+       row**, and nothing else.
+
+       **No schema migration.** Do not migrate, ALTER, or rewrite any table. **If the maintenance-boundary
+       table or the required schema does not already exist exactly as required, STOP and report the
+       blocker — do not create it and do not migrate to it.**
+
+       **Lifecycle — deactivate, do not delete.** After the J-11 repair/rebuild lifecycle is eventually
+       complete, the same boundary may be deactivated **only** after the relevant final
+       release/unquarantine gate passes. Prefer deactivation (`active=False`) over deletion so the
+       maintenance history stays auditable. **Do not clear or deactivate the boundary during this
+       iteration merely to prove the code works** — a disarm proven on disposable state is sufficient
+       evidence; disarming the live boundary is not.
+
+       **Implementation requirements (binding).**
+
+       1. **Make the production boot guard actually effective.** The safety property must hold as *code +
+          persisted state*, not operator discipline: quarantined J-11 date → backend boot / warmup →
+          maintenance-boundary check → **blocked** → **no `run_scan` write**. "Do not start the backend"
+          is not an acceptable control.
+       2. **Keep fail-closed semantics.** Malformed, contradictory, unexpectedly duplicated, or
+          otherwise unevaluable boundary state must fail **closed**. Ambiguous maintenance state is never
+          silently treated as "not blocked".
+       3. **Fix AG-8 — remove the unbounded `MaintenanceBoundary` load from the shared boot path.** The
+          current `select(MaintenanceBoundary)` at `apps/backend/app/engine/j11_preboot_guard.py:143` is a
+          whole-table ORM load on a path every boot crosses. Replace it with a query explicitly
+          constrained to the minimum relevant **active** state: filter to active/relevant rows, project
+          only the fields the decision needs where practical, apply a deterministic finite bound (or an
+          equivalent design), and **fail closed if the bound is exceeded or the state is unexpectedly
+          ambiguous**. No whole-table ORM loading on boot. Preserve correct behaviour for the current
+          J-11 boundary. Choose the simplest robust implementation — **do not build a generic policy
+          engine.**
+       4. **Provide an explicit arm path.** A committed, production-capable path for
+          registering/activating the J-11 boundary. It must be idempotent, must avoid duplicate active
+          boundaries, must validate the exact incident-date set, must write only authorized
+          maintenance-boundary state, must make a second identical invocation safe, and must fail rather
+          than broaden scope. **It must not live only inside a test fixture or a one-off Python snippet.**
+          If it is a CLI/admin command, require explicit invocation and make its mutation obvious.
+       5. **Provide a future disarm/deactivation path.** Production-capable, scoped to exactly the J-11
+          boundary, must not delete unrelated maintenance history. **Do not invoke it now.**
+       6. **Tests (committed, disposable state only).** At minimum: **(A)** empty/unarmed state does not
+          falsely demonstrate protection; **(B)** once armed, all 11 incident dates are blocked;
+          **(C)** a normal non-incident date is not blocked by this boundary; **(D)** duplicate arm
+          invocation is idempotent; **(E)** unexpected duplicate/ambiguous active state fails closed;
+          **(F)** the bounded-query guard does not require loading the whole `MaintenanceBoundary` table;
+          **(G)** boot/warmup cannot reach `run_scan` for a quarantined date while the boundary is active;
+          **(H)** no forbidden research/business-table writes occur while arming; **(I)** the deactivation
+          path is correctly scoped — **without** deactivating the live boundary.
+       7. **Live verification (read-only, after tests pass).** Confirm: the expected J-11 boundary exists
+          and is active; it covers exactly the 11 approved dates; no unrelated active boundary was
+          modified; the boot guard evaluates the quarantined dates as blocked; no `ScannerRun` or other
+          forbidden J-11 state was created; no `daily_prices` value changed; no Stage D work occurred.
+          **Do not boot the live backend merely as an unsafe experiment.** If the boot path cannot be
+          verified without risking forbidden writes, verify through the same production guard entry point
+          using a non-writing diagnostic/test harness **and report that limitation clearly.**
+
+       **Stop conditions — return `STALLED` rather than expanding scope if:** schema migration would be
+       required; any write outside maintenance-boundary state would be required; the exact incident-date
+       set cannot be represented safely; the live boundary cannot be armed without touching forbidden
+       state; boot safety cannot be made fail-closed; or delivering this would require starting Stage D.
+       **These stop conditions are not permission to redesign Stage D or to continue broader J-11
+       research.**
+
+       **BLOCKER ON RECORD — the live table does not exist (verified read-only, 2026-08-25).** Before any
+       implementation work, the live database was inspected read-only (`mode=ro` + `PRAGMA
+       query_only=ON`): it holds **exactly 24 tables and `maintenance_boundaries` is not among them**
+       (`SELECT count(*) FROM sqlite_master WHERE type='table' AND name='maintenance_boundaries'` → `0`).
+       The `MaintenanceBoundary` model was added in iteration 16, but the live table is normally minted by
+       `main.py`'s ordinary `create_db_and_tables()` → `SQLModel.metadata.create_all` on **boot** — and
+       booting is precisely what maintenance isolation forbids. **The table's absence is a consequence of
+       the quarantine itself.** Therefore the arm step of requirement 4 and all of requirement 7 are
+       **BLOCKED**, and this ruling's own stop condition applies: the live arm must return `STALLED` with
+       the blocker named. **Creating the table is NOT authorized** by this ruling — the text above says
+       "do not create it" explicitly, and no agent may reinterpret an additive `CREATE TABLE` on the live
+       8.4 GB database as exempt because it is "purely additive". Requirements 1, 2, 3, 5, 6 and the
+       committed (but un-invoked) arm path of requirement 4 are **NOT blocked** and must still be
+       delivered in full. Until the owner separately authorizes the table's creation:
+       `J-11 MAINTENANCE BOUNDARY: NOT ACTIVE` and `J-11 LIVE PRE-BOOT GUARD: NOT ARMED` are the only
+       honest status lines, **maintenance isolation remains ACTIVE, and the live backend must not be
+       booted.**
     12. **Stage B2 — freeze ONE engine identity for the whole attempt (owner, 2026-08-21).** J-11's
        claim is that the incident set ends up as one internally consistent current-engine derivation;
        that claim must be testable. Before Stage C, freeze the intended current engine identity and
