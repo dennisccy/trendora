@@ -159,6 +159,89 @@ def test_tc2_comparison_gate_stops_on_material_mismatch_manifest_row_count(engin
     assert gate["checks"]["manifest_row_count_matches_certified"] is False
 
 
+def test_tc14_comparison_gate_stops_on_manifest_ddl_drift(engine, cfg):
+    """goal-market-compass iter-14, Goal 3b -- `compare_preflight_to_certified`'s
+    `manifest_ddl_unchanged_from_certified` check already exists (j11_stage_c.py) but was never exercised
+    by a fixture until now."""
+    preflight = _fresh_preflight(engine, cfg)
+    certified = copy.deepcopy(preflight)
+    certified["manifest_ddl"]["table_sql"] = (certified["manifest_ddl"]["table_sql"] or "") + " -- drifted clause"
+    gate = jsc.compare_preflight_to_certified(preflight, certified)
+    assert gate["all_invariants_hold"] is False
+    assert gate["material_mismatch"] is True
+    assert gate["checks"]["manifest_ddl_unchanged_from_certified"] is False
+
+
+def test_tc15_comparison_gate_stops_on_manifest_index_set_drift(engine, cfg):
+    """`manifest_indexes_unchanged` -- an index name/sql appearing in the certified baseline but not the
+    fresh capture (or vice versa) is a material mismatch."""
+    preflight = _fresh_preflight(engine, cfg)
+    certified = copy.deepcopy(preflight)
+    certified["manifest_ddl"]["index_names"] = list(certified["manifest_ddl"]["index_names"]) + ["ix_drifted"]
+    certified["manifest_ddl"]["index_sqls"] = list(certified["manifest_ddl"]["index_sqls"]) + [
+        "CREATE INDEX ix_drifted ON next_session_manifests (id)"
+    ]
+    gate = jsc.compare_preflight_to_certified(preflight, certified)
+    assert gate["all_invariants_hold"] is False
+    assert gate["checks"]["manifest_indexes_unchanged"] is False
+
+
+def test_tc16_comparison_gate_stops_on_manifest_value_drift(engine, cfg):
+    """`manifest_values_unchanged` -- one manifest row's stored value differing from the certified dump is
+    a material mismatch (never an aggregate-only "row count matches" check, iter-9's lesson)."""
+    preflight = _fresh_preflight(engine, cfg)
+    certified = copy.deepcopy(preflight)
+    # simulate ONE stored manifest row whose value drifted -- the certified baseline recorded a row this
+    # fresh capture's dump does not carry the same value for.
+    certified["manifest_dump"] = [{"id": 1, "source_run_id": 7, "content_hash": "certified-value"}]
+    preflight_copy = copy.deepcopy(preflight)
+    preflight_copy["manifest_dump"] = [{"id": 1, "source_run_id": 7, "content_hash": "drifted-value"}]
+    gate = jsc.compare_preflight_to_certified(preflight_copy, certified)
+    assert gate["all_invariants_hold"] is False
+    assert gate["checks"]["manifest_values_unchanged"] is False
+    assert gate["manifest_dump_diff"]["mismatches"]
+
+
+def test_tc17_comparison_gate_stops_on_source_run_id_provenance_drift(engine, cfg):
+    """`source_run_id_values_unchanged` -- a manifest row's `source_run_id` differing from the certified
+    value is a material mismatch even when every other column matches (provenance drift specifically)."""
+    preflight = _fresh_preflight(engine, cfg)
+    certified = copy.deepcopy(preflight)
+    certified["manifest_dump"] = [{"id": 1, "source_run_id": 7, "content_hash": "same-value"}]
+    preflight_copy = copy.deepcopy(preflight)
+    preflight_copy["manifest_dump"] = [{"id": 1, "source_run_id": 999, "content_hash": "same-value"}]
+    gate = jsc.compare_preflight_to_certified(preflight_copy, certified)
+    assert gate["all_invariants_hold"] is False
+    assert gate["checks"]["source_run_id_values_unchanged"] is False
+    # the value drifted too (source_run_id is a manifest_dump column) -- both checks correctly fire
+    # together; this test isolates the PROVENANCE-specific check's own independent failure.
+
+
+def test_tc18_comparison_gate_stops_on_daily_prices_provider_runs_and_watchlist_drift(engine, cfg):
+    """`daily_prices_fingerprint_unchanged`, `data_provider_runs_count_unchanged`, and
+    `watchlist_count_unchanged` -- each asserted as an independent, separately-failing check (never one
+    combined canonical-inputs flag)."""
+    preflight = _fresh_preflight(engine, cfg)
+
+    certified_prices_drift = copy.deepcopy(preflight)
+    certified_prices_drift["pre_reset_inventory"]["daily_prices"]["fingerprint"] = "a-different-fingerprint"
+    gate = jsc.compare_preflight_to_certified(preflight, certified_prices_drift)
+    assert gate["checks"]["daily_prices_fingerprint_unchanged"] is False
+    assert gate["material_mismatch"] is True
+
+    certified_provider_drift = copy.deepcopy(preflight)
+    certified_provider_drift["pre_reset_inventory"]["data_provider_runs_count"] += 1
+    gate = jsc.compare_preflight_to_certified(preflight, certified_provider_drift)
+    assert gate["checks"]["data_provider_runs_count_unchanged"] is False
+    assert gate["material_mismatch"] is True
+
+    certified_watchlist_drift = copy.deepcopy(preflight)
+    certified_watchlist_drift["pre_reset_inventory"]["watchlist_count"] += 1
+    gate = jsc.compare_preflight_to_certified(preflight, certified_watchlist_drift)
+    assert gate["checks"]["watchlist_count_unchanged"] is False
+    assert gate["material_mismatch"] is True
+
+
 def test_tc2_comparison_gate_stops_on_per_date_scanner_run_drift(engine, cfg):
     preflight = _fresh_preflight(engine, cfg)
     certified = copy.deepcopy(preflight)

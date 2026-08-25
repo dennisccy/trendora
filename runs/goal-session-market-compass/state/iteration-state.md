@@ -1,40 +1,28 @@
 # Iteration State — market-compass
 
-**After iteration:** 13 · **Date:** 2026-08-24 · **Verdict:** STALLED
-**Owner-facing:** `J-11 STAGE C COMPLETE: YES` · `J-11 STAGE D AUTHORIZED: NO`
+**After iteration:** 14 · **Date:** 2026-08-25 · **Verdict:** STALLED
 
 ## Journeys
 
-3 passing (J-01 J-04 J-10) · 6 partial (J-02 J-03 J-05 J-06 J-09 J-11) · 2 failing (J-07 J-08) — 11 total
+3 passing (J-01 J-04 J-10) · 6 partial (J-02 J-03 J-05 J-06 J-09 J-11) · 2 failing (J-07 J-08) — 11 total. Only J-11 moved; the rest were carried unverified (maintenance isolation — no browser/replay lane by contract).
 
 ## Active blockers
 
-- **HUMAN (owner) — Stage D needs a SEPARATE, FRESH instruction.** Ruling C10 ends Stage C with "STOP THE
-  ENGINE… the owner inspects Stage C mutation accounting first"; success is NOT implicit authorization.
-  Options: (a) instruct Stage D + resume; (b) small non-destructive hardening run first; (c) amend goal.md.
-- **Stage D preconditions, none developer-owned alone:** (1) say WHICH frozen identity rebuilt runs are
-  checked against — iter-10 froze `6261ca17…`, iter-13 re-derived `53d2ffd1…` (`compass.py` is a
-  `provenance.engine_files` member, edited in `a7380009`/`a9e651c4`); 34 surviving runs carry the older
-  stamp, 3,083 NULL — do NOT "repair" them. (2) `j11_stage_c.py:264-334` captures identity but never
-  compares it, and cannot yet. (3) 9 of 11 gate invariants lack a negative test; `--confirm` refusal untested.
-- **HUMAN, non-blocking (5):** J-09's 3.44 GB; J-06's "run unavailable" wording; J-01's first-two-steps
-  rewording; empty "next-session focus"; MNST. **Framework:** `scripts/automation/`'s forbidden-lane defect.
+- **HUMAN (owner):** `J-11 STAGE D READY: NO`. The AVB diagnostic answers a price-AND-volume question from price alone — `app/engine/j11_avb_diagnostic.py:159-267` never reads volume, its `bridged+compensating` label is unreachable, and `volume_a_equals_b` is true by construction — so the "+raw" half is untested. Honest label AVB-D, which by the spec's own TC-25 forces NO. The deciding measurement was discarded in iter-9 (`j10_recovery.py:644`) and now needs a live fetch AG-9 forbids. Owner picks: (a) dated AG-9 amendment for a bounded read-only AVB volume comparison fetch; (b) accept the residual in writing with a caveat (worst case: ADV $215M→$193M vs a $50M floor, bucket E→E, eligibility False→False, 4/35 other names move one liquidity position, 2 of 11 rebuild dates affected); (c) order the honesty fix first (cannot change the answer); (d) reword the gate.
+- **HUMAN (owner):** Stage D itself is still unauthorized — ruling C10/A12 requires a separate, fresh instruction. `J-11 STAGE D AUTHORIZED: NO`.
+- **DEV (mechanical, not blocking):** `git ls-files runs/goal-market-compass-iter-14/` returns 0 — 11 evidence artifacts + new modules/tests untracked (DoD item 10 PENDING). Two iter-14 scripts default into that folder, so a repeat of this iteration's own overwrite accident would be unrecoverable.
+- Standing, deferred: `scripts/automation/` forbidden-lane defect; `goal_gate.py` duplicate-journey-heading defect (must be fixed before any GOAL_ACHIEVED certification).
 
 ## Last 2 verdicts
 
-- iter 13: STALLED — Stage C executed and independently verified clean; C10 hands the next move to the owner.
-- iter 12: STALLED — all 13 of ruling A12's readiness items held; Stage C reserved for an owner instruction.
+- iter 14: STALLED — four of five Stage D preconditions hold on my own re-derivation and live writes were ZERO, but the AVB classification does not stand, and every path to clear it is owner-owned.
+- iter 13: STALLED — Stage C completed and verified; ruling C10 reserved the next step for an explicit owner instruction.
 
 ## Do not redo
 
-- **J-11 Stage C is DONE** — all 11 incident dates hold zero derived state; 5 tables moved by exactly the
-  pre-declared amounts, 19 unchanged, 0 orphans. Never re-run `run_j11_stage_c_bounded_clear.py`.
-- **J-10 is CLOSED** (585 restored; EA/EQR unrestorable; AG-9 exhausted) — never reopen, never re-run
-  `run_j10_population_recovery.py`. **B/B1/B2 complete** (FK removed, 4 DDL residuals owner-accepted,
-  `basis_disclosure` fail-closed incl. A4-bis) — never run the migration tool live.
-- **AG-18/iter-11 breach resolved by owner acceptance, NOT repair**; iter-11's REGRESSION stands (A14). **Do
-  not pull in** ruling C11's two framework findings or any browser/service/replay lane — isolation ACTIVE.
-- **Carry, don't rediscover:** AVB price×volume reads ~2.79x high on 2026-08-11/12; newest surviving run is
-  now 2026-07-23 until Stage D; caches hold pre-reset payloads under old keys (`r3150-f6800539` vs today's
-  `r3147-f6797728`), trap returns at Stage D/E; the 16,614 measured-into rows on retained runs must NOT be
-  deleted (Stage E fills holes, not these).
+- **Stage C is COMPLETE and verified** (`runs/goal-market-compass-iter-13/j11-stage-c-*.json`) — all 11 incident dates hold zero derived state. Never re-run `run_j11_stage_c_bounded_clear.py`.
+- **Stage B/B1/B2 are complete and closed** — the manifest FK migration, the `basis_disclosure` fail-closed fix, and the migration utility's exact-DDL fix. No further live schema work; the four accepted DDL residuals stay (ruling A9). iter-11's REGRESSION stands (A14).
+- **J-10 is CLOSED** — 585 restored, EA/EQR accepted unrestorable, AG-9's fetch exception exhausted. Do not reopen, do not retry EA/EQR, do not re-run `run_j10_population_recovery.py`.
+- **The fresh Stage D attempt identity is frozen and honest** (`53d2ffd1…`, `runs/goal-market-compass-iter-14/j11-stage-d-attempt-identity.json`) — recompute at Stage D freeze time, never hardcode; never restamp the 34 runs carrying `6261ca17…` or the 3,083 NULL-stamped runs.
+- **The three fail-closed identity checks (A/B/C) and the 11-check Stage D preflight gate exist and work** (`app/engine/j11_stage_d.py`) — all 11 branches were exercised and fire on drift. Stage D's first job is wiring A/B/C into the regeneration loop and asserting `in_scope` alongside `ok`.
+- **The `--evidence-dir` footgun is fixed for the Stage C script only** — `run_j11_stage_d_preflight.py:86` and `run_j11_avb_bridge_diagnostic.py:73` still carry the default; apply the same guard BEFORE writing any test against either `main()`.

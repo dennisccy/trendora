@@ -228,3 +228,40 @@ out-of-tolerance pair gets downgraded to "cannot tell" by an unrelated coverage 
 be reached with an empty/partial input set — especially incident-recovery and data-repair paths, where
 the missing data IS the trigger; also any iteration whose new tests all seed complete fixtures.
 
+
+<!-- condense.sh 2026-08-24T21:07:21Z: moved 2 entries (keep-iters=5) -->
+
+## iter-8 — 2026-08-21T13:55:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** A cross-source agreement gate can return a *perfect* score because both sides are
+secretly the SAME source. J-10's gate reported 20/20 `agree`, 88/88 pairs bit-identical, bridge
+factor exactly 1.0 — which reads as overwhelming confirmation and is actually a tautology: the
+committed Stooq seed ends 2026-07-01, so the "stored" side of the 2026-08-04..08-10 comparison
+window is Yahoo (`data_provider_runs`: seed 508 / yahoo 34 / stooq 1, and that one stooq run is
+id 541, `status='failed'`, `symbols_ok=0`). Suspiciously clean output is a provenance question, not
+a success. Before trusting any agreement/convention/parity check, verify the PROVENANCE of both
+sides independently of the numbers — a zero delta is equally consistent with "they agree" and with
+"you compared a thing to itself".
+**Applies to:** any iteration adding or citing a cross-vendor / cross-source / A-vs-B agreement
+check, anything touching `j10_recovery.py`'s convention gate, and any future work that reads the
+`daily_prices` history across the 2026-07-01/07-02 seed boundary (a real, never-examined vendor
+discontinuity lives there).
+
+## iter-8 — 2026-08-21T13:56:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** Fixing the depth arbiter did NOT fix the forbidden lane. The iter-6/iter-8 quarantine
+notes both blamed the `Depth: full → lean` demotion (lean auto-enables
+`CHAIN_LEAN_PARALLEL_BROWSER_QA`), and a framework fix landed at `046dd956`. Then
+`depth-dispatched` read `full` and the deterministic J-01/J-04 replay ran anyway at 12:54, inside
+the very re-dispatch commissioned to add the missing audit lane — starting a frontend and attempting
+a backend on the host that froze on 2026-08-20, and overwriting AG-17-protected quarantined evidence.
+`docs/goal.md`'s Loop-mechanics lane gate is prose the engine has never been able to read; depth is
+not the lane control. Any goal-level "no lane may run" rule needs its own enforcement point, and the
+evaluator must check the lane actually stayed shut rather than trusting a prior remediation note
+(the reviewer's "already remediated" line was written before the recurrence and is wrong).
+**Applies to:** every remaining market-compass iteration while the lane gate is open (J-10's 567-symbol
+continuation, all of J-11), and any goal whose `docs/goal.md` forbids a pipeline lane rather than a
+code path.
+

@@ -1,0 +1,19 @@
+{
+  "authorized": false,
+  "avb_classification": "AVB-B",
+  "blocking_reasons": [],
+  "generated_at": "2026-08-24T22:05:04.053596+00:00",
+  "inputs": {
+    "avb_diagnostic_artifact": "runs/goal-market-compass-iter-14/j11-avb-bridge-diagnostic.json",
+    "identity_checks_fixture_tests": "apps/backend/tests/test_j11_stage_d.py (TC-ID-1..6)",
+    "negative_precondition_tests": [
+      "apps/backend/tests/test_j11_stage_c_preflight.py (TC-14..18)",
+      "apps/backend/tests/test_j11_stage_c_cli_script.py (TC-19 CLI half)",
+      "apps/backend/tests/test_j11_stage_d.py (TC-19 unexpected-incident-ScannerRun precondition)"
+    ],
+    "preflight_gate_artifact": "runs/goal-market-compass-iter-14/j11-stage-d-preflight-gate.json"
+  },
+  "preflight_gate_passed": true,
+  "preflight_gate_reason": "all_checks_passed",
+  "ready": true
+}

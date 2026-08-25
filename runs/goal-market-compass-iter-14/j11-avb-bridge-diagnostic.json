@@ -1,0 +1,532 @@
+{
+  "bridge_factor": 2.7930001225759193,
+  "calibration_pairs": [
+    {
+      "fallback_close": 67.8875732421875,
+      "ratio": 2.7930001258687187,
+      "stored_close": 189.61000061035156,
+      "trading_date": "2026-08-05"
+    },
+    {
+      "fallback_close": 66.79197692871094,
+      "ratio": 2.7930001720246755,
+      "stored_close": 186.5500030517578,
+      "trading_date": "2026-08-06"
+    },
+    {
+      "fallback_close": 67.15001678466797,
+      "ratio": 2.7930000919162863,
+      "stored_close": 187.5500030517578,
+      "trading_date": "2026-08-07"
+    },
+    {
+      "fallback_close": 65.82169342041016,
+      "ratio": 2.793000100493997,
+      "stored_close": 183.83999633789062,
+      "trading_date": "2026-08-10"
+    }
+  ],
+  "classification": {
+    "classification": "AVB-B",
+    "generated_at": "2026-08-24T22:04:46.546789+00:00",
+    "material_signals": [
+      "2026-08-11: 4 OTHER pool ticker(s)' liquidity percentile shifted",
+      "2026-08-12: 35 OTHER pool ticker(s)' liquidity percentile shifted"
+    ],
+    "reasoning": "Material effect confirmed (2026-08-11: 4 OTHER pool ticker(s)' liquidity percentile shifted; 2026-08-12: 35 OTHER pool ticker(s)' liquidity percentile shifted) but the canonical stored convention (bridged close, untransformed volume) is proven internally consistent across AVB's own stored series (calibration window classifies as bridged+raw from 4 direct fallback-close pairs (zero comparable-pair failures); 0 anomalous day-over-day jump(s) found across 49 checked transitions in the fetched stored series (0 at the 2026-08-11/12 recovery boundary specifically) -- no discontinuity at the incident boundary or elsewhere in the fetched window.) -- record an explicit caveat, do NOT silently correct volume; Stage D may still proceed.",
+    "stage_d_ready_per_avb": true
+  },
+  "counterfactual_representations_by_date": {
+    "2026-08-11": {
+      "A": {
+        "close": 181.76001476703186,
+        "close_times_volume": 281625510.2405708,
+        "formula": "A = stored_bridged_close x stored_raw_volume (the actual canonical value served today)",
+        "volume": 1549436.0
+      },
+      "B": {
+        "close": 65.07698059082031,
+        "close_times_volume": 100832616.49871826,
+        "formula": "B = (stored_close / bridge_factor) x stored_volume (raw-provider-scale close; volume equals A's -- never transformed by J-10)",
+        "volume": 1549436.0
+      },
+      "C": {
+        "close": 181.76001476703186,
+        "close_times_volume": 786580084.6224201,
+        "formula": "C = stored_bridged_close x (stored_volume x bridge_factor) -- DIAGNOSTIC ONLY: the hypothetical share-count-continuity-preserving volume IF the bridge factor reflected a genuine corporate action; never written to the database, never assumed correct",
+        "volume": 4327574.937923542
+      },
+      "bridge_factor": 2.7930001225759193,
+      "volume_a_equals_b": true
+    },
+    "2026-08-12": {
+      "A": {
+        "close": 179.79000697488598,
+        "close_times_volume": 1860985686.3462427,
+        "formula": "A = stored_bridged_close x stored_raw_volume (the actual canonical value served today)",
+        "volume": 10350885.0
+      },
+      "B": {
+        "close": 64.37164306640625,
+        "close_times_volume": 666303474.6414185,
+        "formula": "B = (stored_close / bridge_factor) x stored_volume (raw-provider-scale close; volume equals A's -- never transformed by J-10)",
+        "volume": 10350885.0
+      },
+      "C": {
+        "close": 179.79000697488598,
+        "close_times_volume": 5197733250.077087,
+        "formula": "C = stored_bridged_close x (stored_volume x bridge_factor) -- DIAGNOSTIC ONLY: the hypothetical share-count-continuity-preserving volume IF the bridge factor reflected a genuine corporate action; never written to the database, never assumed correct",
+        "volume": 28910023.073769245
+      },
+      "bridge_factor": 2.7930001225759193,
+      "volume_a_equals_b": true
+    }
+  },
+  "decision_impact_by_date": {
+    "2026-08-11": {
+      "scoring_and_selection": {
+        "adv_liquidity_a": 186164280.28831637,
+        "adv_liquidity_b": 182548422.41347936,
+        "asof": "2026-08-11",
+        "avb_resolved_member": true,
+        "eligible_a": false,
+        "eligible_b": false,
+        "entry_quality_score": 60.53,
+        "leadership_score": 35.75,
+        "liquidity_percentile_a": 0.8531598513011153,
+        "liquidity_percentile_b": 0.8605947955390335,
+        "liquidity_raw_a": -186164280.28831637,
+        "liquidity_raw_a_reproduces_served": true,
+        "liquidity_raw_b": -182548422.41347936,
+        "other_ticker_percentile_shifts": {
+          "HAS": {
+            "percentile_a": 0.8587360594795539,
+            "percentile_b": 0.8568773234200744
+          },
+          "LNT": {
+            "percentile_a": 0.8550185873605948,
+            "percentile_b": 0.8531598513011153
+          },
+          "TRI": {
+            "percentile_a": 0.8568773234200744,
+            "percentile_b": 0.8550185873605948
+          },
+          "VLTO": {
+            "percentile_a": 0.8605947955390335,
+            "percentile_b": 0.8587360594795539
+          }
+        },
+        "percentile_a_reproduces_served": true,
+        "pool_member_count": 539,
+        "qualifier_checks_a": [
+          {
+            "actual": 35.75,
+            "condition": "leadership_min_score",
+            "passed": false,
+            "threshold": 80.0
+          },
+          {
+            "actual": 60.53,
+            "condition": "entry_min_score",
+            "passed": false,
+            "threshold": 70.0
+          },
+          {
+            "actual": 31.14,
+            "condition": "risk_max_score",
+            "passed": true,
+            "threshold": 60.0
+          }
+        ],
+        "qualifier_checks_b": [
+          {
+            "actual": 35.75,
+            "condition": "leadership_min_score",
+            "passed": false,
+            "threshold": 80.0
+          },
+          {
+            "actual": 60.53,
+            "condition": "entry_min_score",
+            "passed": false,
+            "threshold": 70.0
+          },
+          {
+            "actual": 31.23,
+            "condition": "risk_max_score",
+            "passed": true,
+            "threshold": 60.0
+          }
+        ],
+        "relative_ranking_note": "AVB's relative ranking (candidates are sorted by Leadership score, descending -- the sole sort key `evaluate_selection` uses) is unaffected by A vs B: Leadership does not read ADV/volume at all (confirmed by inspecting `_raw_components` -- none of rs_spy_1m/rs_spy_3m/rs_sector/rs_theme/ma_stack/high_proximity/up_down_vol reads `adv`). A full population-wide selection-disposition replay (`evaluate_selection`) requires a persisted ScannerRun for this as-of, which does not exist (Stage C cleared it) and creating one is forbidden this iteration -- the individual qualifier-check pass/fail above is the direct, checkable proxy for candidate eligibility instead.",
+        "risk_bucket_a": "E",
+        "risk_bucket_b": "E",
+        "risk_score_a": 31.14,
+        "risk_score_b": 31.23,
+        "setup_status_a": "Avoid",
+        "setup_status_b": "Avoid",
+        "vol_avg_period": 50
+      },
+      "universe_resolver": {
+        "admission_changed": false,
+        "adv_dollar_a": 187627175.15215585,
+        "adv_dollar_b": 184757446.68006298,
+        "adv_window_days": 63,
+        "asof": "2026-08-11",
+        "min_dollar_vol_threshold": 50000000.0,
+        "recovered_dates_in_window": [
+          "2026-08-11"
+        ],
+        "resolution_a": {
+          "admitted": true,
+          "bars": 5396,
+          "reason": null
+        },
+        "resolution_b": {
+          "admitted": true,
+          "bars": 5396,
+          "reason": null
+        },
+        "true_bar_count": 5396
+      }
+    },
+    "2026-08-12": {
+      "scoring_and_selection": {
+        "adv_liquidity_a": 216926359.49164122,
+        "adv_liquidity_b": 189416857.38270772,
+        "asof": "2026-08-12",
+        "avb_resolved_member": true,
+        "eligible_a": false,
+        "eligible_b": false,
+        "entry_quality_score": 52.07,
+        "leadership_score": 29.84,
+        "liquidity_percentile_a": 0.7788104089219331,
+        "liquidity_percentile_b": 0.8438661710037175,
+        "liquidity_raw_a": -216926359.49164122,
+        "liquidity_raw_a_reproduces_served": true,
+        "liquidity_raw_b": -189416857.38270772,
+        "other_ticker_percentile_shifts": {
+          "ACGL": {
+            "percentile_a": 0.828996282527881,
+            "percentile_b": 0.8271375464684015
+          },
+          "APA": {
+            "percentile_a": 0.8178438661710037,
+            "percentile_b": 0.8159851301115242
+          },
+          "APTV": {
+            "percentile_a": 0.7936802973977695,
+            "percentile_b": 0.79182156133829
+          },
+          "ATO": {
+            "percentile_a": 0.7825278810408922,
+            "percentile_b": 0.7806691449814126
+          },
+          "BR": {
+            "percentile_a": 0.8011152416356877,
+            "percentile_b": 0.7992565055762082
+          },
+          "CCEP": {
+            "percentile_a": 0.7955390334572491,
+            "percentile_b": 0.7936802973977695
+          },
+          "COO": {
+            "percentile_a": 0.8197026022304833,
+            "percentile_b": 0.8178438661710037
+          },
+          "CPB": {
+            "percentile_a": 0.8438661710037175,
+            "percentile_b": 0.8420074349442379
+          },
+          "CRL": {
+            "percentile_a": 0.8308550185873605,
+            "percentile_b": 0.828996282527881
+          },
+          "DD": {
+            "percentile_a": 0.8234200743494424,
+            "percentile_b": 0.8215613382899628
+          },
+          "DGX": {
+            "percentile_a": 0.7973977695167286,
+            "percentile_b": 0.7955390334572491
+          },
+          "DTE": {
+            "percentile_a": 0.8104089219330854,
+            "percentile_b": 0.8085501858736059
+          },
+          "DVA": {
+            "percentile_a": 0.8382899628252788,
+            "percentile_b": 0.8364312267657993
+          },
+          "EIX": {
+            "percentile_a": 0.8141263940520446,
+            "percentile_b": 0.8122676579925651
+          },
+          "EQR": {
+            "percentile_a": 0.7992565055762082,
+            "percentile_b": 0.7973977695167286
+          },
+          "EXPD": {
+            "percentile_a": 0.7806691449814126,
+            "percentile_b": 0.7788104089219331
+          },
+          "FE": {
+            "percentile_a": 0.7881040892193308,
+            "percentile_b": 0.7862453531598513
+          },
+          "GDDY": {
+            "percentile_a": 0.8066914498141264,
+            "percentile_b": 0.8048327137546468
+          },
+          "GPC": {
+            "percentile_a": 0.79182156133829,
+            "percentile_b": 0.7899628252788105
+          },
+          "IP": {
+            "percentile_a": 0.7843866171003717,
+            "percentile_b": 0.7825278810408922
+          },
+          "LDOS": {
+            "percentile_a": 0.8252788104089219,
+            "percentile_b": 0.8234200743494424
+          },
+          "LH": {
+            "percentile_a": 0.8401486988847584,
+            "percentile_b": 0.8382899628252788
+          },
+          "LNT": {
+            "percentile_a": 0.8420074349442379,
+            "percentile_b": 0.8401486988847584
+          },
+          "MAS": {
+            "percentile_a": 0.8364312267657993,
+            "percentile_b": 0.8345724907063197
+          },
+          "MKC": {
+            "percentile_a": 0.8029739776951673,
+            "percentile_b": 0.8011152416356877
+          },
+          "MOS": {
+            "percentile_a": 0.8345724907063197,
+            "percentile_b": 0.8327137546468402
+          },
+          "NTRS": {
+            "percentile_a": 0.8159851301115242,
+            "percentile_b": 0.8141263940520446
+          },
+          "NVR": {
+            "percentile_a": 0.8327137546468402,
+            "percentile_b": 0.8308550185873605
+          },
+          "PNR": {
+            "percentile_a": 0.8215613382899628,
+            "percentile_b": 0.8197026022304833
+          },
+          "POOL": {
+            "percentile_a": 0.8085501858736059,
+            "percentile_b": 0.8066914498141264
+          },
+          "POWL": {
+            "percentile_a": 0.8122676579925651,
+            "percentile_b": 0.8104089219330854
+          },
+          "PRU": {
+            "percentile_a": 0.7862453531598513,
+            "percentile_b": 0.7843866171003717
+          },
+          "RJF": {
+            "percentile_a": 0.7899628252788105,
+            "percentile_b": 0.7881040892193308
+          },
+          "SBAC": {
+            "percentile_a": 0.8048327137546468,
+            "percentile_b": 0.8029739776951673
+          },
+          "TSN": {
+            "percentile_a": 0.8271375464684015,
+            "percentile_b": 0.8252788104089219
+          }
+        },
+        "percentile_a_reproduces_served": true,
+        "pool_member_count": 539,
+        "qualifier_checks_a": [
+          {
+            "actual": 29.84,
+            "condition": "leadership_min_score",
+            "passed": false,
+            "threshold": 80.0
+          },
+          {
+            "actual": 52.07,
+            "condition": "entry_min_score",
+            "passed": false,
+            "threshold": 70.0
+          },
+          {
+            "actual": 33.52,
+            "condition": "risk_max_score",
+            "passed": true,
+            "threshold": 60.0
+          }
+        ],
+        "qualifier_checks_b": [
+          {
+            "actual": 29.84,
+            "condition": "leadership_min_score",
+            "passed": false,
+            "threshold": 80.0
+          },
+          {
+            "actual": 52.07,
+            "condition": "entry_min_score",
+            "passed": false,
+            "threshold": 70.0
+          },
+          {
+            "actual": 34.39,
+            "condition": "risk_max_score",
+            "passed": true,
+            "threshold": 60.0
+          }
+        ],
+        "relative_ranking_note": "AVB's relative ranking (candidates are sorted by Leadership score, descending -- the sole sort key `evaluate_selection` uses) is unaffected by A vs B: Leadership does not read ADV/volume at all (confirmed by inspecting `_raw_components` -- none of rs_spy_1m/rs_spy_3m/rs_sector/rs_theme/ma_stack/high_proximity/up_down_vol reads `adv`). A full population-wide selection-disposition replay (`evaluate_selection`) requires a persisted ScannerRun for this as-of, which does not exist (Stage C cleared it) and creating one is forbidden this iteration -- the individual qualifier-check pass/fail above is the direct, checkable proxy for candidate eligibility instead.",
+        "risk_bucket_a": "E",
+        "risk_bucket_b": "E",
+        "risk_score_a": 33.52,
+        "risk_score_b": 34.39,
+        "setup_status_a": "Avoid",
+        "setup_status_b": "Avoid",
+        "vol_avg_period": 50
+      },
+      "universe_resolver": {
+        "admission_changed": false,
+        "adv_dollar_a": 215041505.39368355,
+        "adv_dollar_b": 193208567.21199027,
+        "adv_window_days": 63,
+        "asof": "2026-08-12",
+        "min_dollar_vol_threshold": 50000000.0,
+        "recovered_dates_in_window": [
+          "2026-08-11",
+          "2026-08-12"
+        ],
+        "resolution_a": {
+          "admitted": true,
+          "bars": 5397,
+          "reason": null
+        },
+        "resolution_b": {
+          "admitted": true,
+          "bars": 5397,
+          "reason": null
+        },
+        "true_bar_count": 5397
+      }
+    }
+  },
+  "generated_at": "2026-08-24T22:04:46.546850+00:00",
+  "j10_evidence_path": "/home/dennis-chan/Git/trendora/runs/goal-market-compass-iter-9/j10-population-evidence.json",
+  "local_convention": {
+    "anomalous_jump_count": 0,
+    "day_over_day_returns_checked": 49,
+    "indeterminate": false,
+    "internally_consistent": true,
+    "overall_classification": "bridged+raw",
+    "reasoning": "calibration window classifies as bridged+raw from 4 direct fallback-close pairs (zero comparable-pair failures); 0 anomalous day-over-day jump(s) found across 49 checked transitions in the fetched stored series (0 at the 2026-08-11/12 recovery boundary specifically) -- no discontinuity at the incident boundary or elsewhere in the fetched window.",
+    "windows": {
+      "calibration_window": {
+        "classification": "bridged+raw",
+        "dates": [
+          "2026-08-05",
+          "2026-08-06",
+          "2026-08-07",
+          "2026-08-10"
+        ],
+        "evidence": "direct ratio against the persisted J-10 fallback_close pairs",
+        "per_date": [
+          {
+            "classification": "bridged+raw",
+            "date": "2026-08-05",
+            "fallback_close": 67.8875732421875,
+            "ratio": 2.7930001258687187,
+            "stored_close": 189.61000061035156
+          },
+          {
+            "classification": "bridged+raw",
+            "date": "2026-08-06",
+            "fallback_close": 66.79197692871094,
+            "ratio": 2.7930001720246755,
+            "stored_close": 186.5500030517578
+          },
+          {
+            "classification": "bridged+raw",
+            "date": "2026-08-07",
+            "fallback_close": 67.15001678466797,
+            "ratio": 2.7930000919162863,
+            "stored_close": 187.5500030517578
+          },
+          {
+            "classification": "bridged+raw",
+            "date": "2026-08-10",
+            "fallback_close": 65.82169342041016,
+            "ratio": 2.793000100493997,
+            "stored_close": 183.83999633789062
+          }
+        ]
+      },
+      "recovered_dates": {
+        "boundary_jumps": [],
+        "classification": "bridged+raw",
+        "dates": [
+          "2026-08-11",
+          "2026-08-12"
+        ],
+        "evidence": "no independent comparable exists for these dates (J-10 wrote them); classified by day-over-day continuity with the adjacent calibration-window/post-recovery dates only"
+      },
+      "surrounding_window": {
+        "anomalous_jumps": [],
+        "classification": "bridged+raw",
+        "evidence": "no independent comparable exists outside the calibration window; classified by day-over-day continuity across the whole fetched stored series only -- never asserted as independently verified against a raw source"
+      }
+    }
+  },
+  "pool_bridge_factor_distribution": {
+    "avb_is_unique_material_outlier": true,
+    "materially_bridged_symbols": {
+      "AVB": 2.7930001225759193
+    },
+    "near_one_count": 565,
+    "symbols_with_bridge_factor": 566,
+    "total_symbols_in_evidence": 567
+  },
+  "stored_series_window": {
+    "end": "2026-12-31",
+    "row_count": 50,
+    "start": "2026-06-01"
+  },
+  "zero_write_proof": {
+    "db_file_true_end": {
+      "exists": true,
+      "mtime": 1787591622.4277432,
+      "path": "/home/dennis-chan/Git/trendora/apps/backend/data/trendora.db",
+      "size_bytes": 8365871104,
+      "wal": {
+        "exists": true,
+        "mtime": 1787609011.1882,
+        "size_bytes": 0
+      }
+    },
+    "db_file_true_start": {
+      "exists": true,
+      "mtime": 1787591622.4277432,
+      "path": "/home/dennis-chan/Git/trendora/apps/backend/data/trendora.db",
+      "size_bytes": 8365871104,
+      "wal": {
+        "exists": false
+      }
+    },
+    "mtime_unchanged": true,
+    "size_unchanged": true,
+    "wal_empty_at_end": true,
+    "wal_empty_at_start": true
+  }
+}

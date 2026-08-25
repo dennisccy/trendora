@@ -21,11 +21,16 @@ anywhere in this process, never a raw file copy of the 7.8+ GB database.
 Usage:
     apps/backend/.venv/bin/python apps/backend/scripts/run_j11_stage_c_bounded_clear.py \\
         --confirm \\
-        [--evidence-dir runs/goal-market-compass-iter-13] \\
+        --evidence-dir runs/goal-market-compass-iter-13 \\
         [--certified-state-path runs/goal-market-compass-iter-12/j11-stage-b1-cleanup-fingerprint-after.json]
 
 Without `--confirm`, the script performs NO database interaction at all (not even a read) and exits
-non-zero.
+non-zero. `--evidence-dir` is REQUIRED and has no implicit default: it used to default to
+`runs/goal-market-compass-iter-13`, a real committed evidence directory, so any caller that forgot the
+flag silently overwrote committed Stage C forensic evidence instead of failing loudly (this actually
+happened -- iteration 14's own CLI test omitted the flag and truncated three iteration-13 evidence files;
+see docs/handoffs/goal-market-compass-iter-14-dev.md). A committed evidence directory is now only ever
+written when it is named explicitly on the command line.
 """
 from __future__ import annotations
 
@@ -49,7 +54,9 @@ from app.engine.j11_maintenance import INCIDENT_DATES, capture_pre_reset_invento
 from app.engine import j11_schema_migration as migration  # noqa: E402
 from app.models import DataProviderRun, NextSessionManifest, Watchlist  # noqa: E402
 
-DEFAULT_EVIDENCE_DIR = REPO_ROOT / "runs" / "goal-market-compass-iter-13"
+# The directory this script's evidence BELONGS in when it is run for real. Deliberately NOT an argparse
+# default: an omitted --evidence-dir must FAIL, never silently write over these committed files.
+CANONICAL_EVIDENCE_DIR = REPO_ROOT / "runs" / "goal-market-compass-iter-13"
 DEFAULT_CERTIFIED_STATE_PATH = (
     REPO_ROOT / "runs" / "goal-market-compass-iter-12" / "j11-stage-b1-cleanup-fingerprint-after.json"
 )
@@ -75,7 +82,14 @@ def _write_json(path: Path, payload) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--evidence-dir", type=Path, default=DEFAULT_EVIDENCE_DIR)
+    parser.add_argument(
+        "--evidence-dir", type=Path, default=None,
+        help=(
+            "required -- the directory every evidence JSON is written to. Has NO default on purpose: the "
+            f"real target ({CANONICAL_EVIDENCE_DIR}) is a committed evidence directory, and an implicit "
+            "default meant a forgotten flag overwrote committed forensic evidence instead of failing."
+        ),
+    )
     parser.add_argument("--certified-state-path", type=Path, default=DEFAULT_CERTIFIED_STATE_PATH)
     parser.add_argument(
         "--confirm", action="store_true",
@@ -88,6 +102,16 @@ def main() -> int:
             "refusing to run without --confirm (this is the ONE owner-authorized bounded destructive "
             "write this iteration -- docs/goal.md J-11 step 11 OWNER AUTHORIZATION block). No database "
             "interaction, not even a read, has occurred.",
+            file=sys.stderr,
+        )
+        return 2
+
+    if args.evidence_dir is None:
+        print(
+            "refusing to run without an explicit --evidence-dir. This script writes forensic evidence "
+            f"JSON into that directory; its real target ({CANONICAL_EVIDENCE_DIR}) is a COMMITTED "
+            "evidence directory, so it must be named explicitly and can never be reached by default. "
+            "No database interaction, not even a read, has occurred, and nothing has been written.",
             file=sys.stderr,
         )
         return 2

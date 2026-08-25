@@ -876,3 +876,93 @@ FIVE OLDER OWNER QUESTIONS remain open and non-blocking: whether 3.44 GB is acce
 "next-session focus" is acceptable; and whether MNST joins the recovery list. ONE STANDING FRAMEWORK
 NOTE: the defect that once let a forbidden test lane run is still unfixed in `scripts/automation/`; five
 iterations running have avoided it with the maintenance-isolation contract rather than curing it.
+
+## Iteration 14 — goal-market-compass-iter-14
+
+**Date:** 2026-08-25T01:15:00Z
+**Verdict:** STALLED
+**Depth dispatched:** full (`runs/goal-session-market-compass/iter-14/depth-dispatched` reads `full`,
+matching the spec's own `Depth: full` line — the silent full→lean demotion that fired in iters 2, 6 and 8
+did NOT recur, for the sixth iteration running, and neither did the forbidden browser/replay lane; the
+engine recorded its refusal in `iter-14/maintenance-isolation-refusals`)
+
+**Owner-facing lines, AS CORRECTED BY THIS EVALUATION:** `J-11 STAGE D READY: NO` (the iteration's own
+artifacts, and all four lanes, say YES) · `J-11 STAGE D AUTHORIZED: NO` (unchanged, unconditional)
+
+**Journey deltas:**
+- Newly passing: none. Newly failing: none. **Regressed: none.**
+- **Advanced within `partial`: J-11** "Incident-bounded clean regeneration of derived state" — this
+  iteration's sole target. Four of the five Stage D preconditions landed and hold on my own
+  re-derivation; the fifth (the AVB diagnostic) does not. Re-stamped `54e9cdd8…` (was `df587775…` — the
+  owner's 2026-08-24 step-12 clarification changed J-11's text; it is still uncommitted in the working
+  tree). Stage D not started, not authorized.
+- Carried, NOT re-verified (maintenance isolation — browser QA and the replay lane were forbidden by
+  contract, so every journey keeps its prior recorded status): J-01, J-04 stay `passing`; J-02, J-03,
+  J-05, J-06, J-09 stay `partial`; J-07, J-08 stay `failing`. J-10 stays `passing`, re-derived read-only
+  by me but deliberately NOT re-stamped as verified, since no browser lane could run.
+- Anti-goal violations: **ONE NEW, CRITICAL, ALREADY RESOLVED — AG-17/C5.** A new CLI test overwrote
+  three committed iteration-13 Stage C evidence files; the reviewer caught it (FAIL), the files were
+  restored byte-for-byte, the command now refuses to run without an explicit output folder, and the
+  handoff retracted its wrong first explanation by name. I confirmed the end state myself:
+  `git status --porcelain runs/goal-market-compass-iter-13/` returns 0 lines. Ledger: 6 total,
+  **0 unresolved.**
+- Coherence: COHERENCE-PASS. Deterministic scan: CLEAN. Review: PASS_WITH_NOTES (after an in-iteration
+  FAIL). QA: PASS. Audit: PASS_WITH_GAPS (B1/B3 IMPORTANT; B2/B4/B5 gaps; B6/B7 observations).
+
+**Reasoning:** The iteration did the work it was asked to do and it did not write one byte to the real
+database — I checked that myself rather than reading it: the file has the same timestamp, the same size
+and an empty write log it had when the last iteration finished. Four of the five pieces are genuinely
+sound. The fifth is not, and it is the one the whole answer turns on. The check on one company's
+restored numbers, AVB, was asked to decide a price-AND-volume question, and it decides it from price
+alone: its classifier reads only closing prices, the one label that could have flagged a volume problem
+can never be produced by that code at all, and the "volumes match" line in its own answer file is true
+by construction rather than by measurement. Its answer file nonetheless calls the matter proven. The
+independent auditor spotted this and then talked himself back out of it on two grounds that do not
+hold: he believed the price bridge had been measured against a series carrying no volume, when the code
+measures it against the very series the volume comes from, and he leaned on a whole-market check that
+cannot speak about AVB, because AVB is the only one of 566 names whose series sits on a different scale.
+I then looked at the stored numbers myself. Dividing 11 August's volume by exactly the bridge factor
+drops it into the middle of AVB's own normal range; leaving it alone makes it the 579th busiest of 582
+names that day, on a day when the market as a whole was quiet. And the deciding fact: the outside
+provider handed back exactly a 2.793rd of AVB's own stored prices for days AVB had earlier been acquired
+FROM that same provider — the provider re-based the series between the two visits, and a re-based price
+series normally carries a re-based volume too. The measurement that would settle it was fetched in an
+earlier iteration and thrown away, and fetching it again is a live download the goal file forbids. So
+the honest answer is "not enough evidence", and the owner's own rule says that answer forces "not
+ready". Why halt rather than continue? Because every way to turn "not ready" into "ready" is the
+owner's to take — allow the small download, accept the residual in writing, or change the rule — and
+the rebuild itself needs a separate, fresh instruction by the owner's own contract, while the goal file
+shuts every other lane until the repair's final stage passes. The one job that does not need the owner,
+making the check honest, cannot change the answer. Why not REGRESSION? Nothing that worked stopped
+working, no stored value moved, and the one breach inside the iteration was caught by the review lane
+and fully undone. Two process facts for the record: this is the fifth iteration running where the
+independent auditor found what the developer, the reviewer and the quality check all missed — and the
+first where the auditor, having found it, then closed it on reasoning that does not survive checking.
+
+**Next-step recommendation:** ONE DECISION IS NEEDED FROM THE OWNER, about one company's trading-volume
+numbers on two days. Pick one: (a) authorise a small, bounded, read-only comparison download — one
+symbol (AVB), a few already-stored days, volume only, held outside the database and never written —
+which would settle it outright but needs a dated amendment to the goal file, because the earlier
+download permission is used up; (b) accept the residual in writing with a caveat on record — the
+reassuring facts, all verified by me: the worst case moves AVB's 63-day average dollar volume from about
+$215M to about $193M against a $50M floor, so the company stays admitted, its risk grade stays E, its
+setup stays "Avoid" and it stays a non-candidate, four names on 11 August and thirty-five on 12 August
+move by a single position in a liquidity ranking, and only 2 of the 11 days being rebuilt are affected
+at all; (c) order the small honesty fix first — feed volume into the check, make the missing fourth
+label reachable, persist the per-window volume figures the specification asked for, give the headline
+answer file a real producer, and port the missing failure tests onto the gate that will guard the
+rebuild — which costs nothing on the critical path but cannot change the answer; or (d) reword the gate
+so a volume question of this bounded size does not block the rebuild. WHATEVER IS CHOSEN, the rebuild
+still needs a separate, fresh owner instruction, so this iteration ends `J-11 STAGE D AUTHORIZED: NO`.
+TWO MECHANICAL ITEMS RIDE ALONG: confirm this iteration's eleven evidence files and its new code
+actually reach version control — none of them is tracked right now, and two of this iteration's own
+scripts write into that same folder by default, so a repeat of the accident it already had would be
+unrecoverable; and record 12 August as a caveat on that day's rebuilt output whichever way the volume
+question is settled, since it is AVB's third-busiest day in twenty-one years of stored history. FIVE
+OLDER OWNER QUESTIONS remain open and non-blocking: whether 3.44 GB is acceptable for J-09; J-06's
+"underlying run unavailable" wording; the rewording of J-01's first two test steps; whether an empty
+"next-session focus" is acceptable; and whether MNST joins the recovery list. TWO STANDING FRAMEWORK
+NOTES: the defect that once let a forbidden test lane run is still unfixed in `scripts/automation/` —
+six iterations running have avoided it with the maintenance-isolation contract rather than curing it;
+and `goal_gate.py`'s duplicate-journey-heading defect is still unfixed and must be closed before any
+GOAL_ACHIEVED certification.
