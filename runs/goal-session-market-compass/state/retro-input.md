@@ -8,8 +8,8 @@ scripts/automation/lib/retro_collect.sh — no model wrote this. Counters marked
 
 - **Terminal status:** STALLED
 - **Final verdict:** STALLED
-- **Iterations used:** 16
-- **Halted at (UTC):** 2026-08-25T12:50:20.871168Z
+- **Iterations used:** 17
+- **Halted at (UTC):** 2026-08-25T17:19:05.300778Z
 
 ## Verdict sequence
 
@@ -31,6 +31,7 @@ iter 12: STALLED
 iter 13: STALLED
 iter 14: STALLED
 iter 15: STALLED
+iter 16: STALLED
 ```
 
 ## Agent economics
@@ -351,25 +352,41 @@ Per-step wall breakdown (analyze_telemetry.py --wall):
       pump-wait                  0.8m
       OVER BUDGET at post-dev-fanout: 5916s > 3600s (mode=trim)
       unattributed (glue)        0.2m  (wall − agents(active) − quota)
-  session: 15 completed iteration(s), mean wall 125.6m
-      total reviewer                   964.6m
-      total developer                  867.6m
-      total orchestrator               427.9m
-      total goal-decomposer            304.2m
-      total goal-evaluator             236.2m
-      total auditor                    212.2m
+  goal-market-compass-iter-16  depth=full  verdict=STALLED  wall=200.4m
+      developer                   44.6m  calls=1
+      goal-evaluator              27.2m  calls=1
+      auditor                     27.1m  calls=1
+      goal-decomposer             26.6m  calls=1
+      coherence-auditor           19.2m  calls=1
+      reviewer                    18.1m  calls=1
+      qa                           9.4m  calls=1
+      orchestrator                 9.4m  calls=1
+      ui-test-designer             9.3m  calls=1
+      iteration-summarizer         9.2m  calls=1
+      [engine] full-pipeline     118.1m  (contains agent time above)
+      [engine] showcase-join       0.0m  (contains agent time above)
+      pump-wait                  0.9m
+      OVER BUDGET at post-dev-fanout: 5930s > 3600s (mode=trim)
+      unattributed (glue)        0.1m  (wall − agents(active) − quota)
+  session: 16 completed iteration(s), mean wall 130.2m
+      total reviewer                   982.7m
+      total developer                  912.2m
+      total orchestrator               437.3m
+      total goal-decomposer            330.8m
+      total goal-evaluator             263.4m
+      total auditor                    239.2m
+      total coherence-auditor          145.6m
       total browser-qa-agent           145.4m
-      total iteration-summarizer       127.7m
-      total coherence-auditor          126.3m
-      total qa                         122.5m
-      total ui-test-designer            71.0m
+      total iteration-summarizer       136.9m
+      total qa                         132.0m
+      total ui-test-designer            80.3m
       total ui-impact-analyst           39.1m
       total demo-narrator               21.3m
       total readme-maintainer           10.1m
       total ux-regression-reviewer       7.2m
       total browser-qa-replay            6.5m
       total AWAITING_PUMP paused gaps: 501.7m
-      halts: AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, STALLED, REGRESSION_HALT, STALLED, STALLED, STALLED, STALLED, STALLED
+      halts: AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, STALLED, REGRESSION_HALT, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED
 ```
 
 ## Friction counters
@@ -383,26 +400,26 @@ Per-step wall breakdown (analyze_telemetry.py --wall):
 Last 20 lines of state/lessons.md:
 
 ```
-another — before declaring the clear safe, grep the boot/warmup/resolve paths for anything that derives
-its target from the PRESERVED layer, and check whether the two layers now disagree in a way that makes a
-routine start-up destructive.
+boot-path or middleware check); also any "prove it on disposable test state" acceptance clause —
+treat it as necessary, never sufficient.
 
-## iter-15b — 2026-08-25T11:05:00Z
+## iter-16 — 2026-08-25T18:06:00Z
 
 **Verdict:** STALLED
-**Lesson:** A fingerprint quoted into a spec without its recipe is an unfalsifiable verification target,
-and it costs more than the check was ever worth. The iter-15 spec's TC-1 required matching
-`avb_daily_prices_sha256 = 0257c56d…0b11cd`; the developer honestly recorded "unknown", and the auditor
-tried nine candidate recipes and concluded it "matches nothing on disk" and "could not succeed by
-construction". Both wrong on the reproducibility point: `sha256` over the **concatenated `repr()`** of
-`(symbol,date,open,high,low,close,volume)` for all 5,397 AVB rows ordered by date reproduces it exactly
-(I recomputed it in one attempt once the recipe was stated). There was never a data discrepancy. The
-corollary is the sharper half: an auditor who tries N recipes and concludes "unreproducible" has proven
-only that N recipes failed — that is evidence about the search, not about the artifact.
-**Applies to:** any spec or handoff that quotes a hash/fingerprint as a comparison target — state the
-exact recipe (query, column order, serialization, separator, sort) beside the value, and when a
-fingerprint fails to reproduce, downgrade the conclusion to "recipe unknown" rather than "value
-unreproducible" unless the underlying data is independently shown to differ.
+**Lesson:** Correcting the data invalidated a counterfactual that was written against the
+pre-correction data, and nothing flagged it. `_build_bars_with_transformed_close` substitutes close
+only unless `volume_override` is passed; that was coherent while stored volume was raw, but once the
+AVB volume was corrected to the compensating scale, representation B silently became
+provider-scale close × Trendora-scale volume — a hybrid matching no real state. Its fingerprint is
+unmissable once looked for: A/B came out *exactly* `bridge_factor` on both dates. The spec itself
+sanctioned dropping the override ("the write already landed, so read the corrected rows directly"),
+which is why developer, reviewer and QA all passed it — but the override never fed representation A,
+it fed B. After any state correction, re-derive every counterfactual's inputs; an exactly-round ratio
+between a representation and its counterfactual is the signature of a one-sided rescale, not a finding.
+**Applies to:** any iteration that mutates stored state which an existing diagnostic, A/B trace, or
+counterfactual reads (`j11_avb_diagnostic.py`'s trace functions, `run_j11_iter16_stage_d_readiness.py`),
+and any spec that tells an implementer to drop a substitution argument because "the real data now has
+that value".
 ```
 
 ## Halt context
@@ -413,6 +430,6 @@ session.json halt-relevant fields:
 {
   "status": "STALLED",
   "last_verdict": "STALLED",
-  "parked_wip_sha": "e5370b9a"
+  "parked_wip_sha": "693a5e8a"
 }
 ```

@@ -1,11 +1,11 @@
 # Goal Session Summary — market-compass
 
 **Final verdict:** STALLED
-**Total iterations:** 16
-**Wall time (seconds):** 4
+**Total iterations:** 17
+**Wall time (seconds):** 12031
 **Quota pauses:** 0
 **Started:** 2026-08-19T21:31:52.886915Z
-**Finished:** 2026-08-25T12:50:20.871168Z
+**Finished:** 2026-08-25T17:19:05.300778Z
 
 ## Branch
 
@@ -39,6 +39,7 @@ This session pushed iteration commits to `goal/market-compass`. Open a PR with:
 - [critical] AG-17 - Repair never rewrites provenance (owner, 2026-08-20): ... The incident record itself is evidence: the iter-5 drill result, its handoff, the reviewer/QA evidence already produced, and the explicit statement that the committed seed could not restore these dates MUST NOT be deleted, rewritten, or silently superseded. (iter goal-market-compass-iter-8)
 - [critical] AG-18 — The authorized manifest migration preserves everything (owner, 2026-08-23): the bounded next_session_manifests schema migration authorized in J-11 step 11 (ruling A1) removes the source_run_id foreign-key constraint and nothing else. ... No other table's schema may be altered under that authorization. A changed stored value is a REGRESSION, never a note. (iter goal-market-compass-iter-11)
 - [critical] AG-17 — Repair never rewrites provenance (owner, 2026-08-20): "The incident record itself is evidence: the iter-5 drill result, its handoff, the reviewer/QA evidence already produced, and the explicit statement that the committed seed could not restore these dates MUST NOT be deleted, rewritten, or silently superseded." (read together with J-11 ruling C5, "do not rewrite ... incident evidence") (iter goal-market-compass-iter-14)
+- [minor] AG-8 - Resilience to data-shape and data-scale change: ... unbounded whole-table ORM loads are forbidden (the delta engine reads column-projected selects, never full record_json sweeps). (critical) (iter goal-market-compass-iter-16)
 
 ## Telemetry
 
@@ -341,23 +342,39 @@ See `runs/goal-session-market-compass/telemetry.jsonl` for the structured event 
       pump-wait                  0.8m
       OVER BUDGET at post-dev-fanout: 5916s > 3600s (mode=trim)
       unattributed (glue)        0.2m  (wall − agents(active) − quota)
-  session: 15 completed iteration(s), mean wall 125.6m
-      total reviewer                   964.6m
-      total developer                  867.6m
-      total orchestrator               427.9m
-      total goal-decomposer            304.2m
-      total goal-evaluator             236.2m
-      total auditor                    212.2m
+  goal-market-compass-iter-16  depth=full  verdict=STALLED  wall=200.4m
+      developer                   44.6m  calls=1
+      goal-evaluator              27.2m  calls=1
+      auditor                     27.1m  calls=1
+      goal-decomposer             26.6m  calls=1
+      coherence-auditor           19.2m  calls=1
+      reviewer                    18.1m  calls=1
+      qa                           9.4m  calls=1
+      orchestrator                 9.4m  calls=1
+      ui-test-designer             9.3m  calls=1
+      iteration-summarizer         9.2m  calls=1
+      [engine] full-pipeline     118.1m  (contains agent time above)
+      [engine] showcase-join       0.0m  (contains agent time above)
+      pump-wait                  0.9m
+      OVER BUDGET at post-dev-fanout: 5930s > 3600s (mode=trim)
+      unattributed (glue)        0.1m  (wall − agents(active) − quota)
+  session: 16 completed iteration(s), mean wall 130.2m
+      total reviewer                   982.7m
+      total developer                  912.2m
+      total orchestrator               437.3m
+      total goal-decomposer            330.8m
+      total goal-evaluator             263.4m
+      total auditor                    239.2m
+      total coherence-auditor          145.6m
       total browser-qa-agent           145.4m
-      total iteration-summarizer       127.7m
-      total coherence-auditor          126.3m
-      total qa                         122.5m
-      total ui-test-designer            71.0m
+      total iteration-summarizer       136.9m
+      total qa                         132.0m
+      total ui-test-designer            80.3m
       total ui-impact-analyst           39.1m
       total demo-narrator               21.3m
       total readme-maintainer           10.1m
       total ux-regression-reviewer       7.2m
       total browser-qa-replay            6.5m
       total AWAITING_PUMP paused gaps: 501.7m
-      halts: AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, STALLED, REGRESSION_HALT, STALLED, STALLED, STALLED, STALLED, STALLED
+      halts: AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, STALLED, REGRESSION_HALT, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED
 ```

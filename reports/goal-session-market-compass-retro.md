@@ -6,41 +6,20 @@
 > Codes: P0/P1/P2 = how urgent · Effort S/M/L = how much work · Risk LOW/MED/HIGH
 > = chance a change breaks something else.
 
-**Session:** market-compass · **Terminal status:** STALLED · **Iterations:** 16
+**Session:** market-compass · **Terminal status:** STALLED · **Iterations:** 17
 
 ## Candidate items
 
-### RETRO-1 · Review verdict reliability
-- **Proposed:** P1 · Effort M · Risk LOW
-- **Problem:** The reviewer produced an invalid first-attempt verdict once, requiring retry. Review verdict failures add wall time and delay the goal loop.
-- **Evidence:** Friction counters — "Attempt-1 review FAILs: 1"
-- **Sketch:** Add pre-flight format validation before the reviewer emits its verdict line, checking format against the spec in .claude/workflow.md. If validation fails, rewrite the raw verdict rather than letting deterministic gates catch it later. Log both original and rewritten verdicts in lessons.md so implementers can track churn frequency.
-- **Verify idea:** Run next session; measure whether Attempt-1 review FAILs stays at 0.
-
-### RETRO-2 · Budget model needs recalibration
+### RETRO-1 · Quota trims silently block feedback to goal-decomposer
 - **Proposed:** P1 · Effort M · Risk MED
-- **Problem:** Twelve of 15 completed iterations exceeded the per-stage 3600-second budget, triggering trim mode repeatedly across different agent stages. This suggests the budget is misaligned with actual workload or parallelization is insufficient.
-- **Evidence:** Agent economics (per-step wall breakdown) — "OVER BUDGET at qa-loop: 4178s > 3600s (mode=trim)", "OVER BUDGET at browser-qa: 5705s > 3600s (mode=trim)", "OVER BUDGET at post-dev-fanout: 4769s > 3600s (mode=trim)"
-- **Sketch:** Analyze the budget-setting logic in goal-mode config. For stages most frequently over budget (post-dev-fanout appears in 6+ iterations), either increase the per-stage budget or split into finer parallel sub-stages. Use historical per-agent wall times from past sessions to refit the budget model via percentile analysis.
-- **Verify idea:** Run next session and count OVER BUDGET warnings; target fewer than 4 (< 27% of iterations).
+- **Problem:** The pipeline runs out of time and cancels work automatically on nearly every iteration, but nothing tells the goal-maker that this happened. So the next iteration, it asks for the same amount of work and the pipeline cancels it again, wasting effort.
+- **Evidence:** Agent economics (per-step wall breakdown) — "OVER BUDGET at post-dev-fanout: 6063s > 3600s (mode=trim)" [9 iterations]; "OVER BUDGET at browser-qa: 5705s > 3600s (mode=trim)" [3 iterations]; "OVER BUDGET at qa-loop: 4178s > 3600s (mode=trim)" [2 iterations]; 14 budget overages across 16 completed iterations.
+- **Sketch:** (1) Add "trim-event-count-by-stage" counter to friction counters showing how many times each pipeline stage exceeded its quota; (2) When a trim fires, log stage name + overage % to session.json; (3) Before each iteration, have goal-decomposer read trim history from session.json and reduce the next iteration's work scope at over-budget stages (e.g., if stage was 30% over budget last time, cut scope by 20% this time).
+- **Verify idea:** In the next session, friction counters should show either (a) trim-event-count near zero, or (b) goal-decomposer log should show it read trim history and adjusted scope downward.
 
-### RETRO-3 · AWAITING_PUMP idle delays erode session efficiency
-- **Proposed:** P1 · Effort M · Risk MED
-- **Problem:** The pump (goal-mode background service executor) paused iteration progress 501.7 minutes total, roughly one hour per iteration. This is listed as a halt reason multiple times and represents ~8% of session wall time.
-- **Evidence:** Agent economics (per-step wall breakdown) — "total AWAITING_PUMP paused gaps: 501.7m"; Halt context — "halts: AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, STALLED, REGRESSION_HALT, STALLED, STALLED, STALLED, STALLED, STALLED"
-- **Sketch:** Profile pump dispatch overhead and service startup latency. Check whether dispatch is serialized when parallel startup is possible, or whether service boot times are unexpectedly slow. Correlate AWAITING_PUMP pauses with specific iteration phases to identify which service(s) are the bottleneck.
-- **Verify idea:** Add pump-level latency instrumentation; confirm AWAITING_PUMP paused gaps drop to <100m in next session.
-
-### RETRO-4 · Long verdict stall tail without diagnostic
-- **Proposed:** P2 · Effort M · Risk LOW
-- **Problem:** Starting at iteration 10, the goal-evaluator declared STALLED and remained stalled through iteration 15 (6 consecutive iterations). No diagnostic was emitted to explain why or propose a recovery path before the session halted.
-- **Evidence:** Verdict sequence — "iter 10: STALLED iter 11: REGRESSION iter 12: STALLED iter 13: STALLED iter 14: STALLED iter 15: STALLED"
-- **Sketch:** When the goal-evaluator emits a second consecutive STALLED verdict, add a diagnostic checkpoint: list journeys still incomplete, their blockers (dependency not met, acceptance criteria mismatch, or agent timeout pattern), and a suggested retry strategy or goal amendment. Emit as a lessons entry so the human can inspect and decide whether to pause/edit or escalate.
-- **Verify idea:** Run next session; if a STALLED chain ≥3 occurs, verify that a diagnostic checkpoint was emitted by iteration N+1.
-
-### RETRO-5 · Incomplete-attempt instrumentation gap
+### RETRO-2 · Iteration restarts lack explanation in telemetry
 - **Proposed:** P2 · Effort S · Risk LOW
-- **Problem:** Multiple iterations recorded incomplete/interrupted attempts (7+ instances), but telemetry does not distinguish between pump death, agent timeout, and deterministic-gate halts. This obscures the true failure mode and prevents targeted fixes.
-- **Evidence:** Agent economics (per-step wall breakdown) — "(incomplete/interrupted attempt)" marked at iter-0, iter-1, iter-3, iter-5, iter-8, iter-9 (2×), iter-10 (2×)
-- **Sketch:** Add telemetry events before/after each major agent stage that capture pump PID and heartbeat. If an incomplete attempt is detected, emit a lessons entry with a root-cause tag: "pump-death", "agent-timeout", "deterministic-gate", or "unknown-halt". This allows post-session analysis to aggregate failure modes across sessions.
-- **Verify idea:** Run next session; verify all incomplete attempts in telemetry.jsonl have a root-cause tag in lessons.md by session end.
+- **Problem:** When the engine has to restart an iteration partway through, it records the interruption but does not log why it happened. Without knowing the restart reason, the retro-analyst cannot tell if it is a framework problem (pump crash, timeout) or a symptom of deeper product issues.
+- **Evidence:** Agent economics (per-step wall breakdown) — "goal-market-compass-iter-0  depth=?  verdict=?  wall=?  (incomplete/interrupted attempt)"; "goal-market-compass-iter-8  depth=lean  verdict=?  wall=?  (incomplete/interrupted attempt)"; "goal-market-compass-iter-9  depth=full  verdict=?  wall=?  (incomplete/interrupted attempt)" [10 incomplete attempts across iters 0, 1, 3, 5, 8, 9(×2), 10(×2), 12, with no stated reason].
+- **Sketch:** Capture why each iteration restart fires (user pause, pump timeout, agent error, malformed verdict, quota exceeded, etc.) and write it to telemetry as a new event "iter_restart" with a "reason" field. The retro-collect script can then categorize these and produce a restart-reason-distribution counter.
+- **Verify idea:** Next session's retro-input should list restart reasons in friction counters (e.g., "iter-restart-count: 5, top-reason: user-pause (3)"); the breakdown reveals if one cause dominates.
