@@ -1636,6 +1636,116 @@ manifest artifact (it must be self-describing and self-caveating).
        `J-11 MAINTENANCE BOUNDARY: NOT ACTIVE` and `J-11 LIVE PRE-BOOT GUARD: NOT ARMED` are the only
        honest status lines, **maintenance isolation remains ACTIVE, and the live backend must not be
        booted.**
+
+       ### OWNER RULING — J-11 exact maintenance-boundary table creation and live arm AUTHORIZED
+       *(owner, 2026-08-25 — binding; supersedes the previous prohibition on creating
+       `maintenance_boundaries` only to the exact extent stated below)*
+
+       **Chronology — iteration 17 was right, and stays on the record.** The "BLOCKER ON RECORD"
+       paragraph immediately above, and iteration 17's `STALLED` live-arm outcome, are **correct and
+       are preserved verbatim for auditability.** Iteration 17 stopped exactly as the owner contract
+       *in force at that time* required: the table was absent, creating it was forbidden by name, so it
+       named the blocker and halted rather than reinterpreting an additive `CREATE TABLE` as exempt.
+       That was the right call and must not be re-described as a mistake, softened, or edited away.
+       **This ruling is a strictly later owner authorization that removes exactly that one blocker** —
+       it changes what is permitted from now on; it does not change what was permitted then.
+
+       **Scope of the override — narrow and exact.** This ruling overrides the earlier sentence
+       *"do not create it and do not migrate to it"* **ONLY** for the *exact creation of the single
+       `maintenance_boundaries` table through the bounded operation described below.* It revokes
+       **nothing** else: the prohibition on arbitrary migrations, `ALTER`s, table rewrites, schema
+       cleanup, and broad schema mutation stands in full, as does AG-18 and the iter-11 DDL-residual
+       ruling.
+
+       **1. Exact schema creation is now authorized.** A future J-11 iteration is authorized to create
+       exactly one missing additive table on the live Trendora database: **`maintenance_boundaries`**.
+       It must be created from the already-committed canonical
+       **`app.models.MaintenanceBoundary.__table__`**, or an equivalently exact schema-derived
+       operation. **Do not hand-author an independent duplicate schema** if the committed SQLModel
+       table can be used directly. The resulting live table must exactly match the committed model the
+       J-11 guard requires. **If the table already exists:** inspect it first; if it exactly matches
+       the required schema, do **not** recreate it; if it does **not** exactly match, **STOP** — do not
+       `ALTER` it, do not migrate it, do not repair it by guesswork.
+
+       **2. Broad startup/schema machinery is NOT authorized for this operation.** Do **not** use
+       ordinary backend startup as the mechanism. Do **not** invoke the broad production
+       `create_db_and_tables()` for the purpose of this J-11 schema operation. Do **not** rely on
+       `SQLModel.metadata.create_all()` over the *complete* application metadata if that could create
+       additional missing tables or trigger other startup schema/index maintenance. The authorized
+       mutation boundary is exactly:
+       > create `maintenance_boundaries` only.
+       No unrelated table, index, column, migration, schema cleanup, or startup mutation is authorized
+       by this ruling. **A dedicated confirm-gated maintenance entrypoint must perform the exact
+       bounded operation.**
+
+       **3. Live J-11 boundary activation is authorized immediately after successful exact table
+       creation.** Once the exact table exists and its schema is verified, the same future iteration is
+       authorized to register or activate exactly one J-11 boundary row: **`j11-incident-recovery`**.
+       Its quarantined date set must be sourced from the existing canonical
+       **`app.engine.j11_maintenance.INCIDENT_DATES`** — **never** retype a second independent date
+       list into production registration logic. The persisted row must be **active**, **auditable**,
+       **idempotently registered by name**, and **scoped exactly to the canonical J-11 incident date
+       set**. **No duplicate boundary row may be created.**
+
+       **4. Exact allowed live mutations.** For the table-create-and-arm iteration, expected live
+       mutation is limited to: (1) creation of the single missing `maintenance_boundaries` table, if
+       absent; (2) creation or activation of the single `j11-incident-recovery` row. **Nothing else.**
+       The iteration must capture before/after evidence proving no unrelated application state changed.
+       In particular it must **not** mutate `daily_prices`, `scanner_runs`, `scanner_results`, sector
+       scores, theme scores, `forward_returns`, `next_session_manifests`, `data_provider_runs`,
+       watchlist state, or existing canonical research outputs. **No incident-date `ScannerRun` may be
+       created as a side effect.**
+
+       **5. Maintenance isolation stays ACTIVE during creation and arming.** The live backend remains
+       **OFF** throughout the table-creation and boundary-activation procedure. Do not boot the app
+       until: the table exists; the J-11 row is active; and a direct live guard probe proves the latest
+       quarantined date is blocked. Creation and arming must occur through **explicit maintenance
+       tooling, not ordinary product boot.**
+
+       **6. The live guard must be proven ARMED before normal backend boot is allowed.** After
+       activation, verify directly against the live database that: the persisted J-11 boundary exists;
+       `active=True`; the persisted quarantined date set **exactly equals** the canonical J-11 incident
+       dates; `evaluate_boundary_for_date(...)` returns **blocked** for the relevant quarantined dates;
+       the current latest stored incident date is **blocked**; and **no `ScannerRun` was created during
+       the verification**. Only after that evidence is recorded may the status become
+       `J-11 MAINTENANCE BOUNDARY: ACTIVE` and `J-11 LIVE PRE-BOOT GUARD: ARMED`.
+
+       **7. Close the boot-path coverage gap before calling the guard generally safe.** The synchronous
+       latest-snapshot path already checks the maintenance boundary before its `run_scan`. **However
+       the background historical warmup also contains boot-initiated canonical `run_scan` calls.** A
+       future implementation iteration must ensure **every** boot-initiated path capable of creating a
+       canonical `ScannerRun` respects the same persisted maintenance-boundary contract — at minimum
+       the historical background warmup cadence loop. **Do not solve this with a second hardcoded J-11
+       date conditional**; the protection must remain **state-driven from the persisted boundary**.
+       Required behaviour: active matching boundary → skip/refuse the protected canonical write;
+       ambiguous or unreadable relevant boundary state → **fail closed**; explicitly cleared boundary →
+       normal behaviour resumes; no registered boundary in an ordinary healthy system → normal
+       behaviour **unchanged**. This requirement exists so the guard stays correct **after the latest
+       stored date moves beyond the current incident window.**
+
+       **8. Preserve current J-11 readiness and authorization semantics.** The Stage D readiness result
+       may remain `J-11 STAGE D READY: YES` — but **READY is not authorization.** This ruling does
+       **NOT** authorize Stage D. Throughout the next table-create / arm / guard-completion iteration,
+       `J-11 STAGE D AUTHORIZED: NO` must remain true. Do **not**: start Stage D; rebuild incident-date
+       `ScannerRun`s; generate incident-date manifests; freeze a reusable Stage D execution identity;
+       or treat successful guard arming as implicit Stage D permission.
+
+       **9. Required stop point.** The future implementation iteration must stop when it can truthfully
+       report:
+       ```text
+       J-11 MAINTENANCE BOUNDARY: ACTIVE
+       J-11 LIVE PRE-BOOT GUARD:  ARMED
+       J-11 STAGE D READY:        YES
+       J-11 STAGE D AUTHORIZED:   NO
+       ```
+       If any of the first three cannot be established, **report the exact blocker and STOP.** **Even
+       if all three are established, STOP.** Actual Stage D execution requires a separate later
+       explicit owner authorization.
+
+       **10. Fresh Stage D identity rule remains binding.** Do **not** freeze or reuse a Stage D
+       execution identity during the maintenance-boundary iteration. Any future owner-authorized
+       Stage D execution must freeze a **fresh** execution identity immediately before its first
+       authorized Stage D write, under the final code, config, data baseline and guard state.
     12. **Stage B2 — freeze ONE engine identity for the whole attempt (owner, 2026-08-21).** J-11's
        claim is that the incident set ends up as one internally consistent current-engine derivation;
        that claim must be testable. Before Stage C, freeze the intended current engine identity and
