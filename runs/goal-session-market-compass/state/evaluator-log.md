@@ -1178,3 +1178,110 @@ once let a forbidden test lane run is still unfixed in `scripts/automation/` —
 have avoided it with the maintenance-isolation contract rather than curing it; and `goal_gate.py`'s
 duplicate-journey-heading defect is still unfixed and must be closed before any GOAL_ACHIEVED
 certification.
+
+## Iteration 17 — goal-market-compass-iter-17
+
+**Date:** 2026-08-25T21:05:00Z
+**Verdict:** STALLED
+**Depth dispatched:** full (`runs/goal-session-market-compass/iter-17/depth-dispatched` reads `full`,
+matching the spec's own `Depth: full` line — the silent full→lean demotion that fired in iters 2, 6 and 8
+did NOT recur, for the ninth iteration running, and neither did the forbidden browser/replay lane; the
+engine recorded its refusal in `iter-17/maintenance-isolation-refusals` at 2026-08-25T19:33:59Z)
+
+**Owner-facing lines:** `J-11 STAGE D READY: YES` · `J-11 STAGE D AUTHORIZED: NO` (unchanged,
+unconditional) · `J-11 MAINTENANCE BOUNDARY: NOT ACTIVE` · `J-11 LIVE PRE-BOOT GUARD: NOT ARMED`. All four
+confirmed by this evaluator with no correction needed. The last two, and the live-arm sub-step's STALLED
+return, are the OWNER-SPECIFIED expected outcomes of the 2026-08-25 lifecycle ruling, not iteration
+failures.
+
+**Journey deltas:**
+- Newly passing: none. Newly failing: none. **Regressed: none.**
+- **Advanced within `partial`: J-11** "Incident-bounded clean regeneration of derived state" — this
+  iteration's sole target. The owner's authorized slice was delivered in full and stopped where the owner
+  said to stop. Re-stamped `last_verified_iter` to iter-17 and `spec_hash` to `8cf4ace6…` (was
+  `e7927ff5…` — the owner's 2026-08-25 "maintenance-boundary lifecycle AUTHORIZED" ruling changed J-11's
+  text; no `journeys-changed.md` fired because J-11 is `partial`, not `passing`, and I re-verified it
+  against the current text anyway). All ten other journeys' hashes are byte-identical to the recorded ones
+  on my own `goal_gate.py hash-journeys` run. Stages D-G untouched, not started, not authorized.
+- Carried, NOT re-verified (maintenance isolation — browser QA and the replay lane were forbidden by
+  contract, so every journey keeps its prior recorded status): J-01, J-04, J-10 stay `passing`; J-02,
+  J-03, J-05, J-06, J-09 stay `partial`; J-07, J-08 stay `failing`. Two spot-checks: J-01's iter-4
+  screenshot (GRMN carries a real stored sector label) and J-10 re-derived read-only (585 `daily_prices`
+  rows on each of 2026-08-11 and 2026-08-12 — the owner-accepted terminal state). Both consistent.
+- **J-10's iter-15 material caveat is now CLOSED.** Iteration 16's correction landed and I re-derived it:
+  `round(provider_volume / bridge_factor)` reproduces both stored volumes exactly (554757, 3706010).
+- Anti-goal violations: **NONE new. ONE CLOSED — AG-8.** Iteration 16's minor unresolved entry (the
+  unbounded `select(MaintenanceBoundary)` on the boot path) is fixed and I verified the fix by reading the
+  code, not the prose. Ledger: **7 total, 0 unresolved.**
+- Coherence: COHERENCE-PASS (no blocking violations, no advisory notes). Deterministic scan: CLEAN.
+  Review: PASS_WITH_NOTES (one MINOR). QA: PASS. Audit: PASS_WITH_GAPS (B1/T1 IMPORTANT; B3/T2/T3/D1 gaps;
+  B2/T4/D2 observations).
+
+**Reasoning:** The team built exactly what the owner allowed, and I did not take that from anyone's report
+— I read all seven changed files, re-ran the tests myself (39 passed) and re-derived every load-bearing
+figure read-only. The safety catch's query is genuinely fixed: it now keeps rows whose flag is unreadable
+where a naive filter would have silently dropped them, reads only the four fields it needs, and stops at a
+hard limit with a refuse-to-proceed branch rather than quietly cutting a matching row away. The two new
+command-line tools cannot reach the real database by accident: neither has a default database path, the
+arming tool checks the eleven dates against the goal file before touching anything, and it refuses outright
+when the table is missing instead of creating it. Nothing was written to the real database — my own check
+of the file's timestamp, size and empty write log matches the figures recorded before the work started. But
+the headline is not any of that. It is that the catch is still switched off on the real database, and I
+confirmed the consequence myself rather than inheriting it: the newest stored price day IS one of the
+eleven damaged days, all eleven hold zero results, the table the catch reads does not exist there, and the
+application creates its tables BEFORE it runs the start-up step the catch guards. So one ordinary start-up
+would do two forbidden things at once — create the very table the owner said not to create, and then, with
+that table new and empty, write a fresh day's results onto 12 August. Both are permanent. The only thing
+stopping it is that nobody starts the app, which is precisely the control the owner's own rule rejects by
+name. My honest judgement on how this was reported: nobody said anything false — the four owner-facing
+lines are exactly right and the owner's own ruling already describes how start-up creates the table — but
+the plan turned the measurement of an open danger into a green tick, and the developer's, reviewer's and
+quality reports all inherited that framing without once saying what the result means for the live system.
+Two further corrections I made against the material handed to me. FIRST, the new headline number in the AVB
+evidence proves nothing: I reproduced it algebraically and the price term cancels completely, leaving the
+stored volume divided by the provider volume times the same factor the stored volume was DEFINED by — I
+confirmed `round(provider_volume / bridge_factor)` equals the stored value exactly on both days, so the
+answer could not have come out otherwise. The saved note calling the two compared versions "genuinely
+independent" overstates. The AVB-A label itself survives: it rests on the engine's own decision comparison
+(no ranking shifts, same risk grade, same "avoid" status, same ineligibility across a 2.79x price
+difference), and since both labels already permit readiness, the correction could never have moved the
+answer. SECOND, the quality report's damaged-date check is vacuous: of the eleven dates it lists, only two
+are real damaged dates and seven hold no price data at all, so those checks passed by testing nothing —
+though the underlying fact does hold on my own query. Why halt? Because every route past the blocker is the
+owner's to take: creating the table is forbidden by name, arming needs the table, the rebuild needs a fresh
+written instruction, and re-wording the rule is a goal-file change. I checked whether an engineer could
+close the hole alone and they cannot — making the catch refuse on a missing table would have no effect,
+because start-up creates the table first, and making it refuse on an empty table would block every normal
+start-up forever, which is a design decision the owner owns. Halting is also strictly safer: a stopped
+engine starts no backend. Why not REGRESSION? Nothing that worked stopped working, no journey was tested so
+none could fail, not one stored value moved, and the single open ledger entry was CLOSED rather than added
+to. Why not ESCALATE? This run already used full depth, and full depth is what found the problem. One
+process fact: this is the eighth iteration running where the independent auditor found what the developer,
+the reviewer and the quality check all missed — and the first where the finding was about framing rather
+than fact.
+
+**Next-step recommendation:** ONE SAFETY DECISION IS NEEDED FROM THE OWNER, and nobody should start the
+Trendora app until it is made. Today, starting it would both create the one table the owner said not to
+create and permanently write a new day's results onto 12 August. The situation is circular: the safety
+catch cannot be switched on without that table, and the ordinary way the table appears is the very start-up
+the catch exists to prevent. Pick one: (a) allow that one small empty table to be created — a single
+additive table, no existing data touched — after which the already-built, already-tested arming tool
+switches the catch on; (b) order the rebuild of the eleven damaged days, after which the start-up path
+becomes safe on its own because the newest stored price day would no longer be empty (the rebuild runs as a
+controlled script, not a started app, so it is safe while the catch is off) — this still needs a separate
+fresh written instruction; or (c) change the plan in `docs/goal.md`. FOUR SMALL JOBS RIDE ALONG, none of
+which can change that decision: add a refusal test for each of the two new evidence-writing tools (one can
+overwrite three of iteration 16's saved evidence files if its destination folder is mistyped — recoverable,
+since those files are committed, but it should not be possible); correct the saved AVB note that calls the
+two compared versions "genuinely independent"; correct the quality report's damaged-date list; and stop
+proving "we did not touch the other journeys' code" with `git diff` alone, which cannot see five of this
+iteration's seven changed files (the claim is TRUE — I re-checked it over tracked and untracked files
+together — it was just not validly proved). ONE MECHANICAL ITEM: this iteration's five new code files and
+its whole evidence folder are still untracked in git at the time of scoring — confirm they reach version
+control. FIVE OLDER OWNER QUESTIONS remain open and non-blocking: whether 3.44 GB is acceptable for J-09;
+J-06's "underlying run unavailable" wording; the rewording of J-01's first two test steps; whether an empty
+"next-session focus" is acceptable; and whether MNST joins the recovery list. TWO STANDING FRAMEWORK NOTES:
+the defect that once let a forbidden test lane run is still unfixed in `scripts/automation/` — nine
+iterations running have avoided it with the maintenance-isolation contract rather than curing it; and
+`goal_gate.py`'s duplicate-journey-heading defect is still unfixed and must be closed before any
+GOAL_ACHIEVED certification.

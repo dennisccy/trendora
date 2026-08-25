@@ -104,22 +104,7 @@ live artifact (`sqlite_master`, `pragma_foreign_key_check`) and not only against
 and any fail-closed read path, where the missing-field branch deserves its own test alongside the
 missing-row branch.
 
-## iter-11 — 2026-08-23T23:45:00Z
-
-**Verdict:** REGRESSION
-**Lesson:** A SQLite "drop a constraint" rebuild has TWO possible sources of truth for the replacement
-table — the captured live DDL and the ORM model — and they are not the same object. `create_shadow_table`
-(`apps/backend/app/engine/j11_schema_migration.py:172-192`) captured the live DDL with `fetch_object_ddl`,
-reissued the captured INDEXES verbatim, and then built the TABLE from `NextSessionManifest.__table__`,
-so every difference between the live table's accumulated history (`app/db.py::_COLUMN_ADDS`
-server-side `DEFAULT`s, original column order) and the model's shape silently rode along with the one
-authorized change. The developer caught two consequences of that choice (four spurious indexes, a
-duplicate autoindex) and guarded them with a test — proof they were reasoning about exactly this class
-of drift — but never asserted the `CREATE TABLE` body itself was otherwise unchanged, so the reviewer
-and QA both re-verified only "the FK clause is gone" and the delta reached the live 7.8 GB database.
-**Rule for next time: a bounded schema migration must diff the whole pre/post `CREATE TABLE` text as an
-acceptance item, not just assert the absence of the one clause it set out to remove — and rebuild from
-what it captured, not from a second source of truth.**
+## iter-11 — 2026-08-23T23:45:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration performing a table rebuild/migration on a live SQLite database, any work
 touching `apps/backend/app/engine/j11_schema_migration.py` or `app/db.py`'s additive-schema path, and
 any acceptance item phrased as "removes X and nothing else".
@@ -294,3 +279,33 @@ between a representation and its counterfactual is the signature of a one-sided 
 counterfactual reads (`j11_avb_diagnostic.py`'s trace functions, `run_j11_iter16_stage_d_readiness.py`),
 and any spec that tells an implementer to drop a substitution argument because "the real data now has
 that value".
+
+## iter-17 — 2026-08-25T21:05:00Z
+
+**Verdict:** STALLED
+**Lesson:** A test case can turn the MEASUREMENT OF AN OPEN DANGER into a green checkbox, and every
+downstream lane will inherit that framing without lying. TC-11 was specified as "the live guard returns
+`blocked: False` → PASS", but on the live DB `blocked: False` IS the exposure: `max(daily_prices.date)` is
+`2026-08-12`, an incident date with 0 `scanner_runs`, and `main.py`'s `create_db_and_tables()` runs BEFORE
+`ensure_latest_snapshot()`, so one boot both mints the owner-forbidden `maintenance_boundaries` table and
+writes a `ScannerRun` onto that quarantined date. Dev handoff, review and QA all recorded the pass; none
+stated what it means. When a spec's expected value for a safety probe is the UNSAFE value, the test case
+must require the artifact to state the consequence in prose, not just record the boolean.
+**Applies to:** any iteration whose spec asserts an expected value for a probe of a KNOWN-BROKEN or
+quarantined condition — especially `runs/**/j11-*verification*.json`-style evidence and any future
+"confirm the guard is not armed / confirm X is still absent" check.
+
+## iter-17 — 2026-08-25T21:05:00Z
+
+**Verdict:** STALLED
+**Lesson:** A cross-check whose inputs are both derived from the correction being checked cannot fail. TC-13
+asked for an A/B dollar-volume ratio "within relative tolerance of 1.0", but
+`ratio = (close_a·volume_a)/((close_a/bf)·volume_b)` cancels `close_a` entirely and reduces to
+`volume_a·bf/volume_b` — and `volume_a` was DEFINED by iter-16 as `round(provider_volume/bf)`. I confirmed
+`round(provider_volume/bf)` equals the stored volume exactly on both dates, so the ratio was algebraically
+pinned to ≈1.0 before anyone ran it, and it reproduces iter-16's own `dollar_volume_ratio_after` digit for
+digit. Before specifying a numeric tolerance check as evidence, substitute the definitions of its inputs and
+confirm the quantity can actually come out wrong.
+**Applies to:** any future J-11/AVB Stage-D readiness or verification spec proposing a ratio/tolerance
+assertion over values in `j11_avb_diagnostic.py` / `j11_avb_correction.py`, and any "independent
+cross-check" claim in `runs/goal-market-compass-iter-*/j11-*.json`.

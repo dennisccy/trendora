@@ -319,3 +319,26 @@ live artifact (`sqlite_master`, `pragma_foreign_key_check`) and not only against
 and any fail-closed read path, where the missing-field branch deserves its own test alongside the
 missing-row branch.
 
+
+<!-- condense.sh 2026-08-25T18:24:59Z: moved 1 entries (keep-iters=5) -->
+
+## iter-11 — 2026-08-23T23:45:00Z
+
+**Verdict:** REGRESSION
+**Lesson:** A SQLite "drop a constraint" rebuild has TWO possible sources of truth for the replacement
+table — the captured live DDL and the ORM model — and they are not the same object. `create_shadow_table`
+(`apps/backend/app/engine/j11_schema_migration.py:172-192`) captured the live DDL with `fetch_object_ddl`,
+reissued the captured INDEXES verbatim, and then built the TABLE from `NextSessionManifest.__table__`,
+so every difference between the live table's accumulated history (`app/db.py::_COLUMN_ADDS`
+server-side `DEFAULT`s, original column order) and the model's shape silently rode along with the one
+authorized change. The developer caught two consequences of that choice (four spurious indexes, a
+duplicate autoindex) and guarded them with a test — proof they were reasoning about exactly this class
+of drift — but never asserted the `CREATE TABLE` body itself was otherwise unchanged, so the reviewer
+and QA both re-verified only "the FK clause is gone" and the delta reached the live 7.8 GB database.
+**Rule for next time: a bounded schema migration must diff the whole pre/post `CREATE TABLE` text as an
+acceptance item, not just assert the absence of the one clause it set out to remove — and rebuild from
+what it captured, not from a second source of truth.**
+**Applies to:** any iteration performing a table rebuild/migration on a live SQLite database, any work
+touching `apps/backend/app/engine/j11_schema_migration.py` or `app/db.py`'s additive-schema path, and
+any acceptance item phrased as "removes X and nothing else".
+

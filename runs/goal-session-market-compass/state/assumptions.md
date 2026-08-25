@@ -3,73 +3,6 @@
 Append-only. Each entry records a scoring decision that required interpreting an
 ambiguous goal, so the owner can veto it early.
 
-## iter-11 — goal-decomposer (scoping A4's "the UI must render the honest placeholder" under active maintenance isolation)
-
-**Ambiguity:** Ruling A4 (`docs/goal.md` J-11 step 11, owner 2026-08-23) states the `basis_disclosure`
-fail-closed fix "must return an explicit unverifiable/unknown state and the UI must render the honest
-'not yet proven'-class placeholder" as part of the Stage C precondition. Ruling A5, in the same set of
-rulings, keeps maintenance isolation ACTIVE for the whole iteration — no application-service boot, no
-browser-QA lane. `docs/goal.md` does not say whether A4's UI half must land in THIS iteration (typed and
-unit-tested, but unbootable/unverifiable-by-render) or may be deferred whole to Stage G, when the app
-can boot again.
-**We chose:** Land the minimal type/label change now — `apps/frontend/lib/api.ts`'s
-`CompassBasisDisclosure.status` union plus a small pure label/variant function extracted from
-`compass-manifest-strip.tsx` under `apps/frontend/lib/`, verified only by TypeScript type-checking and a
-plain node-script `.test.ts` (the project's existing no-boot frontend-logic-test pattern). This satisfies
-A4's UI clause without violating A5 (neither a dev server nor a browser is started), and avoids a second
-scope-creep trip back into this file at Stage G for a change with zero coupling to the destructive
-rebuild. No page render, dev-server boot, or browser-qa evidence is produced or claimed this iteration;
-the live rendered proof still belongs to Stage G alongside J-01/J-02/J-03.
-**Reversible:** yes — the exact literal chosen for the new status value is a one-line edit to a type
-union plus its label map if it ever needs to change, and nothing stored depends on it (`basis_disclosure`
-is read-time-only, never persisted); no data or evidence is created that a later choice would need to
-undo.
-
-## iter-11 — goal-evaluator (REGRESSION rather than STALLED for the AG-18 scope breach)
-
-**Ambiguity:** The decision tree returns REGRESSION on "a **critical** anti-goal violation [that] is
-unresolved" and STALLED when "every unblock path for the current blocker is a human-owned action".
-Both describe this iteration. AG-18 is tagged *(critical)* by the owner and its "removes the FK
-constraint and **nothing else**" bound was demonstrably exceeded on the live database and is NOT
-undone. But AG-18's own text names exactly one REGRESSION trigger — "A changed stored value is a
-REGRESSION, never a note" — and no stored value changed (I compared all 24 rows x 28 columns twice,
-read-only). The owner's prescribed response to an unresolvable J-11 question is "STOP before J-11 and
-surface it as an owner decision", which is STALLED's shape and is what iteration 10 returned for the
-same table.
-**We chose:** REGRESSION. Reasons: (a) the methodology's fail-closed rule — when unsure whether a
-violation is critical, treat it as critical and say so — and I am genuinely unsure, since the breach
-is of a scope bound rather than any of the five generic critical classes (secrets, paid dependency,
-license, backdoor, fabricated data); (b) the violated state is still materialised on the canonical
-7.8 GB database and cannot be reversed without a second owner authorization, so "unresolved" is true
-in the sense the iter-8 precedent used it (there, the damage HAD been undone byte-for-byte, so that
-iteration returned CONTINUE); (c) the very next authorized step is the destructive derived-state
-clear — the same class of action that permanently destroyed data in iteration 5 — and forcing an
-explicit `--acknowledge-regression` before it is the safe direction. Nothing else turns on the choice:
-both verdicts halt, the owner decision required is identical, and the eval states plainly that no
-journey broke and no stored value changed.
-**Reversible:** yes — if the owner reads the deviation as inside the authorization (option 1 in the
-recommendation), a single dated line in `docs/goal.md` plus `--acknowledge-regression` resumes the
-session with nothing repaired and nothing lost; the ledger entry can then be marked resolved by the
-next evaluator with the owner's acceptance as its evidence.
-
-## iter-11 — goal-evaluator (re-verifying J-10 against changed goal text on a maintenance-isolated iteration)
-
-**Ambiguity:** `journeys-changed.md` voids J-10's prior pass until it is re-verified "at the same
-evidence bar as a status change — a results row + screenshot against the CURRENT text", while the
-maintenance-isolation carve-out forbids any browser lane this iteration and says no journey may be
-promoted on it. `docs/goal.md` separately WAIVES J-10's walkthrough and names written artifacts plus
-database state as its substitute evidence set, so no screenshot can ever exist for it.
-**We chose:** Kept J-10 `passing` and stamped the new hash `42ad1807…`, on evidence I produced myself
-this iteration: read-only live queries showing 585 distinct symbols on each of 2026-08-11 and
-2026-08-12, EA and EQR holding zero rows, the price frontier still 2026-08-12 with nothing after it,
-`daily_prices` unchanged at 3,310,374 since iteration 9, and `data_provider_runs` still 549 (no new
-fetch). The changed goal text is the owner's own acceptance of exactly that state, so the current text
-is satisfied by the current database. This is not a promotion — the status is unchanged — and the
-screenshot rail cannot apply to a journey whose walkthrough the goal file waives (same reading iter-9
-logged when it first scored J-10 passing).
-**Reversible:** yes — J-11 Stage G is the first legally-runnable verification lane after this, and
-J-10 can be re-scored there at no cost if the owner reads the rail literally.
-
 ## iter-12 — goal-decomposer (preFreezeEra/degenerate-generation_json overlap assessed honest, not fail-open)
 
 **Ambiguity:** Ruling A11(a) (`docs/goal.md` J-11 step 11, owner 2026-08-24) leaves the honesty of the
@@ -531,3 +464,77 @@ Stage D decision itself.
 
 **Reversible:** yes — one owner line (or an instruction plus `--resume`) restarts the session with
 nothing repaired, nothing lost and no journey status changed.
+
+## iter-17 — goal-decomposer (bundling the AVB-A label-correction rider into the maintenance-boundary lifecycle iteration)
+
+**Ambiguity:** The owner's 2026-08-25 "J-11 maintenance-boundary lifecycle AUTHORIZED" ruling scopes
+this iteration precisely to the guard/lifecycle work (arm/disarm entrypoints, the AG-8 fix, fail-closed
+hardening, 9 named tests) and is silent on iteration 16's three small riders. The AG-8 fix and a named
+test for the live-shaped case are already subsumed by the ruling's own requirements 3 and 6, but the
+`volume_override` AVB label correction is not mentioned anywhere in the new ruling.
+
+**We chose:** fold the `volume_override` re-run into this iteration as one small additional backend
+item. Reasoning: (a) it is read-only against the live DB (same discipline iterations 12-16 already use),
+writes nothing, and cannot change the `READY: YES` answer (both `AVB-A` and `AVB-B` are in
+`_AVB_READY_CLASSIFICATIONS`); (b) iteration 16's own recommendation explicitly asked for it to "ride
+along whenever the next run happens," and this is that next run; (c) leaving a known-dishonest `AVB-B`
+label and an unsupported "other tickers shifted" claim on the live record for a further iteration would
+compound exactly the uncorrected-record risk this goal's AG-1 honesty posture exists to prevent, at
+effectively zero marginal risk or scope cost. This is explicitly NOT a re-run of
+`run_j11_avb_correction.py` (spent, "do not redo") — only the read-only classification/diagnostic is
+re-derived, into a new iter-17 artifact, leaving iteration 16's own artifact byte-unedited.
+
+**Reversible:** yes — this produces one new, additive, read-only evidence artifact; it edits no code path
+any other requirement depends on, and if a future decomposer or the owner judges it should not have been
+bundled, the artifact can simply be ignored with nothing to unwind.
+
+## iter-17 — goal-evaluator (scoring an understated-but-not-false safety framing)
+
+**Ambiguity:** The coordinator asked me to judge whether this iteration's claims are "honestly stated" given
+that TC-11's green `blocked: False` records an open live exposure. `docs/goal.md` sets no rule for the case
+where an iteration's every stated fact is true, its owner-facing status lines are exactly as specified, and
+the ONE thing omitted is what the recorded result means for the live system. AG-1's honesty posture governs
+proven-language about scores, not the framing of a safety probe; the methodology's honesty self-check (E.5)
+asks whether I marked unverifiable things `unknown`, not how to grade another lane's emphasis.
+
+**We chose:** score it as UNDERSTATED, not dishonest — no anti-goal entry, no verdict penalty, no downgrade
+of J-11's advance — while making the exposure the HEADLINE of eval.md, the evaluator log and J-11's `gap`,
+ahead of the delivered work. Reasoning: (a) every individual claim checks out and I re-derived all of them;
+the four owner-facing lines (`NOT ACTIVE`, `NOT ARMED`, `READY: YES`, `AUTHORIZED: NO`) are exactly right
+and do carry the substance; (b) the owner's own ruling text already documents that ordinary boot mints the
+table, so the owner is not being misled about a fact they do not have; (c) the root cause is the SPEC, which
+defined the probe's unsafe answer as its passing value — blaming the developer for inheriting his own
+spec's framing would misplace the defect; (d) the fail-closed rail applies to critical/minor severity, and
+there is no violation to grade here. What I explicitly did NOT do: soften the exposure, call it a footnote,
+or leave it at the auditor's placement — I raised it above the delivered slice everywhere it appears, and
+stated plainly that a reader of the developer/reviewer/QA reports alone would not learn it.
+
+**Reversible:** yes — nothing is mutated or foreclosed. If the owner judges the framing a reportable
+honesty breach, adding a ledger entry is one JSON object, and every figure and derivation is preserved.
+
+## iter-17 — goal-evaluator (STALLED a fifth time, when the safety hole is real but no non-owner action closes it)
+
+**Ambiguity:** This is the fifth consecutive STALLED (iters 13-17), and it carries the strongest pull toward
+CONTINUE the session has seen: B1 is an exposure that is live RIGHT NOW and fires from an ordinary act
+(anyone starting the backend), with no decision required for it to happen. `docs/goal.md`'s Loop-mechanics
+gate arguably permits safety work ("plus explicit prerequisites such as the depth/safety control"), and
+iteration 15 faced this same shape and the tractable answer then WAS to build something (the guard, which
+iteration 16 duly built). Real non-owner work also exists this iteration (four named riders). The
+methodology's C.5 would read that as CONTINUE.
+
+**We chose:** STALLED under C.2 (first-match-wins), with the four riders named explicitly rather than
+hidden, and the safety decision promoted to the first item of the recommendation. The load-bearing new
+reasoning, which distinguishes this from iteration 15: I checked directly whether ANY non-owner engineering
+closes the hole, and none does. Making the guard fail closed on a missing table has zero effect, because
+`main.py` creates the table before the guard ever runs (verified by reading `main.py` and
+`warmup.py`). Making it fail closed on an EMPTY table would block every normal boot forever and break every
+other journey's future browser lane — a design decision with wide blast radius that the owner owns. And
+inferring quarantine from per-date `ScannerRun` absence would re-introduce exactly the inference the
+iter-16 decomposer rejected against step 13's whole-unit retry semantics. So unlike iteration 15, there is
+no buildable safety deliverable left: arming needs a table whose creation the owner forbade by name, and
+the rebuild needs a fresh written instruction. The mechanical consequence is also asymmetric in the SAFE
+direction — a stopped engine starts no backend, and starting the backend is precisely what must not happen.
+
+**Reversible:** yes — one owner line (or an instruction plus `--resume`) restarts the session with nothing
+repaired, nothing lost and no journey status changed; if the owner prefers the riders done first, they are
+already listed and need no rework here.

@@ -1,0 +1,606 @@
+{
+  "bridge_factor": 2.7930001225759193,
+  "calibration_pairs": [
+    {
+      "fallback_close": 67.8875732421875,
+      "ratio": 2.7930001258687187,
+      "stored_close": 189.61000061035156,
+      "trading_date": "2026-08-05"
+    },
+    {
+      "fallback_close": 66.79197692871094,
+      "ratio": 2.7930001720246755,
+      "stored_close": 186.5500030517578,
+      "trading_date": "2026-08-06"
+    },
+    {
+      "fallback_close": 67.15001678466797,
+      "ratio": 2.7930000919162863,
+      "stored_close": 187.5500030517578,
+      "trading_date": "2026-08-07"
+    },
+    {
+      "fallback_close": 65.82169342041016,
+      "ratio": 2.793000100493997,
+      "stored_close": 183.83999633789062,
+      "trading_date": "2026-08-10"
+    }
+  ],
+  "classification": {
+    "classification": "AVB-A",
+    "generated_at": "2026-08-25T19:10:36.379364+00:00",
+    "material_signals": [],
+    "reasoning": "No material effect found under representation B across the traced dates: no universe-admission change, no Risk-bucket change, no setup-status change, no eligibility change, and no OTHER pool ticker's liquidity percentile shifted.",
+    "stage_d_ready_per_avb": true
+  },
+  "counterfactual_representations_by_date": {
+    "2026-08-05": {
+      "A": {
+        "close": 189.61000061035156,
+        "close_times_volume": 112173276.36108398,
+        "formula": "A = stored_bridged_close x stored_raw_volume (the actual canonical value served today)",
+        "volume": 591600.0
+      },
+      "B": {
+        "close": 67.8875732421875,
+        "close_times_volume": 112168464.86572266,
+        "formula": "B = provider_close x provider_volume (Goal 2's FETCHED evidence -- two independently-sourced values, never a copy of stored_volume; the arithmetic stored_close/bridge_factor value is recorded separately in close_b_arithmetic_fallback for cross-check only)",
+        "volume": 1652268.0
+      },
+      "C": {
+        "close": 189.61000061035156,
+        "close_times_volume": 313299974.62625,
+        "formula": "C = stored_bridged_close x (stored_volume x bridge_factor) -- DIAGNOSTIC ONLY: the hypothetical share-count-continuity-preserving volume IF the bridge factor reflected a genuine corporate action; never written to the database, never assumed correct",
+        "volume": 1652338.8725159138
+      },
+      "bridge_factor": 2.7930001225759193,
+      "close_b_arithmetic_fallback": 67.88757332222336,
+      "evidence_available": true,
+      "volume_a_equals_b": false
+    },
+    "2026-08-06": {
+      "A": {
+        "close": 186.5500030517578,
+        "close_times_volume": 119821066.96014404,
+        "formula": "A = stored_bridged_close x stored_raw_volume (the actual canonical value served today)",
+        "volume": 642300.0
+      },
+      "B": {
+        "close": 66.79197692871094,
+        "close_times_volume": 119828146.20895386,
+        "formula": "B = provider_close x provider_volume (Goal 2's FETCHED evidence -- two independently-sourced values, never a copy of stored_volume; the arithmetic stored_close/bridge_factor value is recorded separately in close_b_arithmetic_fallback for cross-check only)",
+        "volume": 1794050.0
+      },
+      "C": {
+        "close": 186.5500030517578,
+        "close_times_volume": 334660254.70685977,
+        "formula": "C = stored_bridged_close x (stored_volume x bridge_factor) -- DIAGNOSTIC ONLY: the hypothetical share-count-continuity-preserving volume IF the bridge factor reflected a genuine corporate action; never written to the database, never assumed correct",
+        "volume": 1793943.978730513
+      },
+      "bridge_factor": 2.7930001225759193,
+      "close_b_arithmetic_fallback": 66.79197811123154,
+      "evidence_available": true,
+      "volume_a_equals_b": false
+    },
+    "2026-08-07": {
+      "A": {
+        "close": 187.5500030517578,
+        "close_times_volume": 124927057.03277588,
+        "formula": "A = stored_bridged_close x stored_raw_volume (the actual canonical value served today)",
+        "volume": 666100.0
+      },
+      "B": {
+        "close": 67.15001678466797,
+        "close_times_volume": 124929114.42700195,
+        "formula": "B = provider_close x provider_volume (Goal 2's FETCHED evidence -- two independently-sourced values, never a copy of stored_volume; the arithmetic stored_close/bridge_factor value is recorded separately in close_b_arithmetic_fallback for cross-check only)",
+        "volume": 1860448.0
+      },
+      "C": {
+        "close": 187.5500030517578,
+        "close_times_volume": 348921285.6055919,
+        "formula": "C = stored_bridged_close x (stored_volume x bridge_factor) -- DIAGNOSTIC ONLY: the hypothetical share-count-continuity-preserving volume IF the bridge factor reflected a genuine corporate action; never written to the database, never assumed correct",
+        "volume": 1860417.38164782
+      },
+      "bridge_factor": 2.7930001225759193,
+      "close_b_arithmetic_fallback": 67.1500160475413,
+      "evidence_available": true,
+      "volume_a_equals_b": false
+    },
+    "2026-08-10": {
+      "A": {
+        "close": 183.83999633789062,
+        "close_times_volume": 82966990.34729004,
+        "formula": "A = stored_bridged_close x stored_raw_volume (the actual canonical value served today)",
+        "volume": 451300.0
+      },
+      "B": {
+        "close": 65.82169342041016,
+        "close_times_volume": 82971206.53263092,
+        "formula": "B = provider_close x provider_volume (Goal 2's FETCHED evidence -- two independently-sourced values, never a copy of stored_volume; the arithmetic stored_close/bridge_factor value is recorded separately in close_b_arithmetic_fallback for cross-check only)",
+        "volume": 1260545.0
+      },
+      "C": {
+        "close": 183.83999633789062,
+        "close_times_volume": 231726814.2097362,
+        "formula": "C = stored_bridged_close x (stored_volume x bridge_factor) -- DIAGNOSTIC ONLY: the hypothetical share-count-continuity-preserving volume IF the bridge factor reflected a genuine corporate action; never written to the database, never assumed correct",
+        "volume": 1260480.9553185124
+      },
+      "bridge_factor": 2.7930001225759193,
+      "close_b_arithmetic_fallback": 65.82169290001293,
+      "evidence_available": true,
+      "volume_a_equals_b": false
+    },
+    "2026-08-11": {
+      "A": {
+        "close": 181.76001476703186,
+        "close_times_volume": 100832640.5121143,
+        "formula": "A = stored_bridged_close x stored_raw_volume (the actual canonical value served today)",
+        "volume": 554757.0
+      },
+      "B": {
+        "close": 65.07698059082031,
+        "close_times_volume": 100832616.49871826,
+        "formula": "B = provider_close x provider_volume (Goal 2's FETCHED evidence -- two independently-sourced values, never a copy of stored_volume; the arithmetic stored_close/bridge_factor value is recorded separately in close_b_arithmetic_fallback for cross-check only)",
+        "volume": 1549436.0
+      },
+      "C": {
+        "close": 181.76001476703186,
+        "close_times_volume": 281625577.30998886,
+        "formula": "C = stored_bridged_close x (stored_volume x bridge_factor) -- DIAGNOSTIC ONLY: the hypothetical share-count-continuity-preserving volume IF the bridge factor reflected a genuine corporate action; never written to the database, never assumed correct",
+        "volume": 1549436.3689998493
+      },
+      "bridge_factor": 2.7930001225759193,
+      "close_b_arithmetic_fallback": 65.07698059082031,
+      "evidence_available": true,
+      "volume_a_equals_b": false
+    },
+    "2026-08-12": {
+      "A": {
+        "close": 179.79000697488598,
+        "close_times_volume": 666303563.7489972,
+        "formula": "A = stored_bridged_close x stored_raw_volume (the actual canonical value served today)",
+        "volume": 3706010.0
+      },
+      "B": {
+        "close": 64.37164306640625,
+        "close_times_volume": 666303474.6414185,
+        "formula": "B = provider_close x provider_volume (Goal 2's FETCHED evidence -- two independently-sourced values, never a copy of stored_volume; the arithmetic stored_close/bridge_factor value is recorded separately in close_b_arithmetic_fallback for cross-check only)",
+        "volume": 10350885.0
+      },
+      "C": {
+        "close": 179.79000697488598,
+        "close_times_volume": 1860985935.2237213,
+        "formula": "C = stored_bridged_close x (stored_volume x bridge_factor) -- DIAGNOSTIC ONLY: the hypothetical share-count-continuity-preserving volume IF the bridge factor reflected a genuine corporate action; never written to the database, never assumed correct",
+        "volume": 10350886.384267583
+      },
+      "bridge_factor": 2.7930001225759193,
+      "close_b_arithmetic_fallback": 64.37164306640625,
+      "evidence_available": true,
+      "volume_a_equals_b": false
+    }
+  },
+  "decision_impact_by_date": {
+    "2026-08-11": {
+      "scoring_and_selection": {
+        "adv_liquidity_a": 182548422.89374724,
+        "adv_liquidity_b": 182548422.41347936,
+        "asof": "2026-08-11",
+        "avb_resolved_member": true,
+        "eligible_a": false,
+        "eligible_b": false,
+        "entry_quality_score": 60.53,
+        "leadership_score": 35.33,
+        "liquidity_percentile_a": 0.8605947955390335,
+        "liquidity_percentile_b": 0.8605947955390335,
+        "liquidity_raw_a": -182548422.89374724,
+        "liquidity_raw_a_reproduces_served": true,
+        "liquidity_raw_b": -182548422.41347936,
+        "other_ticker_percentile_shifts": {},
+        "percentile_a_reproduces_served": true,
+        "pool_member_count": 539,
+        "qualifier_checks_a": [
+          {
+            "actual": 35.33,
+            "condition": "leadership_min_score",
+            "passed": false,
+            "threshold": 80.0
+          },
+          {
+            "actual": 60.53,
+            "condition": "entry_min_score",
+            "passed": false,
+            "threshold": 70.0
+          },
+          {
+            "actual": 31.24,
+            "condition": "risk_max_score",
+            "passed": true,
+            "threshold": 60.0
+          }
+        ],
+        "qualifier_checks_b": [
+          {
+            "actual": 35.33,
+            "condition": "leadership_min_score",
+            "passed": false,
+            "threshold": 80.0
+          },
+          {
+            "actual": 60.53,
+            "condition": "entry_min_score",
+            "passed": false,
+            "threshold": 70.0
+          },
+          {
+            "actual": 31.23,
+            "condition": "risk_max_score",
+            "passed": true,
+            "threshold": 60.0
+          }
+        ],
+        "relative_ranking_note": "AVB's relative ranking (candidates are sorted by Leadership score, descending -- the sole sort key `evaluate_selection` uses) is unaffected by A vs B: Leadership does not read ADV/volume at all (confirmed by inspecting `_raw_components` -- none of rs_spy_1m/rs_spy_3m/rs_sector/rs_theme/ma_stack/high_proximity/up_down_vol reads `adv`). A full population-wide selection-disposition replay (`evaluate_selection`) requires a persisted ScannerRun for this as-of, which does not exist (Stage C cleared it) and creating one is forbidden this iteration -- the individual qualifier-check pass/fail above is the direct, checkable proxy for candidate eligibility instead.",
+        "risk_bucket_a": "E",
+        "risk_bucket_b": "E",
+        "risk_score_a": 31.24,
+        "risk_score_b": 31.23,
+        "setup_status_a": "Avoid",
+        "setup_status_b": "Avoid",
+        "vol_avg_period": 50,
+        "volume_override_applied": {
+          "2026-08-11": 1549436.0
+        }
+      },
+      "universe_resolver": {
+        "admission_changed": false,
+        "adv_dollar_a": 184757447.06122798,
+        "adv_dollar_b": 184757446.68006298,
+        "adv_window_days": 63,
+        "asof": "2026-08-11",
+        "min_dollar_vol_threshold": 50000000.0,
+        "recovered_dates_in_window": [
+          "2026-08-11"
+        ],
+        "resolution_a": {
+          "admitted": true,
+          "bars": 5396,
+          "reason": null
+        },
+        "resolution_b": {
+          "admitted": true,
+          "bars": 5396,
+          "reason": null
+        },
+        "true_bar_count": 5396,
+        "volume_override_applied": {
+          "2026-08-11": 1549436.0
+        }
+      }
+    },
+    "2026-08-12": {
+      "scoring_and_selection": {
+        "adv_liquidity_a": 189416859.6451272,
+        "adv_liquidity_b": 189416857.38270772,
+        "asof": "2026-08-12",
+        "avb_resolved_member": true,
+        "eligible_a": false,
+        "eligible_b": false,
+        "entry_quality_score": 52.07,
+        "leadership_score": 26.22,
+        "liquidity_percentile_a": 0.8438661710037175,
+        "liquidity_percentile_b": 0.8438661710037175,
+        "liquidity_raw_a": -189416859.6451272,
+        "liquidity_raw_a_reproduces_served": true,
+        "liquidity_raw_b": -189416857.38270772,
+        "other_ticker_percentile_shifts": {},
+        "percentile_a_reproduces_served": true,
+        "pool_member_count": 539,
+        "qualifier_checks_a": [
+          {
+            "actual": 26.22,
+            "condition": "leadership_min_score",
+            "passed": false,
+            "threshold": 80.0
+          },
+          {
+            "actual": 52.07,
+            "condition": "entry_min_score",
+            "passed": false,
+            "threshold": 70.0
+          },
+          {
+            "actual": 34.39,
+            "condition": "risk_max_score",
+            "passed": true,
+            "threshold": 60.0
+          }
+        ],
+        "qualifier_checks_b": [
+          {
+            "actual": 26.22,
+            "condition": "leadership_min_score",
+            "passed": false,
+            "threshold": 80.0
+          },
+          {
+            "actual": 52.07,
+            "condition": "entry_min_score",
+            "passed": false,
+            "threshold": 70.0
+          },
+          {
+            "actual": 34.39,
+            "condition": "risk_max_score",
+            "passed": true,
+            "threshold": 60.0
+          }
+        ],
+        "relative_ranking_note": "AVB's relative ranking (candidates are sorted by Leadership score, descending -- the sole sort key `evaluate_selection` uses) is unaffected by A vs B: Leadership does not read ADV/volume at all (confirmed by inspecting `_raw_components` -- none of rs_spy_1m/rs_spy_3m/rs_sector/rs_theme/ma_stack/high_proximity/up_down_vol reads `adv`). A full population-wide selection-disposition replay (`evaluate_selection`) requires a persisted ScannerRun for this as-of, which does not exist (Stage C cleared it) and creating one is forbidden this iteration -- the individual qualifier-check pass/fail above is the direct, checkable proxy for candidate eligibility instead.",
+        "risk_bucket_a": "E",
+        "risk_bucket_b": "E",
+        "risk_score_a": 34.39,
+        "risk_score_b": 34.39,
+        "setup_status_a": "Avoid",
+        "setup_status_b": "Avoid",
+        "vol_avg_period": 50,
+        "volume_override_applied": {
+          "2026-08-11": 1549436.0,
+          "2026-08-12": 10350885.0
+        }
+      },
+      "universe_resolver": {
+        "admission_changed": false,
+        "adv_dollar_a": 193208569.00756127,
+        "adv_dollar_b": 193208567.21199027,
+        "adv_window_days": 63,
+        "asof": "2026-08-12",
+        "min_dollar_vol_threshold": 50000000.0,
+        "recovered_dates_in_window": [
+          "2026-08-11",
+          "2026-08-12"
+        ],
+        "resolution_a": {
+          "admitted": true,
+          "bars": 5397,
+          "reason": null
+        },
+        "resolution_b": {
+          "admitted": true,
+          "bars": 5397,
+          "reason": null
+        },
+        "true_bar_count": 5397,
+        "volume_override_applied": {
+          "2026-08-11": 1549436.0,
+          "2026-08-12": 10350885.0
+        }
+      }
+    }
+  },
+  "generated_at": "2026-08-25T19:10:36.379373+00:00",
+  "j10_evidence_path": "/home/dennis-chan/Git/trendora/runs/goal-market-compass-iter-9/j10-population-evidence.json",
+  "local_convention": {
+    "anomalous_jump_count": 0,
+    "day_over_day_returns_checked": 49,
+    "indeterminate": false,
+    "internally_consistent": true,
+    "overall_classification": "bridged+compensating",
+    "reasoning": "calibration window classifies as bridged+compensating and the recovered-dates window classifies as bridged+compensating, BOTH from genuine fetched cross-source (close+volume) comparisons against Goal 2's AG-9 dated-exception-#2 evidence (never a price-only tautology) -- internally consistent.",
+    "windows": {
+      "calibration_window": {
+        "classification": "bridged+compensating",
+        "dates": [
+          "2026-08-05",
+          "2026-08-06",
+          "2026-08-07",
+          "2026-08-10"
+        ],
+        "evidence": "genuine cross-source comparison against Goal 2's AG-9 dated-exception-#2 fetched provider evidence (close AND volume, never a stored-volume tautology)",
+        "per_date": [
+          {
+            "classification": "bridged+compensating",
+            "comparison": {
+              "bridge_adjusted_compensation_test": {
+                "compensates": true,
+                "dollar_volume_ratio": 1.0000428952590827,
+                "formula": "dollar_volume_ratio = (stored_close*stored_volume) / (provider_close*provider_volume); compensates iff dollar_volume_ratio ~= 1.0 (price-up offset by volume-down); matches_raw_volume_dollar_shift iff dollar_volume_ratio ~= bridge_factor (only price was rebased, volume stayed on the provider's raw scale)",
+                "matches_raw_volume_dollar_shift": false
+              },
+              "bridge_factor": 2.7930001225759193,
+              "close_ratio": 2.7930001258687187,
+              "dollar_volume_ratio": 1.0000428952590827,
+              "expected_inverse_volume_ratio": 0.358037936309764,
+              "provider_close": 67.8875732421875,
+              "provider_dollar_volume": 112168464.86572266,
+              "provider_volume": 1652268.0,
+              "stored_close": 189.61000061035156,
+              "stored_dollar_volume": 112173276.36108398,
+              "stored_volume": 591600.0,
+              "volume_ratio": 0.3580532940176775
+            },
+            "date": "2026-08-05"
+          },
+          {
+            "classification": "bridged+compensating",
+            "comparison": {
+              "bridge_adjusted_compensation_test": {
+                "compensates": true,
+                "dollar_volume_ratio": 0.9999409216529356,
+                "formula": "dollar_volume_ratio = (stored_close*stored_volume) / (provider_close*provider_volume); compensates iff dollar_volume_ratio ~= 1.0 (price-up offset by volume-down); matches_raw_volume_dollar_shift iff dollar_volume_ratio ~= bridge_factor (only price was rebased, volume stayed on the provider's raw scale)",
+                "matches_raw_volume_dollar_shift": false
+              },
+              "bridge_factor": 2.7930001225759193,
+              "close_ratio": 2.7930001720246755,
+              "dollar_volume_ratio": 0.9999409216529356,
+              "expected_inverse_volume_ratio": 0.358037936309764,
+              "provider_close": 66.79197692871094,
+              "provider_dollar_volume": 119828146.20895386,
+              "provider_volume": 1794050.0,
+              "stored_close": 186.5500030517578,
+              "stored_dollar_volume": 119821066.96014404,
+              "stored_volume": 642300.0,
+              "volume_ratio": 0.3580167776817814
+            },
+            "date": "2026-08-06"
+          },
+          {
+            "classification": "bridged+compensating",
+            "comparison": {
+              "bridge_adjusted_compensation_test": {
+                "compensates": true,
+                "dollar_volume_ratio": 0.999983531507163,
+                "formula": "dollar_volume_ratio = (stored_close*stored_volume) / (provider_close*provider_volume); compensates iff dollar_volume_ratio ~= 1.0 (price-up offset by volume-down); matches_raw_volume_dollar_shift iff dollar_volume_ratio ~= bridge_factor (only price was rebased, volume stayed on the provider's raw scale)",
+                "matches_raw_volume_dollar_shift": false
+              },
+              "bridge_factor": 2.7930001225759193,
+              "close_ratio": 2.7930000919162863,
+              "dollar_volume_ratio": 0.999983531507163,
+              "expected_inverse_volume_ratio": 0.358037936309764,
+              "provider_close": 67.15001678466797,
+              "provider_dollar_volume": 124929114.42700195,
+              "provider_volume": 1860448.0,
+              "stored_close": 187.5500030517578,
+              "stored_dollar_volume": 124927057.03277588,
+              "stored_volume": 666100.0,
+              "volume_ratio": 0.3580320438948038
+            },
+            "date": "2026-08-07"
+          },
+          {
+            "classification": "bridged+compensating",
+            "comparison": {
+              "bridge_adjusted_compensation_test": {
+                "compensates": true,
+                "dollar_volume_ratio": 0.9999491849580466,
+                "formula": "dollar_volume_ratio = (stored_close*stored_volume) / (provider_close*provider_volume); compensates iff dollar_volume_ratio ~= 1.0 (price-up offset by volume-down); matches_raw_volume_dollar_shift iff dollar_volume_ratio ~= bridge_factor (only price was rebased, volume stayed on the provider's raw scale)",
+                "matches_raw_volume_dollar_shift": false
+              },
+              "bridge_factor": 2.7930001225759193,
+              "close_ratio": 2.793000100493997,
+              "dollar_volume_ratio": 0.9999491849580466,
+              "expected_inverse_volume_ratio": 0.358037936309764,
+              "provider_close": 65.82169342041016,
+              "provider_dollar_volume": 82971206.53263092,
+              "provider_volume": 1260545.0,
+              "stored_close": 183.83999633789062,
+              "stored_dollar_volume": 82966990.34729004,
+              "stored_volume": 451300.0,
+              "volume_ratio": 0.358019745427573
+            },
+            "date": "2026-08-10"
+          }
+        ]
+      },
+      "recovered_dates": {
+        "boundary_jumps": [],
+        "classification": "bridged+compensating",
+        "dates": [
+          "2026-08-11",
+          "2026-08-12"
+        ],
+        "evidence": "genuine cross-source comparison against Goal 2's AG-9 dated-exception-#2 fetched provider evidence -- the SAME direct evidence class as the calibration window, no longer continuity-only the way iteration 14 left it",
+        "per_date": [
+          {
+            "classification": "bridged+compensating",
+            "comparison": {
+              "bridge_adjusted_compensation_test": {
+                "compensates": true,
+                "dollar_volume_ratio": 1.0000002381510753,
+                "formula": "dollar_volume_ratio = (stored_close*stored_volume) / (provider_close*provider_volume); compensates iff dollar_volume_ratio ~= 1.0 (price-up offset by volume-down); matches_raw_volume_dollar_shift iff dollar_volume_ratio ~= bridge_factor (only price was rebased, volume stayed on the provider's raw scale)",
+                "matches_raw_volume_dollar_shift": false
+              },
+              "bridge_factor": 2.7930001225759193,
+              "close_ratio": 2.7930001225759193,
+              "dollar_volume_ratio": 1.0000002381510753,
+              "expected_inverse_volume_ratio": 0.358037936309764,
+              "provider_close": 65.07698059082031,
+              "provider_dollar_volume": 100832616.49871826,
+              "provider_volume": 1549436.0,
+              "stored_close": 181.76001476703186,
+              "stored_dollar_volume": 100832640.5121143,
+              "stored_volume": 554757.0,
+              "volume_ratio": 0.35803802157688347
+            },
+            "date": "2026-08-11"
+          },
+          {
+            "classification": "bridged+compensating",
+            "comparison": {
+              "bridge_adjusted_compensation_test": {
+                "compensates": true,
+                "dollar_volume_ratio": 1.000000133734225,
+                "formula": "dollar_volume_ratio = (stored_close*stored_volume) / (provider_close*provider_volume); compensates iff dollar_volume_ratio ~= 1.0 (price-up offset by volume-down); matches_raw_volume_dollar_shift iff dollar_volume_ratio ~= bridge_factor (only price was rebased, volume stayed on the provider's raw scale)",
+                "matches_raw_volume_dollar_shift": false
+              },
+              "bridge_factor": 2.7930001225759193,
+              "close_ratio": 2.7930001225759193,
+              "dollar_volume_ratio": 1.000000133734225,
+              "expected_inverse_volume_ratio": 0.358037936309764,
+              "provider_close": 64.37164306640625,
+              "provider_dollar_volume": 666303474.6414185,
+              "provider_volume": 10350885.0,
+              "stored_close": 179.79000697488598,
+              "stored_dollar_volume": 666303563.7489972,
+              "stored_volume": 3706010.0,
+              "volume_ratio": 0.35803798419168986
+            },
+            "date": "2026-08-12"
+          }
+        ]
+      },
+      "surrounding_window": {
+        "anomalous_jumps": [],
+        "classification": "no_independent_signal",
+        "evidence": "no independent comparable exists outside the six AG-9-permitted dates; day-over-day continuity is corroborating narrative ONLY here, never a substitute for the direct fetched comparison the two windows above now have (Goal 3)"
+      }
+    }
+  },
+  "note": "goal-market-compass iter-17 rider: re-runs iteration 16's decision-impact trace WITH volume_override supplied to both trace_universe_resolver_impact and trace_scoring_and_selection_impact (both have accepted this optional parameter unchanged since iteration 15; iteration 16 simply never passed it). Cite runs/goal-market-compass-iter-16/j11-avb-bridge-diagnostic.json as historically accurate for the NO-volume_override state -- never edited, never deleted.",
+  "pool_bridge_factor_distribution": {
+    "avb_is_unique_material_outlier": true,
+    "materially_bridged_symbols": {
+      "AVB": 2.7930001225759193
+    },
+    "near_one_count": 565,
+    "symbols_with_bridge_factor": 566,
+    "total_symbols_in_evidence": 567
+  },
+  "provider_fetch_evidence_path": "/home/dennis-chan/Git/trendora/runs/goal-market-compass-iter-15/j11-avb-provider-fetch-evidence.json",
+  "provider_fetch_evidence_sufficient": true,
+  "single_bar_ab_dollar_volume_ratio_by_date": {
+    "2026-08-11": {
+      "close_a": 181.76001476703186,
+      "close_b": 65.07698059082031,
+      "dollar_a": 100832640.5121143,
+      "dollar_b": 100832616.49871826,
+      "landed_on_bridge_factor": false,
+      "note": "iteration 16 (no volume_override) paired counterfactual close_b=close_a/bridge_factor with the UNCHANGED stored (already-corrected/compensating) volume, so this exact ratio landed EXACTLY on bridge_factor by construction. With volume_override applying the RAW fetched provider volume to volume_b instead, this ratio should land near 1.0 within the calibration window's own relative tolerance -- both A and B now express genuinely independent, self-consistent (price, volume) pairs.",
+      "ratio_a_over_b": 1.0000002381510753,
+      "tolerance": 0.01,
+      "volume_a": 554757.0,
+      "volume_b_override_applied": 1549436.0,
+      "within_relative_tolerance_of_one": true
+    },
+    "2026-08-12": {
+      "close_a": 179.79000697488598,
+      "close_b": 64.37164306640625,
+      "dollar_a": 666303563.7489972,
+      "dollar_b": 666303474.6414185,
+      "landed_on_bridge_factor": false,
+      "note": "iteration 16 (no volume_override) paired counterfactual close_b=close_a/bridge_factor with the UNCHANGED stored (already-corrected/compensating) volume, so this exact ratio landed EXACTLY on bridge_factor by construction. With volume_override applying the RAW fetched provider volume to volume_b instead, this ratio should land near 1.0 within the calibration window's own relative tolerance -- both A and B now express genuinely independent, self-consistent (price, volume) pairs.",
+      "ratio_a_over_b": 1.000000133734225,
+      "tolerance": 0.01,
+      "volume_a": 3706010.0,
+      "volume_b_override_applied": 10350885.0,
+      "within_relative_tolerance_of_one": true
+    }
+  },
+  "stored_series_window": {
+    "end": "2026-12-31",
+    "row_count": 50,
+    "start": "2026-06-01"
+  },
+  "volume_override_by_date": {
+    "2026-08-11": 1549436.0,
+    "2026-08-12": 10350885.0
+  }
+}

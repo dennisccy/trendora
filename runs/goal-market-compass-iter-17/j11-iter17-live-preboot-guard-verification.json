@@ -1,0 +1,45 @@
+{
+  "db_file_true_end": {
+    "exists": true,
+    "mtime": 1787670395.6520789,
+    "path": "/home/dennis-chan/Git/trendora/apps/backend/data/trendora.db",
+    "size_bytes": 8365871104,
+    "wal": {
+      "exists": true,
+      "mtime": 1787670632.4674153,
+      "size_bytes": 0
+    }
+  },
+  "db_file_true_start": {
+    "exists": true,
+    "mtime": 1787670395.6520789,
+    "path": "/home/dennis-chan/Git/trendora/apps/backend/data/trendora.db",
+    "size_bytes": 8365871104,
+    "wal": {
+      "exists": true,
+      "mtime": 1787670632.4674153,
+      "size_bytes": 0
+    }
+  },
+  "db_path": "/home/dennis-chan/Git/trendora/apps/backend/data/trendora.db",
+  "expected": {
+    "guard_result_blocked": false,
+    "maintenance_boundaries_table_count": 0
+  },
+  "generated_at": "2026-08-25T19:06:47.550960+00:00",
+  "guard_result": {
+    "ambiguous": false,
+    "blocked": false,
+    "boundary_name": null,
+    "reason": null
+  },
+  "maintenance_boundaries_table_count": 0,
+  "matches_expected": true,
+  "recipe": "apps/backend/.venv/bin/python apps/backend/scripts/run_j11_iter17_live_preboot_guard_verification.py --evidence-dir /home/dennis-chan/Git/trendora/runs/goal-market-compass-iter-17",
+  "target_date": "2026-08-12",
+  "zero_write_proof": {
+    "mtime_unchanged": true,
+    "size_unchanged": true,
+    "wal_unchanged": true
+  }
+}

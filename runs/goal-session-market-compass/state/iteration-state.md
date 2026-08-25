@@ -1,27 +1,40 @@
 # Iteration State — market-compass
 
-**After iteration:** 16 · **Date:** 2026-08-25 · **Verdict:** STALLED
+**After iteration:** 17 · **Date:** 2026-08-25 · **Verdict:** STALLED
 
 ## Journeys
 
-3 passing (J-01 J-04 J-10) · 6 partial (J-02 J-03 J-05 J-06 J-09 J-11) · 2 failing (J-07 J-08) — 11 total. Iter-16 ran under MAINTENANCE ISOLATION (browser QA + replay lane forbidden by contract), so NO journey was tested and every status is carried, not re-verified. J-11 re-stamped `spec_hash` `54e9cdd8…`→`e7927ff5…` (owner's two 2026-08-25 rulings, committed `346ed65a`). Anti-goal ledger: 7 total, **1 unresolved (AG-8, minor)**.
+3 passing (J-01 J-04 J-10) · 6 partial (J-02 J-03 J-05 J-06 J-09 J-11) · 2 failing (J-07 J-08) — 11 total.
+Iters 13-17 under MAINTENANCE ISOLATION (browser QA + replay forbidden): only J-11 verified, all others carry prior status. Ledger: 7 total, **0 unresolved** (iter-16's AG-8 CLOSED by iter-17).
 
 ## Active blockers
 
-- **OWNER DECISION (human) — Stage D.** `J-11 STAGE D READY: YES` (first YES this session) · `AUTHORIZED: NO`. The owner's 2026-08-25 ruling ends this step verbatim: "Even if the subsequent readiness evaluation returns `READY: YES`, STOP for owner review… Stage D remains forbidden until a later explicit owner instruction." Options: (a) instruct Stage D + `--resume`; (b) order a non-destructive tidy-up run first; (c) change the plan in `docs/goal.md`.
-- **OWNER AUTHORIZATION (human) — the pre-boot guard is INERT on the live DB (headline; auditor B2, evaluator-confirmed).** Built correctly and wired at `warmup.py:107` inside `ensure_latest_snapshot` before `run_scan` — but `register_j11_incident_boundary` has NO production caller (grep: only its definition, its tests, 2 docstrings), `maintenance_boundaries` does not exist in the live file (still exactly 24 tables), and `evaluate_boundary_for_date` returns `blocked=False` on an empty table (`j11_preboot_guard.py:143-145`). So booting the backend today still writes a `ScannerRun` onto 2026-08-12. The ruling's literal "proven on disposable test state" gate IS met; its stated purpose is NOT achieved in production ⇒ **maintenance isolation stays ACTIVE**. Arming it needs a live write outside the two-cell authorization. Danger window = now until Stage D completes (`run_scan` is create-once, so the boot path self-heals once the 11 dates hold runs).
-- Non-blocking riders for the next run, none can change the gate's answer: (1) re-run readiness WITH `volume_override` at `run_j11_iter16_stage_d_readiness.py:247-248` — the honest label is **AVB-A**, not the recorded AVB-B, and the handoff's "correcting AVB shifts other tickers' percentiles" claim is a scale artifact (A/B = exactly 2.7930001226 as run vs 1.0000002 with the volume supplied) — **do not inherit it**; (2) bound the AG-8 whole-table `select(MaintenanceBoundary)` at `j11_preboot_guard.py:143`; (3) add a test named for "table present, empty, latest date is an incident date" (auditor T1); (4) `build_review_packet` must union untracked files — it advertised "Files changed: 5" while hiding all 7 new source files (auditor P1); (5) iter-16's code/tests/evidence were still untracked at scoring time.
+- **HUMAN — the live boot-path hole is fully open and no non-owner action closes it. Nobody may start the
+  backend.** Booting would (1) mint `maintenance_boundaries`, which `docs/goal.md`'s BLOCKER ON RECORD
+  forbids creating, and (2) write a `ScannerRun` onto 2026-08-12 — the newest stored price day IS an
+  incident date holding 0 runs. `main.py`'s `create_db_and_tables()` runs BEFORE `ensure_latest_snapshot()`,
+  so `j11_preboot_guard.py` is inert. Owner picks: (a) authorize creating that one empty table → the
+  built+tested arm script arms the guard; (b) order the Stage D rebuild of the 11 dates (safe: controlled
+  script, not a booted app), needing a fresh written instruction; or (c) amend `docs/goal.md`.
+- **HUMAN — Stage D remains NOT AUTHORIZED** (`J-11 STAGE D READY: YES` · `AUTHORIZED: NO`, unconditional).
+- Riders (non-blocking): refusal tests for the 2 new evidence scripts (`run_j11_iter17_stage_d_readiness.py`
+  can overwrite 3 committed iter-16 files if `--evidence-dir` is mistyped); fix the AVB note calling A/B
+  "genuinely independent" (ratio ≈1.0 by algebra); fix QA's incident-date list; drop the `git diff`-only proof.
 
 ## Last 2 verdicts
 
-- iter 16: STALLED — owner-ordered sequence executed in order and stopped where the owner said to; the ONE authorized write (AVB volume 1,549,436→554,757 and 10,350,885→3,706,010) proven isolated by the evaluator's own re-hash of all 3.31M price rows; `READY: YES`; guard inert on the live DB.
-- iter 15: STALLED — AVB convention settled on real fetched evidence as AVB-C (`READY: NO`); every route past it owner-owned; zero live DB writes; auditor B1 (boot-path hazard) escalated above it.
+- iter 17: STALLED — authorized slice delivered in full and correctly, AG-8 closed, zero live writes; but
+  the guard is still inert on the live DB and every route to arming it is owner-owned.
+- iter 16: STALLED — owner's 4-step sequence stopped where told; first `READY: YES`; guard built but inert.
 
 ## Do not redo
 
-- **The AVB two-cell volume correction** — EXECUTED and verified in iter-16; authorized ONCE and now spent. `daily_prices` is certified immutable again at the NEW baseline. Never re-run `run_j11_avb_correction.py`.
-- **Stage C bounded clear** (iter-13) and **Stage B1** (manifest FK migration + `basis_disclosure` fail-closed fix, iter-10/11) — complete and closed; owner-accepted 4-item DDL residual; no second live rewrite. Iter-11's REGRESSION verdict stands (A14).
-- **J-10** — CLOSED by owner ruling; never reopen, never retry EA/EQR. Its AVB dollar-volume defect is now CORRECTED in the raw layer under the separate 2026-08-25 ruling — that is not a reopening.
-- **AG-9 dated exception #2** (AVB fetch) — CONSUMED and EXHAUSTED by iter-15 (`runs/goal-market-compass-iter-15/j11-avb-provider-fetch-evidence.json`). Any further fetch needs a NEW dated amendment. Iter-16 made zero network calls.
-- **Evidence dirs iter-9…iter-16** — byte-preserved historical evidence; iter-15's `j11-stage-d-readiness.json` (AVB-C, `ready: false`) stays historically accurate for the PRE-correction state, never edited.
-- **Hash recipes, settled** — `sha256` over `repr(row)` per row via `sqlite3 mode=ro`: AVB OHLC-only `757c3c63…c8fd3`, AVB other-dates `53bca571…c14f`, non-AVB `78146554…4997`, manifest row-dump `bb954b60…6d2a2e6`, manifest DDL `9f653c81…c501ee`. Quote the recipe beside any fingerprint.
+- **AG-8 bounded-query fix** — DONE, verified (`j11_preboot_guard.py:173-182`, `:218-228`: `active IS NOT
+  FALSE`, 4-col projection, `LIMIT 101` + fail-closed `len(rows) > 100`). 39 tests pass.
+- **Arm/disarm entrypoints** — DONE (`run_j11_maintenance_boundary_{arm,disarm}.py`): no default
+  `--database-url`, `--confirm` required, dates from `INCIDENT_DATES`, refuses when the table is absent,
+  never calls `create_all`. Do not rebuild; only INVOKING arm is blocked.
+- **AVB label correction** — DONE (honest `AVB-A`); cannot move `READY: YES`. Do not re-run
+  `run_j11_avb_correction.py` (spent); iter-16's two-cell correction is verified.
+- **J-10 CLOSED by owner ruling (2026-08-24)** — 585 restored, EA/EQR unrestorable. Never reopen. Iter-16's
+  artifacts are immutable (sha256 `e794dbf2…`, `1e35942c…`).
