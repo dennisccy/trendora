@@ -30,6 +30,7 @@ AVB_BRIDGE_DIAGNOSTIC_SCRIPT = SCRIPTS_DIR / "run_j11_avb_bridge_diagnostic.py"
 PROVIDER_FETCH_SCRIPT = SCRIPTS_DIR / "run_j11_avb_provider_fetch.py"
 STAGE_D_READINESS_SCRIPT = SCRIPTS_DIR / "run_j11_stage_d_readiness.py"
 RECONCILE_SCRIPT = SCRIPTS_DIR / "run_j11_reconcile_iteration_14_truth.py"
+ITER16_READINESS_SCRIPT = SCRIPTS_DIR / "run_j11_iter16_stage_d_readiness.py"
 
 
 def _load_script_module(script_path: Path, module_name: str):
@@ -92,6 +93,16 @@ def reconcile_ns(monkeypatch):
     finally:
         sys.argv = original_argv
         sys.modules.pop("run_j11_reconcile_iteration_14_truth_under_test", None)
+
+
+@pytest.fixture()
+def iter16_readiness_ns(monkeypatch):
+    original_argv = sys.argv
+    try:
+        yield _load_script_module(ITER16_READINESS_SCRIPT, "run_j11_iter16_stage_d_readiness_under_test")
+    finally:
+        sys.argv = original_argv
+        sys.modules.pop("run_j11_iter16_stage_d_readiness_under_test", None)
 
 
 # --- TC-25: run_j11_stage_d_preflight.py refuses without --evidence-dir, before load_config/engine ------
@@ -315,6 +326,25 @@ def test_tc27_reconcile_script_refuses_without_output_path(monkeypatch, reconcil
     assert "--output-path" in capsys.readouterr().err
 
 
+# --- goal-market-compass iter-16 (Goal 8): run_j11_iter16_stage_d_readiness.py refuses without ----------
+# --- --evidence-dir, before load_config/engine construction ---------------------------------------------
+
+
+def test_iter16_readiness_refuses_without_evidence_dir(monkeypatch, iter16_readiness_ns, capsys):
+    mock_load_config = mock.MagicMock(name="load_config")
+    monkeypatch.setattr(iter16_readiness_ns, "load_config", mock_load_config)
+    mock_write_json = mock.MagicMock(name="_write_json")
+    monkeypatch.setattr(iter16_readiness_ns, "_write_json", mock_write_json)
+    monkeypatch.setattr(sys, "argv", ["run_j11_iter16_stage_d_readiness.py"])  # no --evidence-dir
+
+    exit_code = iter16_readiness_ns.main()
+
+    assert exit_code == 2
+    mock_load_config.assert_not_called()
+    mock_write_json.assert_not_called()
+    assert "--evidence-dir" in capsys.readouterr().err
+
+
 # --- TC-29 corroboration: none of these refusal tests wrote anywhere under the real committed evidence --
 # --- directories -- proven directly by asserting on git-tracked paths, mirroring the session's standing -
 # --- practice (the phase-level `git status --porcelain` check is the authoritative proof; this is a -----
@@ -322,11 +352,11 @@ def test_tc27_reconcile_script_refuses_without_output_path(monkeypatch, reconcil
 
 
 def test_none_of_the_refusal_paths_reference_a_real_committed_evidence_directory_as_a_default():
-    """Static proof: none of the five scripts' argparse `--output-path`/`--evidence-dir` arguments carry
+    """Static proof: none of the six scripts' argparse `--output-path`/`--evidence-dir` arguments carry
     a non-None default that resolves under `runs/goal-market-compass-iter-13` or `-iter-14`."""
     for script_path in (
         STAGE_D_PREFLIGHT_SCRIPT, AVB_BRIDGE_DIAGNOSTIC_SCRIPT, PROVIDER_FETCH_SCRIPT,
-        STAGE_D_READINESS_SCRIPT, RECONCILE_SCRIPT,
+        STAGE_D_READINESS_SCRIPT, RECONCILE_SCRIPT, ITER16_READINESS_SCRIPT,
     ):
         source = script_path.read_text()
         assert 'default=DEFAULT_EVIDENCE_DIR' not in source

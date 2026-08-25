@@ -1,0 +1,48 @@
+{
+  "comparison": {
+    "all_invariants_hold": false,
+    "checks": {
+      "all_incident_dates_zero_scanner_runs": true,
+      "c1_date_set_boundary_ok": true,
+      "daily_prices_fingerprint_unchanged": false,
+      "data_provider_runs_count_unchanged": true,
+      "identity_check_a_ok": true,
+      "manifest_ddl_unchanged": true,
+      "manifest_indexes_unchanged": true,
+      "manifest_row_count_unchanged": true,
+      "manifest_values_unchanged": true,
+      "source_run_id_values_unchanged": true,
+      "watchlist_count_unchanged": true
+    },
+    "generated_at": "2026-08-25T15:10:42.260355+00:00",
+    "manifest_dump_diff": {
+      "equal": true,
+      "extra_ids": [],
+      "mismatches": [],
+      "missing_ids": [],
+      "post_row_count": 24,
+      "pre_row_count": 24
+    },
+    "material_mismatch": true,
+    "per_date_scanner_run_present": {
+      "2026-05-12": false,
+      "2026-05-13": false,
+      "2026-07-10": false,
+      "2026-07-13": false,
+      "2026-07-24": false,
+      "2026-07-27": false,
+      "2026-08-03": false,
+      "2026-08-05": false,
+      "2026-08-10": false,
+      "2026-08-11": false,
+      "2026-08-12": false
+    }
+  },
+  "verdict": {
+    "failing_checks": [
+      "daily_prices_fingerprint_unchanged"
+    ],
+    "passed": false,
+    "reason": "preflight_comparison_gate_failed"
+  }
+}

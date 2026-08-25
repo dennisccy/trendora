@@ -1,0 +1,42 @@
+{
+  "generated_at": "2026-08-25T15:06:18.426565+00:00",
+  "per_date": {
+    "2026-08-11": {
+      "bridge_factor": 2.7930001225759193,
+      "corrected_volume": 554757.0,
+      "cross_check_formula": "dollar_volume_ratio_after = (stored_close_unchanged * corrected_volume) / (provider_close * provider_volume)",
+      "dollar_volume_ratio_after": 1.0000002381510753,
+      "formula": "corrected_volume = round(provider_volume / bridge_factor)",
+      "ok": true,
+      "provider_close": 65.07698059082031,
+      "provider_volume": 1549436.0,
+      "raw_corrected_volume": 554756.8678840555,
+      "rounding_rule": "nearest_whole_share (python round(), applied identically to both dates)",
+      "stored_close_unchanged": 181.76001476703186,
+      "stored_volume_before": 1549436.0,
+      "tolerance": 0.01,
+      "within_tolerance": true
+    },
+    "2026-08-12": {
+      "bridge_factor": 2.7930001225759193,
+      "corrected_volume": 3706010.0,
+      "cross_check_formula": "dollar_volume_ratio_after = (stored_close_unchanged * corrected_volume) / (provider_close * provider_volume)",
+      "dollar_volume_ratio_after": 1.000000133734225,
+      "formula": "corrected_volume = round(provider_volume / bridge_factor)",
+      "ok": true,
+      "provider_close": 64.37164306640625,
+      "provider_volume": 10350885.0,
+      "raw_corrected_volume": 3706009.5043796916,
+      "rounding_rule": "nearest_whole_share (python round(), applied identically to both dates)",
+      "stored_close_unchanged": 179.79000697488598,
+      "stored_volume_before": 10350885.0,
+      "tolerance": 0.01,
+      "within_tolerance": true
+    }
+  },
+  "target_dates": [
+    "2026-08-11",
+    "2026-08-12"
+  ],
+  "verified": true
+}

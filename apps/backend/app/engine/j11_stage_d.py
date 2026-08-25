@@ -382,6 +382,56 @@ def load_stage_d_certified_baseline(
     }
 
 
+def build_avb_correction_superseded_baseline(
+    original_certified_baseline: dict,
+    *,
+    post_correction_daily_prices_fingerprint: str,
+    iteration: int,
+    mutation_evidence_artifact_path: str,
+) -> dict:
+    """goal-market-compass iter-16 (Goal 5) -- supersedes ONLY `daily_prices_fingerprint` in an existing
+    certified Stage D baseline (`load_stage_d_certified_baseline`'s own return shape), per the owner's
+    "OWNER RULING -- AVB two-row raw-volume correction before Stage D" (docs/goal.md, 2026-08-25): "After
+    that correction passes verification, the corrected daily_prices state becomes the new certified
+    raw-input baseline for J-11." Every OTHER field the certified baseline composes (`manifest_ddl`,
+    `manifest_dump`, `manifest_row_count`, `data_provider_runs_count`, `watchlist_count`) is copied
+    UNCHANGED, straight from `original_certified_baseline` -- none of them is touched by the AVB
+    correction (it mutates `daily_prices.volume` for two rows only), so none is re-derived from a
+    different source. This is an honest SUPERSESSION of one field, never a re-derivation of the whole
+    baseline, and it never mutates `original_certified_baseline` itself (a fresh dict is returned) --
+    iter-13's own lesson applies directly here too: "capturing an invariant's value is not checking it";
+    the caller MUST still run `compare_stage_d_preflight_to_certified` against both the OLD and the NEW
+    baseline and prove the gate's own verdict actually moves (False -> True), never just trust that this
+    function was called.
+
+    Raises `ValueError` if the supplied post-correction fingerprint equals the ORIGINAL certified
+    fingerprint -- that would mean no correction actually moved the raw layer, and silently "superseding"
+    a baseline with an unchanged value would hide that rather than surface it."""
+    original_fingerprint = original_certified_baseline["daily_prices_fingerprint"]
+    if post_correction_daily_prices_fingerprint == original_fingerprint:
+        raise ValueError(
+            "post_correction_daily_prices_fingerprint equals the ORIGINAL certified fingerprint -- "
+            "refusing to supersede a baseline with an unchanged value (the correction must have actually "
+            "moved the daily_prices fingerprint for this supersession to be meaningful)"
+        )
+    superseded = dict(original_certified_baseline)
+    superseded["daily_prices_fingerprint"] = post_correction_daily_prices_fingerprint
+    superseded["daily_prices_fingerprint_supersession"] = {
+        "superseded_at": _now_iso(),
+        "superseding_iteration": iteration,
+        "mutation_evidence_artifact": mutation_evidence_artifact_path,
+        "pre_correction_daily_prices_fingerprint": original_fingerprint,
+        "post_correction_daily_prices_fingerprint": post_correction_daily_prices_fingerprint,
+        "acceptance_amendment_cited": (
+            "docs/goal.md J-11 Acceptance, 'Raw inputs' bullet, 'Single narrow exception (owner, "
+            "2026-08-25)' -- the AVB two-cell volume correction supersedes ONLY this field; every other "
+            "composed field in this baseline is sourced UNCHANGED from the original certified state. "
+            "From this point onward J-11 again treats daily_prices as immutable at the NEW state."
+        ),
+    }
+    return superseded
+
+
 def compare_stage_d_preflight_to_certified(preflight: dict, certified: dict) -> dict:
     """The Stage D preflight comparison gate -- mirrors `j11_stage_c.compare_preflight_to_certified`'s
     shape and idiom but checks Stage D's OWN preconditions: canonical inputs (`daily_prices`) and

@@ -21,7 +21,7 @@ from sqlmodel import Session, SQLModel, create_engine
 from app.config import load_config
 from app.engine import j11_stage_d as jsd
 from app.engine.j11_maintenance import INCIDENT_DATES
-from app.models import NextSessionManifest, ScannerRun
+from app.models import DailyPrice, NextSessionManifest, ScannerRun
 
 _MATCHING_DATES = ", ".join(d.isoformat() for d in INCIDENT_DATES)
 _GOAL_MD_MATCHING = f"""
@@ -766,3 +766,80 @@ def test_capture_stage_d_preflight_backward_compatible_without_prior_identity(en
         )
     assert preflight["attempt_identity"]["readiness_time_only"] is True
     assert preflight["attempt_identity"]["comparison_to_iteration_14_frozen_identity"]["matches"] is None
+
+
+# ----------------------------------------------------------------------------------------------
+# goal-market-compass iter-16 (Goal 5) -- the AVB-correction certified-baseline supersession.
+# "OWNER RULING -- AVB two-row raw-volume correction before Stage D": "the corrected daily_prices state
+# becomes the new certified raw-input baseline for J-11." Only `daily_prices_fingerprint` may move; every
+# other composed field must stay byte-sourced from the ORIGINAL certified state.
+# ----------------------------------------------------------------------------------------------
+
+
+def test_goal5_superseded_baseline_changes_only_the_daily_prices_fingerprint(engine, cfg):
+    preflight = _fresh_preflight(engine, cfg)
+    original = _certified_from(preflight)
+    superseded = jsd.build_avb_correction_superseded_baseline(
+        original,
+        post_correction_daily_prices_fingerprint="new-fingerprint-after-correction",
+        iteration=16,
+        mutation_evidence_artifact_path="runs/goal-market-compass-iter-16/j11-avb-correction-mutation-evidence.json",
+    )
+    assert superseded["daily_prices_fingerprint"] == "new-fingerprint-after-correction"
+    # every OTHER composed field is byte-identical to the original, unchanged
+    for key in ("manifest_row_count", "manifest_ddl", "manifest_dump", "data_provider_runs_count", "watchlist_count"):
+        assert superseded[key] == original[key]
+    assert "daily_prices_fingerprint_supersession" in superseded
+    provenance = superseded["daily_prices_fingerprint_supersession"]
+    assert provenance["superseding_iteration"] == 16
+    assert provenance["pre_correction_daily_prices_fingerprint"] == original["daily_prices_fingerprint"]
+    assert provenance["post_correction_daily_prices_fingerprint"] == "new-fingerprint-after-correction"
+    # the ORIGINAL dict is never mutated -- a fresh dict is returned
+    assert "daily_prices_fingerprint_supersession" not in original
+
+
+def test_goal5_superseded_baseline_refuses_a_no_op_supersession(engine, cfg):
+    preflight = _fresh_preflight(engine, cfg)
+    original = _certified_from(preflight)
+    with pytest.raises(ValueError):
+        jsd.build_avb_correction_superseded_baseline(
+            original,
+            post_correction_daily_prices_fingerprint=original["daily_prices_fingerprint"],  # UNCHANGED
+            iteration=16,
+            mutation_evidence_artifact_path="unused",
+        )
+
+
+def test_goal5_gate_reports_old_baseline_mismatched_and_new_baseline_matched(engine, cfg):
+    """TC-20/TC-21: the compare gate genuinely MOVES (False -> True) between the OLD and the NEW
+    baseline against the SAME fresh preflight capture -- iter-13's own lesson: a gate that cannot compare
+    is a gate that always passes."""
+    # OLD baseline -- certified from the database BEFORE the simulated AVB correction.
+    old_preflight = _fresh_preflight(engine, cfg)
+    old_certified = _certified_from(old_preflight)
+
+    # Simulate the AVB correction actually landing -- daily_prices changes, so its fingerprint moves.
+    with Session(engine) as session:
+        session.add(DailyPrice(symbol="AVB", date=date(2026, 8, 11), open=1.0, high=2.0, low=0.5, close=1.5, volume=100.0))
+        session.commit()
+
+    fresh_preflight_after_correction = _fresh_preflight(engine, cfg)
+
+    # Against the OLD (pre-correction) baseline: an honest, EXPECTED mismatch.
+    gate_vs_old = jsd.compare_stage_d_preflight_to_certified(fresh_preflight_after_correction, old_certified)
+    assert gate_vs_old["checks"]["daily_prices_fingerprint_unchanged"] is False
+    assert gate_vs_old["all_invariants_hold"] is False
+
+    # Supersede ONLY the fingerprint -- the NEW certified baseline.
+    new_certified = jsd.build_avb_correction_superseded_baseline(
+        old_certified,
+        post_correction_daily_prices_fingerprint=(
+            fresh_preflight_after_correction["pre_reset_inventory"]["daily_prices"]["fingerprint"]
+        ),
+        iteration=16, mutation_evidence_artifact_path="unused",
+    )
+
+    # Against the NEW baseline: matches again, and EVERY other check also holds.
+    gate_vs_new = jsd.compare_stage_d_preflight_to_certified(fresh_preflight_after_correction, new_certified)
+    assert gate_vs_new["checks"]["daily_prices_fingerprint_unchanged"] is True
+    assert gate_vs_new["all_invariants_hold"] is True

@@ -903,3 +903,74 @@ which `docs/goal.md` makes their exclusive owner.
 **Reversible:** yes — the first legal browser/replay run at J-11 Stage G settles both empirically, and
 either can be downgraded there with real evidence behind it.
 
+
+<!-- condense.sh 2026-08-25T12:50:14Z: moved 3 entries (keep-iters=5) -->
+
+## iter-10 — goal-decomposer (splitting J-11 at the B/B1/B2 → C-G boundary instead of one iteration)
+
+**Ambiguity:** `docs/goal.md`'s J-11 sequencing describes Stages A through G as one journey, and its
+"Failure and retry semantics" step states plainly that "the unit of work is the whole 11-date set" —
+but that unit is explicitly scoped to the DESTRUCTIVE phase: "Once the destructive phase (Stage C) has
+begun..." and "a partial C→G execution is never represented as accepted J-11 progress." Stage B1 is
+separately described as a hard precondition ("Stage C may not begin until all six of these are
+proven"), and Stages B/B2 are read-only inventory/identity-freezing steps with zero database writes.
+`docs/goal.md` does not state whether B/B1/B2 must ship in the same iteration as C-G.
+**We chose:** Scoped this iteration to Stages B, B1, and B2 only — the pre-reset inventory, the
+manifest↔ScannerRun schema-contract reconciliation (with its six acceptance items proven by fixture
+tests), and the frozen attempt engine/config identity — and deferred Stages C through G (the actual
+destructive clear, regeneration, forward-return repair, cache invalidation, and verification) to a
+later iteration. This mirrors how J-10 itself was safely chunked across iterations 7, 8, and 9; keeps
+this iteration to a single risk class (zero writes to `trendora.db`, no boot warmup, no browser/replay
+lane); and is exactly what Stage C's own precondition requires regardless of how the work is chunked
+across iterations. The "whole 11-date set is the retry unit" rule is unaffected — it governs the
+destructive phase this iteration does not touch.
+**Reversible:** yes — a future decomposer could still choose to deliver all of B through G in one
+iteration if the combined risk is judged acceptable; nothing in this iteration's scope forecloses that,
+and no destructive action is taken here that would need to be undone. The B/B1/B2 artifacts and tests
+this iteration produces are the same required precondition either way.
+
+## iter-10 — goal-evaluator (scoring J-11 `partial` on an iteration whose central gate item is unmet)
+
+**Ambiguity:** J-11 spans Stages A-G; this iteration delivered B and B2 in full and B1 only partly (two
+of the six Stage C precondition items are false on the live database). The methodology's status
+vocabulary offers `unknown` ("not tested this iteration") and `partial` ("only some assertion steps
+passed"). The iteration spec itself hedges: "J-11's overall status is the evaluator's call ... it should
+stay at least `partial`/`unknown`". Additionally, maintenance isolation bars promotion TO
+`passing`/`already_passing` but says nothing about `unknown → partial`, and `docs/goal.md` waives J-11's
+walkthrough, naming written artifacts (pre/post inventory, mutation reconciliation, cache-invalidation
+proof, manifest-immutability evidence) as its substitute evidence set.
+**We chose:** `partial`, stamped with the current goal-text hash. Reasoning: the pre-reset inventory is
+one of the four substitute-evidence items `docs/goal.md` itself names for this journey, it exists, and I
+re-derived every load-bearing figure in it from the live database read-only rather than from any agent's
+prose; the fixture tests pinning three of the six B1 items pass under my own run (9/9). `unknown` would
+have been dishonest in the other direction — it asserts nothing was measured, when a named, contractually
+required artifact was produced and independently verified. The status change is not a promotion to
+`passing`, so the isolation rail is not crossed. Session precedent: iter-6 advanced J-10 `unknown →
+partial` on non-browser evidence under the same lane gate.
+**Reversible:** yes — nothing mechanical turns on it (GOAL_ACHIEVED is blocked several times over), and
+the Stage C/D/G iteration re-measures J-11 end to end with its verification lanes open.
+
+## iter-10 — goal-evaluator (STALLED rather than CONTINUE, on an iteration that made real progress)
+
+**Ambiguity:** The decision tree returns STALLED when "every unblock path for the current blocker is a
+human-owned action", and CONTINUE when "progress was made (≥1 journey newly passing) OR ... failing
+journeys remain that are tractable". This iteration made genuine, verified progress (J-11 `unknown →
+partial`), and three engineering-shaped follow-ups exist (the `basis_disclosure` degenerate-branch fix,
+the `mode=ro` URI for the inventory script, a missing degenerate test). On the face of it that reads
+CONTINUE. But the auditor routes the headline follow-up to Stage C/D/G ("executed in an iteration whose
+verification lanes are open"), and `docs/goal.md`'s Loop-mechanics gate shuts every other product,
+research and browser lane until J-11 Stage G passes.
+**We chose:** STALLED. The blocker that matters is Stage C's precondition gate, and its three unblock
+paths — a dated goal.md amendment accepting model/metadata-level satisfaction, an owner-authorised rewrite
+of the live 24-row `next_session_manifests` table, or a rewording of acceptance item 1 — are all owner
+decisions, two of them irreversible-write class. `docs/goal.md` J-11 step 11 prescribes this exact
+response ("STOP before J-11 and surface it as an owner decision"), and all three of judgment-rubrics §3's
+stop conditions fire (human-owned decision; irreversible high-stakes next step not pre-authorised; two
+legitimate readings of "proven" conflicting). The remaining engineering follow-ups are passenger-sized and
+would not constitute an honest iteration goal; scheduling one would produce motion without moving the
+blocker, which is the framework's #1 anti-pattern in a different costume. The progress made is recorded in
+full so nothing is lost by halting.
+**Reversible:** yes — the owner can answer with a single dated line in `docs/goal.md` and `--resume`;
+nothing here deletes evidence, changes a status, or forecloses the CONTINUE reading if the owner prefers
+the follow-up fixes to land first.
+

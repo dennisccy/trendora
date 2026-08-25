@@ -986,3 +986,40 @@ class Watchlist(SQLModel, table=True):
     created_at: datetime  # wall-clock "date added"
     asof_date_added: date  # latest_data_date() captured at add time
     entry_close: Optional[float] = None  # canonical close on asof_date_added (None ⇒ price-since-added NA)
+
+
+# --- goal-market-compass iter-16 (J-11 "pre-boot incident guard required") -----------------------------
+class MaintenanceBoundary(SQLModel, table=True):
+    """A named, EXPLICIT maintenance/incident-recovery quarantine boundary — the persisted state
+    `app.engine.j11_preboot_guard` reads to decide whether the canonical snapshot producer may write a
+    given as-of date. Purely additive (new table via `create_db_and_tables`'s existing
+    `SQLModel.metadata.create_all` — no ALTER of any existing table).
+
+    Iteration 15 proved that ordinary backend boot (`main.py` -> `warmup.ensure_latest_snapshot` ->
+    `scanner.run_scan`) can itself perform an unauthorized write during an active J-11-class incident
+    window, because it derives its target date from the PRESERVED `daily_prices` layer while the DERIVED
+    layer for that date is deliberately quarantined — "operator discipline alone is no longer
+    sufficient" (docs/goal.md, owner 2026-08-25). This table is the reusable, state-driven substrate a
+    future maintenance operation registers/clears against, instead of the guard hardcoding any
+    date-set or symbol.
+
+    `active` is the load-bearing field: it is an EXPLICIT marker, set by a maintenance script at the
+    START of an incident-recovery attempt and cleared only when the operator judges the boundary safe to
+    lift — NEVER inferred from partial per-date `ScannerRun` presence (a partially-completed regeneration
+    attempt must still read as blocked; docs/goal.md J-11 step 13's "the clean-regeneration unit is the
+    complete date set, not an individual date checkpoint"). `quarantined_dates_json` is a JSON list of
+    ISO date strings — for THE J-11 incident boundary specifically, this list is populated FROM
+    `app.engine.j11_maintenance.INCIDENT_DATES` by the registration helper
+    (`j11_preboot_guard.register_j11_incident_boundary`), never re-typed as a fresh literal; the guard's
+    own evaluation logic reads only this persisted field and contains no incident-specific conditional of
+    any kind, so it is reusable for ANY future maintenance boundary, not just this one."""
+
+    __tablename__ = "maintenance_boundaries"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str = Field(index=True, unique=True)  # one row per named boundary (e.g. "j11-incident-recovery")
+    quarantined_dates_json: str  # JSON list of ISO ("YYYY-MM-DD") date strings
+    active: bool  # EXPLICIT marker -- never inferred from derived-row presence
+    reason: str  # free-text, surfaced verbatim in the guard's actionable skip-write log line
+    created_at: datetime
+    updated_at: datetime  # bumped whenever `active` (or the date-set) is registered/cleared

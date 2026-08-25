@@ -298,3 +298,24 @@ mechanics, never about narrative.
 long list of narrative claims ("no stale cache survives", "no new historical manifest appears") that a
 row-count check cannot confirm.
 
+
+<!-- condense.sh 2026-08-25T12:50:14Z: moved 1 entries (keep-iters=5) -->
+
+## iter-10 — 2026-08-23T13:36:00Z
+
+**Verdict:** STALLED
+**Lesson:** A "schema contract proven by fixture-DB tests" can be fully green and still be false on the
+production database: `apps/backend/app/models.py`'s FK-declaration drop makes the manifest↔run contract
+true for any DB built from current SQLModel metadata, while the live `next_session_manifests` DDL still
+carries `FOREIGN KEY(source_run_id) REFERENCES scanner_runs (id)` with `PRAGMA foreign_keys=0` and 12
+standing `foreign_key_check` violations. Both the reviewer and QA recorded that DoD item complete on the
+strength of the passing fixture tests; only the auditor queried the live DDL. Second, smaller edge from
+the same iteration: `compass.basis_disclosure`'s `if not row.generation_json: return {"status":
+"available"}` short-circuit (`compass.py:1108-1109`) fabricates an honest-looking state on 10 of 24 live
+manifests — the degenerate input that bites is "row exists but records no basis", not "no row at all",
+and the TC-5 orphan test covered only the latter.
+**Applies to:** any iteration whose acceptance items say "the LIVE schema/database" — verify against the
+live artifact (`sqlite_master`, `pragma_foreign_key_check`) and not only against a metadata-built fixture;
+and any fail-closed read path, where the missing-field branch deserves its own test alongside the
+missing-row branch.
+

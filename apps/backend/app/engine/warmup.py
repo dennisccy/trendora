@@ -32,6 +32,7 @@ from sqlmodel import Session, select
 
 from app.config import Config, get_config
 from app.engine import data_manager, evidence, forward_testing
+from app.engine import j11_preboot_guard
 from app.engine.forward_testing import backfill_forward_returns, walk_forward_asof_dates
 from app.engine.ledger import FORWARD_WALK_TYPE, read_entries
 from app.engine.prices import bar_cache, latest_data_date
@@ -83,11 +84,39 @@ def ensure_latest_snapshot(engine: Engine, config: Optional[Config] = None) -> O
     `yield`. Effectively instant on a warm DB (the run already exists -> `run_scan` returns it); on a
     fresh DB it is a single snapshot compute, bounded by `config.startup.readiness_budget_seconds`. Reads
     ONLY the committed frozen seed via the canonical engines (no network). Returns the latest data date,
-    or None when no price data exists yet (the readiness signal then reports `unavailable`)."""
+    or None when no price data exists yet (the readiness signal then reports `unavailable`).
+
+    goal-market-compass iter-16 ("OWNER RULING -- pre-boot incident guard required", docs/goal.md
+    J-11 step 11): before calling `run_scan` for the resolved `latest` date, checks whether that date
+    falls inside an ACTIVE `j11_preboot_guard.MaintenanceBoundary` -- iteration 15 proved this exact call
+    can otherwise recreate derived state for a date a maintenance/incident-recovery operation deliberately
+    left at zero `ScannerRun`s. A blocked date skips the write entirely (no `ScannerRun` is ever inserted
+    for it), logs an actionable message naming the date and the boundary's reason, and returns `None` --
+    the SAME safe shape this function already returns for a genuinely empty database, so boot never
+    crashes and the server still serves whatever is already persisted. The guard check itself fails
+    CLOSED on any unexpected error (never silently allows the write it could not evaluate). When NO
+    boundary is registered at all -- the common, no-incident case every other journey's boot depends on --
+    or once a registered boundary is explicitly cleared, this function's behavior is BYTE-IDENTICAL to
+    the unmodified form above (a cheap empty-table SELECT, then straight through to `run_scan`)."""
     cfg = config or get_config()
     with Session(engine) as session:
         latest = latest_data_date(session)
         if latest is None:
+            return None
+        try:
+            guard = j11_preboot_guard.evaluate_boundary_for_date(session, latest)
+        except Exception as exc:  # fail CLOSED: an unevaluable boundary state is never treated as clear
+            guard = {
+                "blocked": True, "boundary_name": None,
+                "reason": f"maintenance boundary check raised {exc!r} -- failing closed", "ambiguous": True,
+            }
+        if guard["blocked"]:
+            logger.warning(
+                "boot: skipping canonical snapshot write for %s -- blocked by an ACTIVE maintenance "
+                "boundary %r: %s. No ScannerRun was created; the server still serves any already-"
+                "persisted snapshots. Clear the boundary once the maintenance operation is complete.",
+                latest, guard.get("boundary_name"), guard.get("reason"),
+            )
             return None
         run_scan(session, latest, cfg)  # idempotent + immutable; the SINGLE canonical compute path
         return latest

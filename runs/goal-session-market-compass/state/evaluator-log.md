@@ -1069,3 +1069,112 @@ STANDING FRAMEWORK NOTES: the defect that once let a forbidden test lane run is 
 `scripts/automation/` — seven iterations running have avoided it with the maintenance-isolation contract
 rather than curing it; and `goal_gate.py`'s duplicate-journey-heading defect is still unfixed and must be
 closed before any GOAL_ACHIEVED certification.
+
+## Iteration 16 — goal-market-compass-iter-16
+
+**Date:** 2026-08-25T18:05:00Z
+**Verdict:** STALLED
+**Depth dispatched:** full (`runs/goal-session-market-compass/iter-16/depth-dispatched` reads `full`,
+matching the spec's own `Depth: full` line — the silent full→lean demotion that fired in iters 2, 6 and 8
+did NOT recur, for the eighth iteration running, and neither did the forbidden browser/replay lane; the
+engine recorded its refusal in `iter-16/maintenance-isolation-refusals` at 2026-08-25T15:46:48Z)
+
+**Owner-facing lines:** `J-11 STAGE D READY: YES` (the first YES this session) · `J-11 STAGE D
+AUTHORIZED: NO` (unchanged, unconditional). Every lane and this evaluator agree on both, with no
+correction needed from me on either line.
+
+**Journey deltas:**
+- Newly passing: none. Newly failing: none. **Regressed: none.**
+- **Advanced within `partial`: J-11** "Incident-bounded clean regeneration of derived state" — this
+  iteration's sole target. The owner's four-step 2026-08-25 sequence executed in order and stopped
+  where the owner said to stop. Re-stamped `spec_hash` to `e7927ff5…` (was `54e9cdd8…` — the owner's
+  two 2026-08-25 rulings, committed at `346ed65a`, changed J-11's text; no `journeys-changed.md` fired
+  because J-11 is `partial`, not `passing`, and I re-verified it against the current text anyway).
+  Stages D-G untouched, not started, not authorized.
+- **J-10** "Bounded recovery of the two deleted trading days" — stays `passing`, NOT re-stamped. The
+  material defect iteration 15 measured in its own output (AVB's two recovered days storing a money
+  value 2.793× too high) is now CORRECTED in the raw layer under the owner's separate authorization.
+- Carried, NOT re-verified (maintenance isolation — browser QA and the replay lane were forbidden by
+  contract, so every journey keeps its prior recorded status): J-01, J-04, J-10 stay `passing`; J-02,
+  J-03, J-05, J-06, J-09 stay `partial`; J-07, J-08 stay `failing`. Two spot-checks opened (J-01's and
+  J-04's iter-4 screenshots), both consistent with their recorded status.
+- Anti-goal violations: **ONE NEW, MINOR, UNRESOLVED — AG-8.** `j11_preboot_guard.py:143`'s
+  `select(MaintenanceBoundary)` is an unbounded whole-table ORM load and it now sits on the shared boot
+  path. Impact today is nil (one row, once per boot) and AG-8's actual subject is data-SCALE change, so
+  I recorded it minor and said openly that it is letter-but-not-subject; the owner may downgrade it at
+  the cost of one boolean. QA's own AG-8 line ("No new unbounded whole-table loads") is wrong on this
+  point. Ledger: **7 total, 1 unresolved.** No critical violation. AG-9, AG-12 and AG-17 were the three
+  at real risk and all three HELD, each verified by my own greps and read-only fingerprints.
+- Coherence: COHERENCE-PASS. Deterministic scan: CLEAN. Review: PASS. QA: PASS. Audit: PASS_WITH_GAPS
+  (B1/B2 IMPORTANT gaps; B3 gap; B4/B5/B6/B7 observations; T1 gap; P1 process gap).
+
+**Reasoning:** The one write the owner authorised was carried out exactly as written, and I did not take
+that from anyone's prose — I opened the 8.4 GB database read-only and re-measured every figure myself,
+including re-hashing all 3,304,977 non-AVB price rows in full. One company's stored share count on two
+days moved from 1,549,436 to 554,757 and from 10,350,885 to 3,706,010; both are exactly the provider's
+own figure divided by the same 2.793 the rest of that company's history already uses, rounded to whole
+shares. Every other value in the 3.31-million-row price table is byte-identical, the two rows' prices are
+untouched, the running total moved by exactly the predicted 7,639,554, and the other five tables, the
+twenty-four saved briefings, the watchlist and the audit records are all unchanged. The safety gate that
+certifies the new data state genuinely works: it says "different" against the old certified picture and
+"same" against the new one, so it is a gate that can fail rather than one that always passes. But the
+headline of this iteration is not the YES. It is a hole in the new safety catch, and I confirmed it
+myself rather than inheriting it. The catch is built well, is genuinely reusable, and sits at the one
+right place in the start-up path — but it is switched off against the real database: the list of eleven
+damaged days it is meant to protect was never written there, the table holding that list does not exist
+in the real file at all, and the catch lets everything through when the list is empty. So starting the
+app today would still write a new day's results onto 12 August, which is the exact accident the owner's
+rule exists to prevent. My adjudication of the owner's own words: "proven on disposable test state" is a
+NECESSARY condition for lifting the freeze, not a sufficient one — reading it as sufficient would let a
+catch that is inert in production unlock starting the app, which would immediately cause the forbidden
+write. So the freeze stays on. In fairness this is a scope collision rather than an oversight: switching
+the catch on needs a write to the real database, and this iteration was authorised for exactly two cells.
+Two further corrections I made against the material handed to me. FIRST, the recorded verdict letter for
+that company is B, but the honest letter is A: the comparison it rests on was run without the volume
+figure, so after the correction it compared one scale's price against the other scale's share count — a
+mixture that matches nothing real. I recomputed it: as run, the ratio is exactly 2.793 on both days; with
+the volume supplied it is 1.0000002. So the "other companies shifted" signal is an artefact of the
+mismatch, and the write-up's claim that correcting this company measurably shifts other companies is not
+what was measured. It does not move the answer — both letters permit readiness — but it must not be
+inherited. SECOND, the re-check cannot disprove the correction: the two corrected days hit the target
+about 180 times more tightly than any genuinely measured day, so the YES rests on the evidence gathered
+BEFORE the correction, not on the re-check. That earlier chain is sound; the re-check is simply not
+independent confirmation. Why halt when nothing is wrong? Because the owner's own rule ends this step
+with "stop for owner review even if the answer is YES", and the engine reached exactly that point;
+because the only remaining work on this repair's critical path is the rebuild, which is forbidden without
+a fresh instruction; because switching the safety catch on is itself a write to the real database outside
+this iteration's permission; and because a stopped engine starts no backend, which makes halting strictly
+safer while the catch is inert. Why not REGRESSION? Nothing that worked stopped working, no journey was
+tested so none could fail, nothing outside the two authorised cells moved, and the single new ledger entry
+is minor and recorded openly. Why not ESCALATE? This run already used the careful full depth, and the
+careful depth is what found the hole. One process fact for the record: this is the seventh iteration
+running where the independent auditor found what the developer, the reviewer and the quality check all
+missed — and this time all three described the start-up path as protected when it is not.
+
+**Next-step recommendation:** ONE SAFETY JOB AND ONE DECISION. THE SAFETY JOB FIRST, because it is the
+only item that can go wrong on its own: ask for the list of eleven damaged days to be written into the
+real database, so the catch built this iteration actually switches on. Nobody should read "the guard is
+done" as "it is safe to start the app" — it is not, yet. This needs the owner's word because it means
+writing to the real database, and every live write in this session has been granted one at a time, in
+writing. The danger window is precisely now until the rebuild happens: the rebuild itself is safe (it
+runs as a controlled script, not a started app), and once the eleven days hold results again the start-up
+path becomes safe on its own. THE DECISION — pick one: (a) instruct the engine to run the rebuild of the
+eleven days and `--resume`; (b) order a small, non-destructive tidy-up run first; or (c) change the plan
+in `docs/goal.md`. THREE SMALL RIDERS for whichever run happens next, none of which can change the
+readiness answer: re-run the readiness check with the volume figure supplied, so the recorded letter
+becomes the honest A and the unsupported sentence leaves the record; fix the one-line unbounded table
+read at `apps/backend/app/engine/j11_preboot_guard.py:143`, since it now sits on the path every page's
+data depends on; and add a test named for the real situation ("table exists, is empty, newest stored day
+is a damaged day") so this gap cannot hide behind a test called "the common no-incident case" again. TWO
+MECHANICAL ITEMS: this iteration's new code, tests and evidence are still untracked in git at the time of
+scoring — confirm they reach version control; and the review packet advertised "Files changed: 5. Shown
+in full: 5" while 7 new untracked files, 100% of the new code including the live-write script and the
+whole guard, were invisible to it — `build_review_packet` should include untracked files or name them as
+an exclusion (my own `iter-diff.md` correctly said 12, so the two tools disagree). FIVE OLDER OWNER
+QUESTIONS remain open and non-blocking: whether 3.44 GB is acceptable for J-09; J-06's "underlying run
+unavailable" wording; the rewording of J-01's first two test steps; whether an empty "next-session focus"
+is acceptable; and whether MNST joins the recovery list. TWO STANDING FRAMEWORK NOTES: the defect that
+once let a forbidden test lane run is still unfixed in `scripts/automation/` — eight iterations running
+have avoided it with the maintenance-isolation contract rather than curing it; and `goal_gate.py`'s
+duplicate-journey-heading defect is still unfixed and must be closed before any GOAL_ACHIEVED
+certification.

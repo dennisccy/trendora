@@ -1,0 +1,110 @@
+{
+  "all_11_incident_dates_zero_scanner_runs": true,
+  "avb_target_rows": {
+    "2026-08-11": {
+      "close": 181.76001476703186,
+      "high": 184.13001191846783,
+      "low": 181.7100027790582,
+      "open": 183.22001534990548,
+      "volume": 1549436.0
+    },
+    "2026-08-12": {
+      "close": 179.79000697488598,
+      "high": 182.0900043902787,
+      "low": 179.45999604273928,
+      "open": 181.08999902870366,
+      "volume": 10350885.0
+    }
+  },
+  "captured_at": "2026-08-25T15:06:18.407979+00:00",
+  "daily_prices": {
+    "fingerprint": "572691772b7313b893055a9ada984945292bbcd07686f4702193a03e9223451a",
+    "id_sum": 5479295003075,
+    "max_date": "2026-08-12",
+    "min_date": "1996-01-02",
+    "ohlcv_sum": 52367106488426.56,
+    "row_count": 3310374
+  },
+  "data_provider_runs_count": 549,
+  "db_file": {
+    "exists": true,
+    "mtime": 1787591622.4277432,
+    "path": "/home/dennis-chan/Git/trendora/apps/backend/data/trendora.db",
+    "size_bytes": 8365871104,
+    "wal": {
+      "exists": true,
+      "mtime": 1787609011.1882,
+      "size_bytes": 0
+    }
+  },
+  "forward_returns_measured_into_incident_total": 16614,
+  "forward_returns_total_count": 6797728,
+  "isolating_hashes": {
+    "avb_ohlc_only": {
+      "row_count": 5397,
+      "sha256": "757c3c63a39d7c167f691a929ec0579dd7e9584c20f6c9ff99879e6bec4c8fd3",
+      "sql": "SELECT symbol, date, open, high, low, close FROM daily_prices WHERE symbol=? ORDER BY date"
+    },
+    "avb_other_dates_full_row": {
+      "row_count": 5395,
+      "sha256": "53bca57105dad60137049f9a8b2350d6d6d0d3a6645337e4352b3fa5c56dc14f",
+      "sql": "SELECT symbol, date, open, high, low, close, volume FROM daily_prices WHERE symbol=? AND date NOT IN (?, ?) ORDER BY date"
+    },
+    "non_avb_full_row": {
+      "row_count": 3304977,
+      "sha256": "78146554cab8a2a619507e60cafa6354350d176f5685383d41c8c97899264997",
+      "sql": "SELECT symbol, date, open, high, low, close, volume FROM daily_prices WHERE symbol!=? ORDER BY symbol, date"
+    }
+  },
+  "manifest_ddl_sha256": "9f653c8147c7c8931b07ea4a88d46ef1d6ddefb2ef5177b700d2b60e7fc501ee",
+  "manifest_row_count": 24,
+  "manifest_row_dump_fingerprint": {
+    "row_count": 24,
+    "sha256": "bb954b60187e39a1aa8f59b1bf736be9808e25760d2a0494f176116416d2a2e6",
+    "sql": "SELECT * FROM next_session_manifests ORDER BY id"
+  },
+  "scanner_runs_by_identity_group": {
+    "legacy_6261ca17_count": 34,
+    "legacy_6261ca17_ids": [
+      3113,
+      3115,
+      3116,
+      3117,
+      3118,
+      3119,
+      3120,
+      3121,
+      3122,
+      3123,
+      3124,
+      3125,
+      3126,
+      3127,
+      3128,
+      3129,
+      3130,
+      3131,
+      3132,
+      3133,
+      3134,
+      3135,
+      3136,
+      3137,
+      3138,
+      3139,
+      3140,
+      3141,
+      3142,
+      3143,
+      3144,
+      3145,
+      3146,
+      3147
+    ],
+    "null_count": 3083,
+    "other_count": 0,
+    "other_ids": []
+  },
+  "scanner_runs_total_count": 3117,
+  "watchlist_count": 6
+}

@@ -1,0 +1,145 @@
+{
+  "any_mismatch": false,
+  "comparisons": {
+    "all_11_incident_dates_zero_scanner_runs": {
+      "comparison_method": "exact",
+      "derived_value": true,
+      "expected_value": true,
+      "matches": true
+    },
+    "avb_target_row.2026-08-11": {
+      "comparison_method": "exact",
+      "derived_value": {
+        "close": 181.76001476703186,
+        "high": 184.13001191846783,
+        "low": 181.7100027790582,
+        "open": 183.22001534990548,
+        "volume": 1549436.0
+      },
+      "expected_value": {
+        "close": 181.76001476703186,
+        "high": 184.13001191846783,
+        "low": 181.7100027790582,
+        "open": 183.22001534990548,
+        "volume": 1549436.0
+      },
+      "matches": true
+    },
+    "avb_target_row.2026-08-12": {
+      "comparison_method": "exact",
+      "derived_value": {
+        "close": 179.79000697488598,
+        "high": 182.0900043902787,
+        "low": 179.45999604273928,
+        "open": 181.08999902870366,
+        "volume": 10350885.0
+      },
+      "expected_value": {
+        "close": 179.79000697488598,
+        "high": 182.0900043902787,
+        "low": 179.45999604273928,
+        "open": 181.08999902870366,
+        "volume": 10350885.0
+      },
+      "matches": true
+    },
+    "daily_prices_row_count": {
+      "comparison_method": "exact",
+      "derived_value": 3310374,
+      "expected_value": 3310374,
+      "matches": true
+    },
+    "data_provider_runs_count": {
+      "comparison_method": "exact",
+      "derived_value": 549,
+      "expected_value": 549,
+      "matches": true
+    },
+    "db_mtime": {
+      "comparison_method": "exact",
+      "derived_value": 1787591622,
+      "expected_value": 1787591622,
+      "matches": true
+    },
+    "db_size_bytes": {
+      "comparison_method": "exact",
+      "derived_value": 8365871104,
+      "expected_value": 8365871104,
+      "matches": true
+    },
+    "db_wal_size_bytes": {
+      "comparison_method": "exact",
+      "derived_value": 0,
+      "expected_value": 0,
+      "matches": true
+    },
+    "forward_returns_measured_into_incident_total": {
+      "comparison_method": "exact",
+      "derived_value": 16614,
+      "expected_value": 16614,
+      "matches": true
+    },
+    "forward_returns_total_count": {
+      "comparison_method": "exact",
+      "derived_value": 6797728,
+      "expected_value": 6797728,
+      "matches": true
+    },
+    "isolating_hash.avb_ohlc_only": {
+      "comparison_method": "exact",
+      "derived_value": "757c3c63a39d7c167f691a929ec0579dd7e9584c20f6c9ff99879e6bec4c8fd3",
+      "expected_value": "757c3c63a39d7c167f691a929ec0579dd7e9584c20f6c9ff99879e6bec4c8fd3",
+      "matches": true
+    },
+    "isolating_hash.avb_other_dates_full_row": {
+      "comparison_method": "exact",
+      "derived_value": "53bca57105dad60137049f9a8b2350d6d6d0d3a6645337e4352b3fa5c56dc14f",
+      "expected_value": "53bca57105dad60137049f9a8b2350d6d6d0d3a6645337e4352b3fa5c56dc14f",
+      "matches": true
+    },
+    "isolating_hash.non_avb_full_row": {
+      "comparison_method": "exact",
+      "derived_value": "78146554cab8a2a619507e60cafa6354350d176f5685383d41c8c97899264997",
+      "expected_value": "78146554cab8a2a619507e60cafa6354350d176f5685383d41c8c97899264997",
+      "matches": true
+    },
+    "manifest_ddl_sha256": {
+      "comparison_method": "exact",
+      "derived_value": "9f653c8147c7c8931b07ea4a88d46ef1d6ddefb2ef5177b700d2b60e7fc501ee",
+      "expected_value": "9f653c8147c7c8931b07ea4a88d46ef1d6ddefb2ef5177b700d2b60e7fc501ee",
+      "matches": true
+    },
+    "manifest_row_count": {
+      "comparison_method": "exact",
+      "derived_value": 24,
+      "expected_value": 24,
+      "matches": true
+    },
+    "manifest_row_dump_sha256": {
+      "comparison_method": "prefix_suffix_excerpt_not_full_hash",
+      "derived_value": "bb954b60187e39a1aa8f59b1bf736be9808e25760d2a0494f176116416d2a2e6",
+      "expected_prefix": "bb954b60",
+      "expected_suffix": "6d2a2e6",
+      "matches": true
+    },
+    "scanner_runs_stamped_6261ca17_count": {
+      "comparison_method": "exact",
+      "derived_value": 34,
+      "expected_value": 34,
+      "matches": true
+    },
+    "scanner_runs_total_count": {
+      "comparison_method": "exact",
+      "derived_value": 3117,
+      "expected_value": 3117,
+      "matches": true
+    },
+    "watchlist_count": {
+      "comparison_method": "exact",
+      "derived_value": 6,
+      "expected_value": 6,
+      "matches": true
+    }
+  },
+  "generated_at": "2026-08-25T15:06:18.414411+00:00"
+}

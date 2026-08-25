@@ -9,7 +9,7 @@ scripts/automation/lib/retro_collect.sh — no model wrote this. Counters marked
 - **Terminal status:** STALLED
 - **Final verdict:** STALLED
 - **Iterations used:** 16
-- **Halted at (UTC):** 2026-08-25T11:18:54.096313Z
+- **Halted at (UTC):** 2026-08-25T12:50:20.871168Z
 
 ## Verdict sequence
 
@@ -369,7 +369,7 @@ Per-step wall breakdown (analyze_telemetry.py --wall):
       total ux-regression-reviewer       7.2m
       total browser-qa-replay            6.5m
       total AWAITING_PUMP paused gaps: 501.7m
-      halts: AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, STALLED, REGRESSION_HALT, STALLED, STALLED, STALLED, STALLED
+      halts: AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, STALLED, REGRESSION_HALT, STALLED, STALLED, STALLED, STALLED, STALLED
 ```
 
 ## Friction counters

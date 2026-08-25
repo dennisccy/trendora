@@ -1,25 +1,25 @@
 {
   "session_id": "market-compass",
   "started_at": "2026-08-19T21:31:52.886915Z",
-  "current_iter": 16,
+  "current_iter": 17,
   "cli": "claude",
   "agent_backend": "interactive",
   "halt_config": {
     "max_iterations": 60,
-    "stall_window": 3,
+    "stall_window": 4,
     "regression_halt": true
   },
-  "status": "STALLED",
+  "status": "in_progress",
   "last_verdict": "STALLED",
   "next_depth": "full",
   "auto_release": false,
   "push_per_iter": true,
   "push_branch": "goal/market-compass",
-  "finished_at": "2026-08-25T11:18:54.096313Z",
+  "finished_at": "2026-08-25T12:50:20.871168Z",
   "total_iterations": 16,
-  "wall_time_seconds": 10861,
+  "wall_time_seconds": 4,
   "quota_pause_count": 0,
-  "updated_at": "2026-08-25T11:18:53.815543Z",
+  "updated_at": "2026-08-25T17:19:04.907391Z",
   "output_styles": "off",
   "parked_wip_sha": "e5370b9a"
 }

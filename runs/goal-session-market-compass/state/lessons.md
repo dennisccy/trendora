@@ -98,19 +98,7 @@ the frozen engine_identity" and its cache-invalidation proofs.
 long list of narrative claims ("no stale cache survives", "no new historical manifest appears") that a
 row-count check cannot confirm.
 
-## iter-10 — 2026-08-23T13:36:00Z
-
-**Verdict:** STALLED
-**Lesson:** A "schema contract proven by fixture-DB tests" can be fully green and still be false on the
-production database: `apps/backend/app/models.py`'s FK-declaration drop makes the manifest↔run contract
-true for any DB built from current SQLModel metadata, while the live `next_session_manifests` DDL still
-carries `FOREIGN KEY(source_run_id) REFERENCES scanner_runs (id)` with `PRAGMA foreign_keys=0` and 12
-standing `foreign_key_check` violations. Both the reviewer and QA recorded that DoD item complete on the
-strength of the passing fixture tests; only the auditor queried the live DDL. Second, smaller edge from
-the same iteration: `compass.basis_disclosure`'s `if not row.generation_json: return {"status":
-"available"}` short-circuit (`compass.py:1108-1109`) fabricates an honest-looking state on 10 of 24 live
-manifests — the degenerate input that bites is "row exists but records no basis", not "no row at all",
-and the TC-5 orphan test covered only the latter.
+## iter-10 — 2026-08-23T13:36:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration whose acceptance items say "the LIVE schema/database" — verify against the
 live artifact (`sqlite_master`, `pragma_foreign_key_check`) and not only against a metadata-built fixture;
 and any fail-closed read path, where the missing-field branch deserves its own test alongside the
@@ -270,3 +258,39 @@ only that N recipes failed — that is evidence about the search, not about the 
 exact recipe (query, column order, serialization, separator, sort) beside the value, and when a
 fingerprint fails to reproduce, downgrade the conclusion to "recipe unknown" rather than "value
 unreproducible" unless the underlying data is independently shown to differ.
+
+## iter-16 — 2026-08-25T18:05:00Z
+
+**Verdict:** STALLED
+**Lesson:** A guard can be built, wired at the right call site, exhaustively tested and fully
+passing, and still protect nothing — because its *state* was never registered.
+`j11_preboot_guard.evaluate_boundary_for_date` correctly returns `blocked=False` on an empty
+`maintenance_boundaries` table, `register_j11_incident_boundary` has no production caller, and the
+table does not exist in the live DB at all — so the live boot path is exactly as unprotected as
+before. Worse, the guard's own green tests
+(`test_tc25_no_boundary_registered_is_a_true_noop`) are framed as "the common no-incident case"
+while being a precise model of the unprotected live state, so nothing in the suite names the gap.
+Ask of every new guard: *what is the live value of the state it reads, right now?* — the code's
+correctness and the deployment's effect are separate questions.
+**Applies to:** any iteration adding a guard/gate/feature-flag/quarantine whose behaviour keys on
+persisted state (`apps/backend/app/engine/j11_preboot_guard.py`, `warmup.py`, and any future
+boot-path or middleware check); also any "prove it on disposable test state" acceptance clause —
+treat it as necessary, never sufficient.
+
+## iter-16 — 2026-08-25T18:06:00Z
+
+**Verdict:** STALLED
+**Lesson:** Correcting the data invalidated a counterfactual that was written against the
+pre-correction data, and nothing flagged it. `_build_bars_with_transformed_close` substitutes close
+only unless `volume_override` is passed; that was coherent while stored volume was raw, but once the
+AVB volume was corrected to the compensating scale, representation B silently became
+provider-scale close × Trendora-scale volume — a hybrid matching no real state. Its fingerprint is
+unmissable once looked for: A/B came out *exactly* `bridge_factor` on both dates. The spec itself
+sanctioned dropping the override ("the write already landed, so read the corrected rows directly"),
+which is why developer, reviewer and QA all passed it — but the override never fed representation A,
+it fed B. After any state correction, re-derive every counterfactual's inputs; an exactly-round ratio
+between a representation and its counterfactual is the signature of a one-sided rescale, not a finding.
+**Applies to:** any iteration that mutates stored state which an existing diagnostic, A/B trace, or
+counterfactual reads (`j11_avb_diagnostic.py`'s trace functions, `run_j11_iter16_stage_d_readiness.py`),
+and any spec that tells an implementer to drop a substitution argument because "the real data now has
+that value".
