@@ -1439,6 +1439,82 @@ manifest artifact (it must be self-describing and self-caveating).
        - **C12 — No redesign.** This run executes the already-ratified contract. Do not redesign J-10,
          J-11, candidate thresholds, manifest semantics, research architecture, Tapeology integration, or
          the prospective/OOS rules. No speculative goal hardening.
+
+       *The two rulings below are new and Stage-D-facing. They stand on their own — they are NOT part of
+       the Stage C authorization above, which remains exhausted and unchanged, and they revoke nothing
+       already recorded.*
+
+       ### OWNER RULING — AVB two-row raw-volume correction before Stage D
+       *(owner, 2026-08-25 — binding, narrowly scoped)*
+
+       Iteration 15 settled the previously open AVB convention question with the single-use AG-9 dated
+       exception #2. The committed evidence proves that AVB's **2026-08-11** and **2026-08-12** recovered
+       rows are internally inconsistent with Trendora's own stored AVB convention:
+       - surrounding stored AVB bars are **`bridged price + compensating volume`**;
+       - the two J-10 recovered bars are **`bridged price + raw volume`**;
+       - their dollar volume is therefore inflated by approximately the persisted bridge factor
+         **`2.7930001225759193`**;
+       - the resulting classification is **AVB-C** and J-11 Stage D is **NOT ready**.
+
+       **The owner authorizes one bounded corrective raw-layer mutation BEFORE Stage D readiness may be
+       reconsidered.** Authorized mutation scope is exactly:
+       - table: **`daily_prices`**
+       - symbol: **`AVB`**
+       - dates: **`2026-08-11`, `2026-08-12`**
+       - mutable field: **`volume` only**
+
+       No other symbol, date, OHLC field, table, row, provider record, manifest, `ScannerRun`, forward
+       return, provenance row or historical artifact may be modified under this ruling.
+
+       The corrected values must be derived **deterministically** from the already-committed iteration-15
+       provider evidence and the proven surrounding stored convention. **No new network fetch is
+       authorized. AG-9 dated exception #2 remains exhausted.**
+
+       This does **NOT** reopen J-10 as a recovery programme. **J-10 remains historically closed at its
+       recorded terminal state** (585 restored; EA and EQR accepted unrestorable; AG-9's recovery-fetch
+       authorization exhausted). This is a narrowly authorized post-J-10 correction of a defect discovered
+       by the later J-11 readiness audit.
+
+       The existing J-11 rule that `daily_prices` must remain unchanged is **narrowly amended** as follows:
+       > Before Stage D, exactly the two authorized AVB `volume` cells above may be corrected **once**.
+       > Their before/after values and derivation must be persisted as mutation evidence. After that
+       > correction passes verification, the corrected `daily_prices` state becomes the **new certified
+       > raw-input baseline** for J-11. From that point onward J-11 again treats `daily_prices` as
+       > immutable.
+
+       All other J-11 raw-input protections remain unchanged. **If the exact correction cannot be derived
+       and verified fail-closed from the committed evidence, STOP for owner review rather than guessing.**
+
+       **Even if the subsequent readiness evaluation returns `J-11 STAGE D READY: YES`, STOP for owner
+       review.** Stage D is **NOT** authorized by this ruling and requires a separate explicit owner
+       instruction before J-11 Stage D execution may begin.
+
+       ### OWNER RULING — pre-boot incident guard required
+       *(owner, 2026-08-25 — binding)*
+
+       Iteration 15 proved that the current normal backend startup path can itself violate the J-11
+       quarantine: `ensure_latest_snapshot()` resolves the latest stored price date and calls the
+       canonical scan producer; while the latest date is an incident date intentionally holding zero
+       `ScannerRun`s, **merely booting the backend can recreate derived state before Stage D begins.**
+
+       **Operator discipline alone is no longer sufficient.**
+
+       Before any normal backend, browser, replay or Stage-G application lane is allowed to resume, the
+       implementation must provide and test a **fail-closed pre-boot guard** that prevents canonical
+       producer writes for dates explicitly quarantined by an active maintenance/incident-recovery
+       boundary.
+
+       The guard must be **reusable and state-driven, not hardcoded** to AVB or 2026-08-12, and must
+       preserve normal latest-snapshot startup behaviour once the maintenance boundary is legitimately
+       cleared.
+
+       **Until that guard is proven on disposable test state, maintenance isolation remains ACTIVE and the
+       live backend must not be booted.**
+
+       **Sequencing (unambiguous, and it does not start Stage D):** AVB bounded correction → verify the
+       new raw-input baseline → implement and prove the pre-boot guard → re-run Stage D readiness → if
+       `J-11 STAGE D READY: YES`, **STOP for owner authorization**. **Stage D remains forbidden until a
+       later explicit owner instruction.**
     12. **Stage B2 — freeze ONE engine identity for the whole attempt (owner, 2026-08-21).** J-11's
        claim is that the incident set ends up as one internally consistent current-engine derivation;
        that claim must be testable. Before Stage C, freeze the intended current engine identity and
@@ -1532,7 +1608,14 @@ manifest artifact (it must be self-describing and self-caveating).
       verification — not by narrative assertion in a handoff.
     - **Raw inputs:** `daily_prices` unchanged by J-11 (count and fingerprint identical either side of
       the clear); no network fetch occurred during J-11; the price frontier is unchanged by J-11;
-      J-10's recovered rows remain intact.
+      J-10's recovered rows remain intact. **Single narrow exception (owner, 2026-08-25):** the one
+      authorized AVB two-cell `volume` correction for 2026-08-11/12 — see "OWNER RULING — AVB two-row
+      raw-volume correction before Stage D" in step 11. That correction changes exactly two `volume`
+      cells and no row count; once it is verified, the **post-correction fingerprint becomes the new
+      certified J-11 raw-input baseline**, and every check above is evaluated against that new baseline.
+      Stage D and all later J-11 stages must preserve it unchanged. Raw-input immutability is otherwise
+      **not** relaxed: no other cell, row, symbol, date or table may change, and "J-10's recovered rows
+      remain intact" continues to hold for every value except those two authorized `volume` cells.
     - **Snapshot scope:** exactly the 11 authorized incident dates were cleared and recreated; **no
       `ScannerRun` outside that set was deleted or rewritten**; rebuilt runs went through the current
       canonical engine path; all required child rows reconcile with their rebuilt parent runs.
