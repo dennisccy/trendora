@@ -1,0 +1,23 @@
+{
+  "authorized": false,
+  "avb_classification": "AVB-C",
+  "blocking_reasons": [
+    "avb_classification_blocks:AVB-C"
+  ],
+  "generated_at": "2026-08-25T09:28:46.640042+00:00",
+  "inputs": {
+    "avb_diagnostic_artifact": "/home/dennis-chan/Git/trendora/runs/goal-market-compass-iter-15/j11-avb-bridge-diagnostic.json",
+    "preflight_gate_artifact": "/home/dennis-chan/Git/trendora/runs/goal-market-compass-iter-15/j11-stage-d-preflight-gate.json"
+  },
+  "preflight_gate_passed": true,
+  "preflight_gate_reason": "all_checks_passed",
+  "ready": false,
+  "staleness_check": {
+    "avb_diagnostic_generated_at": "2026-08-25T09:28:23.220631+00:00",
+    "consistent": true,
+    "max_allowed_skew_seconds": 21600,
+    "preflight_gate_generated_at": "2026-08-25T09:27:01.334979+00:00",
+    "reason": "within_bound",
+    "skew_seconds": 81.885652
+  }
+}

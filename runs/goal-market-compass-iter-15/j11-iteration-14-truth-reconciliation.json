@@ -1,0 +1,246 @@
+{
+  "any_mismatch_against_owner_capture": true,
+  "comparisons_against_owner_capture": {
+    "all_11_incident_dates_zero_scanner_runs": {
+      "comparison_method": "exact",
+      "derived_value": true,
+      "matches_owner_capture": true,
+      "owner_value": true
+    },
+    "avb_daily_prices_sha256": {
+      "comparison_method": "prefix_suffix_excerpt_not_full_hash",
+      "derived_value": "d572f8386bb7d291bad066c4b8773e7b741c07ecbe32232276224471b1149b94",
+      "matches_owner_capture": false,
+      "owner_value_prefix": "0257c56d",
+      "owner_value_suffix": "0b11cd"
+    },
+    "daily_prices_row_count": {
+      "comparison_method": "exact",
+      "derived_value": 3310374,
+      "matches_owner_capture": true,
+      "owner_value": 3310374
+    },
+    "data_provider_runs_count": {
+      "comparison_method": "exact",
+      "derived_value": 549,
+      "matches_owner_capture": true,
+      "owner_value": 549
+    },
+    "db_mtime": {
+      "comparison_method": "exact",
+      "derived_value": 1787591622,
+      "matches_owner_capture": true,
+      "owner_value": 1787591622
+    },
+    "db_size_bytes": {
+      "comparison_method": "exact",
+      "derived_value": 8365871104,
+      "matches_owner_capture": true,
+      "owner_value": 8365871104
+    },
+    "forward_returns_measured_into_incident_total": {
+      "comparison_method": "exact",
+      "derived_value": 16614,
+      "matches_owner_capture": true,
+      "owner_value": 16614
+    },
+    "forward_returns_total_count": {
+      "comparison_method": "exact",
+      "derived_value": 6797728,
+      "matches_owner_capture": true,
+      "owner_value": 6797728
+    },
+    "manifest_ddl_sha256": {
+      "comparison_method": "prefix_suffix_excerpt_not_full_hash",
+      "derived_value": "9f653c8147c7c8931b07ea4a88d46ef1d6ddefb2ef5177b700d2b60e7fc501ee",
+      "matches_owner_capture": true,
+      "owner_value_prefix": "9f653c81",
+      "owner_value_suffix": "c501ee"
+    },
+    "manifest_row_count": {
+      "comparison_method": "exact",
+      "derived_value": 24,
+      "matches_owner_capture": true,
+      "owner_value": 24
+    },
+    "scanner_runs_stamped_6261ca17_count": {
+      "comparison_method": "exact",
+      "derived_value": 34,
+      "matches_owner_capture": true,
+      "owner_value": 34
+    },
+    "scanner_runs_total_count": {
+      "comparison_method": "exact",
+      "derived_value": 3117,
+      "matches_owner_capture": true,
+      "owner_value": 3117
+    },
+    "watchlist_count": {
+      "comparison_method": "exact",
+      "derived_value": 6,
+      "matches_owner_capture": true,
+      "owner_value": 6
+    }
+  },
+  "derived_live_read_only": {
+    "all_11_incident_dates_zero_scanner_runs": true,
+    "avb_daily_prices_fingerprint": {
+      "fingerprint": "d572f8386bb7d291bad066c4b8773e7b741c07ecbe32232276224471b1149b94",
+      "id_sum": 5505684485,
+      "max_date": "2026-08-12",
+      "min_date": "2005-02-25",
+      "ohlcv_sum": 6163833786.055963,
+      "row_count": 5397
+    },
+    "daily_prices_fingerprint": "572691772b7313b893055a9ada984945292bbcd07686f4702193a03e9223451a",
+    "daily_prices_row_count": 3310374,
+    "data_provider_runs_count": 549,
+    "db_file": {
+      "exists": true,
+      "mtime": 1787591622.4277432,
+      "path": "/home/dennis-chan/Git/trendora/apps/backend/data/trendora.db",
+      "size_bytes": 8365871104,
+      "wal": {
+        "exists": true,
+        "mtime": 1787609011.1882,
+        "size_bytes": 0
+      }
+    },
+    "forward_returns_measured_into_incident_total": 16614,
+    "forward_returns_total_count": 6797728,
+    "manifest_ddl_sha256": "9f653c8147c7c8931b07ea4a88d46ef1d6ddefb2ef5177b700d2b60e7fc501ee",
+    "manifest_dump_sha256_own_method": "61221e9cbac08a65d244951acde2ebff3f9318a921f8d1158297d7a618186eca",
+    "manifest_row_count": 24,
+    "per_date_scanner_run_present": {
+      "2026-05-12": false,
+      "2026-05-13": false,
+      "2026-07-10": false,
+      "2026-07-13": false,
+      "2026-07-24": false,
+      "2026-07-27": false,
+      "2026-08-03": false,
+      "2026-08-05": false,
+      "2026-08-10": false,
+      "2026-08-11": false,
+      "2026-08-12": false
+    },
+    "scanner_runs_by_identity_group": {
+      "legacy_6261ca17_count": 34,
+      "legacy_6261ca17_ids": [
+        3113,
+        3115,
+        3116,
+        3117,
+        3118,
+        3119,
+        3120,
+        3121,
+        3122,
+        3123,
+        3124,
+        3125,
+        3126,
+        3127,
+        3128,
+        3129,
+        3130,
+        3131,
+        3132,
+        3133,
+        3134,
+        3135,
+        3136,
+        3137,
+        3138,
+        3139,
+        3140,
+        3141,
+        3142,
+        3143,
+        3144,
+        3145,
+        3146,
+        3147
+      ],
+      "null_count": 3083,
+      "other_count": 0,
+      "other_ids": []
+    },
+    "scanner_runs_total_count": 3117,
+    "watchlist_count": 6
+  },
+  "forward_returns_measured_into_incident_total_matches_16614": true,
+  "generated_at": "2026-08-25T09:25:38.657859+00:00",
+  "iteration_14_eval_md_corrected_line": {
+    "path": "/home/dennis-chan/Git/trendora/runs/goal-session-market-compass/iter-14/eval.md",
+    "quoted_line": "J-11 STAGE D READY: NO"
+  },
+  "iteration_14_stale_artifact": {
+    "content_verbatim": {
+      "authorized": false,
+      "avb_classification": "AVB-B",
+      "blocking_reasons": [],
+      "generated_at": "2026-08-24T22:05:04.053596+00:00",
+      "inputs": {
+        "avb_diagnostic_artifact": "runs/goal-market-compass-iter-14/j11-avb-bridge-diagnostic.json",
+        "identity_checks_fixture_tests": "apps/backend/tests/test_j11_stage_d.py (TC-ID-1..6)",
+        "negative_precondition_tests": [
+          "apps/backend/tests/test_j11_stage_c_preflight.py (TC-14..18)",
+          "apps/backend/tests/test_j11_stage_c_cli_script.py (TC-19 CLI half)",
+          "apps/backend/tests/test_j11_stage_d.py (TC-19 unexpected-incident-ScannerRun precondition)"
+        ],
+        "preflight_gate_artifact": "runs/goal-market-compass-iter-14/j11-stage-d-preflight-gate.json"
+      },
+      "preflight_gate_passed": true,
+      "preflight_gate_reason": "all_checks_passed",
+      "ready": true
+    },
+    "path": "/home/dennis-chan/Git/trendora/runs/goal-market-compass-iter-14/j11-stage-d-readiness.json",
+    "stale_artifact_superseded": true,
+    "superseded_by": "runs/goal-market-compass-iter-15/j11-stage-d-readiness.json (this iteration's committed producer output, Goal 7)"
+  },
+  "owner_true_start_capture": {
+    "all_11_incident_dates_zero_scanner_runs": true,
+    "avb_daily_prices_sha256_prefix": "0257c56d",
+    "avb_daily_prices_sha256_suffix": "0b11cd",
+    "daily_prices_row_count": 3310374,
+    "data_provider_runs_count": 549,
+    "db_mtime": 1787591622,
+    "db_size_bytes": 8365871104,
+    "forward_returns_measured_into_incident_total": 16614,
+    "forward_returns_total_count": 6797728,
+    "manifest_ddl_sha256_prefix": "9f653c81",
+    "manifest_ddl_sha256_suffix": "c501ee",
+    "manifest_row_count": 24,
+    "scanner_runs_stamped_6261ca17_count": 34,
+    "scanner_runs_total_count": 3117,
+    "watchlist_count": 6
+  },
+  "reconciliation_statement": "/home/dennis-chan/Git/trendora/runs/goal-market-compass-iter-14/j11-stage-d-readiness.json records avb_classification='AVB-B' ready=True blocking_reasons=[], which CONTRADICTS /home/dennis-chan/Git/trendora/runs/goal-session-market-compass/iter-14/eval.md's own corrected owner-facing line ('J-11 STAGE D READY: NO'). The stale JSON artifact is SUPERSEDED -- its underlying classify_avb/compute_counterfactual_representations inputs were price-only-tautological (volume_a == volume_b == stored_volume by construction), which this iteration's Goal 3/4 fix closes. It is preserved BYTE-FOR-BYTE as historical evidence (AG-17) and is NOT edited, deleted, or regenerated by this function -- only loaded read-only and quoted verbatim above. The current authoritative result is this iteration's OWN freshly-produced runs/goal-market-compass-iter-15/j11-stage-d-readiness.json (Goal 7's committed producer).",
+  "zero_write_proof": {
+    "db_file_true_end": {
+      "exists": true,
+      "mtime": 1787591622.4277432,
+      "path": "/home/dennis-chan/Git/trendora/apps/backend/data/trendora.db",
+      "size_bytes": 8365871104,
+      "wal": {
+        "exists": true,
+        "mtime": 1787609011.1882,
+        "size_bytes": 0
+      }
+    },
+    "db_file_true_start": {
+      "exists": true,
+      "mtime": 1787591622.4277432,
+      "path": "/home/dennis-chan/Git/trendora/apps/backend/data/trendora.db",
+      "size_bytes": 8365871104,
+      "wal": {
+        "exists": true,
+        "mtime": 1787609011.1882,
+        "size_bytes": 0
+      }
+    },
+    "mtime_unchanged": true,
+    "size_unchanged": true
+  }
+}

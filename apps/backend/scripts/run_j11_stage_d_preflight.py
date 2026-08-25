@@ -1,4 +1,4 @@
-"""goal-market-compass iter-14 -- J-11 Stage D readiness: the READ-ONLY Stage D preflight gate (Goal 1 +
+"""goal-market-compass iter-14/15 -- J-11 Stage D readiness: the READ-ONLY Stage D preflight gate (Goal 1 +
 Goal 3a), executed live against `apps/backend/data/trendora.db` THIS iteration -- permitted (zero
 writes), distinct from Stage D's own regeneration, which remains unauthorized and is NOT attempted
 anywhere in this script.
@@ -9,8 +9,10 @@ attempt anywhere in the call graph would raise `OperationalError` rather than si
 `--confirm` flag: there is nothing here to confirm, since nothing is ever written.
 
 Sequence:
-  1. Freeze a FRESH Stage D attempt identity (`j11_stage_d.freeze_stage_d_attempt_identity`) -- never
-     hardcodes iteration 10's `6261ca17...` or iteration 13's `53d2ffd1...`.
+  1. Freeze a FRESH Stage D attempt identity (`j11_stage_d.freeze_stage_d_attempt_identity`, wrapped in
+     iteration 15's `capture_readiness_time_identity_observation` -- Goal 9) -- never hardcodes iteration
+     10's `6261ca17...` or iteration 13's `53d2ffd1...`, and is explicitly labeled `readiness_time_only`/
+     non-authorizing/non-reusable, honestly compared against iteration 14's own frozen value.
   2. Capture the Stage D preflight (`j11_stage_d.capture_stage_d_preflight`) -- re-derives live state
      fresh, including Check (A)'s identity comparison against a SECOND independent recomputation.
   3. Load the certified post-Stage-C baseline from iteration 13's own persisted artifacts
@@ -19,11 +21,18 @@ Sequence:
   4. Persist every artifact; the verdict alone does NOT authorize Stage D (a separate owner instruction
      is required -- the C10/A12 pattern).
 
+goal-market-compass iter-15 (Goal 6): `--evidence-dir` carries NO default -- it used to default to
+`runs/goal-market-compass-iter-14`, a real committed evidence directory, the exact footgun pattern that
+overwrote three committed iteration-13 evidence files in iteration 14 (see `docs/handoffs/
+goal-market-compass-iter-14-dev.md`). Refuses BEFORE `load_config()`/`resolve_database_url`/any engine
+construction, mirroring the already-fixed `run_j11_stage_c_bounded_clear.py` pattern exactly.
+
 Usage:
     apps/backend/.venv/bin/python apps/backend/scripts/run_j11_stage_d_preflight.py \\
-        [--evidence-dir runs/goal-market-compass-iter-14] \\
+        --evidence-dir runs/goal-market-compass-iter-15 \\
         [--stage-c-preflight-path runs/goal-market-compass-iter-13/j11-stage-c-preflight.json] \\
         [--stage-c-mutation-accounting-path runs/goal-market-compass-iter-13/j11-stage-c-mutation-accounting.json] \\
+        [--iteration-14-identity-path runs/goal-market-compass-iter-14/j11-stage-d-attempt-identity.json] \\
         [--db-file-true-start-path PATH]   # reuse an earlier-in-this-iteration true-start capture, if any
 """
 from __future__ import annotations
@@ -46,10 +55,16 @@ from app.db import resolve_database_url  # noqa: E402
 from app.engine import j11_stage_c as jsc  # noqa: E402
 from app.engine import j11_stage_d as jsd  # noqa: E402
 
-DEFAULT_EVIDENCE_DIR = REPO_ROOT / "runs" / "goal-market-compass-iter-14"
+# The directory this script's evidence BELONGS in when it is run for THIS iteration. Deliberately NOT an
+# argparse default (Goal 6) -- an omitted --evidence-dir must FAIL, never silently write into (or, worse,
+# overwrite) a committed evidence directory from a prior iteration.
+CANONICAL_EVIDENCE_DIR_FOR_DOCS = REPO_ROOT / "runs" / "goal-market-compass-iter-15"
 DEFAULT_STAGE_C_PREFLIGHT_PATH = REPO_ROOT / "runs" / "goal-market-compass-iter-13" / "j11-stage-c-preflight.json"
 DEFAULT_STAGE_C_MUTATION_ACCOUNTING_PATH = (
     REPO_ROOT / "runs" / "goal-market-compass-iter-13" / "j11-stage-c-mutation-accounting.json"
+)
+DEFAULT_ITERATION_14_IDENTITY_PATH = (
+    REPO_ROOT / "runs" / "goal-market-compass-iter-14" / "j11-stage-d-attempt-identity.json"
 )
 
 
@@ -83,10 +98,26 @@ def _write_json(path: Path, payload) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--evidence-dir", type=Path, default=DEFAULT_EVIDENCE_DIR)
+    parser.add_argument(
+        "--evidence-dir", type=Path, default=None,
+        help=(
+            "required -- the directory every evidence JSON is written to. Has NO default on purpose "
+            f"(Goal 6): the real target ({CANONICAL_EVIDENCE_DIR_FOR_DOCS}) is a committed evidence "
+            "directory, and an implicit default meant a forgotten flag could overwrite committed "
+            "forensic evidence instead of failing (this happened to a SIBLING script in iteration 14; "
+            "see docs/handoffs/goal-market-compass-iter-14-dev.md)."
+        ),
+    )
     parser.add_argument("--stage-c-preflight-path", type=Path, default=DEFAULT_STAGE_C_PREFLIGHT_PATH)
     parser.add_argument(
         "--stage-c-mutation-accounting-path", type=Path, default=DEFAULT_STAGE_C_MUTATION_ACCOUNTING_PATH
+    )
+    parser.add_argument(
+        "--iteration-14-identity-path", type=Path, default=DEFAULT_ITERATION_14_IDENTITY_PATH,
+        help="goal-market-compass iter-15 (Goal 9) -- iteration 14's own frozen Stage D attempt-identity "
+             "artifact, read-only, for the honest comparison recorded on this iteration's readiness-time "
+             "identity observation. A read-only INPUT path (never a write target), so it may sensibly "
+             "default -- pass '' or a nonexistent path to skip the comparison (recorded as matches: null).",
     )
     parser.add_argument(
         "--db-file-true-start-path", type=Path, default=None,
@@ -96,6 +127,16 @@ def main() -> int:
              "this iteration performed, not just this script's own span.",
     )
     args = parser.parse_args()
+
+    if args.evidence_dir is None:
+        print(
+            "refusing to run without an explicit --evidence-dir. This script writes forensic evidence "
+            f"JSON into that directory; its real target this iteration ({CANONICAL_EVIDENCE_DIR_FOR_DOCS}) "
+            "must be named explicitly and is never reached by default. No config has been loaded, no "
+            "database engine has been constructed, and nothing has been written.",
+            file=sys.stderr,
+        )
+        return 2
 
     cfg = load_config()
     resolved_url = resolve_database_url(cfg.database.url)
@@ -116,15 +157,31 @@ def main() -> int:
     git_head = jsc.read_git_head()
     engine = _read_only_engine(db_path)
 
+    prior_identity_value = None
+    if args.iteration_14_identity_path is not None and Path(args.iteration_14_identity_path).exists():
+        prior_identity_value = json.loads(Path(args.iteration_14_identity_path).read_text()).get("engine_identity")
+    print(
+        f"iteration-14 prior frozen identity loaded from {args.iteration_14_identity_path}: "
+        f"{prior_identity_value!r}",
+        file=sys.stderr,
+    )
+
     with Session(engine) as session:
-        attempt_identity = jsd.freeze_stage_d_attempt_identity(
-            session, cfg, git_head=git_head, goal_md_text=goal_md_text
+        attempt_identity = jsd.capture_readiness_time_identity_observation(
+            session, cfg, git_head=git_head, goal_md_text=goal_md_text,
+            prior_iteration_14_identity=prior_identity_value,
         )
         _write_json(args.evidence_dir / "j11-stage-d-attempt-identity.json", attempt_identity)
-        print(f"frozen Stage D attempt identity: engine_identity={attempt_identity['engine_identity']}", file=sys.stderr)
+        print(
+            f"THIS iteration's readiness-time identity observation (readiness_time_only=True, "
+            f"non-authorizing, non-reusable): engine_identity={attempt_identity['engine_identity']} "
+            f"matches_iteration_14={attempt_identity['comparison_to_iteration_14_frozen_identity']['matches']}",
+            file=sys.stderr,
+        )
 
         preflight = jsd.capture_stage_d_preflight(
             session, engine, db_path, goal_md_text=goal_md_text, git_head=git_head, config=cfg,
+            prior_iteration_14_identity=prior_identity_value,
         )
     _write_json(args.evidence_dir / "j11-stage-d-preflight.json", preflight)
     print(

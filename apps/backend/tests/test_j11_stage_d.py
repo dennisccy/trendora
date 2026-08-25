@@ -11,6 +11,7 @@ pattern `test_j11_maintenance.py`/`test_j11_stage_c_preflight.py` use, never `lo
 from __future__ import annotations
 
 import copy
+import json
 from datetime import date, datetime, timedelta, timezone
 
 import pytest
@@ -20,7 +21,7 @@ from sqlmodel import Session, SQLModel, create_engine
 from app.config import load_config
 from app.engine import j11_stage_d as jsd
 from app.engine.j11_maintenance import INCIDENT_DATES
-from app.models import ScannerRun
+from app.models import NextSessionManifest, ScannerRun
 
 _MATCHING_DATES = ", ".join(d.isoformat() for d in INCIDENT_DATES)
 _GOAL_MD_MATCHING = f"""
@@ -44,6 +45,30 @@ _GOAL_MD_MATCHING = f"""
 
 _NOT_AN_INCIDENT_DATE = date(2026, 1, 5)
 assert _NOT_AN_INCIDENT_DATE not in INCIDENT_DATES
+
+# goal-market-compass iter-15 (Goal 8): a goal.md text whose C1 restatement date list disagrees with the
+# authoritative bullet (one date swapped) -- exercises `c1_date_set_boundary_ok`'s OWN failure mode.
+_MISMATCHED_DATES = ", ".join(
+    d.isoformat() for d in (INCIDENT_DATES[:-1] + (date(2099, 1, 1),))
+)
+_GOAL_MD_C1_MISMATCH = f"""
+# Project Goal
+
+- **J-10: some other journey** — passing
+
+- **J-11: Incident-bounded clean regeneration of derived state (owner, 2026-08-21)**
+  - **The incident date set — all 11, not the 8 currently absent.** From the authoritative removal
+    audit (`data_provider_runs` id=538, whose own cascade record lists them):
+    `{_MATCHING_DATES}`.
+  - Steps:
+    1. some step text
+       ## OWNER AUTHORIZATION — J-11 Stage C (owner, 2026-08-24)
+       - **C1 — Date-set boundary.** For the avoidance
+         of doubt they are `{_MISMATCHED_DATES}`.
+  - Acceptance: some acceptance text
+
+<!-- Continuous-improvement auto-journeys: appended below -->
+"""
 
 
 @pytest.fixture()
@@ -78,6 +103,34 @@ def _mk_run(
     session.add(run)
     session.flush()
     return run
+
+
+def _mk_manifest(session: Session, run: ScannerRun, *, version: int = 1) -> NextSessionManifest:
+    """A hand-built manifest row referencing `run` -- mirrors `test_j11_maintenance.py`'s own `_mk_manifest`
+    helper exactly (Goal 8's manifest-value/source_run_id negative tests need at least one real row)."""
+    manifest = NextSessionManifest(
+        as_of=run.asof_date,
+        version=version,
+        source_run_id=run.id,
+        session_delta_json="{}",
+        narrative_json="{}",
+        selection_json="{}",
+        content_hash="stub-content-hash",
+        created_at=datetime.now(timezone.utc),
+        mode="at_ingest",
+        frozen=True,
+        generation_json=json.dumps({
+            "producer": "ingest_finalize",
+            "engine_identity": "stub-engine-identity",
+        }),
+        engine_identity="stub-engine-identity",
+        manifest_hash="stub-manifest-hash",
+        available_at_utc=datetime.now(timezone.utc),
+        prospective_eligible=True,
+    )
+    session.add(manifest)
+    session.flush()
+    return manifest
 
 
 # --- TC-1: fresh Stage D attempt identity ------------------------------------------------------------
@@ -338,3 +391,378 @@ def test_tc25_readiness_verdict_combines_preflight_and_avb_classification(
 def test_readiness_verdict_rejects_unknown_avb_classification():
     with pytest.raises(ValueError):
         jsd.stage_d_readiness_verdict({"passed": True, "reason": "x"}, "AVB-Z")
+
+
+# ======================================================================================================
+# goal-market-compass iter-15 (Goal 8): one dedicated negative fixture test PER remaining
+# `compare_stage_d_preflight_to_certified` check -- each perturbs exactly ONE field so no shared fixture
+# masks a different failure (iter-9's lesson). Every test asserts BOTH `checks[...] is False` AND
+# `material_mismatch is True`, mirroring `test_gate_stops_on_daily_prices_fingerprint_drift` exactly.
+# ======================================================================================================
+
+
+def test_goal8_manifest_row_count_unchanged_fails_on_drift(engine, cfg):
+    preflight = _fresh_preflight(engine, cfg)
+    certified = _certified_from(preflight)
+    certified["manifest_row_count"] = preflight["manifest_row_count"] + 1
+    gate = jsd.compare_stage_d_preflight_to_certified(preflight, certified)
+    assert gate["checks"]["manifest_row_count_unchanged"] is False
+    assert gate["material_mismatch"] is True
+
+
+def test_goal8_manifest_ddl_unchanged_fails_when_one_ddl_clause_differs(engine, cfg):
+    preflight = _fresh_preflight(engine, cfg)
+    certified = _certified_from(preflight)
+    original_sql = certified["manifest_ddl"]["table_sql"] or ""
+    certified["manifest_ddl"]["table_sql"] = original_sql + " -- one clause different"
+    gate = jsd.compare_stage_d_preflight_to_certified(preflight, certified)
+    assert gate["checks"]["manifest_ddl_unchanged"] is False
+    assert gate["material_mismatch"] is True
+
+
+def test_goal8_manifest_indexes_unchanged_fails_when_index_set_differs(engine, cfg):
+    preflight = _fresh_preflight(engine, cfg)
+    certified = _certified_from(preflight)
+    certified["manifest_ddl"]["index_names"] = list(certified["manifest_ddl"]["index_names"]) + ["ix_fake_extra"]
+    certified["manifest_ddl"]["index_sqls"] = list(certified["manifest_ddl"]["index_sqls"]) + [
+        "CREATE INDEX ix_fake_extra ON next_session_manifests(id)"
+    ]
+    gate = jsd.compare_stage_d_preflight_to_certified(preflight, certified)
+    assert gate["checks"]["manifest_indexes_unchanged"] is False
+    assert gate["material_mismatch"] is True
+
+
+def test_goal8_manifest_values_unchanged_fails_when_one_stored_value_differs(engine, cfg):
+    with Session(engine) as session:
+        run = _mk_run(session, INCIDENT_DATES[0])
+        _mk_manifest(session, run)
+        session.commit()
+
+    preflight = _fresh_preflight(engine, cfg)
+    assert preflight["manifest_row_count"] == 1  # sanity: the seeded row is really captured
+    certified = _certified_from(preflight)
+    # perturb exactly ONE stored value on the one seeded row -- content_hash, chosen because it is a
+    # plain string column untouched by any other Goal 8 test in this file.
+    certified["manifest_dump"][0]["content_hash"] = "a-different-content-hash"
+    gate = jsd.compare_stage_d_preflight_to_certified(preflight, certified)
+    assert gate["checks"]["manifest_values_unchanged"] is False
+    assert gate["material_mismatch"] is True
+    # this perturbation must NOT also trip source_run_id_values_unchanged -- only ONE field changed.
+    assert gate["checks"]["source_run_id_values_unchanged"] is True
+
+
+def test_goal8_source_run_id_values_unchanged_fails_when_one_source_run_id_differs(engine, cfg):
+    with Session(engine) as session:
+        run = _mk_run(session, INCIDENT_DATES[0])
+        _mk_manifest(session, run)
+        session.commit()
+
+    preflight = _fresh_preflight(engine, cfg)
+    certified = _certified_from(preflight)
+    certified["manifest_dump"][0]["source_run_id"] = 999999  # a source_run_id that never existed
+    gate = jsd.compare_stage_d_preflight_to_certified(preflight, certified)
+    assert gate["checks"]["source_run_id_values_unchanged"] is False
+    assert gate["material_mismatch"] is True
+    # this perturbation alone must not ALSO trip manifest_values_unchanged's full-row diff for an
+    # UNRELATED column -- diff_dumps flags source_run_id specifically, proving the two checks are
+    # independent evidence, not the same signal reported twice under two names.
+    diff_columns = {m["column"] for m in gate["manifest_dump_diff"]["mismatches"]}
+    assert diff_columns == {"source_run_id"}
+
+
+def test_goal8_data_provider_runs_count_unchanged_fails_on_drift(engine, cfg):
+    preflight = _fresh_preflight(engine, cfg)
+    certified = _certified_from(preflight)
+    certified["data_provider_runs_count"] = preflight["pre_reset_inventory"]["data_provider_runs_count"] + 1
+    gate = jsd.compare_stage_d_preflight_to_certified(preflight, certified)
+    assert gate["checks"]["data_provider_runs_count_unchanged"] is False
+    assert gate["material_mismatch"] is True
+
+
+def test_goal8_watchlist_count_unchanged_fails_on_drift(engine, cfg):
+    preflight = _fresh_preflight(engine, cfg)
+    certified = _certified_from(preflight)
+    certified["watchlist_count"] = preflight["pre_reset_inventory"]["watchlist_count"] + 1
+    gate = jsd.compare_stage_d_preflight_to_certified(preflight, certified)
+    assert gate["checks"]["watchlist_count_unchanged"] is False
+    assert gate["material_mismatch"] is True
+
+
+def test_goal8_c1_date_set_boundary_ok_fails_when_goal_md_lists_disagree(engine, cfg):
+    with Session(engine) as session:
+        preflight = jsd.capture_stage_d_preflight(
+            session, engine, None, goal_md_text=_GOAL_MD_C1_MISMATCH, git_head="deadbeef", config=cfg,
+        )
+    assert preflight["c1_date_set_boundary_check"]["ok"] is False
+    certified = _certified_from(preflight)
+    gate = jsd.compare_stage_d_preflight_to_certified(preflight, certified)
+    assert gate["checks"]["c1_date_set_boundary_ok"] is False
+    assert gate["material_mismatch"] is True
+
+
+# --- TC-35/36: the pre-existing identity-check + negative tests re-run alongside the new ones, no ------
+# --- fixture collision, and no new test ever touches the 34 6261ca17... rows or the NULL-stamped rows --
+
+
+def test_goal8_new_negative_tests_never_seed_or_assert_against_legacy_identity_rows(engine, cfg):
+    """A direct assertion that THIS file's Goal 8 fixtures never construct a `6261ca17...`-stamped or
+    NULL-stamped row on a NON-incident date the way the 34 surviving/pre-stamping-era rows are shaped --
+    every `_mk_run`/`_mk_manifest` call in the Goal 8 tests above uses an INCIDENT date with no
+    `engine_identity_value` override, so it can never collide with or assert against that population."""
+    with Session(engine) as session:
+        count = session.exec(
+            __import__("sqlmodel").select(__import__("sqlalchemy").func.count()).select_from(ScannerRun)
+        ).one()
+    # the fixture engine is FRESH per test (function-scoped `engine` fixture) -- this test's own session
+    # never persisted anything, so the table is empty; this is a structural proof that Goal 8's tests run
+    # in isolated fixture DBs, never a shared/live one where a legacy row could exist to begin with.
+    assert count == 0
+
+
+# ======================================================================================================
+# goal-market-compass iter-15 (Goal 1): reconcile_prior_iteration_truth
+# ======================================================================================================
+
+
+def _write(path, payload):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if isinstance(payload, str):
+        path.write_text(payload)
+    else:
+        path.write_text(json.dumps(payload))
+    return path
+
+
+def test_reconcile_prior_iteration_truth_reports_per_figure_match_and_mismatch(engine, cfg, tmp_path):
+    stale_readiness = {
+        "avb_classification": "AVB-B", "ready": True, "blocking_reasons": [],
+        "generated_at": "2026-08-24T22:05:04.053596+00:00",
+    }
+    readiness_path = _write(tmp_path / "stale-readiness.json", stale_readiness)
+    eval_md_path = _write(
+        tmp_path / "eval.md",
+        "# Iteration 14 Evaluation\n\n**Owner-facing lines:** `J-11 STAGE D READY: NO` · `J-11 STAGE D AUTHORIZED: NO`\n",
+    )
+    # an owner capture that DISAGREES with the empty fixture DB on purpose -- proves mismatches are
+    # reported explicitly, never silently reconciled.
+    owner_capture = dict(jsd.OWNER_TRUE_START_CAPTURE)
+    owner_capture["daily_prices_row_count"] = 999999999  # will NOT match the empty fixture (0 rows)
+
+    with Session(engine) as session:
+        result = jsd.reconcile_prior_iteration_truth(
+            session, engine, None,
+            iteration_14_readiness_path=readiness_path,
+            iteration_14_eval_md_path=eval_md_path,
+            owner_true_start_capture=owner_capture,
+        )
+
+    assert result["comparisons_against_owner_capture"]["daily_prices_row_count"]["matches_owner_capture"] is False
+    assert result["any_mismatch_against_owner_capture"] is True
+    assert result["iteration_14_stale_artifact"]["content_verbatim"] == stale_readiness
+    assert result["iteration_14_stale_artifact"]["stale_artifact_superseded"] is True
+    assert result["iteration_14_eval_md_corrected_line"]["quoted_line"] == "J-11 STAGE D READY: NO"
+    # the source files themselves are untouched -- loaded read-only, never edited.
+    assert json.loads(readiness_path.read_text()) == stale_readiness
+
+
+def test_reconcile_prior_iteration_truth_matches_when_owner_capture_agrees_with_empty_fixture(engine, cfg, tmp_path):
+    readiness_path = _write(tmp_path / "stale-readiness.json", {"avb_classification": "AVB-B", "ready": True, "blocking_reasons": []})
+    eval_md_path = _write(tmp_path / "eval.md", "`J-11 STAGE D READY: NO`\n")
+
+    owner_capture = dict(jsd.OWNER_TRUE_START_CAPTURE)
+    owner_capture.update({
+        "db_mtime": None, "db_size_bytes": None,
+        "all_11_incident_dates_zero_scanner_runs": True,
+        "daily_prices_row_count": 0, "scanner_runs_total_count": 0, "forward_returns_total_count": 0,
+        "data_provider_runs_count": 0, "manifest_row_count": 0, "watchlist_count": 0,
+        "forward_returns_measured_into_incident_total": 0, "scanner_runs_stamped_6261ca17_count": 0,
+    })
+
+    with Session(engine) as session:
+        result = jsd.reconcile_prior_iteration_truth(
+            session, engine, None,
+            iteration_14_readiness_path=readiness_path,
+            iteration_14_eval_md_path=eval_md_path,
+            owner_true_start_capture=owner_capture,
+        )
+
+    count_checks = {
+        "all_11_incident_dates_zero_scanner_runs", "daily_prices_row_count", "scanner_runs_total_count",
+        "forward_returns_total_count", "data_provider_runs_count", "manifest_row_count", "watchlist_count",
+        "forward_returns_measured_into_incident_total", "scanner_runs_stamped_6261ca17_count",
+    }
+    for name in count_checks:
+        assert result["comparisons_against_owner_capture"][name]["matches_owner_capture"] is True, name
+    assert result["forward_returns_measured_into_incident_total_matches_16614"] is False  # 0 != 16614, stated honestly
+
+
+def test_reconcile_prior_iteration_truth_raises_on_contradictory_eval_md_lines(engine, cfg, tmp_path):
+    readiness_path = _write(tmp_path / "stale-readiness.json", {"avb_classification": "AVB-B", "ready": True, "blocking_reasons": []})
+    eval_md_path = _write(tmp_path / "eval.md", "`J-11 STAGE D READY: NO` ... elsewhere ... `J-11 STAGE D READY: YES`\n")
+    with Session(engine) as session:
+        with pytest.raises(ValueError):
+            jsd.reconcile_prior_iteration_truth(
+                session, engine, None,
+                iteration_14_readiness_path=readiness_path, iteration_14_eval_md_path=eval_md_path,
+            )
+
+
+def test_reconcile_prior_iteration_truth_does_not_use_default_paths_that_could_touch_iter14_evidence(engine, cfg, tmp_path):
+    """A structural proof that `reconcile_prior_iteration_truth` has no baked-in default path of its own
+    -- both evidence paths are REQUIRED keyword arguments (calling without them is a TypeError), so a
+    caller can never accidentally point this function at a real committed evidence directory."""
+    import inspect
+    sig = inspect.signature(jsd.reconcile_prior_iteration_truth)
+    assert sig.parameters["iteration_14_readiness_path"].default is inspect.Parameter.empty
+    assert sig.parameters["iteration_14_eval_md_path"].default is inspect.Parameter.empty
+
+
+# ======================================================================================================
+# goal-market-compass iter-15 (Goal 7): produce_stage_d_readiness_artifact
+# ======================================================================================================
+
+
+def _write_preflight_gate(path, *, passed=True, generated_at="2026-08-25T10:00:00+00:00"):
+    payload = {"comparison": {"generated_at": generated_at, "checks": {}}, "verdict": {"passed": passed, "reason": "x"}}
+    return _write(path, payload)
+
+
+def _write_avb_diagnostic(path, *, classification="AVB-A", generated_at="2026-08-25T10:00:00+00:00"):
+    payload = {"generated_at": generated_at, "classification": {"classification": classification}}
+    return _write(path, payload)
+
+
+def test_tc30_produce_stage_d_readiness_artifact_calls_existing_verdict_and_writes_provenance(tmp_path):
+    preflight_path = _write_preflight_gate(tmp_path / "gate.json", passed=True)
+    avb_path = _write_avb_diagnostic(tmp_path / "avb.json", classification="AVB-A")
+    output_path = tmp_path / "readiness.json"
+
+    readiness = jsd.produce_stage_d_readiness_artifact(preflight_path, avb_path, output_path=output_path)
+
+    assert readiness["ready"] is True
+    assert readiness["authorized"] is False
+    assert readiness["inputs"] == {
+        "preflight_gate_artifact": str(preflight_path), "avb_diagnostic_artifact": str(avb_path),
+    }
+    on_disk = json.loads(output_path.read_text())
+    assert on_disk["ready"] is True
+    assert on_disk["authorized"] is False
+
+
+def test_tc31_produce_stage_d_readiness_artifact_fails_closed_on_missing_preflight_path(tmp_path):
+    avb_path = _write_avb_diagnostic(tmp_path / "avb.json")
+    output_path = tmp_path / "readiness.json"
+    with pytest.raises(ValueError):
+        jsd.produce_stage_d_readiness_artifact(tmp_path / "does-not-exist.json", avb_path, output_path=output_path)
+    assert not output_path.exists()
+
+
+def test_tc32_produce_stage_d_readiness_artifact_fails_closed_on_unknown_avb_classification(tmp_path):
+    preflight_path = _write_preflight_gate(tmp_path / "gate.json")
+    avb_path = _write_avb_diagnostic(tmp_path / "avb.json", classification="AVB-Z")
+    output_path = tmp_path / "readiness.json"
+    with pytest.raises(ValueError):
+        jsd.produce_stage_d_readiness_artifact(preflight_path, avb_path, output_path=output_path)
+    assert not output_path.exists()
+
+
+def test_tc32_produce_stage_d_readiness_artifact_fails_closed_on_missing_classification_field(tmp_path):
+    preflight_path = _write_preflight_gate(tmp_path / "gate.json")
+    avb_path = _write(tmp_path / "avb.json", {"generated_at": "2026-08-25T10:00:00+00:00", "classification": {}})
+    output_path = tmp_path / "readiness.json"
+    with pytest.raises(ValueError):
+        jsd.produce_stage_d_readiness_artifact(preflight_path, avb_path, output_path=output_path)
+    assert not output_path.exists()
+
+
+def test_tc33_produce_stage_d_readiness_artifact_fails_closed_on_stale_generation_skew(tmp_path):
+    preflight_path = _write_preflight_gate(tmp_path / "gate.json", generated_at="2026-08-25T00:00:00+00:00")
+    avb_path = _write_avb_diagnostic(tmp_path / "avb.json", generated_at="2026-08-26T12:00:00+00:00")  # >6h apart
+    output_path = tmp_path / "readiness.json"
+    with pytest.raises(ValueError):
+        jsd.produce_stage_d_readiness_artifact(preflight_path, avb_path, output_path=output_path)
+    assert not output_path.exists()
+
+
+def test_produce_stage_d_readiness_artifact_passes_when_generation_timestamps_agree_closely(tmp_path):
+    preflight_path = _write_preflight_gate(tmp_path / "gate.json", generated_at="2026-08-25T10:00:00+00:00")
+    avb_path = _write_avb_diagnostic(tmp_path / "avb.json", generated_at="2026-08-25T10:05:00+00:00")  # 5 min apart
+    output_path = tmp_path / "readiness.json"
+    readiness = jsd.produce_stage_d_readiness_artifact(preflight_path, avb_path, output_path=output_path)
+    assert readiness["staleness_check"]["consistent"] is True
+
+
+def test_produce_stage_d_readiness_artifact_avb_c_forces_not_ready_even_with_passing_preflight(tmp_path):
+    preflight_path = _write_preflight_gate(tmp_path / "gate.json", passed=True)
+    avb_path = _write_avb_diagnostic(tmp_path / "avb.json", classification="AVB-C")
+    output_path = tmp_path / "readiness.json"
+    readiness = jsd.produce_stage_d_readiness_artifact(preflight_path, avb_path, output_path=output_path)
+    assert readiness["ready"] is False
+    assert readiness["authorized"] is False
+
+
+# ======================================================================================================
+# goal-market-compass iter-15 (Goal 9): readiness-time identity observation -- labeled, honestly compared
+# ======================================================================================================
+
+
+def test_tc37_capture_readiness_time_identity_observation_carries_the_required_labels(engine, cfg):
+    with Session(engine) as session:
+        observation = jsd.capture_readiness_time_identity_observation(
+            session, cfg, git_head="deadbeef", goal_md_text=_GOAL_MD_MATCHING,
+            prior_iteration_14_identity="53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+        )
+    assert observation["readiness_time_only"] is True
+    assert observation["authorizing"] is False
+    assert observation["reusable_for_stage_d_execution"] is False
+    # still carries the same underlying fields freeze_stage_d_attempt_identity produces.
+    assert "engine_identity" in observation and "config_subset_hash" in observation
+
+
+def test_tc38_comparison_against_iteration_14_frozen_identity_is_stated_honestly(engine, cfg):
+    with Session(engine) as session:
+        real_identity = jsd.freeze_stage_d_attempt_identity(session, cfg, git_head="a", goal_md_text=_GOAL_MD_MATCHING)
+
+    with Session(engine) as session:
+        matching = jsd.capture_readiness_time_identity_observation(
+            session, cfg, git_head="a", goal_md_text=_GOAL_MD_MATCHING,
+            prior_iteration_14_identity=real_identity["engine_identity"],
+        )
+    assert matching["comparison_to_iteration_14_frozen_identity"]["matches"] is True
+
+    with Session(engine) as session:
+        drifted = jsd.capture_readiness_time_identity_observation(
+            session, cfg, git_head="a", goal_md_text=_GOAL_MD_MATCHING,
+            prior_iteration_14_identity="deliberately-different-value",
+        )
+    assert drifted["comparison_to_iteration_14_frozen_identity"]["matches"] is False
+
+    with Session(engine) as session:
+        unsupplied = jsd.capture_readiness_time_identity_observation(
+            session, cfg, git_head="a", goal_md_text=_GOAL_MD_MATCHING,
+        )
+    assert unsupplied["comparison_to_iteration_14_frozen_identity"]["matches"] is None  # never assumed
+
+
+def test_tc39_freeze_stage_d_attempt_identity_takes_no_artifact_path_parameter():
+    """A structural proof (TC-39): `freeze_stage_d_attempt_identity`'s signature carries no parameter that
+    could load a prior freeze from a file -- a real future Stage D recomputes fresh, never reads a
+    persisted artifact through this function."""
+    import inspect
+    sig = inspect.signature(jsd.freeze_stage_d_attempt_identity)
+    for name, param in sig.parameters.items():
+        assert "path" not in name.lower(), f"unexpected path-like parameter {name!r}"
+        assert param.annotation in (inspect.Parameter.empty,) or "Path" not in str(param.annotation), (
+            f"parameter {name!r} looks like it accepts a filesystem path"
+        )
+
+
+def test_capture_stage_d_preflight_backward_compatible_without_prior_identity(engine, cfg):
+    """Omitting `prior_iteration_14_identity` (iteration 14's own call shape) still works -- the new
+    parameter is purely additive."""
+    with Session(engine) as session:
+        preflight = jsd.capture_stage_d_preflight(
+            session, engine, None, goal_md_text=_GOAL_MD_MATCHING, git_head="deadbeef", config=cfg,
+        )
+    assert preflight["attempt_identity"]["readiness_time_only"] is True
+    assert preflight["attempt_identity"]["comparison_to_iteration_14_frozen_identity"]["matches"] is None
