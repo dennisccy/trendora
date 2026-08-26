@@ -1112,3 +1112,7 @@
 {"agent":"iteration-summarizer","ts":"2026-08-26T14:43:39Z","session_id":"market-compass","iter":19,"event":"agent_invocation_start","cli":"claude"}
 {"agent":"iteration-summarizer","status":"ok","wait_seconds":0,"run_seconds":451,"rc":"0","ts":"2026-08-26T14:51:10Z","session_id":"market-compass","iter":19,"event":"dispatch_wait","cli":"claude"}
 {"agent":"iteration-summarizer","exit_status":0,"duration_seconds":451,"quota_sleep_seconds":0,"active_seconds":451,"retries":0,"ts":"2026-08-26T14:51:10Z","session_id":"market-compass","iter":19,"event":"agent_invocation_end","cli":"claude"}
+{"final_verdict":"STALLED","total_iterations":20,"wall_time_seconds":19946,"quota_pause_count":0,"ts":"2026-08-26T14:51:13Z","session_id":"market-compass","iter":19,"event":"session_end","cli":"claude"}
+{"agent":"retro-analyst","ts":"2026-08-26T14:51:13Z","session_id":"market-compass","iter":19,"event":"agent_invocation_start","cli":"claude"}
+{"agent":"retro-analyst","status":"ok","wait_seconds":1,"run_seconds":207,"rc":"0","ts":"2026-08-26T14:54:41Z","session_id":"market-compass","iter":19,"event":"dispatch_wait","cli":"claude"}
+{"agent":"retro-analyst","exit_status":0,"duration_seconds":208,"quota_sleep_seconds":0,"active_seconds":208,"retries":0,"ts":"2026-08-26T14:54:41Z","session_id":"market-compass","iter":19,"event":"agent_invocation_end","cli":"claude"}

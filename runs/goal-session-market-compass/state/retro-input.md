@@ -7,9 +7,9 @@ scripts/automation/lib/retro_collect.sh — no model wrote this. Counters marked
 ## Outcome
 
 - **Terminal status:** STALLED
-- **Final verdict:** STALLED
-- **Iterations used:** 19
-- **Halted at (UTC):** 2026-08-26T08:55:19.565848Z
+- **Final verdict:** CONTINUE
+- **Iterations used:** 20
+- **Halted at (UTC):** 2026-08-26T14:51:13.414388Z
 
 ## Verdict sequence
 
@@ -34,6 +34,7 @@ iter 15: STALLED
 iter 16: STALLED
 iter 17: STALLED
 iter 18: STALLED
+iter 19: CONTINUE
 ```
 
 ## Agent economics
@@ -412,25 +413,40 @@ Per-step wall breakdown (analyze_telemetry.py --wall):
       (resume-skipped: goal-decomposer)
       pump-wait                  0.4m
       unattributed (glue)        0.1m  (wall − agents(active) − quota)
-  session: 18 completed iteration(s), mean wall 125.7m
-      total developer                 1012.7m
-      total reviewer                  1001.8m
-      total orchestrator               455.2m
-      total goal-decomposer            362.4m
-      total goal-evaluator             293.8m
-      total auditor                    266.2m
+  goal-market-compass-iter-19  depth=full  verdict=CONTINUE  wall=324.7m
+      reviewer                   172.2m  calls=1
+      developer                   72.6m  calls=1
+      goal-decomposer             19.4m  calls=1
+      goal-evaluator              18.4m  calls=1
+      auditor                     15.2m  calls=1
+      ui-test-designer            10.1m  calls=1
+      orchestrator                 8.0m  calls=1
+      coherence-auditor            5.3m  calls=1
+      qa                           3.4m  calls=1
+      [engine] full-pipeline     281.5m  (contains agent time above)
+      [engine] showcase-join       0.0m  (contains agent time above)
+      pump-wait                165.8m
+      OVER BUDGET at post-dev-fanout: 16335s > 3600s (mode=trim)
+      unattributed (glue)        0.1m  (wall − agents(active) − quota)
+  session: 19 completed iteration(s), mean wall 136.2m
+      total reviewer                  1174.0m
+      total developer                 1085.3m
+      total orchestrator               463.2m
+      total goal-decomposer            381.8m
+      total goal-evaluator             312.2m
+      total auditor                    281.4m
+      total coherence-auditor          156.8m
       total iteration-summarizer       152.9m
-      total coherence-auditor          151.5m
       total browser-qa-agent           145.4m
-      total qa                         138.7m
-      total ui-test-designer           102.0m
+      total qa                         142.1m
+      total ui-test-designer           112.0m
       total ui-impact-analyst           39.1m
       total demo-narrator               21.3m
       total readme-maintainer           11.1m
       total ux-regression-reviewer       7.2m
       total browser-qa-replay            6.5m
       total AWAITING_PUMP paused gaps: 503.0m
-      halts: AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, STALLED, REGRESSION_HALT, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, AWAITING_PUMP, STALLED, STALLED
+      halts: AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, STALLED, REGRESSION_HALT, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, AWAITING_PUMP, STALLED, STALLED, STALLED
 ```
 
 ## Friction counters
@@ -444,26 +460,26 @@ Per-step wall breakdown (analyze_telemetry.py --wall):
 Last 20 lines of state/lessons.md:
 
 ```
-fourth (data_manager)" when `grep -rn "run_scan(" app/` returns six. The generalizable rule: enumerate
-writers with a grep over the whole package and classify each one, never from a hand-built call graph;
-and when a safety property is scoped by TRIGGER ("boot-initiated"), the artifact must name the triggers
-it does NOT cover, because the reader will hear "the writes are blocked".
-**Applies to:** any iteration adding a guard/quarantine/kill-switch scoped by trigger class; any
-iteration that would lift maintenance isolation or re-enable browser QA on this project; anything
-touching `warmup.py`, `forward_testing.py`, `scanner.py`, `snapshot_serving.py` or `data_manager.py`.
+`GET /api/compass?as_of=<date>`; and a 12th run minted on any of the 16 runless-but-barred dates would
+carry the identical `engine_identity`, silently breaking the final stage's membership check. After any
+live rebuild, re-derive what an ordinary request would now DO — do not carry forward the previous
+iteration's exposure analysis.
+**Applies to:** any iteration executing J-11 Stage E/F/G, and any future live rebuild that changes which
+date is `max(ScannerRun.asof_date)` or populates a previously-empty date.
 
-## iter-18 — 2026-08-26T00:55:00Z
+## iter-19b — 2026-08-26T15:40:00Z
 
-**Verdict:** STALLED
-**Lesson:** Arming the quarantine silently disabled a whole subsystem: `ensure_latest_snapshot` returns
-`None` for a blocked latest date, and `main.py:113` starts the background warm-up only `if latest is not
-None`, so no background warm-up runs at all and readiness reports `awaiting_snapshot` instead of `ready`.
-Safe and fail-closed, but it means the two call sites this iteration guarded are currently unreachable on
-boot — the delivered guards are defence-in-depth for a future state, not today's protection. Ask of every
-new blocking guard: what ELSE keys off the value this guard now suppresses?
-**Applies to:** any future iteration that boots the backend or resumes browser QA on this project (the
-different readiness badge and the 2026-07-23 "latest" are EXPECTED, not a regression); any change to
-`warmup.py`/`main.py` boot sequencing or `readiness.py`.
+**Verdict:** CONTINUE
+**Lesson:** The strongest mutation-accounting evidence is a CROSS-ITERATION diff, not the iteration's own
+before/after pair. Recomputing `j11_maintenance.capture_full_table_sweep` live and diffing it against the
+PREVIOUS iteration's recorded end-state sweep (`iter-18/j11-iter18-full-table-sweep-after.json`) proves
+both "this iteration wrote only where authorized" AND "nothing drifted between the iterations" in one
+step — something an in-iteration pair structurally cannot show. Pair it with a real field-by-field
+content comparison on the one table whose immutability is an anti-goal (all 28 columns of
+`next_session_manifests` vs the iter-16 certified baseline), because the rowid sweep alone cannot see an
+in-place UPDATE (auditor B2). Normalize ORM-vs-sqlite serialization first (datetime `T` separator, bool
+`False` vs `0`) or the comparison false-alarms.
+**Applies to:** any evaluator or auditor scoring a live-database write iteration in this session.
 ```
 
 ## Halt context
@@ -473,7 +489,7 @@ session.json halt-relevant fields:
 ```json
 {
   "status": "STALLED",
-  "last_verdict": "STALLED",
+  "last_verdict": "CONTINUE",
   "parked_wip_sha": "0c445647"
 }
 ```
