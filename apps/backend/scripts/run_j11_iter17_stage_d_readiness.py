@@ -75,6 +75,20 @@ DEFAULT_ITERATION_14_IDENTITY_PATH = (
 )
 PERMITTED_DATES = diag.CALIBRATION_DATES + diag.RECOVERED_DATES
 
+# goal-market-compass iter-18 rider (docs/goal.md J-11 step 11 ruling; iteration-17's own filed
+# recommendation -- "one can overwrite three of iteration 16's saved evidence files if its destination
+# folder is mistyped"): every filename THIS script ever writes, checked for a pre-existing collision
+# BEFORE any other work runs. All three of `j11-stage-d-preflight.json` / `-preflight-gate.json` /
+# `j11-avb-bridge-diagnostic.json` already exist under `runs/goal-market-compass-iter-16/` -- exactly the
+# destination a mistyped `--evidence-dir` would collide with.
+OUTPUT_FILENAMES = (
+    "j11-stage-d-preflight.json",
+    "j11-stage-d-preflight-gate.json",
+    "j11-avb-bridge-diagnostic.json",
+    "j11-iter17-stage-d-readiness.json",
+    "j11-iter17-stage-d-readiness-zero-write-proof.json",
+)
+
 
 def _db_file_path(database_url: str) -> "Path | None":
     prefix = "sqlite:///"
@@ -105,6 +119,13 @@ def _write_json(path: Path, payload) -> None:
     print(f"wrote {path}", file=sys.stderr)
 
 
+def _refuse_if_evidence_files_exist(evidence_dir: Path, filenames: tuple) -> list[str]:
+    """goal-market-compass iter-18 rider: mirrors the SAME collision guard added to
+    `run_j11_iter17_live_preboot_guard_verification.py`. Returns the (possibly empty) list of filenames
+    that ALREADY EXIST under `evidence_dir` -- pure filesystem check, no database interaction."""
+    return [name for name in filenames if (evidence_dir / name).exists()]
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument(
@@ -126,6 +147,19 @@ def main() -> int:
         print(
             "refusing to run without an explicit --evidence-dir. No config has been loaded, no database "
             "engine has been constructed, and nothing has been written.",
+            file=sys.stderr,
+        )
+        return 2
+
+    # --- rider 6a: refuse BEFORE any other work if the destination already holds any of THIS script's ---
+    # --- own output filenames (a mistyped --evidence-dir pointed at an earlier iteration's folder). -----
+    colliding = _refuse_if_evidence_files_exist(args.evidence_dir, OUTPUT_FILENAMES)
+    if colliding:
+        print(
+            f"refusing to run: --evidence-dir {args.evidence_dir} already contains {colliding} -- this "
+            "looks like a mistyped destination pointed at an existing, already-populated evidence folder "
+            "rather than a fresh one for this run. No config has been loaded, no database engine has been "
+            "constructed, and no existing file has been touched.",
             file=sys.stderr,
         )
         return 2

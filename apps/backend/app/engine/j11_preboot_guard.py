@@ -261,3 +261,38 @@ def evaluate_boundary_for_date(session: Session, one_date: date) -> dict:
             "ambiguous": True,
         }
     return {"blocked": False, "boundary_name": None, "reason": None, "ambiguous": False}
+
+
+# ----------------------------------------------------------------------------------------------
+# goal-market-compass iter-18 -- the ONE shared fail-closed entry point every boot-initiated
+# `run_scan` call site uses (docs/goal.md J-11 step 11, "OWNER RULING -- J-11 exact maintenance-boundary
+# table creation and live arm AUTHORIZED", implementation requirement 7).
+# ----------------------------------------------------------------------------------------------
+
+
+def evaluate_boundary_for_date_fail_closed(session: Session, one_date: date) -> dict:
+    """`evaluate_boundary_for_date` above already fails CLOSED on unreadable/ambiguous ROW state (a
+    row whose `active`/`quarantined_dates_json` cannot be parsed cleanly). This wrapper additionally
+    fails CLOSED if the EVALUATION CALL ITSELF raises an unexpected exception (a transient DB error, a
+    bug, anything) -- the exact defensive shape `warmup.ensure_latest_snapshot` has used inline since
+    iteration 16 (`warmup.py` lines 106-113 at the time): never let an exception from this check escape
+    to its caller, and never treat "the check itself failed" as "not blocked".
+
+    goal-market-compass iter-18 factors this OUT of `ensure_latest_snapshot`'s inline try/except (left
+    untouched -- it already does the same thing and already has passing tests; touching it would be
+    unnecessary risk to already-correct code) so every OTHER boot-initiated call site that reaches
+    `run_scan` can share exactly ONE fail-closed wrapper instead of a THIRD/FOURTH hand-rolled copy of
+    the same six-line try/except: `warmup._run_warmup`'s own cadence loop, and (via
+    `forward_testing._backfill`, reachable ONLY from that same background warm-up thread --
+    `backfill_forward_returns` has no other production caller) its walk-forward snapshot loop. This is
+    also the ONE function a non-booting live-verification tool calls to prove the background-warmup call
+    site's OWN guard check works -- not merely that `evaluate_boundary_for_date` in isolation is correct,
+    but that this SAME wrapper (the literal object both call sites invoke) reports blocked for a
+    quarantined date. Read-only -- never writes."""
+    try:
+        return evaluate_boundary_for_date(session, one_date)
+    except Exception as exc:  # fail CLOSED: an unevaluable boundary state is never treated as clear
+        return {
+            "blocked": True, "boundary_name": None,
+            "reason": f"maintenance boundary check raised {exc!r} -- failing closed", "ambiguous": True,
+        }

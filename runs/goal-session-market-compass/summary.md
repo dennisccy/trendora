@@ -1,18 +1,18 @@
 # Goal Session Summary — market-compass
 
-**Final verdict:** STALLED
+**Final verdict:** AWAITING_PUMP
 **Total iterations:** 18
-**Wall time (seconds):** 6739
+**Wall time (seconds):** 4906
 **Quota pauses:** 0
 **Started:** 2026-08-19T21:31:52.886915Z
-**Finished:** 2026-08-25T20:17:20.079945Z
+**Finished:** 2026-08-25T23:55:48.779896Z
 
 ## Branch
 
 This session pushed iteration commits to `goal/market-compass`. Open a PR with:
 
     gh pr create --base main --head goal/market-compass \
-      --title "feat: market-compass — STALLED" \
+      --title "feat: market-compass — AWAITING_PUMP" \
       --body-file runs/goal-session-market-compass/summary.md
 
 ## Final journey state
@@ -374,11 +374,23 @@ See `runs/goal-session-market-compass/telemetry.jsonl` for the structured event 
       pump-wait                  0.9m
       OVER BUDGET at qa-loop: 4133s > 3600s (mode=trim)
       unattributed (glue)        0.1m  (wall − agents(active) − quota)
+  goal-market-compass-iter-18  depth=lean  verdict=?  wall=?  (incomplete/interrupted attempt)
+      goal-decomposer             17.3m  calls=1
+      [engine] showcase-join       0.0m  (contains agent time above)
+      pump-wait                  0.3m
+  goal-market-compass-iter-18  depth=full  verdict=?  wall=?  (incomplete/interrupted attempt)
+      developer                   73.0m  calls=1
+      orchestrator                 8.7m  calls=1
+      reviewer                     0.0m  calls=1  failures=1
+      [engine] full-pipeline      81.7m  (contains agent time above)
+      [engine] showcase-join       0.0m  (contains agent time above)
+      (resume-skipped: goal-decomposer)
+      pump-wait                  1.4m
   session: 17 completed iteration(s), mean wall 129.2m
+      total developer                 1012.7m
       total reviewer                   990.5m
-      total developer                  939.7m
-      total orchestrator               446.6m
-      total goal-decomposer            345.1m
+      total orchestrator               455.2m
+      total goal-decomposer            362.4m
       total goal-evaluator             279.3m
       total auditor                    251.0m
       total coherence-auditor          148.7m
@@ -392,5 +404,5 @@ See `runs/goal-session-market-compass/telemetry.jsonl` for the structured event 
       total ux-regression-reviewer       7.2m
       total browser-qa-replay            6.5m
       total AWAITING_PUMP paused gaps: 501.7m
-      halts: AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, STALLED, REGRESSION_HALT, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED
+      halts: AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, STALLED, REGRESSION_HALT, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, AWAITING_PUMP
 ```

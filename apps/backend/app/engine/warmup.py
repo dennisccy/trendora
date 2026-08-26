@@ -350,7 +350,24 @@ def _run_warmup(engine: Engine, cfg: Config, prog: "data_manager.JobProgress") -
             # dies with the `with Session` block; the warm-up adds no bars, so no read sees a stale series.
             with bar_cache(session):
                 for index, asof in enumerate(dates, start=1):
-                    run_scan(session, asof, cfg)  # canonical engine; idempotent + concurrency-safe
+                    # goal-market-compass iter-18 (J-11 step 11 ruling requirement 7): the SAME
+                    # persisted-boundary check `ensure_latest_snapshot` already performs before ITS OWN
+                    # `run_scan` call, applied here too — this cadence loop is a SECOND boot-initiated
+                    # path capable of writing a canonical ScannerRun and was not previously guarded.
+                    # An active matching boundary skips ONLY this date's write (never aborts the whole
+                    # warm-up job); an ambiguous/unreadable boundary state fails CLOSED the same way
+                    # (skip, continue); no registered boundary — the common, no-incident case — leaves
+                    # this branch byte-identical to the pre-iteration-18 unconditional `run_scan` call.
+                    boundary = j11_preboot_guard.evaluate_boundary_for_date_fail_closed(session, asof)
+                    if boundary["blocked"]:
+                        logger.warning(
+                            "background warm-up: skipping canonical snapshot write for %s -- blocked by "
+                            "an ACTIVE maintenance boundary %r: %s. No ScannerRun was created for this "
+                            "date; the warm-up continues with the remaining dates.",
+                            asof, boundary.get("boundary_name"), boundary.get("reason"),
+                        )
+                    else:
+                        run_scan(session, asof, cfg)  # canonical engine; idempotent + concurrency-safe
                     prog.dates_done = index
                     prog.snapshots_created = index
                     # tick the message on each batch boundary (and the final date) so progress is live

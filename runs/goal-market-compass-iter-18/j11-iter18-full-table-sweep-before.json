@@ -1,0 +1,232 @@
+{
+  "db_file_true_end": {
+    "exists": true,
+    "mtime": 1787670395.6520789,
+    "path": "/home/dennis-chan/Git/trendora/apps/backend/data/trendora.db",
+    "size_bytes": 8365871104,
+    "wal": {
+      "exists": true,
+      "mtime": 1787670632.4674153,
+      "size_bytes": 0
+    }
+  },
+  "db_file_true_start": {
+    "exists": true,
+    "mtime": 1787670395.6520789,
+    "path": "/home/dennis-chan/Git/trendora/apps/backend/data/trendora.db",
+    "size_bytes": 8365871104,
+    "wal": {
+      "exists": true,
+      "mtime": 1787670632.4674153,
+      "size_bytes": 0
+    }
+  },
+  "db_path": "/home/dennis-chan/Git/trendora/apps/backend/data/trendora.db",
+  "generated_at": "2026-08-25T23:49:12.449648+00:00",
+  "label": "before",
+  "recipe": "apps/backend/.venv/bin/python apps/backend/scripts/run_j11_iter18_full_table_sweep.py --evidence-dir runs/goal-market-compass-iter-18 --label before",
+  "sweep": {
+    "captured_at": "2026-08-25T23:49:12.449526+00:00",
+    "per_table": {
+      "availability_cache": {
+        "count": 1,
+        "fingerprint": "5250dc88964ffcb9416e56b1ca93d42bf88dad17c537ef996f333abe301dfa59",
+        "max_rowid": 57,
+        "min_rowid": 57,
+        "sum_rowid": 57
+      },
+      "coverage_snapshot": {
+        "count": 1,
+        "fingerprint": "6a68b9070a6adb1550d4287a38a1ca2a4890e8cfb6d69450dd31d4c8e9456d0a",
+        "max_rowid": 1,
+        "min_rowid": 1,
+        "sum_rowid": 1
+      },
+      "daily_prices": {
+        "count": 3310374,
+        "fingerprint": "de53ff07c0192295e2762b4e0a5e7c306fa97eff9864f1805dd915e855af6713",
+        "max_rowid": 3312554,
+        "min_rowid": 1,
+        "sum_rowid": 5479295003075
+      },
+      "data_provider_runs": {
+        "count": 549,
+        "fingerprint": "b75a36d5b16410d930abe00573a5516d2849edf9a177a73a25611443528d3fd1",
+        "max_rowid": 549,
+        "min_rowid": 1,
+        "sum_rowid": 150975
+      },
+      "etfs": {
+        "count": 36,
+        "fingerprint": "691a4c78e9fa0cc827eec3cf8e6c4613c8e78969ca771de47d8554750c9dc95c",
+        "max_rowid": 36,
+        "min_rowid": 1,
+        "sum_rowid": 666
+      },
+      "event_study_cache": {
+        "count": 18,
+        "fingerprint": "47695bd9ba686a0a7ba4e589edca41c4542edcab0dd3e10de6dd2e6632162fc3",
+        "max_rowid": 1082,
+        "min_rowid": 463,
+        "sum_rowid": 15609
+      },
+      "forward_aggregate_cache": {
+        "count": 333,
+        "fingerprint": "0643621cc448b45d693d4dc2a55ee881e5c80990c68c4327652a617979f17c8d",
+        "max_rowid": 1144,
+        "min_rowid": 122,
+        "sum_rowid": 184122
+      },
+      "forward_returns": {
+        "count": 6797728,
+        "fingerprint": "dee292992c916d04b0d9b5c6cbb4a95fea379566623fdc32900beb786e1eb33a",
+        "max_rowid": 6844113,
+        "min_rowid": 1,
+        "sum_rowid": 23228676140661
+      },
+      "import_checkpoints": {
+        "count": 37,
+        "fingerprint": "6b7c691cba16897c7fe7db6d06d1020ddecdf020e7a135c4b3a92b9311b7cb84",
+        "max_rowid": 37,
+        "min_rowid": 1,
+        "sum_rowid": 703
+      },
+      "index_series_cache": {
+        "count": 1,
+        "fingerprint": "f56207d913cf39f242250e37cb35da874e6db9959c9b1c74d5493f9a6623ef4b",
+        "max_rowid": 12,
+        "min_rowid": 12,
+        "sum_rowid": 12
+      },
+      "industries": {
+        "count": 0,
+        "fingerprint": "6bf652facb45d620cc62cb8176f60c60f3c59dc0a4f77e063d68ab8f0c76e980",
+        "max_rowid": null,
+        "min_rowid": null,
+        "sum_rowid": null
+      },
+      "macro_series": {
+        "count": 5428,
+        "fingerprint": "68a76f4b6c31f7f4d1a1dbf3a109a3dd3d2f450acba90fe929f7af5ca2ac6ec2",
+        "max_rowid": 5428,
+        "min_rowid": 1,
+        "sum_rowid": 14734306
+      },
+      "market_phase_cache": {
+        "count": 1290,
+        "fingerprint": "eed1684c7da1b0f58f85a24b2069c3d60761c964f5c052d1627d8d581f6b8bbb",
+        "max_rowid": 1456,
+        "min_rowid": 21,
+        "sum_rowid": 909718
+      },
+      "membership_timeline_cache": {
+        "count": 1,
+        "fingerprint": "ad7a00055afac409a0c6ad74f2d87e03a372310ec084f339bbc4b8d87274c436",
+        "max_rowid": 181,
+        "min_rowid": 181,
+        "sum_rowid": 181
+      },
+      "next_session_manifests": {
+        "count": 24,
+        "fingerprint": "a96f85a414bd4a5915d60086082cd110f4c979b99af23f05de956de6192375d0",
+        "max_rowid": 24,
+        "min_rowid": 1,
+        "sum_rowid": 300
+      },
+      "scanner_results": {
+        "count": 1325785,
+        "fingerprint": "0dc5f0276cd1c813656202c3a9b4817c10de9d135477ce85b2220687ae979343",
+        "max_rowid": 1341989,
+        "min_rowid": 1,
+        "sum_rowid": 887983327759
+      },
+      "scanner_runs": {
+        "count": 3117,
+        "fingerprint": "6eee90f1340e92a2c3ed1e8e3892fa634b223fbf032e36c9846274638770c44d",
+        "max_rowid": 3147,
+        "min_rowid": 1,
+        "sum_rowid": 4898630
+      },
+      "sector_scores": {
+        "count": 96627,
+        "fingerprint": "bba87e1d46ff69f3199746e61f59fcd1d399b575595a32a2da27fca0db8bbecf",
+        "max_rowid": 97557,
+        "min_rowid": 1,
+        "sum_rowid": 4706134025
+      },
+      "sectors": {
+        "count": 11,
+        "fingerprint": "f5b861868fd50fbfb4cdc3fe1d3124eeea5c984098040b4f9d60fee3b1099ac9",
+        "max_rowid": 11,
+        "min_rowid": 1,
+        "sum_rowid": 66
+      },
+      "stocks": {
+        "count": 122,
+        "fingerprint": "195be80e2336076bfee336bb07440f0f0d5aa6f81b84f9459960135d93887b59",
+        "max_rowid": 122,
+        "min_rowid": 1,
+        "sum_rowid": 7503
+      },
+      "theme_members": {
+        "count": 138,
+        "fingerprint": "cbfcdd4fc5cbecc56489d8e5a1aad7b01704a6e746d06faa29ae54b4708f6901",
+        "max_rowid": 138,
+        "min_rowid": 1,
+        "sum_rowid": 9591
+      },
+      "theme_scores": {
+        "count": 34287,
+        "fingerprint": "111fc92936974eb49681f5d2678b11c96f9260936f8a2b59793819135065a905",
+        "max_rowid": 34617,
+        "min_rowid": 1,
+        "sum_rowid": 592562795
+      },
+      "themes": {
+        "count": 11,
+        "fingerprint": "f5b861868fd50fbfb4cdc3fe1d3124eeea5c984098040b4f9d60fee3b1099ac9",
+        "max_rowid": 11,
+        "min_rowid": 1,
+        "sum_rowid": 66
+      },
+      "watchlist": {
+        "count": 6,
+        "fingerprint": "a450ab36a78d13dc1439a9d7a7a425e8264971fceabd79cd35f9907d58476ffc",
+        "max_rowid": 6,
+        "min_rowid": 1,
+        "sum_rowid": 21
+      }
+    },
+    "table_count": 24,
+    "table_names": [
+      "availability_cache",
+      "coverage_snapshot",
+      "daily_prices",
+      "data_provider_runs",
+      "etfs",
+      "event_study_cache",
+      "forward_aggregate_cache",
+      "forward_returns",
+      "import_checkpoints",
+      "index_series_cache",
+      "industries",
+      "macro_series",
+      "market_phase_cache",
+      "membership_timeline_cache",
+      "next_session_manifests",
+      "scanner_results",
+      "scanner_runs",
+      "sector_scores",
+      "sectors",
+      "stocks",
+      "theme_members",
+      "theme_scores",
+      "themes",
+      "watchlist"
+    ]
+  },
+  "zero_write_proof": {
+    "mtime_unchanged": true,
+    "size_unchanged": true
+  }
+}

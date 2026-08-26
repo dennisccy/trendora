@@ -1285,3 +1285,109 @@ the defect that once let a forbidden test lane run is still unfixed in `scripts/
 iterations running have avoided it with the maintenance-isolation contract rather than curing it; and
 `goal_gate.py`'s duplicate-journey-heading defect is still unfixed and must be closed before any
 GOAL_ACHIEVED certification.
+
+## Iteration 18 — goal-market-compass-iter-18
+
+**Date:** 2026-08-26T00:55:00Z
+**Verdict:** STALLED
+**Depth dispatched:** full (`runs/goal-session-market-compass/iter-18/depth-dispatched` reads `full`,
+matching the spec's own `Depth: full` line — the silent full→lean demotion that fired in iters 2, 6 and 8
+did NOT recur, for the tenth iteration running, and neither did the forbidden browser/replay lane; the
+engine recorded its refusal in `iter-18/maintenance-isolation-refusals` at 2026-08-26T00:20:05Z)
+
+**Owner-facing lines:** `J-11 MAINTENANCE BOUNDARY: ACTIVE` · `J-11 LIVE PRE-BOOT GUARD: ARMED` ·
+`J-11 STAGE D READY: YES` (carried by citation from iteration 17, not re-derived) · `J-11 STAGE D
+AUTHORIZED: NO`. All four confirmed by this evaluator against the live database with no correction
+needed. This is the first iteration this session where the first two lines read ACTIVE and ARMED.
+
+**Journey deltas:**
+- Newly passing: none. Newly failing: none. **Regressed: none.**
+- **Advanced within `partial`: J-11** "Incident-bounded clean regeneration of derived state" — this
+  iteration's sole target. The owner's authorized one-step slice was delivered in full and stopped
+  exactly where the owner said to stop. Re-stamped `last_verified_iter` to iter-18 and `spec_hash` to
+  `3fff95f1…` (was `8cf4ace6…` — the owner's 2026-08-25 "exact table creation and live arm AUTHORIZED"
+  ruling, committed `b7726691`, changed J-11's text; no `journeys-changed.md` fired because J-11 is
+  `partial`, not `passing`, and I re-verified it against the current text anyway). All ten other
+  journeys' hashes are byte-identical to the recorded ones on my own `goal_gate.py hash-journeys` run.
+  Stages D-G untouched, not started, not authorized.
+- Carried, NOT re-verified (maintenance isolation — browser QA and the replay lane were forbidden by
+  contract, so every journey keeps its prior recorded status): J-01, J-04, J-10 stay `passing`; J-02,
+  J-03, J-05, J-06, J-09 stay `partial`; J-07, J-08 stay `failing`. Spot-checks: J-01's iter-4
+  screenshot (GRMN carries a real stored sector label), J-10 re-derived read-only (585 `daily_prices`
+  rows on each of 2026-08-11 and 2026-08-12; AVB's corrected volumes 554757 / 3706010 intact). Both
+  consistent. A third, J-04's screenshot, is a weak citation — recorded as an evidence-quality note,
+  not a status change.
+- Anti-goal violations: **NONE new.** Ledger unchanged at **7 total, 0 unresolved.** AG-7, AG-8, AG-9,
+  AG-12 and AG-17 were the five at real risk and all five HELD, each verified by my own greps, code
+  reading and read-only database queries.
+- Coherence: COHERENCE-PASS. Deterministic scan: CLEAN. Review: PASS_WITH_NOTES (one MINOR, one NOTE).
+  QA: PASS. Audit: PASS_WITH_GAPS (B1/T1 IMPORTANT, both fixed in-audit; B2/B3/B4/E1 gaps;
+  B5/T2/T3/E2/E3 observations).
+
+**Reasoning:** The one job the owner allowed was done, and I did not take that from anyone's write-up — I
+opened the 8.4 GB database read-only and re-measured everything myself. The safety catch is now genuinely
+switched on: the small control table exists with exactly the shape the code expects, it holds exactly one
+active entry, and that entry lists exactly the eleven damaged days and nothing else. I then ran the real
+production check — the same function the start-up code calls — against the real database for all eleven
+days, and every one came back "refuse". I also ran it for five ordinary days, including the days either
+side of the damaged ones, and every one came back "allow". That matters: it is a check that can say no,
+not one that always says no. I read both newly protected places in the code myself and both call that same
+one shared check before writing. Nothing else in the database moved: the file is byte-for-byte the same
+size, the price table still holds 3,310,374 rows, the results table 3,117, the twenty-four saved briefings
+are all there, and every one of the eleven damaged days still holds zero results — which is also the
+plainest proof that the forbidden rebuild was not quietly started. I re-ran the tests myself: 82 passed.
+Two honest corrections against the material handed to me. FIRST, and this is the headline: the protection
+covers start-up only. Anyone can still make the app write a forbidden day simply by asking a page for that
+date — a web address ending `?as_of=2026-08-12` reaches the same writing code with no check at all
+(`apps/backend/app/engine/scanner.py:348`, reached from every read page). The independent auditor listed
+the writing paths and named only one non-start-up route, the Data Manager button; it missed this one,
+which is much wider, and neither the developer, the reviewer nor the quality check mentions it. It is
+NOT a fault of this iteration — the owner's instruction covered start-up paths only — but it is now the
+live exposure, because the owner's own rule against starting the app was written as "do not start it until
+the catch is on", and the catch is now on. Ordinary page visits are safe: with the damaged days empty, the
+app's idea of "latest" falls back to 23 July, which is not a damaged day. SECOND, a consequence nobody
+recorded until the auditor traced it and I re-confirmed it: switching the catch on also stops the
+background catch-up work from starting at all, and the health badge will read "still starting up" rather
+than "ready". That is safe and expected, but anyone reopening browser testing will see it and think
+something broke. Why halt when the work succeeded? Because the owner's own words end this step —
+"Even if all three are established, STOP" — and because the goal file separately shuts every normal lane
+until the repair's final stage passes, which is several owner-authorized steps away. Why not CONTINUE?
+The three loose ends that exist (the counter that over-reports progress, the Data Manager write path, and
+the page-request write path I found) are all decisions about how the product should behave, and closing
+the page-request one means editing the very files whose untouched state is the only reason three journeys
+are still counted as passing — unverifiable while browser testing is switched off. Why not REGRESSION?
+Nothing that worked stopped working, no journey was tested so none could fail, no stored research value
+moved, and the ledger gained no entry. Why not ESCALATE? This run already used full depth, and full depth
+is what produced the finding. One process fact: this is the ninth iteration running where a later lane
+found what the earlier ones missed — and the first where the thing missed was missed by the independent
+auditor too, and found here.
+
+**Next-step recommendation:** ONE SAFETY DECISION FIRST, THEN THE BIG DECISION. THE SAFETY DECISION:
+the owner's rule "do not start the app until the catch is on" has now been satisfied, so someone may
+reasonably think it is safe to start Trendora again. It is safer than it was, but not yet safe: asking any
+page for one of the eleven damaged dates — a web address ending `?as_of=2026-08-12` — still writes that
+day permanently, and nothing stops it. So either (a) keep the "do not start the app" rule in force until
+the page-request path is protected too, or (b) authorize a small, careful change that makes those page
+requests refuse instead of writing, deciding what the page should show instead — and accept that the
+change touches the read pages, which cannot be tested while browser testing is off. Recommendation:
+choose (a) unless there is a reason to start the app now, because (a) costs nothing and (b) cannot be
+verified today. THE BIG DECISION, unchanged and still the owner's alone: whether to authorize the rebuild
+of the eleven damaged days (J-11 Stage D). The owner's own written rule ends this step with "stop for
+owner review even if everything succeeded", and the rebuild needs a separate, fresh, written instruction.
+Until that happens nothing else in the plan can move, because the goal file keeps every normal lane shut
+until the repair's final stage passes. FOUR SMALL JOBS remain, none of which can change either decision:
+decide deliberately what the health badge should say while a quarantine is on (today it counts a skipped
+day as done, but the alternative would leave it saying "still starting up" forever — a real product choice,
+not a bug fix); consider protecting the Data Manager write path the same way; annotate rather than rewrite
+iteration 17's quality report, which still lists the wrong eleven dates; and note that the "nothing else
+changed" evidence is a row-identity check, not a true content hash, so it could not detect an in-place
+edit that kept the same size (I corroborated it with my own row counts, file size and spot values, and
+found nothing wrong). ONE MECHANICAL ITEM: this iteration's eleven changed backend files, two of them
+brand new, are still uncommitted at the time of scoring — confirm they reach version control. FIVE OLDER
+OWNER QUESTIONS remain open and non-blocking: whether 3.44 GB is acceptable for J-09; J-06's "underlying
+run unavailable" wording; the rewording of J-01's first two test steps; whether an empty "next-session
+focus" is acceptable; and whether MNST joins the recovery list. TWO STANDING FRAMEWORK NOTES: the defect
+that once let a forbidden test lane run is still unfixed in `scripts/automation/` — ten iterations running
+have avoided it with the maintenance-isolation contract rather than curing it; and `goal_gate.py`'s
+duplicate-journey-heading defect is still unfixed and must be closed before any GOAL_ACHIEVED
+certification.

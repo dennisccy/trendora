@@ -324,3 +324,121 @@ def test_incident_dates_match_the_authoritative_removal_audit():
         "2026-08-03", "2026-08-05", "2026-08-10", "2026-08-11", "2026-08-12",
     ]
     assert [d.isoformat() for d in j11_maintenance.INCIDENT_DATES] == expected
+
+
+# ==========================================================================================================
+# goal-market-compass iter-18 -- `capture_full_table_sweep` / `diff_full_table_sweeps`: the schema-agnostic
+# mutation-accounting evidence for the J-11 table-create + arm live sequence (docs/goal.md J-11 step 11
+# ruling requirement 4).
+# ==========================================================================================================
+
+
+def test_capture_full_table_sweep_covers_every_table_including_empty_ones(engine):
+    with Session(engine) as session:
+        sweep = j11_maintenance.capture_full_table_sweep(session)
+
+    live_table_names = {t.name for t in SQLModel.metadata.sorted_tables}
+    assert set(sweep["table_names"]) == live_table_names
+    assert sweep["table_count"] == len(live_table_names)
+    # an empty table (every table in a fresh fixture) reports count=0 and None aggregates, never an error
+    for name in sweep["table_names"]:
+        row = sweep["per_table"][name]
+        assert row["count"] == 0
+        assert row["min_rowid"] is None
+        assert row["max_rowid"] is None
+        assert row["fingerprint"]  # still hashes cleanly on an all-None payload
+
+
+def test_capture_full_table_sweep_fingerprint_changes_when_a_row_is_added(engine):
+    with Session(engine) as session:
+        before = j11_maintenance.capture_full_table_sweep(session)
+
+    with Session(engine) as session:
+        session.add(
+            ScannerRun(
+                asof_date=date(2026, 1, 2), created_at=datetime(2026, 1, 2, tzinfo=timezone.utc),
+                provider="seed", benchmark="SPY", regime_score=50.0, regime_label="Expansion",
+                regime_components_json="[]", breadth_above_50dma=50.0, breadth_above_200dma=50.0,
+                new_high_low_json="{}", candidate_counts_json="{}",
+            )
+        )
+        session.commit()
+
+    with Session(engine) as session:
+        after = j11_maintenance.capture_full_table_sweep(session)
+
+    assert before["per_table"]["scanner_runs"]["fingerprint"] != after["per_table"]["scanner_runs"]["fingerprint"]
+    assert after["per_table"]["scanner_runs"]["count"] == 1
+    # every OTHER table's fingerprint is untouched
+    for name in before["table_names"]:
+        if name == "scanner_runs":
+            continue
+        assert before["per_table"][name]["fingerprint"] == after["per_table"][name]["fingerprint"]
+
+
+def test_diff_full_table_sweeps_clean_when_nothing_changed(engine):
+    with Session(engine) as session:
+        before = j11_maintenance.capture_full_table_sweep(session)
+        after = j11_maintenance.capture_full_table_sweep(session)
+
+    diff = j11_maintenance.diff_full_table_sweeps(before, after)
+    assert diff == {
+        "unexpected_new_tables": [], "unexpected_removed_tables": [], "changed_existing_tables": [],
+        "expected_new_tables_present": [], "clean": True,
+    }
+
+
+def test_diff_full_table_sweeps_flags_an_unexpected_new_table_and_an_unexpected_change(engine):
+    with Session(engine) as session:
+        before = j11_maintenance.capture_full_table_sweep(session)
+
+    with engine.begin() as conn:
+        conn.exec_driver_sql("CREATE TABLE surprise_table (id INTEGER PRIMARY KEY)")
+    with Session(engine) as session:
+        session.add(
+            ScannerRun(
+                asof_date=date(2026, 1, 2), created_at=datetime(2026, 1, 2, tzinfo=timezone.utc),
+                provider="seed", benchmark="SPY", regime_score=50.0, regime_label="Expansion",
+                regime_components_json="[]", breadth_above_50dma=50.0, breadth_above_200dma=50.0,
+                new_high_low_json="{}", candidate_counts_json="{}",
+            )
+        )
+        session.commit()
+
+    with Session(engine) as session:
+        after = j11_maintenance.capture_full_table_sweep(session)
+
+    diff = j11_maintenance.diff_full_table_sweeps(before, after)
+    assert diff["unexpected_new_tables"] == ["surprise_table"]
+    assert diff["changed_existing_tables"] == ["scanner_runs"]
+    assert diff["unexpected_removed_tables"] == []
+    assert diff["clean"] is False
+
+
+def test_diff_full_table_sweeps_expected_new_table_is_not_flagged():
+    """The exact shape the live J-11 sequence needs: `maintenance_boundaries` appearing between the
+    before/after sweeps is EXPECTED (it's the one authorized new table), and must not itself flag the
+    diff unclean when nothing else changed. Exercised against SYNTHETIC sweep dicts (`diff_full_table_
+    sweeps` is a pure function) rather than a live fixture engine -- the `engine` fixture above already
+    creates `maintenance_boundaries` via `SQLModel.metadata.create_all` (it is now a real committed
+    model), so a live DB cannot model "table genuinely absent, then created" for THIS one table name."""
+    unrelated = {"count": 0, "min_rowid": None, "max_rowid": None, "sum_rowid": None, "fingerprint": "x"}
+    before = {
+        "table_names": ["scanner_runs"], "table_count": 1,
+        "per_table": {"scanner_runs": unrelated},
+    }
+    after = {
+        "table_names": ["maintenance_boundaries", "scanner_runs"], "table_count": 2,
+        "per_table": {
+            "scanner_runs": unrelated,
+            "maintenance_boundaries": {
+                "count": 1, "min_rowid": 1, "max_rowid": 1, "sum_rowid": 1, "fingerprint": "y",
+            },
+        },
+    }
+
+    diff = j11_maintenance.diff_full_table_sweeps(before, after, expected_new_tables=("maintenance_boundaries",))
+    assert diff["unexpected_new_tables"] == []
+    assert diff["expected_new_tables_present"] == ["maintenance_boundaries"]
+    assert diff["changed_existing_tables"] == []
+    assert diff["clean"] is True

@@ -78,6 +78,19 @@ UT-J-11) are the exception — those can be verified today, without booting anyt
   forbids outside its own Stage G verification (not yet reached, not authorized). **Do not navigate to
   any of these 11 dates as a general-purpose regression check** — UT-J-11 below is the one test case that
   deliberately checks the app's behavior around this boundary without crossing it.
+  **goal-market-compass iter-18 correction:** this list is the full `data_provider_runs` id=538 cascade
+  scope (every date whose DERIVED state — `scanner_runs` and its children — that removal cleared), not a
+  list of eleven equally "damaged" dates. Of the eleven, only **2026-08-11 and 2026-08-12** actually lost
+  raw `daily_prices` data the committed seed could not restore on its own (the seed window ends
+  2026-07-01, so those two required J-10's separate, now-exhausted live-fetch recovery — docs/goal.md's
+  J-10 section). The remaining nine (`2026-05-12, 2026-05-13, 2026-07-10, 2026-07-13, 2026-07-24,
+  2026-07-27, 2026-08-03, 2026-08-05, 2026-08-10`) had only their derived `scanner_runs` cleared by the
+  same cascade — their underlying price rows were never actually lost — so a check that merely asserts
+  "0 scanner_runs" for those nine confirms the cascade's effect on derived state, not that raw data was
+  ever damaged there. (Live re-derivation, 2026-08-25: all eleven dates carry `daily_prices` rows —
+  585 to 590 per date — confirming none of the nine is missing raw data.) This corrects iteration 17's own
+  `eval.md` finding ("of the eleven dates it lists, only two are actually damaged dates") into this report,
+  which had not yet reflected it.
 - **AVB's stored `daily_prices.volume`** was corrected in iteration 16 (the one live write that
   iteration made): the `2026-08-11`/`2026-08-12` cells moved from `1,549,436`/`10,350,885` to
   `554,757`/`3,706,010` (OHLC unchanged). **This iteration does not touch that data again** — it only

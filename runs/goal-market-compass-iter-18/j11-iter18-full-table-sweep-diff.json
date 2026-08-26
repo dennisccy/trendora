@@ -1,0 +1,18 @@
+{
+  "after_file": "j11-iter18-full-table-sweep-after.json",
+  "before_file": "j11-iter18-full-table-sweep-before.json",
+  "diff": {
+    "changed_existing_tables": [],
+    "clean": true,
+    "expected_new_tables_present": [
+      "maintenance_boundaries"
+    ],
+    "unexpected_new_tables": [],
+    "unexpected_removed_tables": []
+  },
+  "expected_new_tables": [
+    "maintenance_boundaries"
+  ],
+  "generated_at": "2026-08-25T23:51:34.274240+00:00",
+  "maintenance_boundaries_row_count_after": 1
+}

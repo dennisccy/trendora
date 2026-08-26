@@ -141,14 +141,15 @@ CPU-core pinning and math-library thread caps to the backend process.
 
 ### Run backend tests
 
+**Targeted tests only** (the resource contract forbids running the full suite):
+
 ```bash
-cd apps/backend && .venv/bin/python -m pytest tests/ -v
+cd apps/backend && .venv/bin/python -m pytest tests/test_<module>.py -v
 ```
 
-The seed data now spans up to ~30 years of daily prices, so shared test fixtures build the full
-price history up front — a full run of the suite can take several hours. This is a test-only cost;
-the running product still boots in well under a minute. To iterate quickly, target a single file
-instead, e.g. `.venv/bin/python -m pytest tests/test_regime.py -v`.
+Run only the test files for modules you modified. The full seed data spans ~30 years of daily prices,
+so the complete suite builds a multi-GB `loaded_engine` fixture and takes several hours — that is
+run by the owner only. The product itself boots in well under a minute.
 
 ### Local URLs
 

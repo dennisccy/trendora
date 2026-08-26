@@ -34,7 +34,7 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Optional, Union
 
-from sqlalchemy import func
+from sqlalchemy import func, text
 from sqlmodel import Session, select
 
 from app.config import Config, get_config
@@ -225,6 +225,83 @@ def freeze_attempt_identity(session: Session, config: Optional[Config] = None) -
         "provenance_config_keys": list(cfg.provenance.config_keys),
         "provenance_engine_files": list(cfg.provenance.engine_files),
         "frozen_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def capture_full_table_sweep(session: Session) -> dict:
+    """goal-market-compass iter-18 -- a schema-agnostic, read-only row-count-and-content-fingerprint
+    sweep over EVERY table currently listed in `sqlite_master`. This is the J-11 table-create + arm live
+    sequence's mutation-accounting evidence (docs/goal.md J-11 step 11, "OWNER RULING -- J-11 exact
+    maintenance-boundary table creation and live arm AUTHORIZED", implementation requirement 4: "capture
+    before/after evidence proving no unrelated application state changed").
+
+    For each table, computes the SAME cheap SQL-side aggregate this module's own `_count`/
+    `capture_pre_reset_inventory` idiom already relies on for the narrower per-population case (count + a
+    bounded set of aggregates -> sha256, never a full ORM hydration of a multi-million-row table -- AG-8)
+    -- generalized here to SQLite's own hidden `rowid` so it needs no per-table column knowledge at all.
+    Every table in this schema is an ordinary rowid table (a plain `id INTEGER PRIMARY KEY` column with
+    no `AUTOINCREMENT`, verified against the live schema for all 24 pre-existing tables, including empty
+    ones) -- none is declared `WITHOUT ROWID`, so `rowid` is universally available and requires no schema
+    introspection per table.
+
+    This is a CORROBORATING check, never the PRIMARY instrument: a same-rowid content UPDATE (e.g. a
+    non-key column changed on an existing row) would NOT move `count`/`min`/`max`/`sum` of `rowid` and so
+    would NOT be caught by this sweep alone -- the whole-file mtime/size/`-wal` bracket
+    (`j11_stage_c.db_file_fingerprint`, captured by the calling script at the TRUE process start and TRUE
+    process end) is the PRIMARY instrument that would catch that, per iter-12/13's established "mtime+WAL
+    as primary instrument, corroborated NOT replaced by a narrower fingerprint" precedent. Read-only --
+    never writes; never touches `maintenance_boundaries` specially (a caller comparing before/after
+    naturally sees it appear between the two sweeps, with a fingerprint of its own)."""
+    table_names = sorted(
+        row[0]
+        for row in session.exec(
+            text("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
+        ).all()
+    )
+    per_table: dict[str, dict] = {}
+    for name in table_names:
+        # Table names here come ONLY from `sqlite_master` itself (never user input) -- safe to interpolate
+        # into the FROM clause; every bind-able value (there are none here) would still go through
+        # parameters. Double-quoted identifier so a table name is never ambiguous with a keyword.
+        count, min_rowid, max_rowid, sum_rowid = session.exec(
+            text(f'SELECT COUNT(*), MIN(rowid), MAX(rowid), SUM(rowid) FROM "{name}"')
+        ).one()
+        payload = {
+            "count": int(count or 0),
+            "min_rowid": int(min_rowid) if min_rowid is not None else None,
+            "max_rowid": int(max_rowid) if max_rowid is not None else None,
+            "sum_rowid": int(sum_rowid) if sum_rowid is not None else None,
+        }
+        fingerprint = hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()
+        per_table[name] = {**payload, "fingerprint": fingerprint}
+    return {
+        "captured_at": datetime.now(timezone.utc).isoformat(),
+        "table_names": table_names,
+        "table_count": len(table_names),
+        "per_table": per_table,
+    }
+
+
+def diff_full_table_sweeps(before: dict, after: dict, *, expected_new_tables: tuple[str, ...] = ()) -> dict:
+    """Compares two `capture_full_table_sweep(...)` results. `expected_new_tables` names tables that are
+    PERMITTED to be new in `after` (e.g. `("maintenance_boundaries",)`) -- any OTHER new or removed table,
+    or ANY fingerprint change on a table present in BOTH sweeps, is an unexpected mutation. Never mutates
+    its inputs; pure comparison."""
+    before_tables = set(before["per_table"])
+    after_tables = set(after["per_table"])
+    unexpected_new = sorted((after_tables - before_tables) - set(expected_new_tables))
+    unexpected_removed = sorted(before_tables - after_tables)  # no table may ever disappear
+    changed_existing = sorted(
+        name
+        for name in (before_tables & after_tables)
+        if before["per_table"][name]["fingerprint"] != after["per_table"][name]["fingerprint"]
+    )
+    return {
+        "unexpected_new_tables": unexpected_new,
+        "unexpected_removed_tables": unexpected_removed,
+        "changed_existing_tables": changed_existing,
+        "expected_new_tables_present": sorted(t for t in expected_new_tables if t in after_tables),
+        "clean": not unexpected_new and not unexpected_removed and not changed_existing,
     }
 
 

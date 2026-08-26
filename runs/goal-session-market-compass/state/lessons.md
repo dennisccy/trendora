@@ -109,38 +109,13 @@ missing-row branch.
 touching `apps/backend/app/engine/j11_schema_migration.py` or `app/db.py`'s additive-schema path, and
 any acceptance item phrased as "removes X and nothing else".
 
-## iter-12 — 2026-08-24T14:45:21Z
-
-**Verdict:** STALLED
-**Lesson:** The deterministic goal-edit-drift alarm is narrower than it looks. `goal_gate.py
-hash-journeys` computes J-10's `spec_hash` over only the TAIL of its block — I probed `docs/goal.md`
-line by line and perturbations at lines 590-880 leave the hash byte-identical while 890-938 change it.
-The cause looks structural: J-10 contains a nested bullet (`    - **J-10 CLOSED — residual set
-accepted…`, line ~879) whose text starts with the same `- **J-<NN>` shape the block extractor treats as
-a journey heading, so both the hasher AND the goal slicer latch onto it (the iter-12 slice lists the
-J-10 digest line twice for exactly this reason). Consequence: the owner's 2026-08-24 edit to J-10 step
-2d produced NO `journeys-changed.md`, so a recorded pass carried forward across changed goal text with
-no alarm. Harmless here — the edit only annotates a spent instruction as historical, and I re-derived
-J-10 from the live database anyway — but the rail is not the safety net an evaluator assumes it is.
+## iter-12 — 2026-08-24T14:45:21Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any evaluator carrying a `passing` journey forward on the absence of
 `journeys-changed.md`, and any goal whose journey block contains nested `- **J-NN` bullets (this file
 now has one in J-10 and the same shape could appear anywhere) — diff `docs/goal.md` against the
 iteration snapshot for the journey's own line range instead of trusting the hash alone.
 
-## iter-12 — 2026-08-24T14:45:22Z
-
-**Verdict:** STALLED
-**Lesson:** "Zero live writes" was proven this iteration by a before/after fingerprint pair that
-bracketed only 101 seconds of a 90-minute iteration (`j11-stage-b1-cleanup-fingerprint-diff.json`:
-before 10:50:08Z, after 10:51:49Z; `status.json` `started_at` 10:25:29Z) — the auditor caught the
-overclaim (T2) and the dev handoff's "run once at the START and once at the END" wording was simply
-false. The claim survives only because a much cheaper instrument is stronger: the SQLite main-file
-mtime (1787522416 = 2026-08-23 23:00:16, iter-11's own last write) plus a 0-byte write-ahead log proves
-no committed write reached the file by ANY route across the whole iteration, without a purpose-built
-capture at all. In WAL mode both halves are needed: an uncheckpointed write hides in the `-wal` file
-(main mtime unchanged), and a checkpoint would move the main mtime — so mtime-unchanged AND WAL-empty
-together are conclusive, while either alone is not. The `-shm`/`-wal` mtimes move on any read-only open
-and are NOT evidence of a write.
+## iter-12 — 2026-08-24T14:45:22Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration claiming zero writes to `apps/backend/data/trendora.db` — J-11 Stage C's
 mutation accounting above all, and any future maintenance-isolation iteration. Record the file mtime +
 size + WAL size at the true start and end, and treat a purpose-built fingerprint pair as corroboration,
@@ -309,3 +284,32 @@ confirm the quantity can actually come out wrong.
 **Applies to:** any future J-11/AVB Stage-D readiness or verification spec proposing a ratio/tolerance
 assertion over values in `j11_avb_diagnostic.py` / `j11_avb_correction.py`, and any "independent
 cross-check" claim in `runs/goal-market-compass-iter-*/j11-*.json`.
+
+## iter-18 — 2026-08-26T00:55:00Z
+
+**Verdict:** STALLED
+**Lesson:** A guard scoped to "boot-initiated paths" leaves the request-triggered path open, and this
+codebase's read path WRITES: `scanner.resolve_run` (`apps/backend/app/engine/scanner.py:348`) calls
+`run_scan` create-once for whatever date `?as_of=` names, reached from every read endpoint via
+`app/engine/snapshot_serving.py:42`. Four lanes (dev, reviewer, QA, auditor) enumerated the `run_scan`
+call graph and all four missed it — the auditor explicitly counted "exactly three boot-initiated plus a
+fourth (data_manager)" when `grep -rn "run_scan(" app/` returns six. The generalizable rule: enumerate
+writers with a grep over the whole package and classify each one, never from a hand-built call graph;
+and when a safety property is scoped by TRIGGER ("boot-initiated"), the artifact must name the triggers
+it does NOT cover, because the reader will hear "the writes are blocked".
+**Applies to:** any iteration adding a guard/quarantine/kill-switch scoped by trigger class; any
+iteration that would lift maintenance isolation or re-enable browser QA on this project; anything
+touching `warmup.py`, `forward_testing.py`, `scanner.py`, `snapshot_serving.py` or `data_manager.py`.
+
+## iter-18 — 2026-08-26T00:55:00Z
+
+**Verdict:** STALLED
+**Lesson:** Arming the quarantine silently disabled a whole subsystem: `ensure_latest_snapshot` returns
+`None` for a blocked latest date, and `main.py:113` starts the background warm-up only `if latest is not
+None`, so no background warm-up runs at all and readiness reports `awaiting_snapshot` instead of `ready`.
+Safe and fail-closed, but it means the two call sites this iteration guarded are currently unreachable on
+boot — the delivered guards are defence-in-depth for a future state, not today's protection. Ask of every
+new blocking guard: what ELSE keys off the value this guard now suppresses?
+**Applies to:** any future iteration that boots the backend or resumes browser QA on this project (the
+different readiness badge and the 2026-07-23 "latest" are EXPECTED, not a regression); any change to
+`warmup.py`/`main.py` boot sequencing or `readiness.py`.

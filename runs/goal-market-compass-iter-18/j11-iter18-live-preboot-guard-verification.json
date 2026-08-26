@@ -1,0 +1,133 @@
+{
+  "all_eleven_incident_dates_blocked": true,
+  "armed": true,
+  "background_warmup_site_blocked": true,
+  "background_warmup_site_result": {
+    "ambiguous": false,
+    "blocked": true,
+    "boundary_name": "j11-incident-recovery",
+    "reason": "J-11 incident-bounded derived-state quarantine (docs/goal.md) -- Stage D has not yet been authorized/executed for these dates; canonical producer writes are refused until this boundary is explicitly cleared by a future maintenance operation."
+  },
+  "boundary_row": {
+    "active": true,
+    "id": 1,
+    "name": "j11-incident-recovery",
+    "quarantined_dates_json": "[\"2026-05-12\", \"2026-05-13\", \"2026-07-10\", \"2026-07-13\", \"2026-07-24\", \"2026-07-27\", \"2026-08-03\", \"2026-08-05\", \"2026-08-10\", \"2026-08-11\", \"2026-08-12\"]",
+    "reason": "J-11 incident-bounded derived-state quarantine (docs/goal.md) -- Stage D has not yet been authorized/executed for these dates; canonical producer writes are refused until this boundary is explicitly cleared by a future maintenance operation.",
+    "updated_at": "2026-08-25 23:49:26.589515"
+  },
+  "control_date": "2026-07-23",
+  "control_date_not_blocked": true,
+  "control_result": {
+    "ambiguous": false,
+    "blocked": false,
+    "boundary_name": null,
+    "reason": null
+  },
+  "db_file_true_end": {
+    "exists": true,
+    "mtime": 1787701766.6272907,
+    "path": "/home/dennis-chan/Git/trendora/apps/backend/data/trendora.db",
+    "size_bytes": 8365871104,
+    "wal": {
+      "exists": true,
+      "mtime": 1787701771.8940818,
+      "size_bytes": 0
+    }
+  },
+  "db_file_true_start": {
+    "exists": true,
+    "mtime": 1787701766.6272907,
+    "path": "/home/dennis-chan/Git/trendora/apps/backend/data/trendora.db",
+    "size_bytes": 8365871104,
+    "wal": {
+      "exists": true,
+      "mtime": 1787701771.8940818,
+      "size_bytes": 0
+    }
+  },
+  "db_path": "/home/dennis-chan/Git/trendora/apps/backend/data/trendora.db",
+  "generated_at": "2026-08-25T23:51:19.691803+00:00",
+  "incident_date_results": {
+    "2026-05-12": {
+      "ambiguous": false,
+      "blocked": true,
+      "boundary_name": "j11-incident-recovery",
+      "reason": "J-11 incident-bounded derived-state quarantine (docs/goal.md) -- Stage D has not yet been authorized/executed for these dates; canonical producer writes are refused until this boundary is explicitly cleared by a future maintenance operation."
+    },
+    "2026-05-13": {
+      "ambiguous": false,
+      "blocked": true,
+      "boundary_name": "j11-incident-recovery",
+      "reason": "J-11 incident-bounded derived-state quarantine (docs/goal.md) -- Stage D has not yet been authorized/executed for these dates; canonical producer writes are refused until this boundary is explicitly cleared by a future maintenance operation."
+    },
+    "2026-07-10": {
+      "ambiguous": false,
+      "blocked": true,
+      "boundary_name": "j11-incident-recovery",
+      "reason": "J-11 incident-bounded derived-state quarantine (docs/goal.md) -- Stage D has not yet been authorized/executed for these dates; canonical producer writes are refused until this boundary is explicitly cleared by a future maintenance operation."
+    },
+    "2026-07-13": {
+      "ambiguous": false,
+      "blocked": true,
+      "boundary_name": "j11-incident-recovery",
+      "reason": "J-11 incident-bounded derived-state quarantine (docs/goal.md) -- Stage D has not yet been authorized/executed for these dates; canonical producer writes are refused until this boundary is explicitly cleared by a future maintenance operation."
+    },
+    "2026-07-24": {
+      "ambiguous": false,
+      "blocked": true,
+      "boundary_name": "j11-incident-recovery",
+      "reason": "J-11 incident-bounded derived-state quarantine (docs/goal.md) -- Stage D has not yet been authorized/executed for these dates; canonical producer writes are refused until this boundary is explicitly cleared by a future maintenance operation."
+    },
+    "2026-07-27": {
+      "ambiguous": false,
+      "blocked": true,
+      "boundary_name": "j11-incident-recovery",
+      "reason": "J-11 incident-bounded derived-state quarantine (docs/goal.md) -- Stage D has not yet been authorized/executed for these dates; canonical producer writes are refused until this boundary is explicitly cleared by a future maintenance operation."
+    },
+    "2026-08-03": {
+      "ambiguous": false,
+      "blocked": true,
+      "boundary_name": "j11-incident-recovery",
+      "reason": "J-11 incident-bounded derived-state quarantine (docs/goal.md) -- Stage D has not yet been authorized/executed for these dates; canonical producer writes are refused until this boundary is explicitly cleared by a future maintenance operation."
+    },
+    "2026-08-05": {
+      "ambiguous": false,
+      "blocked": true,
+      "boundary_name": "j11-incident-recovery",
+      "reason": "J-11 incident-bounded derived-state quarantine (docs/goal.md) -- Stage D has not yet been authorized/executed for these dates; canonical producer writes are refused until this boundary is explicitly cleared by a future maintenance operation."
+    },
+    "2026-08-10": {
+      "ambiguous": false,
+      "blocked": true,
+      "boundary_name": "j11-incident-recovery",
+      "reason": "J-11 incident-bounded derived-state quarantine (docs/goal.md) -- Stage D has not yet been authorized/executed for these dates; canonical producer writes are refused until this boundary is explicitly cleared by a future maintenance operation."
+    },
+    "2026-08-11": {
+      "ambiguous": false,
+      "blocked": true,
+      "boundary_name": "j11-incident-recovery",
+      "reason": "J-11 incident-bounded derived-state quarantine (docs/goal.md) -- Stage D has not yet been authorized/executed for these dates; canonical producer writes are refused until this boundary is explicitly cleared by a future maintenance operation."
+    },
+    "2026-08-12": {
+      "ambiguous": false,
+      "blocked": true,
+      "boundary_name": "j11-incident-recovery",
+      "reason": "J-11 incident-bounded derived-state quarantine (docs/goal.md) -- Stage D has not yet been authorized/executed for these dates; canonical producer writes are refused until this boundary is explicitly cleared by a future maintenance operation."
+    }
+  },
+  "latest_daily_price_date": "2026-08-12",
+  "latest_incident_date": "2026-08-12",
+  "latest_incident_date_blocked": true,
+  "maintenance_boundaries_table_count": 1,
+  "persisted_dates_match_canonical": true,
+  "recipe": "apps/backend/.venv/bin/python apps/backend/scripts/run_j11_iter17_live_preboot_guard_verification.py --evidence-dir runs/goal-market-compass-iter-18",
+  "scanner_run_count_after": 3117,
+  "scanner_run_count_before": 3117,
+  "zero_scanner_runs_created_by_this_verification": true,
+  "zero_write_proof": {
+    "mtime_unchanged": true,
+    "size_unchanged": true,
+    "wal_unchanged": true
+  }
+}

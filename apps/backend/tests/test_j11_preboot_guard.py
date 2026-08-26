@@ -509,3 +509,213 @@ def test_iter17_table_absent_evaluates_cleanly_as_unblocked():
     with Session(eng) as session:
         result = guard.evaluate_boundary_for_date(session, TEST_DATE)
     assert result == {"blocked": False, "boundary_name": None, "reason": None, "ambiguous": False}
+
+
+# ==========================================================================================================
+# goal-market-compass iter-18 -- TC-1 through TC-4: the `evaluate_boundary_for_date_fail_closed` wrapper
+# itself, then the background warm-up's TWO boot-initiated `run_scan` call sites (docs/goal.md J-11 step
+# 11, "OWNER RULING -- J-11 exact maintenance-boundary table creation and live arm AUTHORIZED",
+# implementation requirement 7: "ensure every boot-initiated path capable of creating a canonical
+# ScannerRun respects the same persisted maintenance-boundary contract").
+#
+# `warmup._run_warmup`'s own cadence loop is the FIRST (named directly in the ruling). Re-deriving the
+# boot/warmup call graph (grep for every production caller of `run_scan`) surfaces a SECOND, previously
+# unguarded one: `forward_testing._backfill`'s own cadence loop, reachable in production ONLY via
+# `backfill_forward_returns(session, cfg)` -- called ONLY from `warmup._run_warmup` (verified: no other
+# production caller exists). Both are exercised below by calling the REAL production function directly
+# (`_run_warmup` / `_backfill`), never a reimplementation of either loop -- `run_scan` and (for
+# `_run_warmup`) `backfill_forward_returns`/`_warmup_dates` are monkeypatched so each test isolates the
+# guard-wiring under test from unrelated complexity (the real config's `scanner.bootstrap_dates` /
+# `walk_forward` cadence, and the scanner engine's own correctness, both covered elsewhere).
+# ==========================================================================================================
+
+
+def test_iter18_fail_closed_wrapper_passes_through_a_normal_result(engine):
+    with Session(engine) as session:
+        guard.register_boundary(session, name="b", dates=[TEST_DATE], reason="incident quarantine active")
+    with Session(engine) as session:
+        result = guard.evaluate_boundary_for_date_fail_closed(session, TEST_DATE)
+    assert result == {
+        "blocked": True, "boundary_name": "b", "reason": "incident quarantine active", "ambiguous": False,
+    }
+
+
+def test_iter18_fail_closed_wrapper_catches_an_unexpected_exception(engine, monkeypatch):
+    def _boom(_session, _one_date):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(guard, "evaluate_boundary_for_date", _boom)
+    with Session(engine) as session:
+        result = guard.evaluate_boundary_for_date_fail_closed(session, TEST_DATE)
+    assert result["blocked"] is True
+    assert result["ambiguous"] is True
+    assert result["boundary_name"] is None
+
+
+# --- warmup._run_warmup's cadence loop (the FIRST call site, named in the ruling) ------------------------
+
+
+def _mk_warmup_prog():
+    return data_manager.JobProgress(
+        job_id="test-iter18-warmup", kind=warmup_mod.WARMUP_KIND, start=TEST_DATE, end=TEST_DATE,
+    )
+
+
+def test_iter18_tc1_warmup_cadence_loop_skips_a_blocked_date_no_run_created_logs_it(engine, cfg, monkeypatch, caplog):
+    blocked_date = jm.INCIDENT_DATES[0]
+    with Session(engine) as session:
+        guard.register_j11_incident_boundary(session, active=True)
+
+    monkeypatch.setattr(warmup_mod, "_warmup_dates", lambda session, cfg: [blocked_date])
+    monkeypatch.setattr(warmup_mod, "backfill_forward_returns", lambda session, cfg: {"rows_inserted": 0})
+    calls = []
+    monkeypatch.setattr(warmup_mod, "run_scan", lambda session, asof, cfg: calls.append(asof))
+
+    import logging
+    caplog.set_level(logging.WARNING, logger="trendora.warmup")
+    prog = _mk_warmup_prog()
+    warmup_mod._run_warmup(engine, cfg, prog)
+
+    assert calls == []  # run_scan never called for the blocked date
+    with Session(engine) as session:
+        assert warmup_mod.get_run_for_date(session, blocked_date) is None  # no ScannerRun created
+    assert prog.status == "ok"  # a blocked date never aborts the whole warm-up job
+    assert any(
+        blocked_date.isoformat() in record.getMessage() and guard.J11_INCIDENT_BOUNDARY_NAME in record.getMessage()
+        for record in caplog.records
+    )
+
+
+def test_iter18_tc2_warmup_cadence_loop_writes_normally_for_a_non_blocked_date(engine, cfg, monkeypatch):
+    with Session(engine) as session:
+        guard.register_j11_incident_boundary(session, active=True)  # armed, but OTHER_DATE isn't covered
+
+    monkeypatch.setattr(warmup_mod, "_warmup_dates", lambda session, cfg: [OTHER_DATE])
+    monkeypatch.setattr(warmup_mod, "backfill_forward_returns", lambda session, cfg: {"rows_inserted": 0})
+    calls = []
+    monkeypatch.setattr(warmup_mod, "run_scan", lambda session, asof, cfg: calls.append(asof))
+
+    prog = _mk_warmup_prog()
+    warmup_mod._run_warmup(engine, cfg, prog)
+
+    assert calls == [OTHER_DATE]  # run_scan DOES fire -- unchanged from pre-iteration-18 behavior
+    assert prog.dates_done == 1
+    assert prog.snapshots_created == 1
+
+
+def test_iter18_tc3_warmup_cadence_loop_fails_closed_on_a_guard_exception_and_continues(engine, cfg, monkeypatch):
+    monkeypatch.setattr(warmup_mod, "_warmup_dates", lambda session, cfg: [TEST_DATE, OTHER_DATE])
+    monkeypatch.setattr(warmup_mod, "backfill_forward_returns", lambda session, cfg: {"rows_inserted": 0})
+
+    def _boom(_session, one_date):
+        if one_date == TEST_DATE:
+            raise RuntimeError("boom")
+        return {"blocked": False, "boundary_name": None, "reason": None, "ambiguous": False}
+
+    monkeypatch.setattr(guard, "evaluate_boundary_for_date", _boom)
+    calls = []
+    monkeypatch.setattr(warmup_mod, "run_scan", lambda session, asof, cfg: calls.append(asof))
+
+    prog = _mk_warmup_prog()
+    warmup_mod._run_warmup(engine, cfg, prog)  # must NOT raise / must NOT crash the worker thread
+
+    assert calls == [OTHER_DATE]  # TEST_DATE skipped (fail closed); the loop continues to OTHER_DATE
+    assert prog.status == "ok"
+
+
+def test_iter18_tc4_warmup_zero_boundaries_registered_is_unchanged(engine, cfg, monkeypatch):
+    """No `MaintenanceBoundary` rows at all (the common no-incident case) -- every date's `run_scan` call
+    fires and the final dates_done/snapshots_created/forward_returns_inserted figures are exactly what the
+    pre-iteration-18 unconditional loop would have produced."""
+    monkeypatch.setattr(warmup_mod, "_warmup_dates", lambda session, cfg: [TEST_DATE, OTHER_DATE])
+    monkeypatch.setattr(warmup_mod, "backfill_forward_returns", lambda session, cfg: {"rows_inserted": 7})
+    calls = []
+    monkeypatch.setattr(warmup_mod, "run_scan", lambda session, asof, cfg: calls.append(asof))
+
+    prog = _mk_warmup_prog()
+    warmup_mod._run_warmup(engine, cfg, prog)
+
+    assert calls == [TEST_DATE, OTHER_DATE]  # every date processed, in order -- unchanged
+    assert prog.dates_total == 2
+    assert prog.dates_done == 2
+    assert prog.snapshots_created == 2
+    assert prog.forward_returns_inserted == 7
+    assert prog.status == "ok"
+
+
+# --- forward_testing._backfill's cadence loop (the SECOND call site, found on re-derivation) --------------
+
+from app.engine import forward_testing as ft_mod  # noqa: E402
+
+
+def test_iter18_backfill_loop_skips_a_blocked_date_no_run_created_logs_it(engine, cfg, monkeypatch, caplog):
+    blocked_date = jm.INCIDENT_DATES[0]
+    with Session(engine) as session:
+        _seed_one_price(session)  # _backfill's own early "no price data" guard needs latest_data_date != None
+        guard.register_j11_incident_boundary(session, active=True)
+
+    monkeypatch.setattr(ft_mod, "walk_forward_asof_dates", lambda session, cfg: [blocked_date])
+    calls = []
+    monkeypatch.setattr(ft_mod, "run_scan", lambda session, asof, cfg: calls.append(asof))
+
+    import logging
+    caplog.set_level(logging.WARNING, logger="trendora.forward_testing")
+    with Session(engine) as session:
+        result = ft_mod._backfill(session, cfg)
+
+    assert calls == []  # run_scan never called for the blocked date
+    with Session(engine) as session:
+        assert warmup_mod.get_run_for_date(session, blocked_date) is None
+    assert result["rows_inserted"] == 0
+    assert any(
+        blocked_date.isoformat() in record.getMessage() and guard.J11_INCIDENT_BOUNDARY_NAME in record.getMessage()
+        for record in caplog.records
+    )
+
+
+def test_iter18_backfill_loop_writes_normally_for_a_non_blocked_date(engine, cfg, monkeypatch):
+    with Session(engine) as session:
+        _seed_one_price(session)
+        guard.register_j11_incident_boundary(session, active=True)  # armed, but OTHER_DATE isn't covered
+
+    monkeypatch.setattr(ft_mod, "walk_forward_asof_dates", lambda session, cfg: [OTHER_DATE])
+    calls = []
+    monkeypatch.setattr(ft_mod, "run_scan", lambda session, asof, cfg: calls.append(asof))
+
+    with Session(engine) as session:
+        ft_mod._backfill(session, cfg)
+
+    assert calls == [OTHER_DATE]
+
+
+def test_iter18_backfill_loop_fails_closed_on_a_guard_exception_and_continues(engine, cfg, monkeypatch):
+    with Session(engine) as session:
+        _seed_one_price(session)
+    monkeypatch.setattr(ft_mod, "walk_forward_asof_dates", lambda session, cfg: [TEST_DATE, OTHER_DATE])
+
+    def _boom(_session, one_date):
+        if one_date == TEST_DATE:
+            raise RuntimeError("boom")
+        return {"blocked": False, "boundary_name": None, "reason": None, "ambiguous": False}
+
+    monkeypatch.setattr(guard, "evaluate_boundary_for_date", _boom)
+    calls = []
+    monkeypatch.setattr(ft_mod, "run_scan", lambda session, asof, cfg: calls.append(asof))
+
+    with Session(engine) as session:
+        ft_mod._backfill(session, cfg)  # must NOT raise
+
+    assert calls == [OTHER_DATE]  # TEST_DATE skipped (fail closed); OTHER_DATE still processed
+
+
+def test_iter18_backfill_loop_zero_boundaries_registered_is_unchanged(engine, cfg, monkeypatch):
+    with Session(engine) as session:
+        _seed_one_price(session)
+    monkeypatch.setattr(ft_mod, "walk_forward_asof_dates", lambda session, cfg: [TEST_DATE, OTHER_DATE])
+    calls = []
+    monkeypatch.setattr(ft_mod, "run_scan", lambda session, asof, cfg: calls.append(asof))
+
+    with Session(engine) as session:
+        ft_mod._backfill(session, cfg)
+
+    assert calls == [TEST_DATE, OTHER_DATE]  # every date processed -- unchanged from pre-iteration-18

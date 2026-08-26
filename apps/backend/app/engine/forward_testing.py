@@ -50,6 +50,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from app.config import Config, get_config
+from app.engine import j11_preboot_guard
 from app.engine.prices import bars_after, bars_asof, close_on, latest_data_date
 from app.engine.scanner import run_scan
 from app.engine.setups import ALL_STATUSES
@@ -538,8 +539,23 @@ def _backfill(session: Session, cfg: Config) -> dict:
 
     # (1)+(2): ensure a persisted immutable snapshot for every cadence as-of date. run_scan is
     # idempotent and recomputes nothing — the snapshot is the canonical bucket/setup/sector source.
+    #
+    # goal-market-compass iter-18 (J-11 step 11 ruling requirement 7): `_backfill` is reachable ONLY
+    # via `backfill_forward_returns`, which in production is called ONLY from
+    # `warmup._run_warmup` — i.e. this loop is a SECOND boot-initiated `run_scan` call site distinct
+    # from `_run_warmup`'s own cadence loop (their two date sets are independently derived and need not
+    # be identical), and it was not previously guarded. Same fail-closed check, same skip-and-continue
+    # behavior, same true no-op when no boundary is registered.
     asof_dates = walk_forward_asof_dates(session, cfg)
     for asof in asof_dates:
+        boundary = j11_preboot_guard.evaluate_boundary_for_date_fail_closed(session, asof)
+        if boundary["blocked"]:
+            logger.warning(
+                "walk-forward backfill: skipping canonical snapshot write for %s -- blocked by an "
+                "ACTIVE maintenance boundary %r: %s. No ScannerRun was created for this date.",
+                asof, boundary.get("boundary_name"), boundary.get("reason"),
+            )
+            continue
         run_scan(session, asof, cfg)
 
     # Idempotency: only INSERT (run, symbol, horizon) keys that do not already exist. iter-47 (J-105):
