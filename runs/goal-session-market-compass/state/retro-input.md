@@ -8,8 +8,8 @@ scripts/automation/lib/retro_collect.sh — no model wrote this. Counters marked
 
 - **Terminal status:** STALLED
 - **Final verdict:** STALLED
-- **Iterations used:** 18
-- **Halted at (UTC):** 2026-08-25T21:58:18.559921Z
+- **Iterations used:** 19
+- **Halted at (UTC):** 2026-08-26T01:04:01.107995Z
 
 ## Verdict sequence
 
@@ -33,6 +33,7 @@ iter 14: STALLED
 iter 15: STALLED
 iter 16: STALLED
 iter 17: STALLED
+iter 18: STALLED
 ```
 
 ## Agent economics
@@ -385,25 +386,51 @@ Per-step wall breakdown (analyze_telemetry.py --wall):
       pump-wait                  0.9m
       OVER BUDGET at qa-loop: 4133s > 3600s (mode=trim)
       unattributed (glue)        0.1m  (wall − agents(active) − quota)
-  session: 17 completed iteration(s), mean wall 129.2m
-      total reviewer                   990.5m
-      total developer                  939.7m
-      total orchestrator               446.6m
-      total goal-decomposer            345.1m
-      total goal-evaluator             279.3m
-      total auditor                    251.0m
-      total coherence-auditor          148.7m
-      total iteration-summarizer       145.8m
+  goal-market-compass-iter-18  depth=lean  verdict=?  wall=?  (incomplete/interrupted attempt)
+      goal-decomposer             17.3m  calls=1
+      [engine] showcase-join       0.0m  (contains agent time above)
+      pump-wait                  0.3m
+  goal-market-compass-iter-18  depth=full  verdict=?  wall=?  (incomplete/interrupted attempt)
+      developer                   73.0m  calls=1
+      orchestrator                 8.7m  calls=1
+      reviewer                     0.0m  calls=1  failures=1
+      [engine] full-pipeline      81.7m  (contains agent time above)
+      [engine] showcase-join       0.0m  (contains agent time above)
+      (resume-skipped: goal-decomposer)
+      pump-wait                  1.4m
+  goal-market-compass-iter-18  depth=full  verdict=STALLED  wall=66.8m
+      auditor                     15.2m  calls=1
+      goal-evaluator              14.5m  calls=1
+      ui-test-designer            11.6m  calls=1
+      reviewer                    11.3m  calls=1
+      iteration-summarizer         7.2m  calls=1
+      qa                           3.1m  calls=1
+      coherence-auditor            2.8m  calls=1
+      readme-maintainer            0.9m  calls=1
+      [engine] full-pipeline      41.4m  (contains agent time above)
+      [engine] showcase-join       0.0m  (contains agent time above)
+      (resume-skipped: goal-decomposer)
+      pump-wait                  0.4m
+      unattributed (glue)        0.1m  (wall − agents(active) − quota)
+  session: 18 completed iteration(s), mean wall 125.7m
+      total developer                 1012.7m
+      total reviewer                  1001.8m
+      total orchestrator               455.2m
+      total goal-decomposer            362.4m
+      total goal-evaluator             293.8m
+      total auditor                    266.2m
+      total iteration-summarizer       152.9m
+      total coherence-auditor          151.5m
       total browser-qa-agent           145.4m
-      total qa                         135.6m
-      total ui-test-designer            90.4m
+      total qa                         138.7m
+      total ui-test-designer           102.0m
       total ui-impact-analyst           39.1m
       total demo-narrator               21.3m
-      total readme-maintainer           10.1m
+      total readme-maintainer           11.1m
       total ux-regression-reviewer       7.2m
       total browser-qa-replay            6.5m
-      total AWAITING_PUMP paused gaps: 501.7m
-      halts: AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, STALLED, REGRESSION_HALT, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED
+      total AWAITING_PUMP paused gaps: 503.0m
+      halts: AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, STALLED, REGRESSION_HALT, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, AWAITING_PUMP, STALLED
 ```
 
 ## Friction counters
@@ -417,26 +444,26 @@ Per-step wall breakdown (analyze_telemetry.py --wall):
 Last 20 lines of state/lessons.md:
 
 ```
-stated what it means. When a spec's expected value for a safety probe is the UNSAFE value, the test case
-must require the artifact to state the consequence in prose, not just record the boolean.
-**Applies to:** any iteration whose spec asserts an expected value for a probe of a KNOWN-BROKEN or
-quarantined condition — especially `runs/**/j11-*verification*.json`-style evidence and any future
-"confirm the guard is not armed / confirm X is still absent" check.
+fourth (data_manager)" when `grep -rn "run_scan(" app/` returns six. The generalizable rule: enumerate
+writers with a grep over the whole package and classify each one, never from a hand-built call graph;
+and when a safety property is scoped by TRIGGER ("boot-initiated"), the artifact must name the triggers
+it does NOT cover, because the reader will hear "the writes are blocked".
+**Applies to:** any iteration adding a guard/quarantine/kill-switch scoped by trigger class; any
+iteration that would lift maintenance isolation or re-enable browser QA on this project; anything
+touching `warmup.py`, `forward_testing.py`, `scanner.py`, `snapshot_serving.py` or `data_manager.py`.
 
-## iter-17 — 2026-08-25T21:05:00Z
+## iter-18 — 2026-08-26T00:55:00Z
 
 **Verdict:** STALLED
-**Lesson:** A cross-check whose inputs are both derived from the correction being checked cannot fail. TC-13
-asked for an A/B dollar-volume ratio "within relative tolerance of 1.0", but
-`ratio = (close_a·volume_a)/((close_a/bf)·volume_b)` cancels `close_a` entirely and reduces to
-`volume_a·bf/volume_b` — and `volume_a` was DEFINED by iter-16 as `round(provider_volume/bf)`. I confirmed
-`round(provider_volume/bf)` equals the stored volume exactly on both dates, so the ratio was algebraically
-pinned to ≈1.0 before anyone ran it, and it reproduces iter-16's own `dollar_volume_ratio_after` digit for
-digit. Before specifying a numeric tolerance check as evidence, substitute the definitions of its inputs and
-confirm the quantity can actually come out wrong.
-**Applies to:** any future J-11/AVB Stage-D readiness or verification spec proposing a ratio/tolerance
-assertion over values in `j11_avb_diagnostic.py` / `j11_avb_correction.py`, and any "independent
-cross-check" claim in `runs/goal-market-compass-iter-*/j11-*.json`.
+**Lesson:** Arming the quarantine silently disabled a whole subsystem: `ensure_latest_snapshot` returns
+`None` for a blocked latest date, and `main.py:113` starts the background warm-up only `if latest is not
+None`, so no background warm-up runs at all and readiness reports `awaiting_snapshot` instead of `ready`.
+Safe and fail-closed, but it means the two call sites this iteration guarded are currently unreachable on
+boot — the delivered guards are defence-in-depth for a future state, not today's protection. Ask of every
+new blocking guard: what ELSE keys off the value this guard now suppresses?
+**Applies to:** any future iteration that boots the backend or resumes browser QA on this project (the
+different readiness badge and the 2026-07-23 "latest" are EXPECTED, not a regression); any change to
+`warmup.py`/`main.py` boot sequencing or `readiness.py`.
 ```
 
 ## Halt context
@@ -447,6 +474,6 @@ session.json halt-relevant fields:
 {
   "status": "STALLED",
   "last_verdict": "STALLED",
-  "parked_wip_sha": "7be72b3a"
+  "parked_wip_sha": "0c445647"
 }
 ```
