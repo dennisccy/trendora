@@ -382,3 +382,38 @@ mutation accounting above all, and any future maintenance-isolation iteration. R
 size + WAL size at the true start and end, and treat a purpose-built fingerprint pair as corroboration,
 never as the primary instrument.
 
+
+<!-- condense.sh 2026-08-26T08:55:13Z: moved 2 entries (keep-iters=5) -->
+
+## iter-13 — 2026-08-24T19:35:00Z
+
+**Verdict:** STALLED
+**Lesson:** A "frozen" identity is only frozen against the world, not against yourself: iteration 10
+froze `engine_identity=6261ca17…`, then iterations 11 and 12 edited `apps/backend/app/engine/compass.py`
+— one of `config.yaml`'s three `provenance.engine_files` — and iteration 13's re-derivation returned
+`53d2ffd1…` (I recomputed it independently). The repair's own safety fixes silently invalidated the
+repair's own baseline. Worse, the preflight comparison gate (`app/engine/j11_stage_c.py:264-334`)
+CAPTURED both identities and never COMPARED either — 11 checks, none touching
+`stage_c_attempt_identity` — so the drift was invisible to the developer, reviewer and QA and only the
+auditor caught it. Capturing an invariant's value is not checking it, and a gate that cannot compare
+(iteration 12's certified artifact records no identity at all) is a gate that always passes.
+**Applies to:** any iteration that freezes an identity/fingerprint for a multi-iteration attempt —
+especially J-11 Stage D, whose whole correctness claim is "all 11 rebuilt runs share ONE frozen
+identity"; and generally to any preflight/gate artifact: for every field captured, state whether it is
+compared, and against what.
+
+## iter-13 — 2026-08-24T19:36:00Z
+
+**Verdict:** STALLED
+**Lesson:** A bounded delete's strongest proof is not the count that moved but the counts that did NOT.
+Against iteration 12's COMMITTED baseline, exactly 5 of 24 tables moved and by exactly the pre-declared
+amounts, 19 were identical, no table appeared or vanished, and residue for the deleted run ids was 0 in
+all four child tables — and because Stage C issues no INSERT on any path (grep-verified: no INSERT,
+UPDATE or `session.add` in the new module or script), delta == |enumerated set| AND residue == 0 proves
+the removed set is exactly the intended set. A pre/post count pair alone could have masked a swap; this
+combination cannot. Cheapest instrument in the whole check: the db file's mtime at the TRUE process
+start equalled the prior iteration's own recorded "after" mtime, and the file still carries the
+true-end mtime now — one `stat` proving the single authorized write was the only write.
+**Applies to:** any future destructive maintenance iteration (J-11 Stages D/E/F), and any "we wrote
+nothing" or "we wrote only X" claim on `trendora.db`.
+

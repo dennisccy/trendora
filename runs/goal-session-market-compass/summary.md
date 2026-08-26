@@ -2,10 +2,10 @@
 
 **Final verdict:** STALLED
 **Total iterations:** 19
-**Wall time (seconds):** 4016
+**Wall time (seconds):** 5
 **Quota pauses:** 0
 **Started:** 2026-08-19T21:31:52.886915Z
-**Finished:** 2026-08-26T01:04:01.107995Z
+**Finished:** 2026-08-26T08:55:19.565848Z
 
 ## Branch
 
@@ -418,5 +418,5 @@ See `runs/goal-session-market-compass/telemetry.jsonl` for the structured event 
       total ux-regression-reviewer       7.2m
       total browser-qa-replay            6.5m
       total AWAITING_PUMP paused gaps: 503.0m
-      halts: AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, STALLED, REGRESSION_HALT, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, AWAITING_PUMP, STALLED
+      halts: AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, STALLED, REGRESSION_HALT, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, AWAITING_PUMP, STALLED, STALLED
 ```

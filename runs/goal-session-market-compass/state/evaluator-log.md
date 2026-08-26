@@ -1391,3 +1391,111 @@ that once let a forbidden test lane run is still unfixed in `scripts/automation/
 have avoided it with the maintenance-isolation contract rather than curing it; and `goal_gate.py`'s
 duplicate-journey-heading defect is still unfixed and must be closed before any GOAL_ACHIEVED
 certification.
+
+## Iteration 19 — goal-market-compass-iter-19
+
+**Date:** 2026-08-26T15:40:00Z
+**Verdict:** CONTINUE
+**Depth dispatched:** full (`runs/goal-session-market-compass/iter-19/depth-dispatched` reads `full`,
+matching the spec's own `Depth: full` line — the silent full→lean demotion that fired in iters 2, 6 and 8
+did NOT recur, for the eleventh iteration running, and neither did the forbidden browser/replay lane; the
+engine recorded its refusal in `iter-19/maintenance-isolation-refusals` at 2026-08-26T14:01:10Z)
+
+**Owner-facing lines:** `J-11 STAGE D AUTHORIZED: YES` · `J-11 STAGE D EXECUTED: YES` ·
+`J-11 STAGE E/F/G: NO` · `J-11 INCIDENT STATUS: NOT REPAIRED — ATTEMPT INCOMPLETE` ·
+`J-11 MAINTENANCE BOUNDARY: ACTIVE` · `J-11 LIVE PRE-BOOT GUARD: ARMED`. All confirmed by this evaluator
+against the live database, read-only, with no correction needed.
+
+**Journey deltas:**
+- Newly passing: none. Newly failing: none. **Regressed: none.**
+- **Advanced within `partial`: J-11** "Incident-bounded clean regeneration of derived state" — this
+  iteration's sole target. Stage D was executed live and completely; Stages E/F/G untouched. Re-stamped
+  `last_verified_iter` to iter-19 and `spec_hash` to `01e69865…` (was `3fff95f1…` — the owner's
+  2026-08-26 "Stage D through Stage G recovery execution AUTHORIZED" ruling, commit `5fe72f5c`, changed
+  J-11's text; no `journeys-changed.md` fired because J-11 is `partial`, not `passing`, and I
+  re-verified it against the current text anyway). All ten other journeys' hashes are byte-identical to
+  the recorded ones on my own `goal_gate.py hash-journeys` run.
+- Carried, NOT re-verified (maintenance isolation — browser QA and the replay lane were forbidden by
+  contract, so every journey keeps its prior recorded status): J-01, J-04, J-10 stay `passing`; J-02,
+  J-03, J-05, J-06, J-09 stay `partial`; J-07, J-08 stay `failing`. Spot-checks: J-01's iter-4
+  screenshot (GRMN carries a real stored sector label); J-10 re-derived read-only (585 `daily_prices`
+  rows on each of 2026-08-11/12, AVB volumes 554757 / 3706010 intact, whole-table price fingerprint
+  reproduces iter-16/17's `80441b37…`). Both consistent. A third, J-04's screenshot, is confirmed a
+  CAPTURE DEFECT for the second iteration running — `evidence_makeup: true` now set (methodology A.7);
+  behaviour proven by the iter-4 results row, only the framing is wrong. Status unchanged.
+- Anti-goal violations: **NONE new.** Ledger unchanged at **7 total, 0 unresolved.** AG-9, AG-10, AG-12
+  and AG-17 were the four at real risk and all four HELD, each verified by my own greps, code reading and
+  read-only database queries.
+- Coherence: COHERENCE-PASS. Deterministic scan: CLEAN. Review: PASS (one NOTE, since resolved).
+  QA: PASS. Audit: PASS_WITH_GAPS (B1 IMPORTANT; B2/B3 gaps; B4/T1-T4/P1 observations; P2 resolved).
+
+**Reasoning:** The one big job the owner allowed was done, and it worked — and I did not take that from
+anyone's write-up. I opened the 8.4 GB database read-only and measured everything myself. Eleven damaged
+days now hold results again: one new day-record each, ids 3148 to 3158, written between 10:52:55 and
+10:53:02 in the morning, all carrying the same stamp, each with roughly 540 company rows, 31 sector rows
+and 11 theme rows. The strongest thing I can say about the safety of this write is that I proved it
+across iterations rather than inside one: I recomputed the whole-database table sweep myself and compared
+it with the sweep recorded at the END of the previous iteration. Exactly four tables differ, and they are
+the four the owner authorised; no table appeared or disappeared; the other twenty-one are identical. The
+increases reconcile to the last row — eleven day-records, 5,942 company rows, 341 sector rows, 121 theme
+rows. I then closed the one hole the independent auditor left open in that method: their sweep can only
+see rows appearing and disappearing, not a value quietly edited in place, so for the table where that
+would matter most I compared all twenty-four saved briefings field by field across all twenty-eight
+columns against the copy certified three iterations ago. They are identical. Raw prices are identical
+too, by a content figure I recomputed live that reproduces the earlier record exactly. Both evidence
+ledgers match by hash. The stamp was genuinely recomputed and not copied: hashing the three source files
+on disk plus the recorded settings reproduces it exactly, and the history shows those files last changed
+seven iterations ago, so the fact that it equals earlier readings is forced arithmetic. And the rebuilt
+numbers are faithful, which I checked in a way nobody else did: I compared the rebuilt 12 August board
+against the screenshot taken BEFORE the accident, at iteration 4. Same company in second place, same
+sector, same headline score to two decimals, same three grades, same number of rows; the two small
+figures that moved shifted by five and eight hundredths, exactly the size of the authorised volume
+correction. Three findings are mine alone. FIRST, the app's idea of "today" has moved: it used to fall
+back to 23 July, and now lands on the rebuilt 12 August, which has no forward-looking figures yet — so an
+accidental start costs more than it did. SECOND, and new, there is now a fresh way to create one of the
+forbidden saved briefings: with 12 August the newest day, the seven damaged days without a briefing count
+as historical, and one ordinary page request would mint one automatically. That is the exact trap the
+plan's own acceptance section names, and only the app being off prevents it. THIRD, the rebuilt days
+carry complete sector labels while every neighbouring day is missing 422 of 540 — correct behaviour, but
+it means the eleven rebuilt days cannot be compared like-for-like with their neighbours in any
+sector-level chart, which the final verification step must handle. Why CONTINUE after six halts in a row?
+Because for the first time there is approved work that no person has to unlock: the owner approved
+Stages D, E, F and G in one written ruling, and the ruling's "stop" instruction is attached to a failure,
+a refusal or an unmet gate — none of which happened. Demanding another approval would invent a gate the
+owner did not write. I record openly that this is a judgement call and that a stricter reading of the same
+paragraph would stop here; one owner line settles it either way, and nothing is lost. Why not REGRESSION?
+Nothing that worked stopped working, no journey was tested so none could fail, not one value outside the
+four authorised tables moved, and the ledger gained no entry. Why not ESCALATE? This run already used the
+full depth the owner's launch conditions require for the whole repair, and full depth is what produced
+these findings. One process fact: this is the tenth iteration running where a later lane found what the
+earlier ones missed — and the second in a row where the thing missed was missed by the independent
+auditor too, and found here.
+
+**Next-step recommendation:** DO THE NEXT STEP OF THE REPAIR — Stage E, the forward-looking figures. The
+owner already approved it in writing on 2026-08-26, and nothing failed, so no new permission is needed.
+The eleven rebuilt days hold no forward-looking figures at all (I checked: zero rows). Stage E fills the
+gaps the accident caused without overwriting anything that survived; then Stage F refreshes the saved
+answers; only then may Stage G decide whether the damage is truly repaired. THREE THINGS RIDE ALONG.
+(1) KEEP THE APP OFF and keep browser testing off — the rule already says so until the last step passes,
+and I confirmed two specific reasons: a page request for a date with no stored day would create a twelfth
+day carrying the same stamp as the eleven rebuilt ones, and a page request for one of the seven damaged
+days without a saved briefing would create the very briefing the plan forbids. (2) SETTLE THE STAMP
+QUESTION BEFORE THE FINAL STEP IS DESIGNED — its approval rule says "all eleven rebuilt days carry the
+single fresh stamp", which is true today but is simply the current engine's stamp, so any future ordinary
+day would carry it too; the final step should check the exact recorded list instead — run ids 3148 to
+3158, created between 2026-08-26 10:52:55.552946 and 10:53:02.010362 UTC — and additionally confirm no
+twelfth day carries that stamp. This blocks designing Stage G, not starting Stage E. (3) WATCH MEMORY:
+Stage E touches a 6.8-million-row table on a machine that froze once from memory pressure; use the
+pre-filled cache with the known symbol list, or a capped launcher. SMALLER ITEMS, none of which changes
+the above: re-capture J-04's screenshot showing a candidate's why and why-not the first time browser
+testing runs again (the behaviour is proven; only the picture is wrong); tighten the four test
+observations the auditor listed; and note that no quality test plan file was produced this iteration. ONE
+MECHANICAL ITEM: this iteration's four new backend files and its whole evidence folder are still
+untracked in git at the time of scoring — confirm they reach version control. FIVE OLDER OWNER QUESTIONS
+remain open and non-blocking: whether 3.44 GB is acceptable for J-09; J-06's "underlying run unavailable"
+wording; the rewording of J-01's first two test steps; whether an empty "next-session focus" is
+acceptable; and whether MNST joins the recovery list. TWO STANDING FRAMEWORK NOTES: the defect that once
+let a forbidden test lane run is still unfixed in `scripts/automation/` — eleven iterations running have
+avoided it with the maintenance-isolation contract rather than curing it; and `goal_gate.py`'s
+duplicate-journey-heading defect is still unfixed and must be closed before any GOAL_ACHIEVED
+certification.

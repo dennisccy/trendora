@@ -1,0 +1,363 @@
+{
+  "completed": true,
+  "generated_at": "2026-08-26T10:53:02.289647+00:00",
+  "incident_dates": [
+    "2026-05-12",
+    "2026-05-13",
+    "2026-07-10",
+    "2026-07-13",
+    "2026-07-24",
+    "2026-07-27",
+    "2026-08-03",
+    "2026-08-05",
+    "2026-08-10",
+    "2026-08-11",
+    "2026-08-12"
+  ],
+  "new_run_ids": [
+    3148,
+    3149,
+    3150,
+    3151,
+    3152,
+    3153,
+    3154,
+    3155,
+    3156,
+    3157,
+    3158
+  ],
+  "per_date_results": [
+    {
+      "check_b": {
+        "check": "before_date",
+        "checked_at": "2026-08-26T10:52:46.194710+00:00",
+        "current_engine_identity": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+        "date": "2026-05-12",
+        "frozen_engine_identity": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+        "in_scope": true,
+        "ok": true
+      },
+      "check_c": {
+        "check": "after_persist",
+        "checked_at": "2026-08-26T10:52:55.745961+00:00",
+        "date": "2026-05-12",
+        "frozen_engine_identity": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+        "in_scope": true,
+        "ok": true,
+        "persisted_engine_identity": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+        "run_id": 3148
+      },
+      "date": "2026-05-12",
+      "pre_check": {
+        "already_exists": false,
+        "date": "2026-05-12",
+        "existing_engine_identity": null,
+        "existing_run_id": null
+      },
+      "run_id": 3148,
+      "stopped": false
+    },
+    {
+      "check_b": {
+        "check": "before_date",
+        "checked_at": "2026-08-26T10:52:55.746848+00:00",
+        "current_engine_identity": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+        "date": "2026-05-13",
+        "frozen_engine_identity": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+        "in_scope": true,
+        "ok": true
+      },
+      "check_c": {
+        "check": "after_persist",
+        "checked_at": "2026-08-26T10:52:56.380508+00:00",
+        "date": "2026-05-13",
+        "frozen_engine_identity": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+        "in_scope": true,
+        "ok": true,
+        "persisted_engine_identity": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+        "run_id": 3149
+      },
+      "date": "2026-05-13",
+      "pre_check": {
+        "already_exists": false,
+        "date": "2026-05-13",
+        "existing_engine_identity": null,
+        "existing_run_id": null
+      },
+      "run_id": 3149,
+      "stopped": false
+    },
+    {
+      "check_b": {
+        "check": "before_date",
+        "checked_at": "2026-08-26T10:52:56.381422+00:00",
+        "current_engine_identity": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+        "date": "2026-07-10",
+        "frozen_engine_identity": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+        "in_scope": true,
+        "ok": true
+      },
+      "check_c": {
+        "check": "after_persist",
+        "checked_at": "2026-08-26T10:52:57.020991+00:00",
+        "date": "2026-07-10",
+        "frozen_engine_identity": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+        "in_scope": true,
+        "ok": true,
+        "persisted_engine_identity": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+        "run_id": 3150
+      },
+      "date": "2026-07-10",
+      "pre_check": {
+        "already_exists": false,
+        "date": "2026-07-10",
+        "existing_engine_identity": null,
+        "existing_run_id": null
+      },
+      "run_id": 3150,
+      "stopped": false
+    },
+    {
+      "check_b": {
+        "check": "before_date",
+        "checked_at": "2026-08-26T10:52:57.021827+00:00",
+        "current_engine_identity": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+        "date": "2026-07-13",
+        "frozen_engine_identity": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+        "in_scope": true,
+        "ok": true
+      },
+      "check_c": {
+        "check": "after_persist",
+        "checked_at": "2026-08-26T10:52:57.643245+00:00",
+        "date": "2026-07-13",
+        "frozen_engine_identity": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+        "in_scope": true,
+        "ok": true,
+        "persisted_engine_identity": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+        "run_id": 3151
+      },
+      "date": "2026-07-13",
+      "pre_check": {
+        "already_exists": false,
+        "date": "2026-07-13",
+        "existing_engine_identity": null,
+        "existing_run_id": null
+      },
+      "run_id": 3151,
+      "stopped": false
+    },
+    {
+      "check_b": {
+        "check": "before_date",
+        "checked_at": "2026-08-26T10:52:57.644052+00:00",
+        "current_engine_identity": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+        "date": "2026-07-24",
+        "frozen_engine_identity": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+        "in_scope": true,
+        "ok": true
+      },
+      "check_c": {
+        "check": "after_persist",
+        "checked_at": "2026-08-26T10:52:58.287410+00:00",
+        "date": "2026-07-24",
+        "frozen_engine_identity": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+        "in_scope": true,
+        "ok": true,
+        "persisted_engine_identity": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+        "run_id": 3152
+      },
+      "date": "2026-07-24",
+      "pre_check": {
+        "already_exists": false,
+        "date": "2026-07-24",
+        "existing_engine_identity": null,
+        "existing_run_id": null
+      },
+      "run_id": 3152,
+      "stopped": false
+    },
+    {
+      "check_b": {
+        "check": "before_date",
+        "checked_at": "2026-08-26T10:52:58.288265+00:00",
+        "current_engine_identity": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+        "date": "2026-07-27",
+        "frozen_engine_identity": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+        "in_scope": true,
+        "ok": true
+      },
+      "check_c": {
+        "check": "after_persist",
+        "checked_at": "2026-08-26T10:52:58.931091+00:00",
+        "date": "2026-07-27",
+        "frozen_engine_identity": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+        "in_scope": true,
+        "ok": true,
+        "persisted_engine_identity": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+        "run_id": 3153
+      },
+      "date": "2026-07-27",
+      "pre_check": {
+        "already_exists": false,
+        "date": "2026-07-27",
+        "existing_engine_identity": null,
+        "existing_run_id": null
+      },
+      "run_id": 3153,
+      "stopped": false
+    },
+    {
+      "check_b": {
+        "check": "before_date",
+        "checked_at": "2026-08-26T10:52:58.931879+00:00",
+        "current_engine_identity": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+        "date": "2026-08-03",
+        "frozen_engine_identity": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+        "in_scope": true,
+        "ok": true
+      },
+      "check_c": {
+        "check": "after_persist",
+        "checked_at": "2026-08-26T10:52:59.570707+00:00",
+        "date": "2026-08-03",
+        "frozen_engine_identity": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+        "in_scope": true,
+        "ok": true,
+        "persisted_engine_identity": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+        "run_id": 3154
+      },
+      "date": "2026-08-03",
+      "pre_check": {
+        "already_exists": false,
+        "date": "2026-08-03",
+        "existing_engine_identity": null,
+        "existing_run_id": null
+      },
+      "run_id": 3154,
+      "stopped": false
+    },
+    {
+      "check_b": {
+        "check": "before_date",
+        "checked_at": "2026-08-26T10:52:59.571513+00:00",
+        "current_engine_identity": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+        "date": "2026-08-05",
+        "frozen_engine_identity": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+        "in_scope": true,
+        "ok": true
+      },
+      "check_c": {
+        "check": "after_persist",
+        "checked_at": "2026-08-26T10:53:00.207127+00:00",
+        "date": "2026-08-05",
+        "frozen_engine_identity": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+        "in_scope": true,
+        "ok": true,
+        "persisted_engine_identity": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+        "run_id": 3155
+      },
+      "date": "2026-08-05",
+      "pre_check": {
+        "already_exists": false,
+        "date": "2026-08-05",
+        "existing_engine_identity": null,
+        "existing_run_id": null
+      },
+      "run_id": 3155,
+      "stopped": false
+    },
+    {
+      "check_b": {
+        "check": "before_date",
+        "checked_at": "2026-08-26T10:53:00.207917+00:00",
+        "current_engine_identity": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+        "date": "2026-08-10",
+        "frozen_engine_identity": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+        "in_scope": true,
+        "ok": true
+      },
+      "check_c": {
+        "check": "after_persist",
+        "checked_at": "2026-08-26T10:53:00.849492+00:00",
+        "date": "2026-08-10",
+        "frozen_engine_identity": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+        "in_scope": true,
+        "ok": true,
+        "persisted_engine_identity": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+        "run_id": 3156
+      },
+      "date": "2026-08-10",
+      "pre_check": {
+        "already_exists": false,
+        "date": "2026-08-10",
+        "existing_engine_identity": null,
+        "existing_run_id": null
+      },
+      "run_id": 3156,
+      "stopped": false
+    },
+    {
+      "check_b": {
+        "check": "before_date",
+        "checked_at": "2026-08-26T10:53:00.850297+00:00",
+        "current_engine_identity": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+        "date": "2026-08-11",
+        "frozen_engine_identity": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+        "in_scope": true,
+        "ok": true
+      },
+      "check_c": {
+        "check": "after_persist",
+        "checked_at": "2026-08-26T10:53:01.486599+00:00",
+        "date": "2026-08-11",
+        "frozen_engine_identity": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+        "in_scope": true,
+        "ok": true,
+        "persisted_engine_identity": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+        "run_id": 3157
+      },
+      "date": "2026-08-11",
+      "pre_check": {
+        "already_exists": false,
+        "date": "2026-08-11",
+        "existing_engine_identity": null,
+        "existing_run_id": null
+      },
+      "run_id": 3157,
+      "stopped": false
+    },
+    {
+      "check_b": {
+        "check": "before_date",
+        "checked_at": "2026-08-26T10:53:01.487374+00:00",
+        "current_engine_identity": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+        "date": "2026-08-12",
+        "frozen_engine_identity": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+        "in_scope": true,
+        "ok": true
+      },
+      "check_c": {
+        "check": "after_persist",
+        "checked_at": "2026-08-26T10:53:02.110985+00:00",
+        "date": "2026-08-12",
+        "frozen_engine_identity": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+        "in_scope": true,
+        "ok": true,
+        "persisted_engine_identity": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+        "run_id": 3158
+      },
+      "date": "2026-08-12",
+      "pre_check": {
+        "already_exists": false,
+        "date": "2026-08-12",
+        "existing_engine_identity": null,
+        "existing_run_id": null
+      },
+      "run_id": 3158,
+      "stopped": false
+    }
+  ],
+  "stopped_at_date": null
+}

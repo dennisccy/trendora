@@ -1,0 +1,19 @@
+{
+  "any_historical_match": true,
+  "comparisons": {
+    "iteration_10": {
+      "historical_value": "6261ca1791b59771f3b6b6829142e2cf7c0f33d0fa4ea00a2f1e2c8d1d6b3a6e",
+      "matches_fresh": false
+    },
+    "iteration_14": {
+      "historical_value": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+      "matches_fresh": true
+    },
+    "iteration_16_17_18_readiness": {
+      "historical_value": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+      "matches_fresh": true
+    }
+  },
+  "fresh_engine_identity": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+  "generated_at": "2026-08-26T10:52:44.276075+00:00"
+}

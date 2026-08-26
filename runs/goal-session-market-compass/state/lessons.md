@@ -121,35 +121,13 @@ mutation accounting above all, and any future maintenance-isolation iteration. R
 size + WAL size at the true start and end, and treat a purpose-built fingerprint pair as corroboration,
 never as the primary instrument.
 
-## iter-13 — 2026-08-24T19:35:00Z
-
-**Verdict:** STALLED
-**Lesson:** A "frozen" identity is only frozen against the world, not against yourself: iteration 10
-froze `engine_identity=6261ca17…`, then iterations 11 and 12 edited `apps/backend/app/engine/compass.py`
-— one of `config.yaml`'s three `provenance.engine_files` — and iteration 13's re-derivation returned
-`53d2ffd1…` (I recomputed it independently). The repair's own safety fixes silently invalidated the
-repair's own baseline. Worse, the preflight comparison gate (`app/engine/j11_stage_c.py:264-334`)
-CAPTURED both identities and never COMPARED either — 11 checks, none touching
-`stage_c_attempt_identity` — so the drift was invisible to the developer, reviewer and QA and only the
-auditor caught it. Capturing an invariant's value is not checking it, and a gate that cannot compare
-(iteration 12's certified artifact records no identity at all) is a gate that always passes.
+## iter-13 — 2026-08-24T19:35:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration that freezes an identity/fingerprint for a multi-iteration attempt —
 especially J-11 Stage D, whose whole correctness claim is "all 11 rebuilt runs share ONE frozen
 identity"; and generally to any preflight/gate artifact: for every field captured, state whether it is
 compared, and against what.
 
-## iter-13 — 2026-08-24T19:36:00Z
-
-**Verdict:** STALLED
-**Lesson:** A bounded delete's strongest proof is not the count that moved but the counts that did NOT.
-Against iteration 12's COMMITTED baseline, exactly 5 of 24 tables moved and by exactly the pre-declared
-amounts, 19 were identical, no table appeared or vanished, and residue for the deleted run ids was 0 in
-all four child tables — and because Stage C issues no INSERT on any path (grep-verified: no INSERT,
-UPDATE or `session.add` in the new module or script), delta == |enumerated set| AND residue == 0 proves
-the removed set is exactly the intended set. A pre/post count pair alone could have masked a swap; this
-combination cannot. Cheapest instrument in the whole check: the db file's mtime at the TRUE process
-start equalled the prior iteration's own recorded "after" mtime, and the file still carries the
-true-end mtime now — one `stat` proving the single authorized write was the only write.
+## iter-13 — 2026-08-24T19:36:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any future destructive maintenance iteration (J-11 Stages D/E/F), and any "we wrote
 nothing" or "we wrote only X" claim on `trendora.db`.
 
@@ -313,3 +291,34 @@ new blocking guard: what ELSE keys off the value this guard now suppresses?
 **Applies to:** any future iteration that boots the backend or resumes browser QA on this project (the
 different readiness badge and the 2026-07-23 "latest" are EXPECTED, not a regression); any change to
 `warmup.py`/`main.py` boot sequencing or `readiness.py`.
+
+## iter-19 — 2026-08-26T15:40:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** A successful destructive rebuild can make the system MORE dangerous to boot, not less, and
+the danger moves rather than disappears. Before Stage D the risk was "an `?as_of=` request mints a run on
+an empty quarantined date"; after Stage D those 11 dates are populated (so that specific accident is now
+impossible), but three NEW exposures opened that no lane reported: `as_of=None` now resolves to the
+rebuilt 2026-08-12 (zero `forward_returns`, stale caches) instead of the complete 2026-07-23; the 7
+manifest-less incident dates are now HISTORICAL, so `compass.get_or_create_manifest`
+(`compass.py:1040-1053`) would create-once-mint a forbidden manifest on any ordinary
+`GET /api/compass?as_of=<date>`; and a 12th run minted on any of the 16 runless-but-barred dates would
+carry the identical `engine_identity`, silently breaking the final stage's membership check. After any
+live rebuild, re-derive what an ordinary request would now DO — do not carry forward the previous
+iteration's exposure analysis.
+**Applies to:** any iteration executing J-11 Stage E/F/G, and any future live rebuild that changes which
+date is `max(ScannerRun.asof_date)` or populates a previously-empty date.
+
+## iter-19b — 2026-08-26T15:40:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** The strongest mutation-accounting evidence is a CROSS-ITERATION diff, not the iteration's own
+before/after pair. Recomputing `j11_maintenance.capture_full_table_sweep` live and diffing it against the
+PREVIOUS iteration's recorded end-state sweep (`iter-18/j11-iter18-full-table-sweep-after.json`) proves
+both "this iteration wrote only where authorized" AND "nothing drifted between the iterations" in one
+step — something an in-iteration pair structurally cannot show. Pair it with a real field-by-field
+content comparison on the one table whose immutability is an anti-goal (all 28 columns of
+`next_session_manifests` vs the iter-16 certified baseline), because the rowid sweep alone cannot see an
+in-place UPDATE (auditor B2). Normalize ORM-vs-sqlite serialization first (datetime `T` separator, bool
+`False` vs `0`) or the comparison false-alarms.
+**Applies to:** any evaluator or auditor scoring a live-database write iteration in this session.

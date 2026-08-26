@@ -1,0 +1,84 @@
+{
+  "attempt_id": "j11-stage-d-20260826T105244264361Z",
+  "config_subset": {
+    "compass.delta": {
+      "breadth_min_change_pts": 5.0,
+      "market_score_min_change": 5.0,
+      "max_stock_items": 10,
+      "pbear_bands": [
+        {
+          "label": "calm",
+          "min": 0.0
+        },
+        {
+          "label": "cautious",
+          "min": 0.2
+        },
+        {
+          "label": "tense",
+          "min": 0.4
+        },
+        {
+          "label": "stressed",
+          "min": 0.6
+        }
+      ],
+      "rank_move_min": 2,
+      "rule_version": "v1",
+      "stock_score_min_change": 8.0,
+      "top_k": 5,
+      "velocity_flat_band": 2.0
+    },
+    "compass.manifest": {
+      "availability_margin_seconds": 60,
+      "export_dir": "apps/backend/data/exports/next_session_manifests",
+      "schema_path": "docs/handoffs/trendora-next-session-manifest-v1.schema.json",
+      "schema_version": "v1"
+    },
+    "compass.selection": {
+      "entry_min_score": 70.0,
+      "leadership_min_score": 80.0,
+      "max_candidates": 10,
+      "risk_max_score": 60.0,
+      "rule_version": "v1",
+      "shadow": {
+        "min_score": 75.0
+      },
+      "why_not_cap": 20,
+      "why_not_floor": 75.0
+    }
+  },
+  "config_subset_hash": "10bc4504ed9f28961a6342c3306d8a8eaeceac5ec7d233645540dffb0a653614",
+  "engine_identity": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+  "execution_identity": true,
+  "frozen_at": "2026-08-26T10:52:44.264228+00:00",
+  "git_head": "5fe72f5c1e18a6fba89719d6515fecf4f87e7254",
+  "incident_dates": [
+    "2026-05-12",
+    "2026-05-13",
+    "2026-07-10",
+    "2026-07-13",
+    "2026-07-24",
+    "2026-07-27",
+    "2026-08-03",
+    "2026-08-05",
+    "2026-08-10",
+    "2026-08-11",
+    "2026-08-12"
+  ],
+  "j11_contract_hash": "61fade39478ac1c4639e5fb1a6e4e869f4d0f4e46a6ef92ac812256bd26b424a",
+  "provenance": {
+    "config_keys": [
+      "compass.selection",
+      "compass.delta",
+      "compass.manifest"
+    ],
+    "engine_files": [
+      "apps/backend/app/engine/compass.py",
+      "apps/backend/app/engine/session_delta.py",
+      "apps/backend/app/engine/engine_identity.py"
+    ]
+  },
+  "readiness_time_only": false,
+  "scope_note": "This identity applies ONLY to the 11 dates Stage D will rebuild (docs/goal.md J-11 step 12's 2026-08-24 clarification: 'Stage D begins a FRESH regeneration attempt from the successfully cleared Stage C baseline; its frozen identity is computed immediately before Stage D and applies only to the 11 rebuilt incident-date runs. Surviving historical runs retain their existing stamps.'). The 34 surviving ScannerRun rows stamped '6261ca17...' (iteration 10's earlier-attempt identity, since drifted) and the pre-stamping-era NULL-engine_identity rows are NOT members of this attempt and must never be restamped, mutated, or otherwise touched by any check in this module."
+}

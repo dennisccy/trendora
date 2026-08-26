@@ -1,0 +1,9 @@
+{
+  "avb_classification": "AVB-A",
+  "avb_ok": true,
+  "blocking_reasons": [],
+  "boundary_ok": true,
+  "generated_at": "2026-08-26T10:52:44.263451+00:00",
+  "preflight_ok": true,
+  "proceed": true
+}
