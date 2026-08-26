@@ -1746,6 +1746,161 @@ manifest artifact (it must be self-describing and self-caveating).
        execution identity during the maintenance-boundary iteration. Any future owner-authorized
        Stage D execution must freeze a **fresh** execution identity immediately before its first
        authorized Stage D write, under the final code, config, data baseline and guard state.
+
+       ### OWNER RULING — J-11 Stage D through Stage G recovery execution AUTHORIZED
+       *(owner, 2026-08-26 — binding)*
+
+       Iteration 18 satisfied the owner-required pre-Stage-D safety gate:
+
+       - the J-11 maintenance boundary is **ACTIVE**;
+       - the live pre-boot guard is **ARMED**;
+       - all eleven canonical incident dates are blocked by the persisted boundary;
+       - the corrected raw-input baseline is **certified**;
+       - `J-11 STAGE D READY: YES`;
+       - no Stage D rebuild has yet occurred.
+
+       The owner now **explicitly authorizes execution of the already-defined J-11 recovery sequence
+       from Stage D through Stage G.** This authorization covers **only** the existing J-11 sequence:
+       > Stage D canonical regeneration
+       > → Stage E forward-return hole repair
+       > → Stage F dependency-aware cache invalidation / refresh
+       > → Stage G full verification
+
+       This ruling does **not** authorize any broader recovery, redesign, provider fetch, exploratory
+       cleanup or normal Market Compass work.
+
+       **1. Stage D is now explicitly authorized.** Set the authoritative contract state to
+       `J-11 STAGE D AUTHORIZED: YES`. Stage D may regenerate **exactly** the canonical eleven incident
+       dates already defined by `app.engine.j11_maintenance.INCIDENT_DATES`. **No additional date may be
+       added. No incident date may be omitted and represented as a successful attempt.** The
+       clean-regeneration unit remains the **complete eleven-date set**.
+
+       **2. Fresh execution identity immediately before the first Stage D write.** Immediately before
+       the first actual Stage D write, compute and persist the **fresh current** J-11 attempt identity
+       using the canonical engine-identity mechanism already defined by this goal. Do **not** reuse: the
+       iteration-10 identity; the iteration-14 identity; the iteration-16/17/18 readiness identity; or
+       any historical frozen identity. The identity must represent the **actual code, config and
+       certified data baseline used by this Stage D attempt.** All eleven newly rebuilt `ScannerRun`s
+       from the same successful attempt must carry that same frozen identity. If the relevant
+       engine/config identity changes before Stage G completes, the attempt is **incomplete** and must
+       follow the existing full-attempt retry semantics rather than continuing piecemeal.
+
+       **3. Raw inputs remain immutable.** The post-AVB-correction certified `daily_prices` state is the
+       authoritative J-11 raw-input baseline. Stages D through G **must not modify `daily_prices`**. **No
+       provider/network fetch is authorized. AG-9 remains closed.** No additional recovery of J-10 raw
+       inputs is authorized; **J-10 remains historically closed.**
+
+       **4. Maintenance isolation remains mandatory through Stage G.** The active `j11-incident-recovery`
+       maintenance boundary must remain **ACTIVE** throughout Stages D, E, F and G. **Do NOT deactivate
+       or clear it before Stage G has passed all required verification.** Throughout the D → G attempt:
+       normal backend remains **OFF**; frontend remains **OFF** where it would require the backend;
+       browser QA remains **OFF**; replay remains **OFF**; Data Manager remains **OFF**; ordinary API
+       requests remain **forbidden**; **no** normal application warmup may run; and **no** unrelated
+       producer may operate concurrently. Only the explicitly authorized J-11 recovery tooling and
+       verification paths may write during this window.
+
+       **5. Ordinary request / Data-Manager guard gaps are recorded but deferred.** Iteration 18
+       established that some ordinary, non-maintenance `ScannerRun` creation paths do **not** yet consult
+       the persisted maintenance boundary, including: `scanner.resolve_run()` for an explicit `?as_of=`
+       request; and ordinary Data Manager persistence paths capable of calling `run_scan()` or
+       `persist_run_payload()`. **These are real hardening gaps and must not be erased or described as
+       resolved.** However, they are **NOT a blocker** to the controlled Stage D → G attempt, because this
+       ruling keeps every such ordinary path **unreachable** through mandatory maintenance isolation.
+       **Do not expand the Stage D recovery iteration into a generalized `ScannerRun` writer redesign. Do
+       not patch read pages, Data Manager, or introduce a new generic persistence architecture merely to
+       satisfy this ruling.** Record these gaps as **post-J-11 maintenance-boundary hardening work after
+       Stage G.** If any ordinary application writer becomes reachable during D → G, **STOP** rather than
+       relying on the known gaps.
+
+       **6. Stage D write scope remains exact.** Stage D may create **only** the canonical derived state
+       required for the eleven authorized incident dates, through the **existing canonical scanner path.**
+       Do **not**: change scoring formulas; add recovery-specific formulas; change thresholds; hand-edit
+       `ScannerRun` rows or child rows; rewrite surviving historical `ScannerRun`s outside the eleven-date
+       set; restamp surviving runs; mutate raw prices; or fetch external market data. The existing J-11
+       acceptance criteria and allowlists remain binding.
+
+       **7. Stage E is authorized only as already defined.** After a successful Stage D regeneration,
+       Stage E may execute the already-defined **global create-once forward-return hole repair.** It may:
+       fill derivable missing forward-return rows; and repair holes caused by the incident according to
+       the existing J-11 contract. It may **not**: overwrite surviving forward-return rows; fabricate
+       immature horizons; restamp `ScannerRun`s; alter `daily_prices`; or broaden into unrelated
+       historical cleanup.
+
+       **8. Stage F is authorized only as already defined.** After Stage E, Stage F may execute the
+       existing **dependency-aware cache invalidation and refresh** required by J-11. It must remain
+       scoped to caches affected by the recovery. **No unrelated rebuild, broad application
+       initialization or ordinary backend boot is authorized merely to perform Stage F.** Use the
+       existing safe maintenance paths.
+
+       **9. Stage G is authorized and is the acceptance gate.** Stage G must execute the **full existing
+       J-11 verification contract. Only Stage G may declare the incident fully repaired.** At minimum,
+       the already-defined J-11 acceptance requirements remain binding, including: exactly the eleven
+       incident dates rebuilt; no `ScannerRun` outside that set rewritten; all eleven rebuilt runs carry
+       the single fresh attempt identity; corrected raw baseline unchanged; no network fetch;
+       forward-return holes repaired according to the existing contract; immutable manifests preserved;
+       no unauthorized manifest creation; caches consistent with the rebuilt state; surviving historical
+       state untouched where required; no stale derived state remains for the incident set; and full
+       before/after and mutation evidence reconciles. **Do not weaken an acceptance gate merely to obtain
+       a passing result.**
+
+       **10. Failure semantics remain whole-attempt semantics.** Existing J-11 failure/retry rules remain
+       fully binding. If any failure occurs from Stage D onward before Stage G passes: mark the attempt
+       **incomplete**; preserve all evidence; keep the maintenance boundary **ACTIVE**; keep normal
+       application operation **paused**; do **not** resume from the next unfinished date; do **not**
+       accept partial Stage D/E/F/G work as progress. The next authorized retry follows the existing
+       **B/B1/B2 re-verification and complete C → G restart semantics for all eleven dates. Do not
+       silently improvise a partial recovery strategy.**
+
+       **11. Do not clear the boundary merely because Stage D succeeds.** Successful Stage D alone is not
+       enough. Successful Stage E alone is not enough. Successful Stage F alone is not enough. The
+       maintenance boundary remains active until **Stage G** establishes the full incident-cleanliness
+       claim. Only after Stage G passes may the recovery workflow perform the already-authorized boundary
+       **deactivation/release** action according to the existing lifecycle contract. **Preserve the
+       boundary row as audit history; deactivate rather than delete.**
+
+       **12. Normal Market Compass work remains blocked until Stage G.** The existing loop-mechanics rule
+       remains unchanged:
+       > J-10 raw recovery → J-11 clean regeneration → Stage G passes → normal Market Compass work
+       > resumes.
+
+       Do **not** use this authorization to work on J-01 through J-09, J-07/J-08 UI work, research
+       features or unrelated product backlog while J-11 remains incomplete.
+
+       **13. Launch conditions for Goal Mode recovery execution.** The next Goal Mode resume that
+       executes this ruling **must preserve the recovery environment explicitly.** The owner requires
+       `CHAIN_MAINTENANCE_ISOLATION=true` and `CHAIN_REQUIRE_FULL_DEPTH=true`. **These must be treated as
+       required launch conditions for the D → G recovery execution, not as optional ambient shell
+       state.** If the engine cannot provide the required maintenance isolation or full-depth
+       review/audit mode, **STOP and report the unmet launch requirement** rather than silently demoting
+       depth or disabling isolation. **Do not treat `lean` as equivalent to the required full-depth
+       execution.**
+
+       **14. Required terminal outcomes.** The recovery attempt must end in **one of two honest states.**
+
+       SUCCESS:
+       ```text
+       J-11 STAGE D EXECUTED: YES
+       J-11 STAGE E COMPLETE: YES
+       J-11 STAGE F COMPLETE: YES
+       J-11 STAGE G VERIFIED: YES
+       J-11 INCIDENT STATUS: FULLY REPAIRED
+       ```
+
+       INCOMPLETE (any failure, refusal or unmet gate from Stage D onward before Stage G passes):
+       ```text
+       J-11 STAGE D EXECUTED: YES/NO
+       J-11 STAGE E COMPLETE: YES/NO
+       J-11 STAGE F COMPLETE: YES/NO
+       J-11 STAGE G VERIFIED: NO
+       J-11 INCIDENT STATUS: NOT REPAIRED — ATTEMPT INCOMPLETE
+       J-11 MAINTENANCE BOUNDARY: ACTIVE
+       ```
+       In the INCOMPLETE state, report the exact blocker, preserve all evidence, leave the maintenance
+       boundary **ACTIVE**, leave normal application operation **paused**, and STOP. **There is no third
+       state.** Do **not** invent an intermediate "partially repaired" status, do **not** report partial
+       Stage D/E/F work as progress toward the claim, and do **not** describe an INCOMPLETE attempt in
+       language that implies the incident is repaired. `J-11 INCIDENT STATUS: FULLY REPAIRED` may be
+       written **only** when Stage G has verified it under §9.
     12. **Stage B2 — freeze ONE engine identity for the whole attempt (owner, 2026-08-21).** J-11's
        claim is that the incident set ends up as one internally consistent current-engine derivation;
        that claim must be testable. Before Stage C, freeze the intended current engine identity and
