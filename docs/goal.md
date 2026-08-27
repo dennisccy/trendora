@@ -1989,6 +1989,94 @@ manifest artifact (it must be self-describing and self-caveating).
     reconciliation + frozen engine identity) → J-11 C→G (clear the exact 11-date derived state, rebuild
     all 11, repair forward returns, refresh affected caches, full verification) ⇒ **INCIDENT FULLY
     REPAIRED** → normal Market Compass lanes resume.
+
+       ### OWNER RULING — J-11 database recovery accepted; one final serving verification remains
+       *(owner, 2026-08-27 — binding)*
+
+       This is a **later** owner decision that resolves the serving/replay circularity recorded above.
+       It does not revise any earlier ruling, evidence or Stage-G result — all prior J-11 history stands
+       as written.
+
+       **1. Accept the completed recovery.** Stages D through G are accepted as **COMPLETE at the
+       database / data-repair level**. The following must **NOT** be reopened merely because the J-11
+       journey is still recorded `partial`: Stage D canonical regeneration; Stage E forward-return
+       repair; Stage F dependency-aware cache handling; Stage G database-level acceptance verification;
+       the certified `daily_prices` baseline; the rebuilt eleven incident-date `ScannerRun`s; the
+       completed forward-return repair; the completed cache dispositions; the Stage-G database
+       acceptance result. Authoritative status:
+       ```
+       J-11 DATA RECOVERY: COMPLETE
+       J-11 DATABASE ACCEPTANCE: COMPLETE
+       ```
+       The residual `partial` exists **only** because the goal also required serving/replay verification
+       that could not legally run while the application-off recovery contract was active. **Do not
+       reinterpret that circularity as evidence that the database recovery failed.**
+
+       **2. Exactly one acceptance objective remains:** prove that the repaired Trendora state serves
+       correctly through the real application and browser/replay paths. This is a **product
+       verification** task, not another recovery programme. Do not broaden it into maintenance-boundary
+       architecture, request-path redesign, Goal Mode framework work, or unrelated hardening.
+
+       **3. The canonical repaired DB stays protected.** Do **NOT** use the canonical repaired database
+       as the first serving-verification target. Create a disposable, byte-faithful SQLite
+       snapshot/clone of the repaired post-Stage-G database using a consistent SQLite backup mechanism,
+       and record enough evidence to prove the verification DB began from the repaired canonical state.
+       The canonical database remains **OFF** and must not be mutated by this verification.
+       Backend/frontend/browser verification runs against the **disposable verification DB only**.
+
+       **4. Run the real product verification.** Against the disposable repaired DB, run the minimum
+       real serving/replay verification needed to close J-11 — at minimum establishing that: Trendora
+       boots successfully; the Today / Market Compass serving path works; repaired incident-date state
+       reads/renders correctly where the existing J-11 acceptance contract requires it; existing
+       immutable manifests remain correct; the repaired `ScannerRun`s and forward-return state serve
+       consistently; and the product does not rely on fabricated or stale pre-repair state. Use real
+       backend/frontend/browser/replay behaviour — do **not** substitute another database-only proof.
+
+       **5. Zero writes on the disposable DB is NOT required.** Its purpose is to observe real
+       application behaviour safely, so a normal, intended cache refresh or other already-designed
+       disposable serving-side state change is not automatically a failure. Classify actual mutations
+       by **meaning**. Serving verification MUST nevertheless **fail** if ordinary page/read behaviour
+       causes an unacceptable canonical-data side effect — creating an unexpected `ScannerRun`; minting
+       a historical `NextSessionManifest` merely because a page was read, where that violates the
+       compute-at-ingest / manifest contract; changing `daily_prices`; rewriting repaired forward
+       returns; modifying an existing immutable manifest; rewriting the rebuilt incident-date canonical
+       results; or any other mutation contradicting the Market Compass data contracts. **Do not weaken
+       an existing product invariant simply because the DB is disposable.**
+
+       **6. Fix only a defect actually demonstrated by serving verification.** The enumerated open
+       writer paths remain useful evidence but are **NOT** an instruction to refactor them. Do **not**
+       proactively guard or redesign all seven, and do **not** centralize the persistence architecture
+       for completeness. If the verification demonstrates that one specific reachable path causes an
+       unacceptable side effect, the next Goal Mode work may make the **minimum targeted fix** for that
+       demonstrated defect and re-run the verification on a fresh disposable clone. Paths that are not
+       reached and do not block serving acceptance stay deferred. **Evidence-driven hardening, not
+       speculative hardening.**
+
+       **7. Explicitly deferred — not J-11 closure blockers:** `journey_history_hash` / stall-detector
+       redesign; generic Goal Mode anti-tautology framework changes; generic maintenance-boundary
+       redesign; blanket hardening of all known writer call sites; auditor trap-citation remapping
+       unless it directly prevents final serving acceptance; unrelated product/refactor work. **Do not
+       spend another J-11 iteration improving automation infrastructure instead of verifying Trendora.**
+
+       **8. J-11 closure rule.** If the disposable repaired-state serving/replay verification passes
+       without an unacceptable product-data side effect, set:
+       ```
+       J-11 SERVING/REPLAY VERIFICATION: PASS
+       J-11 STATUS: PASSING
+       ```
+       and consider the J-11 incident **CLOSED**; normal Market Compass journey work then resumes per
+       the existing goal. **No further owner authorization is required merely to mark J-11 passing**
+       once this explicitly authorized verification succeeds. If verification exposes a real product
+       defect, keep J-11 `partial` and report **only** the concrete defect that blocked acceptance — do
+       **not** reopen the already-passed D/E/F/G recovery stages.
+
+       **9. Scope discipline.** The owner wants the shortest credible path back to the actual Trendora
+       product goal: maximum emphasis on proving the repaired Market Compass works; infrastructure
+       perfection is not the objective; theoretical future hazards that do not affect this verification
+       remain backlog. No broad cleanup, no unrelated research, no new provider/network recovery, no
+       re-litigation of J-10/J-11 historical evidence. The next Goal Mode resume should decompose toward
+       this final serving verification and then return to normal Market Compass product work.
+
   - Acceptance:
     - Every item below is a required check, proven by named tests **plus** live read-only
       verification — not by narrative assertion in a handoff.
