@@ -1601,3 +1601,113 @@ let a forbidden test lane run is still unfixed in `scripts/automation/` — twel
 avoided it with the maintenance-isolation contract rather than curing it; and `goal_gate.py`'s
 duplicate-journey-heading defect is still unfixed and must be closed before any GOAL_ACHIEVED
 certification.
+
+## Iteration 21 — goal-market-compass-iter-21
+
+**Date:** 2026-08-27T09:30:00Z
+**Verdict:** CONTINUE
+**Depth dispatched:** full (`runs/goal-session-market-compass/iter-21/depth-dispatched` reads `full`,
+matching the spec's own `Depth: full` line — the silent full→lean demotion that fired in iters 2, 6 and 8
+did NOT recur, for the thirteenth iteration running, and neither did the forbidden browser/replay lane; the
+engine recorded its refusal in `iter-21/maintenance-isolation-refusals` at 2026-08-27T06:50:06Z)
+
+**Owner-facing lines:** `J-11 STAGE D EXECUTED: YES` · `J-11 STAGE E COMPLETE: YES` ·
+`J-11 STAGE F COMPLETE: YES` · `J-11 STAGE G VERIFIED: NO` ·
+`J-11 INCIDENT STATUS: NOT REPAIRED — ATTEMPT INCOMPLETE` · `J-11 MAINTENANCE BOUNDARY: ACTIVE` ·
+`J-11 LIVE PRE-BOOT GUARD: ARMED`. All confirmed by this evaluator against the live database,
+read-only, with no correction needed.
+
+**Journey deltas:**
+- Newly passing: none. Newly failing: none. **Regressed: none.**
+- **Advanced within `partial`: J-11** "Incident-bounded clean regeneration of derived state" — this
+  iteration's sole target. Stage F executed live and completely; Stage G untouched. Re-stamped
+  `last_verified_iter` to iter-21; `spec_hash` UNCHANGED at `01e69865…` — I ran
+  `goal_gate.py hash-journeys` myself and **all eleven** journeys' hashes are byte-identical to the
+  recorded ones, so `docs/goal.md` has not moved since iteration 19 and no `journeys-changed.md` fired.
+  Stage F needed no amendment and none was made (owner ruling item 8, commit `5fe72f5c`).
+- Carried, NOT re-verified (maintenance isolation — browser QA and the replay lane were forbidden by
+  contract, so every journey keeps its prior recorded status): J-01, J-04, J-10 stay `passing`; J-02,
+  J-03, J-05, J-06, J-09 stay `partial`; J-07, J-08 stay `failing`. No `browser-infra.json` token exists,
+  so nothing is `pending_infra` — the lane was withheld, not failed. Two spot-checks: J-01's iter-4
+  screenshot (GRMN carries a real stored sector label, 1/539, regime 73.24, scores badged "Not yet
+  proven") and J-10 re-derived read-only (585 `daily_prices` rows on each of 2026-08-11/12; AVB volumes
+  554757.0 / 3706010.0; whole-table total reproduces `ohlcv_sum` 52367098848872.56 and fingerprint
+  `80441b37…`). Both consistent. J-04 keeps `evidence_makeup: true` for the third iteration running —
+  no capture was possible.
+- Anti-goal violations: **NONE new.** Ledger unchanged at **7 total, 0 unresolved.** AG-3, AG-8, AG-10,
+  AG-12 and AG-17 were the five at real risk and all five HELD, each verified by my own greps, code
+  reading and read-only database queries.
+- Coherence: COHERENCE-PASS. Deterministic scan: CLEAN. Review: PASS (zero issues). QA: PASS.
+  Audit: PASS_WITH_GAPS (Q1 IMPORTANT, fixed in-audit; B1/B2/B3 gaps; B4/B5/B6/B7/T1/T2 observations).
+  Closure: CLOSURE-PASS.
+
+**Reasoning:** The one job the owner's written plan allowed was done, and it worked — and I did not take
+that from anyone's write-up. I opened the 8.4 GB database read-only and re-measured everything myself.
+Five stores of old saved answers are now empty; 1,643 old rows are gone. Two stores were deliberately
+kept, and I re-proved both reasons rather than accepting them: for the first, I recomputed its stamp from
+the ten configured index symbols and got exactly the value stored on the row, so it is genuinely still
+current; for the second, I parsed the kept record live and reproduced the whole safety argument — 3,121
+stored points ending 12 August, seven new days all EARLIER than that ending point, none missing, so the
+cheap repair path runs and not the slow one that once hung the page for over five minutes. The same read
+independently confirmed the auditor's open concern: the kept record holds pre-accident figures for four
+of the eleven damaged days, harmless today but only because of the current arrangement. Nothing outside
+the five cleared stores moved, on my own counts: prices, day-records, results, sector and theme rows,
+performance records, saved briefings, provider runs and the watchlist all match the figures recorded at
+the end of the previous step, to the row. The eleven rebuilt days are untouched — same numbers, same
+creation times to the microsecond, same per-day totals — and exactly eleven day-records carry the repair
+stamp, none more. I proved the saved briefings were not quietly edited in place rather than trusting a
+row count: I compared all twenty-four of them field by field across all twenty-eight columns against the
+copy certified five iterations ago, and they are identical, with the "usable as forward-looking evidence"
+flag still off on every one. I also re-ran the tests myself (76 passed) and checked the module's fingerprint
+matches the auditor's pre-test value, so the six temporary changes they made during checking really were
+undone. ONE FINDING IS MINE ALONE, and it is the headline. Asking any page for an explicit date now writes
+a fresh coverage record on the spot — `data_manager.py:1544-1546` calls a compute-and-save routine, and
+that file contains no safety catch at all. Because all eleven damaged days now have day-records, this
+fires for them too. In plain terms: one page visit would put back part of what this iteration just cleared,
+for a quarantined day, and the same visit would throw away the record this iteration deliberately kept. I
+checked every lane's report for it — developer, reviewer, quality check, auditor and coherence check are
+all silent. It is NOT a fault of this iteration; the write path predates it. But it means this step's
+result is not durable against a single click, which the final check must be designed around. Why CONTINUE
+rather than a halt? Because the next step needs no person's permission: the owner's written instruction
+authorizes Stages D, E, F and G in one ruling, item 9 makes the final check the acceptance gate that
+follows this step, and the "stop" clause is attached to a failure, a refusal or an unmet gate — none of
+which happened. Why not REGRESSION? Nothing that worked stopped working, no journey was tested so none
+could fail, not one value outside the five authorised stores moved, and the ledger gained no entry. Why
+not ESCALATE? This run already used the full depth the owner's launch conditions require for the whole
+repair, and full depth is what produced these findings. One process fact: this is the twelfth iteration
+running where a later lane found what the earlier ones missed — and the fourth in a row where part of
+what was missed was missed by the independent auditor too, and found here.
+
+**Next-step recommendation:** DO THE LAST STEP OF THE REPAIR — Stage G, the final check. Nobody needs to
+approve it; the owner's written plan already allows it once the step just finished succeeded, and it did.
+KEEP THE APP OFF AND KEEP BROWSER TESTING OFF — more important now, not less. I confirmed three dangerous
+routes in the code myself: (1) NEW and recorded by no lane — asking a page for an explicit date writes a
+fresh coverage record with no safety catch, which for a damaged day would undo part of this step and also
+discard the record it deliberately kept; (2) asking for a date with no day-record still creates one with
+no safety catch, and sixteen dates inside the damaged window (14 May … 7 August) have prices but no
+record, so such a record would carry the same stamp as the eleven rebuilt ones — which is exactly why the
+final check must confirm membership from the recorded numbers 3148–3158 and the execution evidence, never
+from the stamp; (3) seven damaged days still have no saved briefing (12 and 13 May, 10, 13, 24 and 27
+July, 3 August) and one page request would permanently create one. FOUR THINGS THE FINAL CHECK MUST BE
+DESIGNED AROUND: (a) re-run the kept-record safety test immediately before the app starts and delete the
+record if the answer has changed — today's proof is a snapshot, not a standing promise; (b) clearing two
+stores removed a "serve last time's answer" fallback, so the first request after start-up can now do heavy
+work while someone waits — let the background warm-up finish first and record the peak memory, on a
+machine that froze once from memory pressure; (c) the plan's claim that surviving days carry gaps is false
+for this codebase, so read "zero" there as the right answer, not a missing repair; (d) confirm no twelfth
+day-record carries the repair stamp — exactly eleven do today, ids 3148–3158. ONE MECHANICAL ITEM, now at
+its THIRD repetition: this iteration's four new backend files and its whole evidence folder are still
+untracked at scoring time and `HEAD` is still `fe17a81a`; the quality check originally ticked "committed
+before scoring" on a false observation and the auditor corrected it — confirm the commit actually lands.
+SMALLER ITEMS: the stored notes for the membership store (`models.py:695-701` and `:712`) both name the
+wrong stamp function and should be fixed in a later, non-maintenance iteration; the deletion count falls
+back to a number it did not observe; two delete fallbacks skip the late-row alarm; the "main file
+unchanged" line was read before the database checkpointed; the dev handoff says 75 tests when the true
+figure is 76; and J-04's screenshot still needs re-capturing the first time browser testing runs again.
+FIVE OLDER OWNER QUESTIONS remain open and non-blocking: whether 3.44 GB is acceptable for J-09; J-06's
+"underlying run unavailable" wording; the rewording of J-01's first two test steps; whether an empty
+"next-session focus" is acceptable; and whether MNST joins the recovery list. TWO STANDING FRAMEWORK
+NOTES: the defect that once let a forbidden test lane run is still unfixed in `scripts/automation/` —
+thirteen iterations running have avoided it with the maintenance-isolation contract rather than curing it;
+and `goal_gate.py`'s duplicate-journey-heading defect is still unfixed and must be closed before any
+GOAL_ACHIEVED certification. Per the owner's ruling, neither may be touched until after Stage G.

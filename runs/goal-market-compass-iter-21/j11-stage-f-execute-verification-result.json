@@ -1,0 +1,43 @@
+{
+  "generated_at": "2026-08-27T04:12:16.429641+00:00",
+  "ok": true,
+  "per_table": {
+    "availability_cache": {
+      "disposition": "explicit_delete",
+      "ok": true,
+      "post_count": 0
+    },
+    "coverage_snapshot": {
+      "disposition": "explicit_delete",
+      "ok": true,
+      "post_count": 0
+    },
+    "event_study_cache": {
+      "disposition": "explicit_delete",
+      "ok": true,
+      "post_count": 0
+    },
+    "forward_aggregate_cache": {
+      "disposition": "explicit_delete",
+      "ok": true,
+      "post_count": 0
+    },
+    "index_series_cache": {
+      "disposition": "prove_unaffected_leave_alone",
+      "expected_unchanged_count": 1,
+      "ok": true,
+      "post_count": 1
+    },
+    "market_phase_cache": {
+      "disposition": "explicit_delete",
+      "ok": true,
+      "post_count": 0
+    },
+    "membership_timeline_cache": {
+      "disposition": "preserve_for_incremental_reuse",
+      "expected_unchanged_count": 1,
+      "ok": true,
+      "post_count": 1
+    }
+  }
+}

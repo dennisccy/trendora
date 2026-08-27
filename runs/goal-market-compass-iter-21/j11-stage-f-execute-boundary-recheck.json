@@ -1,0 +1,103 @@
+{
+  "all_dates_blocked": true,
+  "boundary_active": true,
+  "boundary_name": "j11-incident-recovery",
+  "boundary_row_present": true,
+  "checked_at": "2026-08-27T04:12:14.058416+00:00",
+  "exact_date_set_match": true,
+  "expected_dates": [
+    "2026-05-12",
+    "2026-05-13",
+    "2026-07-10",
+    "2026-07-13",
+    "2026-07-24",
+    "2026-07-27",
+    "2026-08-03",
+    "2026-08-05",
+    "2026-08-10",
+    "2026-08-11",
+    "2026-08-12"
+  ],
+  "ok": true,
+  "per_date_guard_result": {
+    "2026-05-12": {
+      "ambiguous": false,
+      "blocked": true,
+      "boundary_name": "j11-incident-recovery",
+      "reason": "J-11 incident-bounded derived-state quarantine (docs/goal.md) -- Stage D has not yet been authorized/executed for these dates; canonical producer writes are refused until this boundary is explicitly cleared by a future maintenance operation."
+    },
+    "2026-05-13": {
+      "ambiguous": false,
+      "blocked": true,
+      "boundary_name": "j11-incident-recovery",
+      "reason": "J-11 incident-bounded derived-state quarantine (docs/goal.md) -- Stage D has not yet been authorized/executed for these dates; canonical producer writes are refused until this boundary is explicitly cleared by a future maintenance operation."
+    },
+    "2026-07-10": {
+      "ambiguous": false,
+      "blocked": true,
+      "boundary_name": "j11-incident-recovery",
+      "reason": "J-11 incident-bounded derived-state quarantine (docs/goal.md) -- Stage D has not yet been authorized/executed for these dates; canonical producer writes are refused until this boundary is explicitly cleared by a future maintenance operation."
+    },
+    "2026-07-13": {
+      "ambiguous": false,
+      "blocked": true,
+      "boundary_name": "j11-incident-recovery",
+      "reason": "J-11 incident-bounded derived-state quarantine (docs/goal.md) -- Stage D has not yet been authorized/executed for these dates; canonical producer writes are refused until this boundary is explicitly cleared by a future maintenance operation."
+    },
+    "2026-07-24": {
+      "ambiguous": false,
+      "blocked": true,
+      "boundary_name": "j11-incident-recovery",
+      "reason": "J-11 incident-bounded derived-state quarantine (docs/goal.md) -- Stage D has not yet been authorized/executed for these dates; canonical producer writes are refused until this boundary is explicitly cleared by a future maintenance operation."
+    },
+    "2026-07-27": {
+      "ambiguous": false,
+      "blocked": true,
+      "boundary_name": "j11-incident-recovery",
+      "reason": "J-11 incident-bounded derived-state quarantine (docs/goal.md) -- Stage D has not yet been authorized/executed for these dates; canonical producer writes are refused until this boundary is explicitly cleared by a future maintenance operation."
+    },
+    "2026-08-03": {
+      "ambiguous": false,
+      "blocked": true,
+      "boundary_name": "j11-incident-recovery",
+      "reason": "J-11 incident-bounded derived-state quarantine (docs/goal.md) -- Stage D has not yet been authorized/executed for these dates; canonical producer writes are refused until this boundary is explicitly cleared by a future maintenance operation."
+    },
+    "2026-08-05": {
+      "ambiguous": false,
+      "blocked": true,
+      "boundary_name": "j11-incident-recovery",
+      "reason": "J-11 incident-bounded derived-state quarantine (docs/goal.md) -- Stage D has not yet been authorized/executed for these dates; canonical producer writes are refused until this boundary is explicitly cleared by a future maintenance operation."
+    },
+    "2026-08-10": {
+      "ambiguous": false,
+      "blocked": true,
+      "boundary_name": "j11-incident-recovery",
+      "reason": "J-11 incident-bounded derived-state quarantine (docs/goal.md) -- Stage D has not yet been authorized/executed for these dates; canonical producer writes are refused until this boundary is explicitly cleared by a future maintenance operation."
+    },
+    "2026-08-11": {
+      "ambiguous": false,
+      "blocked": true,
+      "boundary_name": "j11-incident-recovery",
+      "reason": "J-11 incident-bounded derived-state quarantine (docs/goal.md) -- Stage D has not yet been authorized/executed for these dates; canonical producer writes are refused until this boundary is explicitly cleared by a future maintenance operation."
+    },
+    "2026-08-12": {
+      "ambiguous": false,
+      "blocked": true,
+      "boundary_name": "j11-incident-recovery",
+      "reason": "J-11 incident-bounded derived-state quarantine (docs/goal.md) -- Stage D has not yet been authorized/executed for these dates; canonical producer writes are refused until this boundary is explicitly cleared by a future maintenance operation."
+    }
+  },
+  "persisted_dates": [
+    "2026-05-12",
+    "2026-05-13",
+    "2026-07-10",
+    "2026-07-13",
+    "2026-07-24",
+    "2026-07-27",
+    "2026-08-03",
+    "2026-08-05",
+    "2026-08-10",
+    "2026-08-11",
+    "2026-08-12"
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "blocking_reasons": [],
+  "boundary_ok": true,
+  "generated_at": "2026-08-27T04:12:14.223621+00:00",
+  "identity_ok": true,
+  "inventory_ok": true,
+  "late_rows_ok": true,
+  "manifest_ok": true,
+  "proceed": true,
+  "stage_e_ok": true
+}

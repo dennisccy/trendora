@@ -1,18 +1,18 @@
 # Goal Session Summary — market-compass
 
-**Final verdict:** STALLED
-**Total iterations:** 20
-**Wall time (seconds):** 19946
+**Final verdict:** ABORTED
+**Total iterations:** 21
+**Wall time (seconds):** 1650
 **Quota pauses:** 0
 **Started:** 2026-08-19T21:31:52.886915Z
-**Finished:** 2026-08-26T14:51:13.414388Z
+**Finished:** 2026-08-27T03:06:28.268224Z
 
 ## Branch
 
 This session pushed iteration commits to `goal/market-compass`. Open a PR with:
 
     gh pr create --base main --head goal/market-compass \
-      --title "feat: market-compass — STALLED" \
+      --title "feat: market-compass — ABORTED" \
       --body-file runs/goal-session-market-compass/summary.md
 
 ## Final journey state
@@ -415,18 +415,47 @@ See `runs/goal-session-market-compass/telemetry.jsonl` for the structured event 
       pump-wait                165.8m
       OVER BUDGET at post-dev-fanout: 16335s > 3600s (mode=trim)
       unattributed (glue)        0.1m  (wall − agents(active) − quota)
-  session: 19 completed iteration(s), mean wall 136.2m
-      total reviewer                  1174.0m
-      total developer                 1085.3m
-      total orchestrator               463.2m
-      total goal-decomposer            381.8m
-      total goal-evaluator             312.2m
-      total auditor                    281.4m
-      total coherence-auditor          156.8m
+  goal-market-compass-iter-20  depth=full  verdict=?  wall=?  (incomplete/interrupted attempt)
+      goal-decomposer             17.8m  calls=1
+      [engine] showcase-join       0.0m  (contains agent time above)
+      pump-wait                  0.3m
+  goal-market-compass-iter-20  depth=full  verdict=?  wall=?  (incomplete/interrupted attempt)
+      reviewer                    39.4m  calls=1
+      developer                   28.5m  calls=1
+      auditor                     18.6m  calls=1
+      ui-test-designer            11.6m  calls=1
+      orchestrator                 9.4m  calls=1
+      qa                           4.2m  calls=1
+      [engine] full-pipeline     111.8m  (contains agent time above)
+      [engine] showcase-join       0.0m  (contains agent time above)
+      (resume-skipped: goal-decomposer)
+      pump-wait                 40.1m
+      OVER BUDGET at post-dev-fanout: 4641s > 3600s (mode=trim)
+  goal-market-compass-iter-20  depth=full  verdict=?  wall=?  (incomplete/interrupted attempt)
+      [engine] showcase-join       0.0m  (contains agent time above)
+      [engine] full-pipeline       0.0m  (contains agent time above)
+      (resume-skipped: goal-decomposer)
+  goal-market-compass-iter-20  depth=full  verdict=CONTINUE  wall=24.1m
+      goal-evaluator              20.5m  calls=1
+      coherence-auditor            3.6m  calls=1
+      [engine] showcase-join       0.0m  (contains agent time above)
+      [engine] full-pipeline       0.0m  (contains agent time above)
+      (resume-skipped: goal-decomposer)
+      pump-wait                  0.3m
+      unattributed (glue)        0.0m  (wall − agents(active) − quota)
+  goal-market-compass-iter-21  depth=?  verdict=?  wall=?  (incomplete/interrupted attempt)
+  session: 20 completed iteration(s), mean wall 130.6m
+      total reviewer                  1213.3m
+      total developer                 1113.8m
+      total orchestrator               472.6m
+      total goal-decomposer            399.6m
+      total goal-evaluator             332.7m
+      total auditor                    300.0m
+      total coherence-auditor          160.4m
       total iteration-summarizer       152.9m
+      total qa                         146.3m
       total browser-qa-agent           145.4m
-      total qa                         142.1m
-      total ui-test-designer           112.0m
+      total ui-test-designer           123.6m
       total ui-impact-analyst           39.1m
       total demo-narrator               21.3m
       total readme-maintainer           11.1m

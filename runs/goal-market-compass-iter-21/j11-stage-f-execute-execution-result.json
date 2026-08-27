@@ -1,0 +1,46 @@
+{
+  "generated_at": "2026-08-27T04:12:16.425850+00:00",
+  "per_table": {
+    "availability_cache": {
+      "attempted_write": true,
+      "disposition": "explicit_delete",
+      "pre_count": 1,
+      "rows_deleted": 1
+    },
+    "coverage_snapshot": {
+      "attempted_write": true,
+      "disposition": "explicit_delete",
+      "pre_count": 1,
+      "rows_deleted": 1
+    },
+    "event_study_cache": {
+      "attempted_write": true,
+      "disposition": "explicit_delete",
+      "pre_count": 18,
+      "rows_deleted": 18
+    },
+    "forward_aggregate_cache": {
+      "attempted_write": true,
+      "disposition": "explicit_delete",
+      "pre_count": 333,
+      "rows_deleted": 333
+    },
+    "index_series_cache": {
+      "attempted_write": false,
+      "disposition": "prove_unaffected_leave_alone",
+      "rows_deleted": 0
+    },
+    "market_phase_cache": {
+      "attempted_write": true,
+      "disposition": "explicit_delete",
+      "pre_count": 1290,
+      "rows_deleted": 1290
+    },
+    "membership_timeline_cache": {
+      "attempted_write": false,
+      "disposition": "preserve_for_incremental_reuse",
+      "rows_deleted": 0
+    }
+  },
+  "total_rows_deleted": 1643
+}

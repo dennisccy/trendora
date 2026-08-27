@@ -434,3 +434,25 @@ of a question into a "proven" answer that four review lanes accepted.
 output, check that every label/branch in its declared vocabulary is reachable from its actual inputs,
 and that no reported "finding" is true by construction.
 
+
+<!-- condense.sh 2026-08-27T03:07:04Z: moved 1 entries (keep-iters=5) -->
+
+## iter-15 — 2026-08-25T11:05:00Z
+
+**Verdict:** STALLED
+**Lesson:** A destructive repair can ARM a trap in code it never touched, by putting two layers out of
+sync. Stage C emptied the derived layer for 11 dates but (correctly) left the raw price layer intact, so
+`SELECT MAX(date) FROM daily_prices` is now `2026-08-12` — an incident date with zero `ScannerRun`s.
+`main.py:100` calls `warmup.ensure_latest_snapshot` on **every** boot, which resolves that same
+`latest_data_date` and calls `run_scan`, which on a missing run falls through to `persist_run_payload`.
+So merely starting the backend now performs exactly the Stage D-class write the whole contract is
+withholding authorization for, before any request arrives — and `GET /api/compass` on an incident as-of
+additionally mints AG-12-immutable manifests for the 7 dates that have none. Both irreversible. Nothing
+in the diff caused this; the *gap between* a cleared derived layer and an untouched raw layer did. Six
+iterations of maintenance isolation have been the only thing preventing it, and that is an operator
+convention, not a code guard.
+**Applies to:** any iteration that clears or rebuilds one storage layer while deliberately preserving
+another — before declaring the clear safe, grep the boot/warmup/resolve paths for anything that derives
+its target from the PRESERVED layer, and check whether the two layers now disagree in a way that makes a
+routine start-up destructive.
+

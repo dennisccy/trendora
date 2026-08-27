@@ -1,0 +1,11 @@
+{
+  "exists": true,
+  "mtime": 1787778478.2077587,
+  "path": "/home/dennis-chan/Git/trendora/apps/backend/data/trendora.db",
+  "size_bytes": 8365871104,
+  "wal": {
+    "exists": true,
+    "mtime": 1787778515.7262428,
+    "size_bytes": 0
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "checked_at": "2026-08-27T04:12:14.223418+00:00",
+  "ok": true,
+  "per_table": {
+    "availability_cache": {
+      "max_timestamp": "2026-08-23T10:32:56.937090+00:00",
+      "ok": true
+    },
+    "coverage_snapshot": {
+      "max_timestamp": "2026-08-23T10:32:55.661532+00:00",
+      "ok": true
+    },
+    "event_study_cache": {
+      "max_timestamp": "2026-08-23T10:43:59.315853+00:00",
+      "ok": true
+    },
+    "forward_aggregate_cache": {
+      "max_timestamp": "2026-08-23T10:34:43.208275+00:00",
+      "ok": true
+    },
+    "market_phase_cache": {
+      "max_timestamp": "2026-08-21T00:40:05.839449+00:00",
+      "ok": true
+    },
+    "membership_timeline_cache": {
+      "max_timestamp": "2026-08-23T10:32:55.645968+00:00",
+      "ok": true
+    }
+  },
+  "stage_d_start_instant": "2026-08-26T10:52:55.552946+00:00"
+}

@@ -152,20 +152,7 @@ factor ~1.0, so the only symbol at risk is the one the test excludes by construc
 cited call site rather than the cited claim, and ask whether the corroborating population actually
 contains the case in question.
 
-## iter-15 — 2026-08-25T11:05:00Z
-
-**Verdict:** STALLED
-**Lesson:** A destructive repair can ARM a trap in code it never touched, by putting two layers out of
-sync. Stage C emptied the derived layer for 11 dates but (correctly) left the raw price layer intact, so
-`SELECT MAX(date) FROM daily_prices` is now `2026-08-12` — an incident date with zero `ScannerRun`s.
-`main.py:100` calls `warmup.ensure_latest_snapshot` on **every** boot, which resolves that same
-`latest_data_date` and calls `run_scan`, which on a missing run falls through to `persist_run_payload`.
-So merely starting the backend now performs exactly the Stage D-class write the whole contract is
-withholding authorization for, before any request arrives — and `GET /api/compass` on an incident as-of
-additionally mints AG-12-immutable manifests for the 7 dates that have none. Both irreversible. Nothing
-in the diff caused this; the *gap between* a cleared derived layer and an untouched raw layer did. Six
-iterations of maintenance isolation have been the only thing preventing it, and that is an operator
-convention, not a code guard.
+## iter-15 — 2026-08-25T11:05:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration that clears or rebuilds one storage layer while deliberately preserving
 another — before declaring the clear safe, grep the boot/warmup/resolve paths for anything that derives
 its target from the PRESERVED layer, and check whether the two layers now disagree in a way that makes a
@@ -330,3 +317,22 @@ splits into 2026-08-04 for 428 symbols and 08-05 for 124).
 about how the code behaves — re-derive the premise from the code path before scoring "requirement unmet"
 or "requirement met"; specifically, J-11 Stage G must treat population (b) = 0 as the CORRECT answer,
 not a missing repair, and must not weaken its gate to accommodate a premise that was never true.
+
+## iter-21 — 2026-08-27T09:30:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** Emptying a cache table is not a durable state — it is only durable if every WRITE path
+back into that table is enumerated and closed. Stage F correctly deleted `coverage_snapshot`, but
+`coverage_from_storage`'s self-heal branch (`apps/backend/app/engine/data_manager.py:1544-1546`)
+calls `refresh_coverage_snapshot_for` → `_upsert_coverage_snapshot` on the READ path whenever an
+explicit `?as_of=` names a date backed by a real `ScannerRun` — which, after Stage D, includes all
+eleven incident dates — and `data_manager.py` imports no boundary guard at all. One page visit
+would repopulate a table the repair just cleared, for a quarantined date, and the same visit's
+`membership_timeline_cached` MISS would prune the row Stage F deliberately preserved. Five lanes
+(dev, review, QA, audit, coherence) each verified the deletion happened; none asked what could put
+the rows back. The spec named this function once, but only as a reason to *classify* the table.
+**Applies to:** any iteration that deletes or invalidates cached/derived rows as a correctness fix —
+grep every caller of the table's model for an upsert/insert reachable from a request path BEFORE
+asserting "no stale derived state remains"; and specifically J-11 Stage G, whose acceptance list
+includes "caches consistent with the rebuilt state" and must therefore assert cleanliness after the
+application is allowed to boot, or foreclose the write first.

@@ -1,0 +1,23 @@
+{
+  "expected_table_names": [
+    "availability_cache",
+    "coverage_snapshot",
+    "event_study_cache",
+    "forward_aggregate_cache",
+    "index_series_cache",
+    "market_phase_cache",
+    "membership_timeline_cache"
+  ],
+  "generated_at": "2026-08-27T04:12:14.068984+00:00",
+  "matches_expected_seven": true,
+  "table_count": 7,
+  "table_names": [
+    "availability_cache",
+    "coverage_snapshot",
+    "event_study_cache",
+    "forward_aggregate_cache",
+    "index_series_cache",
+    "market_phase_cache",
+    "membership_timeline_cache"
+  ]
+}
