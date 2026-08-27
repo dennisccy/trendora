@@ -1,0 +1,372 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<title>goal-market-compass-iter-21 — Iteration Summary</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  margin: 0; padding: 0; color: #1f2328; background: #f6f8fa; line-height: 1.5;
+}
+.container { max-width: 880px; margin: 0 auto; padding: 24px 16px 80px; }
+.hero {
+  background: white; border: 1px solid #d0d7de; border-radius: 8px;
+  padding: 28px; margin-bottom: 16px; text-align: center;
+}
+.hero.pass { border-top: 6px solid #1a7f37; }
+.hero.fail { border-top: 6px solid #cf222e; }
+.hero.inprogress { border-top: 6px solid #d4a72c; }
+.hero h1 { margin: 0 0 6px 0; font-size: 1.6rem; }
+.hero h2 { margin: 0 0 14px 0; font-size: 1rem; color: #57606a; font-weight: 500; }
+.badge-row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-bottom: 10px; }
+.badge {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 6px 14px; border-radius: 999px; font-weight: 600; font-size: 0.95rem;
+}
+.badge.pass { background: #dafbe1; color: #1a7f37; }
+.badge.fail { background: #ffebe9; color: #cf222e; }
+.badge.inprogress { background: #fff8c5; color: #9a6700; }
+.badge .badge-enum { font-size: 0.68em; opacity: 0.7; font-weight: 500; margin-left: 6px; }
+.signal-badge { padding: 6px 14px; border-radius: 999px; font-weight: 600; font-size: 0.9rem; }
+.signal-badge.improving { background: #dafbe1; color: #1a7f37; }
+.signal-badge.holding { background: #ddf4ff; color: #0969da; }
+.signal-badge.stalling { background: #fff8c5; color: #9a6700; }
+.signal-badge.regressing { background: #ffebe9; color: #cf222e; }
+.signal-badge.na { background: #f6f8fa; color: #57606a; }
+.meta { color: #57606a; font-size: 0.875rem; margin: 10px 0 16px; }
+.journey-row {
+  display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin: 12px 0 4px;
+}
+.journey-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px; border-radius: 999px; font-size: 0.85rem;
+  background: #f6f8fa; border: 1px solid #d0d7de;
+}
+.journey-pill.passing, .journey-pill.already_passing { background: #dafbe1; color: #1a7f37; border-color: #b4e2c0; }
+.journey-pill.failing, .journey-pill.regressed { background: #ffebe9; color: #cf222e; border-color: #f1aeb0; }
+.journey-pill.partial { background: #fff8c5; color: #9a6700; border-color: #eed888; }
+.journey-pill.unknown { background: #f6f8fa; color: #57606a; }
+.hero-image { margin-top: 18px; }
+.hero-image img { max-width: 100%; height: auto; border-radius: 6px; border: 1px solid #d0d7de; }
+details {
+  background: white; border: 1px solid #d0d7de; border-radius: 8px;
+  margin-bottom: 12px;
+}
+details > summary {
+  cursor: pointer; padding: 14px 18px; font-weight: 600; font-size: 1.05rem;
+  list-style: none; user-select: none; display: flex; align-items: center; gap: 8px;
+}
+details > summary::-webkit-details-marker { display: none; }
+details > summary::before {
+  content: '▶'; transition: transform 0.15s; font-size: 0.75rem; color: #57606a;
+}
+details[open] > summary::before { transform: rotate(90deg); }
+.accordion-body { padding: 0 18px 18px; }
+.accordion-body h3 { font-size: 0.95rem; color: #57606a; margin: 16px 0 6px; }
+.why-text { background: #f6f8fa; padding: 10px 12px; border-radius: 6px; margin: 4px 0 12px; }
+ul.bullets { margin: 6px 0 14px; padding-left: 22px; }
+ul.bullets li { margin-bottom: 4px; }
+ol.steps { padding-left: 0; list-style: none; counter-reset: step; }
+ol.steps > li {
+  counter-increment: step; padding: 12px 0 12px 44px;
+  border-top: 1px solid #eaeef2; position: relative;
+}
+ol.steps > li:first-child { border-top: none; }
+ol.steps > li::before {
+  content: counter(step); position: absolute; left: 0; top: 14px;
+  width: 30px; height: 30px; border-radius: 50%;
+  background: #0969da; color: white; display: flex;
+  align-items: center; justify-content: center; font-size: 0.85rem; font-weight: 600;
+}
+.step-shot { margin-top: 10px; }
+.step-shot img { max-width: 100%; height: auto; border-radius: 6px; border: 1px solid #d0d7de; }
+.next-step-box {
+  background: #ddf4ff; padding: 12px 16px; border-radius: 6px;
+  border-left: 4px solid #0969da; margin: 12px 0;
+}
+.drill-table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+.drill-table th, .drill-table td {
+  text-align: left; padding: 8px 6px; border-bottom: 1px solid #eaeef2;
+}
+.drill-table th { background: #f6f8fa; }
+.verdict-cell.PASS, .verdict-cell.CLOSURE-PASS, .verdict-cell.GOAL_ACHIEVED { color: #1a7f37; font-weight: 600; }
+.verdict-cell.FAIL, .verdict-cell.CLOSURE-FAIL, .verdict-cell.REGRESSION { color: #cf222e; font-weight: 600; }
+.verdict-cell.CONTINUE, .verdict-cell.ESCALATE, .verdict-cell.STALLED { color: #9a6700; font-weight: 600; }
+.verdict-cell.SKIPPED, .verdict-cell.UNKNOWN, .verdict-cell.IN-PROGRESS { color: #57606a; }
+.footer-note { text-align: center; color: #6e7781; font-size: 0.8rem; margin-top: 24px; }
+.iter-card {
+  background: white; border: 1px solid #d0d7de; border-radius: 8px;
+  padding: 16px 18px; margin-bottom: 12px; display: flex; align-items: center; gap: 14px;
+}
+.iter-card .left { flex-shrink: 0; }
+.iter-card .body { flex: 1 1 auto; }
+.iter-card .body .title { font-weight: 600; }
+.iter-card .body .sub { color: #57606a; font-size: 0.88rem; margin-top: 2px; }
+.iter-card a.open { color: #0969da; text-decoration: none; font-weight: 500; }
+.iter-card a.open:hover { text-decoration: underline; }
+.matrix { width: 100%; border-collapse: collapse; margin: 12px 0 22px; font-size: 0.88rem; }
+.matrix th, .matrix td { padding: 6px 8px; border: 1px solid #d0d7de; text-align: center; }
+.matrix th:first-child, .matrix td:first-child { text-align: left; }
+.matrix .cell-passing, .matrix .cell-already_passing { background: #dafbe1; color: #1a7f37; }
+.matrix .cell-failing, .matrix .cell-regressed { background: #ffebe9; color: #cf222e; }
+.matrix .cell-partial { background: #fff8c5; color: #9a6700; }
+.matrix .cell-unknown { background: #f6f8fa; color: #57606a; }
+.no-summary {
+  background: #fff8c5; border: 1px solid #eed888; padding: 14px 18px;
+  border-radius: 8px; color: #9a6700; margin-bottom: 14px;
+}
+/* Plain-language layer — the primary, non-technical view. */
+.plain-words {
+  background: linear-gradient(180deg, #ffffff 0%, #f6fbff 100%);
+  border: 1px solid #d6e4f0; border-radius: 10px;
+  padding: 22px 24px; margin: 18px 0 6px;
+  box-shadow: 0 1px 2px rgba(20, 40, 80, 0.04);
+}
+.plain-words .pw-heading {
+  margin: 0 0 14px; font-size: 1.15rem; color: #0969da;
+  text-transform: uppercase; letter-spacing: 0.05em;
+}
+.pw-grid {
+  display: grid; gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+.pw-card {
+  background: white; border-radius: 8px; padding: 14px 16px;
+  border: 1px solid #e3eaf3;
+}
+.pw-card .pw-label {
+  font-size: 0.78rem; font-weight: 600; color: #57606a;
+  text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px;
+}
+.pw-card .pw-text {
+  margin: 0; font-size: 1rem; color: #1f2328; line-height: 1.45;
+}
+.pw-empty { color: #8c959f; font-style: italic; font-size: 0.95rem; }
+.tech-divider {
+  margin: 18px 0 8px; text-align: center;
+  color: #6e7781; font-size: 0.82rem; font-style: italic;
+  border-top: 1px dashed #d0d7de; padding-top: 12px;
+}
+/* Watch-it-work — narrated screenshot gallery from demo-narrator. */
+.watch-it-work {
+  background: white; border: 1px solid #d6e4f0; border-radius: 10px;
+  padding: 18px 22px; margin: 10px 0 6px;
+}
+.wiw-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; margin-bottom: 14px; flex-wrap: wrap;
+}
+.wiw-heading {
+  margin: 0; font-size: 1.05rem; color: #0969da;
+  text-transform: uppercase; letter-spacing: 0.05em;
+}
+.demo-badge {
+  font-size: 0.75rem; font-weight: 600; padding: 4px 10px; border-radius: 12px;
+  border: 1px solid transparent; letter-spacing: 0.04em;
+}
+.demo-badge.demo-recorded { background: #dafbe1; color: #1a7f37; border-color: #aceebb; }
+.demo-badge.demo-notes    { background: #fff8c5; color: #9a6700; border-color: #e8d97e; }
+.demo-badge.demo-skipped  { background: #f6f8fa; color: #57606a; border-color: #d0d7de; }
+.demo-badge.demo-pending  { background: #ddf4ff; color: #0969da; border-color: #b6e3ff; }
+.demo-grid {
+  display: grid; gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+.demo-step {
+  margin: 0; padding: 12px; background: #f6f8fa;
+  border: 1px solid #d0d7de; border-radius: 8px;
+}
+.demo-step-head {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
+  font-size: 0.9rem;
+}
+.demo-step-num {
+  font-weight: 600; color: #57606a; font-variant-numeric: tabular-nums;
+}
+.demo-step-title { color: #1f2328; font-weight: 500; }
+.demo-new {
+  background: #ddf4ff; color: #0969da; font-size: 0.7rem; font-weight: 700;
+  padding: 2px 6px; border-radius: 4px; letter-spacing: 0.06em;
+}
+.demo-shot { margin-bottom: 8px; }
+.demo-shot img {
+  width: 100%; height: auto; border-radius: 4px; border: 1px solid #d0d7de;
+  display: block;
+}
+.demo-narration {
+  margin: 0; color: #1f2328; font-size: 0.92rem; line-height: 1.4;
+}
+.demo-empty {
+  margin: 8px 0 0; color: #57606a; font-style: italic;
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.demo-notes-wrap { margin-top: 14px; }
+.demo-notes-wrap summary {
+  cursor: pointer; color: #9a6700; font-weight: 500; font-size: 0.9rem;
+}
+.demo-notes-wrap[open] summary { margin-bottom: 6px; }
+/* Story so far + latest demo (session index plain-language top). */
+.story-so-far {
+  background: linear-gradient(180deg, #ffffff 0%, #f6fbff 100%);
+  border: 1px solid #d6e4f0; border-radius: 10px;
+  padding: 22px 26px; margin: 14px 0 6px;
+  box-shadow: 0 1px 2px rgba(20, 40, 80, 0.04);
+}
+.story-heading {
+  margin: 0 0 12px; font-size: 1.1rem; color: #0969da;
+  text-transform: uppercase; letter-spacing: 0.05em;
+}
+.story-body { font-size: 1rem; color: #1f2328; line-height: 1.55; }
+.story-body .story-h { margin: 14px 0 6px; color: #1f2328; }
+.story-body p { margin: 0 0 10px; }
+.session-demo {
+  background: white; border: 1px solid #d6e4f0; border-radius: 10px;
+  padding: 0; margin: 8px 0 6px; overflow: hidden;
+}
+.session-demo-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; padding: 12px 22px;
+  background: #f6f8fa; border-bottom: 1px solid #d6e4f0;
+  font-weight: 600; color: #1f2328; font-size: 0.95rem;
+}
+.session-demo-head a.open { color: #0969da; text-decoration: none; font-weight: 500; font-size: 0.9rem; }
+.session-demo-head a.open:hover { text-decoration: underline; }
+.session-demo .watch-it-work {
+  border: none; border-radius: 0; box-shadow: none; margin: 0;
+}
+/* Delivered link banner — sits on the session index when GOAL_ACHIEVED. */
+.delivered-link {
+  margin: 14px 0; padding: 14px 22px;
+  background: #dafbe1; border: 1px solid #aceebb; border-radius: 10px;
+  color: #1a7f37; font-size: 1rem;
+}
+.delivered-link a {
+  color: #1a7f37; font-weight: 600; text-decoration: none; margin-left: 8px;
+}
+.delivered-link a:hover { text-decoration: underline; }
+.delivered-back {
+  margin: 8px 0 14px; padding: 0; font-size: 0.9rem;
+}
+.delivered-back a { color: #0969da; text-decoration: none; }
+.delivered-back a:hover { text-decoration: underline; }
+.delivered-body {
+  background: white; border: 1px solid #d6e4f0; border-radius: 10px;
+  padding: 22px 28px; margin: 12px 0;
+}
+.delivered-body h2.story-h { margin-top: 0; }
+/* Feature manual (session index, top of page). */
+.cover-vision {
+  margin: 8px 0 14px; color: #57606a; font-size: 1.02rem;
+  font-style: italic; max-width: 60ch;
+}
+.feature-toc {
+  background: white; border: 1px solid #d6e4f0; border-radius: 10px;
+  padding: 20px 26px; margin: 14px 0;
+  box-shadow: 0 1px 2px rgba(20, 40, 80, 0.04);
+}
+.feature-toc-heading {
+  margin: 0 0 14px; font-size: 1.05rem; color: #0969da;
+  text-transform: uppercase; letter-spacing: 0.05em;
+}
+.feature-toc-list {
+  margin: 0; padding-left: 22px; font-size: 1rem; line-height: 1.7;
+}
+.feature-toc-list li { padding: 2px 0; }
+.feature-toc-list a {
+  color: #1f2328; text-decoration: none; font-weight: 500;
+}
+.feature-toc-list a:hover { color: #0969da; text-decoration: underline; }
+.toc-extra-header {
+  list-style: none; margin: 10px 0 4px -22px;
+  font-size: 0.82rem; color: #57606a; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.04em;
+}
+.feature-manual { margin: 14px 0; }
+.feature-section {
+  background: white; border: 1px solid #d6e4f0; border-radius: 10px;
+  padding: 22px 26px; margin: 16px 0;
+  box-shadow: 0 1px 2px rgba(20, 40, 80, 0.04);
+  scroll-margin-top: 12px;
+}
+.feature-heading {
+  margin: 0 0 10px; font-size: 1.2rem; color: #1f2328;
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+}
+.feature-description {
+  margin: 0 0 16px; color: #1f2328; font-size: 1rem; line-height: 1.55;
+}
+.feature-description-label {
+  font-weight: 600; color: #57606a; margin-right: 4px;
+}
+.feature-note {
+  margin: 8px 0 12px; padding: 8px 12px;
+  background: #fff8c5; border: 1px solid #eed888; border-radius: 6px;
+  color: #9a6700; font-size: 0.88rem;
+}
+.feature-source {
+  margin: 12px 0 0; font-size: 0.88rem; color: #57606a;
+}
+.feature-source a { color: #0969da; text-decoration: none; }
+.feature-source a:hover { text-decoration: underline; }
+.feature-empty {
+  margin: 10px 0; padding: 12px 16px;
+  background: #f6f8fa; border: 1px solid #d0d7de; border-radius: 6px;
+  color: #57606a; font-style: italic;
+}
+.status-pill {
+  font-size: 0.78rem; font-weight: 600; padding: 3px 10px; border-radius: 12px;
+  letter-spacing: 0.04em; white-space: nowrap; display: inline-block;
+}
+.status-pill-passing { background: #dafbe1; color: #1a7f37; border: 1px solid #aceebb; }
+.status-pill-failing { background: #ffebe9; color: #cf222e; border: 1px solid #f2b8b5; }
+.status-pill-regressed { background: #ffebe9; color: #cf222e; border: 1px solid #f2b8b5; }
+.status-pill-partial { background: #fff8c5; color: #9a6700; border: 1px solid #e8d97e; }
+.status-pill-unknown { background: #f6f8fa; color: #57606a; border: 1px solid #d0d7de; }
+.status-pill-coming-soon { background: #f6f8fa; color: #57606a; border: 1px solid #d0d7de; }
+.developer-view {
+  margin: 28px 0 6px;
+  border: 1px dashed #d0d7de; border-radius: 8px;
+}
+.developer-view > summary {
+  cursor: pointer; padding: 12px 16px;
+  color: #57606a; font-size: 0.92rem; font-weight: 500;
+  background: #f6f8fa; border-radius: 8px;
+}
+.developer-view[open] > summary {
+  border-bottom: 1px dashed #d0d7de;
+  border-radius: 8px 8px 0 0;
+}
+.developer-view-body { padding: 12px 18px; }
+</style>
+</head><body><div class='container'>
+<section class='hero inprogress'><div class='badge-row'><div class='badge inprogress'><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+<circle cx="12" cy="12" r="11" fill="#d4a72c"/>
+<path d="M12 6v6l4 2.5" stroke="white" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+</svg><span>Building — on track</span><span class='badge-enum'>CONTINUE</span></div><span class='signal-badge holding'>Direction: holding</span></div><h1>Iteration 21  ·  session market-compass</h1><h2>J-11 Stage F executed: 1,643 stale cache rows deleted across 5 of 7 tables</h2><div class='meta'>2026-08-27 · goal-full</div><div class='meta'>Journeys: 3/11 passing</div><div class='journey-row'><span class='journey-pill passing' title='Sector labels are honest and nearly complete on new runs — passing'>J-01 · ✓ working</span><span class='journey-pill partial' title='What changed since the previous session — partial'>J-02 · ~ partial</span><span class='journey-pill partial' title='Plain-English summary with cited facts — partial'>J-03 · ~ partial</span><span class='journey-pill passing' title='Each next-session candidate explains why and why-not — passing'>J-04 · ✓ working</span><span class='journey-pill partial' title='Each close freezes one next-session manifest, exported byte-consistently — partial'>J-05 · ~ partial</span><span class='journey-pill partial' title='A frozen manifest never changes — partial'>J-06 · ~ partial</span><span class='journey-pill failing' title='The Today page answers the ten-second read — failing'>J-07 · ✗ broken</span><span class='journey-pill failing' title='Market page moves over intact and history stays honest — failing'>J-08 · ✗ broken</span><span class='journey-pill partial' title='The backend fits the host - standing memory halves with zero behavior change — partial'>J-09 · ~ partial</span><span class='journey-pill passing' title='Bounded recovery of the two trading days the iter-5 drill deleted — passing'>J-10 · ✓ working</span><span class='journey-pill partial' title='Incident-bounded clean regeneration of derived state — partial'>J-11 · ~ partial</span></div></section>
+<section class='plain-words'><h2 class='pw-heading'>In plain words</h2><div class='pw-grid'><div class='pw-card'><div class='pw-label'>What you can do now</div><p class='pw-text'>See each stock&#x27;s honest sector label on the newest rankings, see why each next-session candidate stock was picked (and why others weren&#x27;t), and browse the two trading days recovered from the August data incident — with their volume numbers corrected — in the price history.</p></div><div class='pw-card'><div class='pw-label'>What changed this time</div><p class='pw-text'>Behind the scenes, step three of a four-step data repair ran, clearing out five old stores of stale numbers left over from before the repair began — 1,643 outdated rows gone. Once the app switches back on, the Data page&#x27;s &quot;Per-date availability&quot; card will no longer quietly show old, pre-incident numbers as current — it will honestly say there&#x27;s nothing there yet and rebuild itself fresh. Two other old number-stores were checked and deliberately kept, because they&#x27;re still safe and clearing them would have slowed one page down.</p></div><div class='pw-card'><div class='pw-label'>What&#x27;s next</div><p class='pw-text'>Next comes the fourth and final repair step — a full check that decides whether the incident is truly fixed — while the app and browser testing stay switched off until it passes.</p></div></div></section>
+<div class='tech-divider'><span>Technical detail below — open if you want the developer view.</span></div>
+<details><summary>What was done</summary><div class='accordion-body'><ul class='bullets'><li>Product changes: apps/backend/app/engine/j11_stage_f_execute.py, apps/backend/scripts/run_j11_stage_f_execute.py, apps/backend/tests/test_j11_stage_f_execute.py, apps/backend/tests/test_j11_stage_f_execute_cli_script.py</li><li>Executed J-11 Stage F live: classified all 7 dependency-aware derived-cache tables and deleted 1,643 stale rows across 5 (event_study_cache, market_phase_cache, forward_aggregate_cache, availability_cache, coverage_snapshot); 2 tables (index_series_cache, membership_timeline_cache) proven safe and deliberately preserved.</li><li>Fixed the availability_cache correctness risk found during planning: deleting its stale row stops the app from silently serving pre-repair coverage data labeled &quot;current&quot; the first time `/data` loads after reboot.</li><li>Proved live, before deciding, that preserving membership_timeline_cache&#x27;s stale row is safe — the cheap &quot;historical gap-insert&quot; repair path will run on the next real request, not the &gt;300s cold-compute sweep that once hung the page.</li><li>Ran 76 fixture-scoped tests (never against the live database); reviewer PASS (zero issues), QA PASS, auditor PASS_WITH_GAPS (one IMPORTANT finding — a false Definition-of-Done checkbox — corrected in-audit).</li><li>Re-verified live database state read-only before and after the write: only the 5 authorized tables changed; all other tables (prices, scanner runs, forward returns, manifests, maintenance boundary) identical to iteration 20&#x27;s recorded state.</li><li>Browser QA and application boot stayed off all iteration under maintenance isolation (0 journeys re-verified via browser this round); J-11&#x27;s progress was instead verified through live, read-only database checks by three independent lanes.</li><li>Committed and pushed iteration 21&#x27;s 4 new backend files and evidence folder as commit `5768c930`, closing the &quot;untracked at scoring&quot; pattern flagged in iterations 19 and 20.</li></ul></div></details>
+<details><summary>What's left + Next step</summary><div class='accordion-body'><h3>Still open</h3><ul class='bullets'><li>Journey J-07 (&quot;The Today page answers the ten-second read&quot;) — failing, blocked until Stage G passes.</li><li>Journey J-08 (&quot;Market page moves over intact and history stays honest&quot;) — failing, blocked until Stage G passes.</li><li>Stage G, the final repair check, has not run yet — it is the only step allowed to declare the August data incident repaired.</li><li>Until Stage G passes, normal Market Compass work (journeys J-01 through J-09) stays blocked and the maintenance boundary stays active; the app and browser testing remain switched off.</li><li>Two framework defects remain open by owner instruction until after Stage G: the ordinary-request-path / Data-Manager write-path guard gaps, and a duplicate-journey-heading defect in the goal-tracking tool.</li></ul><h3>Next step</h3><div class='next-step-box'>Do the last step of the repair — Stage G, the final acceptance check. No further owner approval is needed: the 2026-08-26 ruling already authorizes it once Stage F succeeded, and it did. Keep the app and browser testing off until Stage G passes — this iteration&#x27;s evaluator found a new, previously unrecorded risk: once the app reboots, an ordinary page request against a quarantined day would silently rewrite the coverage cache Stage F just cleared, and would also discard the membership-timeline row Stage F deliberately preserved. Stage G&#x27;s design must re-prove that preserved row&#x27;s safety immediately before boot (today&#x27;s proof is a snapshot, not a standing guarantee), let background cache warm-up finish before any request lands (the host froze once before from memory pressure), and treat the goal text&#x27;s claim that undamaged days carry forward-return gaps as false for this codebase. This iteration&#x27;s four new backend files and evidence folder are now committed and pushed (`5768c930`), closing the tracking gap flagged at the last two iterations&#x27; scoring time.</div></div></details>
+<details><summary>Assumptions made</summary><div class='accordion-body'><ul class='bullets'><li>iter-21 · goal-decomposer — Ambiguity: the owner&#x27;s ruling authorizes the full Stage D→E→F→G sequence in one instruction and authorizes Stage F unconditionally once Stage E succeeds, but nothing requires delivering the whole sequence inside one iteration. We chose: scope iteration 21 to Stage F alone — re-verify Stage D/E&#x27;s frozen state, classify and invalidate the seven caches, then stop — leaving Stage G to a later iteration, continuing the same one-stage-per-iteration discipline iterations 19 and 20 already established. Reversible: yes.</li><li>iter-21 · goal-decomposer — Ambiguity: docs/goal.md step 6 requires classifying each of seven caches into one of three dispositions but does not assign a specific disposition to any specific cache, nor say how to resolve a same-count/same-ID stamp collision. We chose: use each cache row&#x27;s `created_at` compared against Stage D&#x27;s frozen execution-start instant as the decisive classification signal (corroborated by, not replacing, the dataset-version stamp comparison); default five caches to explicit deletion (required outright for `availability_cache`, a live risk found this planning pass); preserve `index_series_cache` untouched; give `membership_timeline_cache` a conditional preserve contingent on a live safety proof, falling back to deletion if that proof failed. Reversible: yes.</li><li>iter-21 · goal-evaluator — Ambiguity: AG-10 requires heavy compute be launched only via the project&#x27;s capped launch scripts; Stage F&#x27;s cache deletions make an existing in-process compute path heavier and more likely to run cold on the next request, and the goal text doesn&#x27;t say whether that counts as &quot;launching heavy compute&quot; on a host with a documented freeze history. We chose: score this as an operational risk and a binding Stage-G design input, not an anti-goal violation — the future compute still runs inside the normal capped backend process with no cap removed or bypassed, and the app stays off so no request can land before Stage G designs the boot sequence. Reversible: yes.</li><li>iter-20 · goal-decomposer — Ambiguity: the owner&#x27;s ruling authorizes the full Stage D→G sequence in one instruction and authorizes Stage E unconditionally once Stage D succeeds, but nothing requires delivering it in one iteration. We chose: scope iteration 20 to Stage E alone, leaving Stage F and Stage G to later iterations, continuing the same per-stage discipline already established for Stage D. Reversible: yes.</li><li>iter-20 · goal-decomposer — Ambiguity: docs/goal.md names two existing functions side by side for Stage E&#x27;s forward-return backfill without stating which one to call, or whether the choice matters. We chose: require the per-run `backfill_run_forward_returns` loop over every existing scanner run, and forbid the whole-database `backfill_forward_returns()` entry point, because reading that whole-DB function&#x27;s body shows it could mint a scanner run outside the 11-date incident boundary as a side effect. Reversible: yes.</li><li>iter-20 · goal-evaluator — Ambiguity: the owner&#x27;s ruling voids the attempt on any &quot;failure, refusal or unmet gate,&quot; and the developer&#x27;s first attempt to run the Stage E CLI was refused by the coding tool&#x27;s own permission classifier before the process started — the ruling doesn&#x27;t say whether a tooling-permission denial counts as that &quot;refusal.&quot; We chose: read &quot;refusal&quot; as a refusal by the recovery machinery itself, not a harness-level permission denial — the denial produced zero database side effects, and the owner then ran the identical command themselves and it completed cleanly. Reversible: yes.</li><li>iter-20 · goal-evaluator — Ambiguity: docs/goal.md step 5 asserts forward-return holes exist on retained (non-rebuilt) runs, but Stage E inserted zero rows on all 3,117 retained runs, and the goal text doesn&#x27;t say what a zero count means. We chose: score that population as correctly zero, not an unmet requirement, based on re-deriving the deletion-cascade code directly and confirming it live — but carried this forward as a binding design input for Stage G&#x27;s acceptance check. Reversible: yes.</li></ul></div></details>
+<details><summary>Direction signal</summary><div class='accordion-body'><div class='why-text'><strong>Why:</strong> J-11 advanced from Stage E to Stage F this iteration — the third clean, fully live-verified repair step in a row (Stages D, E, F across iterations 19-21), with zero regressions and zero new anti-goal violations — but no journey crossed into `passing`, so J-11 (&quot;Incident-bounded clean regeneration of derived state&quot;) stays `partial`. J-07 (&quot;The Today page answers the ten-second read&quot;) and J-08 (&quot;Market page moves over intact and history stays honest&quot;) remain `failing`, but both are deliberately blocked behind the loop-mechanics gate until Stage G passes, not newly broken or newly worked this iteration. Direction reads as holding: steady, independently-verified forward motion on the one authorized repair track, not yet enough to flip a journey&#x27;s status.</div><h3>Trend</h3><ul class='bullets'><li>Newly passing this iter: none</li><li>Newly passing in last 3 iters total: none</li><li>Regressions in last 3 iters: none</li><li>Anti-goal violations in last 3 iters: none (ledger holds steady at 7 total, 0 unresolved, across iterations 19-21)</li><li>Iters with no journey state change: 0 of last 3 (J-11 advanced within `partial` — Stage D, then Stage E, then Stage F — in each of the last 3 iterations)</li></ul><h3>Latest evaluator reasoning</h3><div class='why-text'>The one job the owner&#x27;s written plan allowed was done, and it worked. This step cleared out old saved answers that the app had kept from before the accident, so that when the app is finally switched back on it cannot show pre-accident figures as if they were current. I did not take that from anyone&#x27;s write-up: I opened the 8.4 GB database read-only and re-measured everything myself.</div></div></details>
+<details><summary>Quick verify (5 min)</summary><div class='accordion-body'><ol class='steps'><li><span class='step-action'>Open `docs/handoffs/goal-market-compass-iter-21-dev.md` and find the status block near the top.</span></li><li><span class='step-action'>Open `runs/goal-market-compass-iter-21/j11-stage-f-execute-execution-result.json` and find `total_rows_deleted` and the `per_table` object.</span></li><li><span class='step-action'>Open `runs/goal-market-compass-iter-21/j11-stage-f-execute-verification-result.json` and find `ok` and each table&#x27;s `post_count`.</span></li><li><span class='step-action'>Run the read-only query: `sqlite3 &quot;file:apps/backend/data/trendora.db?mode=ro&quot; &quot;SELECT (SELECT COUNT(*) FROM event_study_cache), (SELECT COUNT(*) FROM market_phase_cache), (SELECT COUNT(*) FROM forward_aggregate_cache), (SELECT COUNT(*) FROM coverage_snapshot), (SELECT COUNT(*) FROM availability_cache), (SELECT COUNT(*) FROM index_series_cache), (SELECT COUNT(*) FROM membership_timeline_cache), (SELECT COUNT(*) FROM scanner_runs), (SELECT COUNT(*) FROM forward_returns);&quot;`</span></li><li><span class='step-action'>Open `runs/goal-market-compass-iter-21/j11-stage-f-execute-mutation-accounting.json` and find `table_sweep_diff.changed_existing_tables`.</span></li></ol></div></details>
+<details><summary>Artifacts</summary><div class='accordion-body'><table class='drill-table'><thead><tr><th>Report</th><th>Verdict</th><th>Path</th></tr></thead><tbody><tr><td>Iter spec</td><td><span class='verdict-cell —'>—</span></td><td><a href='../docs/phases/goal-market-compass-iter-21.md'>docs/phases/goal-market-compass-iter-21.md</a></td></tr><tr><td>Dev handoff</td><td><span class='verdict-cell —'>—</span></td><td><a href='../docs/handoffs/goal-market-compass-iter-21-dev.md'>docs/handoffs/goal-market-compass-iter-21-dev.md</a></td></tr><tr><td>Review</td><td><span class='verdict-cell PASS'>PASS</span></td><td><a href='reviews/goal-market-compass-iter-21-review.md'>reports/reviews/goal-market-compass-iter-21-review.md</a></td></tr><tr><td>Browser QA</td><td><span class='verdict-cell SKIPPED'>SKIPPED</span></td><td><a href='phase-goal-market-compass-iter-21-ui-test-results.md'>reports/phase-goal-market-compass-iter-21-ui-test-results.md</a></td></tr><tr><td>Implementation summary</td><td><span class='verdict-cell —'>—</span></td><td><a href='phase-goal-market-compass-iter-21-implementation-summary.md'>reports/phase-goal-market-compass-iter-21-implementation-summary.md</a></td></tr><tr><td>User-visible changes</td><td><span class='verdict-cell —'>—</span></td><td><a href='phase-goal-market-compass-iter-21-user-visible-changes.md'>reports/phase-goal-market-compass-iter-21-user-visible-changes.md</a></td></tr><tr><td>What to click</td><td><span class='verdict-cell —'>—</span></td><td><a href='phase-goal-market-compass-iter-21-what-to-click.md'>reports/phase-goal-market-compass-iter-21-what-to-click.md</a></td></tr><tr><td>UI surface map</td><td><span class='verdict-cell —'>—</span></td><td><a href='phase-goal-market-compass-iter-21-ui-surface-map.md'>reports/phase-goal-market-compass-iter-21-ui-surface-map.md</a></td></tr><tr><td>UI test plan</td><td><span class='verdict-cell —'>—</span></td><td><a href='phase-goal-market-compass-iter-21-ui-test-plan.md'>reports/phase-goal-market-compass-iter-21-ui-test-plan.md</a></td></tr><tr><td>QA</td><td><span class='verdict-cell PASS'>PASS</span></td><td><a href='qa/goal-market-compass-iter-21-qa.md'>reports/qa/goal-market-compass-iter-21-qa.md</a></td></tr><tr><td>Audit</td><td><span class='verdict-cell PASS_WITH_GAPS'>PASS_WITH_GAPS</span></td><td><a href='../docs/handoffs/goal-market-compass-iter-21-audit.md'>docs/handoffs/goal-market-compass-iter-21-audit.md</a></td></tr><tr><td>Closure</td><td><span class='verdict-cell CLOSURE-PASS'>CLOSURE-PASS</span></td><td><a href='phase-goal-market-compass-iter-21-closure-verdict.md'>reports/phase-goal-market-compass-iter-21-closure-verdict.md</a></td></tr><tr><td>Goal evaluation</td><td><span class='verdict-cell CONTINUE'>CONTINUE</span></td><td><a href='../runs/goal-session-market-compass/iter-21/eval.md'>runs/goal-session-market-compass/iter-21/eval.md</a></td></tr><tr><td>Journey history</td><td><span class='verdict-cell —'>—</span></td><td><a href='../runs/goal-session-market-compass/state/journey-history.json'>runs/goal-session-market-compass/state/journey-history.json</a></td></tr></tbody></table></div></details>
+<details><summary>Timing — where this iteration's wall time went</summary><div class='accordion-body'><pre>== Wall-time report: session market-compass
+  goal-market-compass-iter-21  depth=?  verdict=?  wall=?  (incomplete/interrupted attempt)
+  goal-market-compass-iter-21  depth=full  verdict=CONTINUE  wall=307.7m
+      reviewer                   142.6m  calls=1
+      coherence-auditor           44.1m  calls=1
+      developer                   37.0m  calls=1
+      goal-decomposer             25.2m  calls=1
+      auditor                     18.7m  calls=1
+      goal-evaluator              17.5m  calls=1
+      ui-test-designer            10.4m  calls=1
+      orchestrator                 7.6m  calls=1
+      qa                           4.3m  calls=1
+      [engine] full-pipeline     220.8m  (contains agent time above)
+      [engine] showcase-join       0.0m  (contains agent time above)
+      pump-wait                  0.7m
+      OVER BUDGET at post-dev-fanout: 12749s &gt; 3600s (mode=trim)
+      unattributed (glue)        0.2m  (wall − agents(active) − quota)</pre></div></details>
+<div class='footer-note'>Generated 2026-08-27 09:24 by <code>render_iteration_summary.py</code> · source: <a href='phase-goal-market-compass-iter-21-iteration-summary.md'>phase-goal-market-compass-iter-21-iteration-summary.md</a></div>
+</div></body></html>

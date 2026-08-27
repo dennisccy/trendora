@@ -25,18 +25,25 @@ whichever of Stage G's two honest terminal states verification proves. Sequence:
      audit/evidence/user-state, cache dispositions, the `membership_timeline_cache` B2 per-date
      recompute-and-compare, the 18 named traps, a fresh write-path call-site re-enumeration + classification,
      an evidence-reinterpretation static check, and operational isolation.
-  3. Aggregate verdict (`stage_g_verdict`) -- no boolean permitted to pass by construction.
-  4. The ONE conditional corrective write this iteration may perform outside `finalize_stage_g` itself: if
-     the membership-timeline B2 check found a stale row, delete it (Stage F's own pre-approved fallback) --
-     this happens regardless of the overall verdict (a stale cache row is repaired either way, per the phase
-     spec's own wording: "the membership-timeline delete already covered above if that specific check is
-     what failed" is explicitly still authorized on a FAIL attempt).
+  3. The ONE conditional corrective write this iteration may perform outside `finalize_stage_g` itself: if
+     the membership-timeline B2 check found a stale row, delete it now (Stage F's own pre-approved
+     fallback) -- this happens regardless of the overall verdict (a stale cache row is repaired either way,
+     per the phase spec's own wording: "the membership-timeline delete already covered above if that
+     specific check is what failed" is explicitly still authorized on a FAIL attempt), followed immediately
+     by a live, post-action `COUNT(*)` proving the delete genuinely took effect
+     (`confirm_membership_timeline_deletion_matches_verification`). **This runs BEFORE the aggregate
+     verdict below (review FAIL fix, iter-22 -- was formerly computed only after the verdict/finalize had
+     already run, too late to affect anything) so a corrective write that silently fails can actually block
+     the FULLY REPAIRED declaration.**
+  4. Aggregate verdict (`stage_g_verdict`) -- no boolean permitted to pass by construction; folds in step
+     3's real, failable delete-reconciliation result as `membership_timeline_reconciled`.
   5. `finalize_stage_g` -- the ONE further conditional write: on a full PASS, deactivate (never delete) the
      `j11-incident-recovery` boundary; on any FAIL, zero further writes, boundary stays `active=1`.
   6. Post-write, read-only cross-iteration mutation accounting -- reconciles every changed table's delta
      since iteration 18's pre-Stage-D baseline sweep to exactly Stage D + Stage E + Stage F + this
-     iteration's own two possible conditional writes. Written LAST, alongside the final terminal-outcome
-     block, unconditionally.
+     iteration's own two possible conditional writes, and takes a SECOND, independent confirming
+     measurement of the membership-timeline delete (step 3 already gated the verdict on the first). Written
+     LAST, alongside the final terminal-outcome block, unconditionally.
 
 Usage:
     apps/backend/.venv/bin/python apps/backend/scripts/run_j11_stage_g_verify.py \\
@@ -119,6 +126,7 @@ OUTPUT_FILENAMES = (
     "j11-stage-g-verify-cache-dispositions.json",
     "j11-stage-g-verify-membership-timeline-check.json",
     "j11-stage-g-verify-membership-timeline-delete-action.json",
+    "j11-stage-g-verify-membership-timeline-deletion-check.json",
     "j11-stage-g-verify-named-traps.json",
     "j11-stage-g-verify-write-path-sites.json",
     "j11-stage-g-verify-write-path-classification.json",
@@ -490,12 +498,49 @@ def main() -> int:
     _write_json(evidence_dir / "j11-stage-g-verify-memory-check.json", memory_check)
     print(f"memory check: vm_peak_mb={memory_check['vm_peak_mb']} within_cap={memory_check['within_cap']}", file=sys.stderr)
 
-    # === Step 4: aggregate verdict ======================================================================
+    # === Step 4: the one conditional corrective write (membership-timeline delete-if-stale) -- MOVED to
+    #             run BEFORE the verdict/finalize (review FAIL fix -- was Step 5, after the verdict/write).
+    #             A corrective write that silently fails must be able to block the FULLY REPAIRED
+    #             declaration; that is impossible if the verdict is computed and the boundary already
+    #             deactivated before this even runs. This action executes regardless of the overall
+    #             verdict, per the phase spec's own wording ("the membership-timeline delete already
+    #             covered above if that specific check is what failed" is explicitly still authorized on a
+    #             FAIL attempt). ================================================================
+    with Session(engine) as session:
+        membership_timeline_delete_action = jsgv.execute_membership_timeline_delete_if_stale(
+            session, verification=membership_timeline_check,
+        )
+    _write_json(evidence_dir / "j11-stage-g-verify-membership-timeline-delete-action.json", membership_timeline_delete_action)
+    print(f"membership timeline delete action: deleted={membership_timeline_delete_action['deleted']}", file=sys.stderr)
+
+    # The real, failable reconciliation check (review FAIL fix -- was only computed post-write in the old
+    # Step 7, too late to affect anything). A fresh live COUNT(*), taken immediately after the delete
+    # action above, proves the write actually took effect rather than merely that the code branched into
+    # the delete-if-stale path.
+    with Session(engine) as session:
+        live_membership_timeline_row_count_after_delete = session.scalar(
+            select(sa_func.count()).select_from(MembershipTimelineCache)
+        )
+    membership_timeline_deletion_check = jsgv.confirm_membership_timeline_deletion_matches_verification(
+        verification=membership_timeline_check, delete_action=membership_timeline_delete_action,
+        live_row_count_after_action=int(live_membership_timeline_row_count_after_delete or 0),
+    )
+    _write_json(
+        evidence_dir / "j11-stage-g-verify-membership-timeline-deletion-check.json", membership_timeline_deletion_check,
+    )
+    print(
+        f"membership timeline deletion-matches-verification: matches={membership_timeline_deletion_check['matches']}",
+        file=sys.stderr,
+    )
+
+    # === Step 5: aggregate verdict -- now strictly AFTER the delete-if-stale action and its real
+    #             reconciliation check above, so a silently-failed corrective write can flip
+    #             `membership_timeline_reconciled` to False before finalize_stage_g's write runs. =======
     verdict = jsgv.stage_g_verdict(
         preflight_gate=preflight_gate, raw_inputs=raw_inputs, snapshot_scope=snapshot_scope,
         forward_returns=forward_returns, manifests=manifests,
         audit_evidence_and_user_state=audit_evidence_and_user_state, cache_dispositions=cache_dispositions,
-        membership_timeline_check=membership_timeline_check, named_traps=named_traps,
+        membership_timeline_deletion_check=membership_timeline_deletion_check, named_traps=named_traps,
         write_path_classification=write_path_classification,
         evidence_reinterpretation_check=evidence_reinterpretation_check,
         operational_isolation=operational_isolation,
@@ -514,21 +559,16 @@ def main() -> int:
     _write_json(evidence_dir / "j11-stage-g-verify-verdict.json", verdict)
     print(f"STAGE G VERDICT: full_pass={verdict['full_pass']} failing={verdict['failing_categories']}", file=sys.stderr)
 
-    # === Step 5: the one conditional corrective write (membership-timeline delete-if-stale) ============
-    with Session(engine) as session:
-        membership_timeline_delete_action = jsgv.execute_membership_timeline_delete_if_stale(
-            session, verification=membership_timeline_check,
-        )
-    _write_json(evidence_dir / "j11-stage-g-verify-membership-timeline-delete-action.json", membership_timeline_delete_action)
-    print(f"membership timeline delete action: deleted={membership_timeline_delete_action['deleted']}", file=sys.stderr)
-
     # === Step 6: finalize -- the ONE further conditional write on a full PASS ==========================
     with Session(engine) as session:
         finalize = jsgv.finalize_stage_g(session, verdict=verdict)
     _write_json(evidence_dir / "j11-stage-g-verify-finalize.json", finalize)
     print(f"finalize: outcome={finalize['outcome']} boundary_deactivated={finalize['boundary_deactivated']}", file=sys.stderr)
 
-    # === Step 7: post-write, read-only mutation accounting -- written LAST, as final evidence ==========
+    # === Step 7: post-write, read-only mutation accounting -- written LAST, as final evidence. This is
+    #             now a SECOND, independent confirming measurement of the membership-timeline delete (the
+    #             actual gate already ran pre-finalize, in Step 4 above) -- the same dual-instrument idiom
+    #             `_boundary_dump_diff_matches_expectation` already uses for the boundary row. ===========
     with Session(engine) as session:
         live_post_sweep = j11_maintenance.capture_full_table_sweep(session)
         post_maintenance_boundary_dump = migration.dump_table(engine, MaintenanceBoundary.__table__)

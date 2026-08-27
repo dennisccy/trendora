@@ -1711,3 +1711,105 @@ NOTES: the defect that once let a forbidden test lane run is still unfixed in `s
 thirteen iterations running have avoided it with the maintenance-isolation contract rather than curing it;
 and `goal_gate.py`'s duplicate-journey-heading defect is still unfixed and must be closed before any
 GOAL_ACHIEVED certification. Per the owner's ruling, neither may be touched until after Stage G.
+
+## Iteration 22 — goal-market-compass-iter-22
+
+**Date:** 2026-08-27T15:20:00Z
+**Verdict:** STALLED
+**Depth dispatched:** full (`runs/goal-session-market-compass/iter-22/depth-dispatched` reads `full`,
+matching the spec's own `Depth: full` line — the silent full→lean demotion that fired in iters 2, 6 and 8
+did NOT recur, for the fourteenth iteration running, and neither did the forbidden browser/replay lane; the
+engine recorded its refusal in `iter-22/maintenance-isolation-refusals` at 2026-08-27T13:25:03Z)
+
+**Owner-facing lines:** `J-11 STAGE D EXECUTED: YES` · `J-11 STAGE E COMPLETE: YES` ·
+`J-11 STAGE F COMPLETE: YES` · `J-11 STAGE G VERIFIED: YES` ·
+`J-11 INCIDENT STATUS: FULLY REPAIRED` · maintenance boundary now **INACTIVE** (row preserved,
+`active: 1 → 0`, `updated_at 2026-08-27 09:27:08.662797`, all 11 dates still listed). All confirmed by
+this evaluator against the live database, read-only, with no correction needed.
+
+**Journey deltas:**
+- Newly passing: none. Newly failing: none. **Regressed: none.**
+- **Advanced within `partial`: J-11** "Incident-bounded clean regeneration of derived state" — this
+  iteration's sole target. Stage G executed live, all 12 acceptance categories passed, the terminal
+  SUCCESS block was emitted and the one authorized boundary write performed. J-11 stays `partial`, NOT
+  `passing`: the serving/replay verification `docs/goal.md:1408` assigns to Stage G was never performed
+  (auditor B3), and no journey may be promoted to `passing` on an iteration that produced no serving
+  evidence. Re-stamped `last_verified_iter` to iter-22; `spec_hash` UNCHANGED at `01e69865…` — I ran
+  `goal_gate.py hash-journeys` myself and **all eleven** journeys' hashes are byte-identical to the
+  recorded ones, so `docs/goal.md` has not moved since iteration 19 and no `journeys-changed.md` fired.
+- Carried, NOT re-verified (maintenance isolation — browser QA and the replay lane were forbidden by
+  contract, so every journey keeps its prior recorded status): J-01, J-04, J-10 stay `passing`; J-02,
+  J-03, J-05, J-06, J-09 stay `partial`; J-07, J-08 stay `failing`. No `browser-infra.json` token exists,
+  so nothing is `pending_infra` — the lane was withheld, not failed. Two spot-checks: J-01's iter-4
+  screenshot (GRMN carries a real stored sector label, 1/539, regime 73.24, scores badged "Not yet
+  proven") and J-10 re-derived read-only (585 `daily_prices` rows on each of 2026-08-11/12; AVB volumes
+  554757 / 3706010; whole-table fingerprint reproduces `80441b37…`). Both consistent. J-04 keeps
+  `evidence_makeup: true` for the fourth iteration running — no capture was possible.
+- Anti-goal violations: **NONE new.** Ledger unchanged at **7 total, 0 unresolved.** AG-9, AG-10, AG-12
+  and AG-17 were the four at real risk and all four HELD, each verified by my own greps, code reading and
+  read-only database queries.
+- Coherence: COHERENCE-PASS. Deterministic scan: CLEAN. Review: PASS (after one FAIL + fix pass).
+  QA: PASS. Audit: PASS_WITH_GAPS (B1/B4/B5/T1 fixed in-audit; B2/B3 gaps; B6/B7/B8/T2 observations).
+
+**Reasoning:** The repair is finished and it holds — and I did not take that from anyone's write-up. I
+opened the 8.4 GB database read-only and re-measured every headline claim. The one authorized flag write
+landed: the quarantine over the eleven damaged days is switched off, the row itself preserved with all
+eleven dates still listed. Raw prices reproduce their certified content figure to the character. The
+eleven rebuilt days are frozen, unique and unrestamped, and no twelfth day carries their stamp. All
+twenty-four saved briefings are identical to the copy certified six iterations ago — I compared them
+field by field across all twenty-eight columns, not by row count — and every one is still marked unusable
+as forward-looking evidence, which is what the no-rewriting-history rule demands. Both evidence ledgers
+hash to their recorded values. One check is mine alone: I asked all twenty-five tables for their newest
+creation time. The newest anywhere is the rebuild itself, the day before; the only mark left on
+2026-08-27 is the single flag. Nothing else has touched this database. I also refused to take the
+reviewer's word on the one thing that mattered most: the check guarding the irreversible flag write could
+not fail in the version that actually ran, and the fix landed afterwards. The corrected rule needs the
+stale row's deletion to be reported AND a live count of zero afterwards; the evidence records the first
+and I measured the second myself, so the corrected gate reconciles on this historical write. Why STALLED
+rather than CONTINUE? Because for the first time in this arc the next step is a decision, not a task, and
+three separate stop rules fire together. Every journey left needs pages in a browser, and only a person
+can turn the application back on. Starting it is genuinely irreversible now: the quarantine is gone, seven
+request paths that write are unguarded in fact, seven damaged days still have no saved briefing and one
+ordinary page request would permanently create one, and sixteen dates inside the damaged window would mint
+a twelfth day-record. And the goal file contradicts itself about what Stage G even is — line 1408 calls it
+the final serving check while the same ruling forbids running the application until Stage G passes, which
+the coherence lane explicitly left for me to settle. My ruling is recorded: the owner's latest written
+instruction lists Stage G's required checks and they are all database-level, all passed, all re-derived by
+me — so the attempt honestly reached its owner-defined success state — but the serving check is still
+owed, so the journey stays partial rather than passing. Why not REGRESSION? Nothing that worked stopped
+working, no journey was tested so none could fail, not one value outside the two authorized writes moved,
+and the ledger gained no entry. Why not ESCALATE? This run already used full depth, and full depth is what
+produced these findings. One process fact: this is the thirteenth iteration running where a later lane
+found what the earlier ones missed — and the first in this arc where the reviewer, not the auditor or this
+evaluator, caught the decisive defect, which is the pipeline working the way it should.
+
+**Next-step recommendation:** ASK THE OWNER ONE QUESTION — may the application be started again? Nothing
+else can move. Ten of the eleven journeys can only be checked by looking at pages, and the application has
+been off by contract for fourteen iterations. IF YES: the first job of the next iteration is the piece the
+goal file still asks for and nobody has done — start the backend under supervision, open the Today, Market
+and Compass pages for a rebuilt day, and confirm the repaired data serves correctly; then normal product
+work in the goal file's own order (J-09, then J-05/J-06, then J-07/J-08). FOUR WARNINGS FOR THAT BOOT,
+each confirmed by me in the code or the database: (1) seven damaged days still have no saved briefing —
+12 and 13 May, 10, 13, 24 and 27 July, 3 August — and one page request would permanently create one, which
+the goal forbids; (2) sixteen dates inside the damaged window have prices but no day-record, and a request
+would mint a twelfth day carrying the rebuild stamp — so membership must always be read from ids 3148–3158
+and the execution evidence, never from the stamp; (3) two "serve last time's answer" caches were emptied,
+so the first request after start-up can do heavy work while someone waits — let the background warm-up
+finish first and record peak memory, on a machine that froze once; (4) the quarantine is now off, so the
+seven unguarded request-path writers are unguarded in fact. IF NOT YET: one useful job needs no
+application — close those seven write paths with the same guard pattern this iteration used for the
+eighth; the owner's own ruling already reserved this as post-Stage-G work. SMALLER ITEMS, none blocking:
+re-point the four trap citations that name tests asserting something else (auditor B2); the trap resolver
+proves only that a test function exists, never that it passes; two of the eighteen traps are asserted, not
+measured (now labelled as such); ten pre-existing failures in `test_data_manager.py` and one static-audit
+false positive remain, all confirmed unrelated; and J-04's screenshot still needs re-capturing the first
+time browser testing runs again. ONE MECHANICAL ITEM, now IMPROVED: unlike iterations 19–21, this
+iteration's new files AND its whole evidence folder are committed (`6dbcc772`, `cfb88cde`); only the fix
+pass and the audit handoff were still uncommitted at scoring time — confirm they land. FIVE OLDER OWNER
+QUESTIONS remain open and non-blocking: whether 3.44 GB is acceptable for J-09; J-06's "underlying run
+unavailable" wording; the rewording of J-01's first two test steps; whether an empty "next-session focus"
+is acceptable; and whether MNST joins the recovery list. TWO STANDING FRAMEWORK NOTES, both now eligible
+since Stage G has passed: the forbidden-lane defect in `scripts/automation/` — fourteen iterations running
+have avoided it with the maintenance-isolation contract rather than curing it; and `goal_gate.py`'s
+duplicate-journey defect, which I saw fire again this iteration (the slice emits J-10 twice, 12 headings
+for 11 journeys) and which must be closed before any GOAL_ACHIEVED certification.

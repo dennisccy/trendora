@@ -1,0 +1,2 @@
+2026-08-27T08:36:29Z	operation=async-showcase-join	detail=iter 21 tail forked before isolation
+2026-08-27T13:25:03Z	operation=browser-qa-phase	detail=browser QA + deterministic replay lane

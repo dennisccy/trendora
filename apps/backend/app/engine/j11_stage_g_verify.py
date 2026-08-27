@@ -53,6 +53,17 @@ presence + id + identity + EXACT recorded forward-return count, never zero). Thi
 the two overlapping instructions that is both internally consistent and actually satisfiable. Recorded here
 and in the dev handoff so a reviewer can independently evaluate the same judgment call.
 
+**Fix-mode correction (reviewer FAIL, this same iteration).** The first version of this module computed
+`membership_timeline_reconciled` by testing `membership_timeline_check["disposition"]` against the only two
+strings that field can ever hold -- an unconditional-pass tautology the reviewer caught, compounded by
+`run_j11_stage_g_verify.py` computing and persisting `stage_g_verdict` (and `finalize_stage_g`'s irrevocable
+boundary-deactivation write) BEFORE the one real reconciliation check (`membership_timeline_delete_
+reconciles`) even ran. `stage_g_verdict` now takes a `membership_timeline_deletion_check` argument -- the
+output of the new `confirm_membership_timeline_deletion_matches_verification`, which is genuinely failable
+-- and the CLI script now computes the delete-if-stale action and this confirmation BEFORE calling
+`stage_g_verdict`/`finalize_stage_g`, never after. See both functions' own docstrings for the exact
+semantics, and the dev handoff for the mutation-test proof that the fixed check can actually fail.
+
 Never touches (imports nothing from, calls nothing in that writes): `scanner.py`, `compass.py`,
 `sectors.py`, `scoring.py`, `j10_recovery.py`, or any canonical producer/serving function's CODE. This
 module COMPOSES already-existing, already-tested J-11 functions -- it introduces no second computation of
@@ -765,6 +776,53 @@ def execute_membership_timeline_delete_if_stale(session: Session, *, verificatio
     return {"generated_at": _now_iso(), "deleted": True, "reason": "stale row deleted per verification mismatch"}
 
 
+def confirm_membership_timeline_deletion_matches_verification(
+    *, verification: dict, delete_action: dict, live_row_count_after_action: int,
+) -> dict:
+    """The REAL, failable check `stage_g_verdict` folds into `membership_timeline_reconciled` (fix for the
+    review FAIL: the old code tested `disposition in {"preserve_for_incremental_reuse", "explicit_delete"}`
+    -- the only two strings `verify_membership_timeline_preserved_row` can ever return, so that expression
+    was true unconditionally and proved nothing; its docstring also cited this exact function's name as
+    already existing when no caller had ever computed or passed it in).
+
+    - `disposition == "preserve_for_incremental_reuse"`: nothing needed deleting -- the per-date
+      recompute-and-compare in `verify_membership_timeline_preserved_row` already proved the row correct
+      field-by-field, so this trivially matches.
+    - `disposition == "explicit_delete"`: matches ONLY if `execute_membership_timeline_delete_if_stale`
+      reported `deleted: True` **and** a live, post-action `COUNT(*)` on `membership_timeline_cache` is
+      genuinely `0` -- i.e. the corrective write actually happened AND actually took effect, never merely
+      that the code branched into the delete-if-stale path. A delete that raised and was swallowed
+      upstream, ran against the wrong session, or was rolled back would leave `deleted=False` or the live
+      count `> 0`, and this correctly reports `matches: False` -- which the caller must compute and pass to
+      `stage_g_verdict` BEFORE calling `finalize_stage_g`, so a silently-failed corrective write blocks the
+      FULLY REPAIRED declaration and the boundary-deactivation write instead of being unable to affect it.
+    - Any other `disposition` value: fail-closed (`matches: False`) -- `verify_membership_timeline_
+      preserved_row` should never produce one, but this function does not trust that by construction."""
+    disposition = verification.get("disposition")
+    if disposition == "preserve_for_incremental_reuse":
+        return {
+            "matches": True, "disposition": disposition,
+            "reason": "no delete required -- preserve confirmed by the per-date recompute-and-compare",
+        }
+    if disposition == "explicit_delete":
+        deleted = bool(delete_action.get("deleted"))
+        row_confirmed_absent = live_row_count_after_action == 0
+        matches = deleted and row_confirmed_absent
+        return {
+            "matches": matches, "disposition": disposition,
+            "deleted": deleted, "live_row_count_after_action": live_row_count_after_action,
+            "reason": (
+                "stale row deleted and confirmed absent by a live post-action COUNT(*)" if matches else
+                f"corrective delete did NOT verifiably take effect (deleted={deleted}, "
+                f"live_row_count_after_action={live_row_count_after_action}) -- treating as UNRECONCILED"
+            ),
+        }
+    return {
+        "matches": False, "disposition": disposition,
+        "reason": f"unrecognized disposition {disposition!r} -- treating as UNRECONCILED, fail-closed",
+    }
+
+
 # ================================================================================================
 # Step 2h -- the ~18 named traps (schema/identity/retry family + J-10/J-11 sequencing family)
 # ================================================================================================
@@ -785,8 +843,34 @@ def _test_function_exists(test_file: Path, function_name: str) -> bool:
 
 # Each trap: a docs/goal.md Acceptance-section citation, resolved by an EXISTING passing test (never
 # re-implemented) plus, where noted, a fresh live spot-check this module performs directly. `family` and
-# `trap_id` mirror the two named lists in docs/goal.md verbatim (10 schema/identity/retry + 8 J-10/J-11
-# sequencing = 18 total).
+# `trap_id` mirror the two named lists in docs/goal.md (10 schema/identity/retry + 8 J-10/J-11
+# sequencing = 18 total); the `description` strings are faithful PARAPHRASES, not verbatim quotations --
+# several drop an operative sub-clause of the goal.md text (iter-22 audit finding B2), so resolve any
+# question of what a trap requires against docs/goal.md's Acceptance section, never against this table.
+#
+# iter-22 AUDIT (finding B2): a `test_file`/`test_function` citation is resolved by `_test_function_exists`
+# below, which proves ONLY that a function of that name still exists in that file -- it never runs the test
+# and never inspects its assertions. A citation that points at a test asserting something ELSE therefore
+# passes silently. Four such mis-citations are recorded in the iteration audit report (family/trap:
+# schema_identity_retry 7 and 9; j10_j11_sequencing 1 and 3). They are NOT re-pointed here: choosing which
+# existing test evidences which owner-authored trap is an evidence-mapping decision for the owner/next
+# iteration, and a second wrong guess would be worse than a named, visible gap.
+_PROCEDURAL_ONLY_TRAP_CHECKS: dict[str, str] = {
+    "j10_closed_before_j11_stage_c_ever_ran": (
+        "J-10's own closure is a fact about the iteration history (docs/goal.md's 'J-10 prerequisite "
+        "SATISFIED (owner, 2026-08-24)'), not a row this module can query. Stage C's own preflight "
+        "comparison gate having run before Stage C ever wrote is the nearest real evidence, and every "
+        "later stage (C, D, E, F, G) executing at all is downstream proof the gate held -- but neither is "
+        "re-derived here, so this entry asserts rather than verifies."
+    ),
+    "this_iteration_is_stage_g_per_its_own_spec": (
+        "asserts only that this module is dispatched as Stage G under phase spec "
+        "goal-market-compass-iter-22. It does NOT perform the repaired-state GET /api/compass serving or "
+        "J-01/J-02/J-03 replay that docs/goal.md attributes to Stage G -- ruling item 4 keeps replay and "
+        "ordinary API requests OFF through Stage G, and the phase spec defers them to a human-authorized "
+        "boot. The trap is recorded as ASSERTED-NOT-VERIFIED (iter-22 audit finding B3)."
+    ),
+}
 NAMED_TRAPS: tuple[dict, ...] = (
     {
         "family": "schema_identity_retry", "trap_id": 1,
@@ -942,22 +1026,26 @@ def verify_named_traps(
             elif check_name == "boundary_still_active_at_stage_g_preflight_time":
                 ok = bool(boundary_recheck.get("boundary_active")) and bool(boundary_recheck.get("all_dates_blocked"))
                 entry.update({"live_spot_check": check_name, "boundary_recheck_ok": ok, "ok": ok})
-            elif check_name == "j10_closed_before_j11_stage_c_ever_ran":
-                # Procedural/document-level fact (docs/goal.md's own "J-10 prerequisite SATISFIED (owner,
-                # 2026-08-24)" text, re-verified by Stage C's OWN preflight comparison gate BEFORE Stage C
-                # ever wrote -- test_j11_stage_c_preflight.py::
-                # test_tc2_comparison_gate_passes_when_certified_state_matches_fresh_state, cited for
-                # sibling trap #3 in this SAME family, structurally covers the identical precondition).
-                # Not independently re-derivable from THIS session's live database state alone (J-10's own
-                # closure is a fact about the iteration history, not a row this module can query) -- every
-                # later stage (C, D, E, F, this one) executing at all is itself downstream proof the gate
-                # already held.
-                entry.update({"live_spot_check": check_name, "ok": True})
-            elif check_name == "this_iteration_is_stage_g_per_its_own_spec":
-                # Procedural fact, not a DB query -- this module IS the Stage G verification module; its
-                # own existence and dispatch under this phase spec (goal-market-compass-iter-22, "J-11
-                # Stage G: full verification / acceptance gate") is the proof.
-                entry.update({"live_spot_check": check_name, "ok": True})
+            elif check_name in _PROCEDURAL_ONLY_TRAP_CHECKS:
+                # iter-22 AUDIT (finding B1): these two traps resolve to an UNCONDITIONAL `ok: True` --
+                # there is no query, no comparison and no derived value behind them, so neither can ever
+                # fail. That is real and unavoidable (both are facts about the ITERATION HISTORY, not rows
+                # this module can read), but emitting them under the `live_spot_check` key alongside the
+                # four genuinely-live checks misrepresented them as evidence-bearing: in the evidence JSON
+                # they appeared as `{"live_spot_check": ..., "ok": true}` with none of the `observed`/
+                # `observed_date_count`/`boundary_recheck_ok` payload every real spot-check carries, and
+                # the dev handoff then generalised all six as "a fresh live spot-check". They are now
+                # labelled for what they are, so no reader or downstream lane can mistake them for a
+                # verified result. `ok` is deliberately UNCHANGED -- relabelling must not silently restate
+                # a completed live gate's verdict; the honesty gap is named in the iteration audit report
+                # for the owner to resolve.
+                entry.update({
+                    "procedural_fact": check_name,
+                    "live_check_performed": False,
+                    "evidence_class": "procedural_not_live_verifiable",
+                    "rationale": _PROCEDURAL_ONLY_TRAP_CHECKS[check_name],
+                    "ok": True,
+                })
             elif check_name == "stage_d_replaced_the_recovery_era_08_11_08_12_runs":
                 pre = pre_stage_c_run_id_by_date or {}
                 new_0811 = expected_run_id_by_date.get("2026-08-11")
@@ -1251,7 +1339,7 @@ def stage_g_verdict(
     manifests: dict,
     audit_evidence_and_user_state: dict,
     cache_dispositions: dict,
-    membership_timeline_check: dict,
+    membership_timeline_deletion_check: dict,
     named_traps: dict,
     write_path_classification: dict,
     evidence_reinterpretation_check: dict,
@@ -1261,16 +1349,18 @@ def stage_g_verdict(
     iter-20/21's flagged-tautology discipline applies here explicitly: every value folded in below is
     itself a REAL, previously-computed, falsifiable result (not re-derived here), and this function's own
     logic is a plain `all(...)` over them -- it introduces no new boolean that could pass by construction.
-    `membership_timeline_check`'s own `ok` is always True BY DESIGN (see its docstring: staleness is
-    reported via `disposition`, never treated as a hard failure, because the pre-approved delete fallback
-    exists precisely to repair it) -- this function additionally requires the delete-if-stale action to
-    have actually been taken whenever a mismatch was found (via the caller-supplied
-    `membership_timeline_deletion_matches_verification` flag), so a mismatch can never silently survive
-    into a PASS verdict."""
-    membership_timeline_reconciled = (
-        membership_timeline_check["disposition"] == "preserve_for_incremental_reuse"
-        or membership_timeline_check["disposition"] == "explicit_delete"
-    )
+
+    FIX (review FAIL, iter-22 fix pass): this function used to take the raw `membership_timeline_check`
+    dict and test `disposition in {"preserve_for_incremental_reuse", "explicit_delete"}` -- the only two
+    strings that dict's `disposition` field can ever hold, so the test was true unconditionally and was not
+    a check at all (confirmed by the reviewer and, separately, by mutation testing -- see the dev handoff).
+    This function now instead takes `membership_timeline_deletion_check`, the dict returned by
+    `confirm_membership_timeline_deletion_matches_verification`, whose `matches` field IS genuinely
+    failable: when the delete-if-stale corrective write was required, `matches` is True only if that write
+    actually happened AND a live post-write `COUNT(*)` confirms the row is really gone -- never merely that
+    the code took that branch. The caller (`run_j11_stage_g_verify.py`) computes this BEFORE calling this
+    function and before `finalize_stage_g`'s boundary-deactivation write, so a corrective write that
+    silently fails now blocks the FULLY REPAIRED declaration instead of being unable to affect it."""
     category_results = {
         "preflight_gate": bool(preflight_gate.get("proceed")),
         "raw_inputs": bool(raw_inputs.get("ok")),
@@ -1279,7 +1369,7 @@ def stage_g_verdict(
         "manifests": bool(manifests.get("ok")),
         "audit_evidence_and_user_state": bool(audit_evidence_and_user_state.get("ok")),
         "cache_dispositions": bool(cache_dispositions.get("ok")),
-        "membership_timeline_reconciled": membership_timeline_reconciled,
+        "membership_timeline_reconciled": bool(membership_timeline_deletion_check.get("matches")),
         "named_traps": bool(named_traps.get("ok")),
         "write_path_classification": bool(write_path_classification.get("ok")),
         "evidence_reinterpretation_check": bool(evidence_reinterpretation_check.get("clean")),

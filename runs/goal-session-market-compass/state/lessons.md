@@ -336,3 +336,45 @@ grep every caller of the table's model for an upsert/insert reachable from a req
 asserting "no stale derived state remains"; and specifically J-11 Stage G, whose acceptance list
 includes "caches consistent with the rebuilt state" and must therefore assert cleanliness after the
 application is allowed to boot, or foreclose the write first.
+
+## iter-22 — 2026-08-27T15:20:00Z
+
+**Verdict:** STALLED
+**Lesson:** A "the cache will refresh cheaply on the next miss" proof is NOT a "the cached content is
+still correct" proof — they are logically independent, and iteration 21 shipped the first while the
+acceptance text required the second. Stage G's per-date recompute-and-compare against
+`membership_timeline_cache`'s stored points (`j11_stage_g_verify.verify_membership_timeline_preserved_row`)
+found a genuinely stale value nobody had reported — 2026-08-10's `exits` stored as `['AMSC','MARA']` where
+the fresh recompute gives `['MARA']` — and the pre-approved delete fallback closed it. When a preserve
+decision is made for performance reasons, the content correctness of what is being preserved is a separate
+required check.
+**Applies to:** any iteration that PRESERVES rather than invalidates a derived/cache row after an
+upstream data change — and any acceptance gate whose wording is "no stale derived state remains".
+
+## iter-22 — 2026-08-27T15:20:00Z
+
+**Verdict:** STALLED
+**Lesson:** Third appearance in this session of one defect class: a boolean that cannot fail sitting inside
+the gate that authorizes an irreversible write (iter-20's Stage E checks, iter-21's, and here
+`stage_g_verdict`'s `membership_timeline_reconciled`, which accepted both of the only two dispositions its
+source function can return). What made this one worse was ordering: the CLI performed the boundary write
+BEFORE the one real reconciliation check. The reviewer caught it — the first time in this arc the reviewer,
+not the auditor or the evaluator, found the decisive defect — and the fix pass had to reorder the CLI, not
+just the expression. Two rules earned: (a) for any check gating an irreversible action, mutate the REAL
+production module and prove the suite fails, never a hand-built fixture; (b) the proof must run BEFORE the
+action, or it is a post-mortem, not a gate.
+**Applies to:** any iteration whose spec contains a one-way action (a live write, a flag flip, a
+deactivation, a delete) gated on a computed verdict.
+
+## iter-22 — 2026-08-27T15:20:00Z
+
+**Verdict:** STALLED
+**Lesson:** A goal file can make a stage's own acceptance criterion physically impossible and nobody
+notices, because the impossible criterion gets "resolved" by a check that asserts rather than measures.
+`docs/goal.md:1408` assigns Stage G the "final serving/replay verification" while the same owner ruling
+(item 4) forbids booting the app until Stage G passes; the trap check for it returned an unconditional
+`ok: True` on the reasoning "this module IS Stage G". Detection rule: any acceptance item that no live
+query or test could ever falsify must be labelled as procedural/asserted, counted separately, and
+surfaced to the evaluator — never allowed to contribute a silent `true` to a gate.
+**Applies to:** any spec whose acceptance list is assembled from goal.md prose, especially where a safety
+constraint and a verification requirement reference each other.

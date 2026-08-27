@@ -161,6 +161,22 @@ def test_cli_script_imports_no_network_capable_import():
     assert result["clean"], result
 
 
+def test_network_capable_import_check_FAILS_on_a_file_that_imports_a_network_library(tmp_path):
+    """iter-22 AUDIT: the two AG-9 tests above only ever assert `clean is True`, so hardwiring
+    `confirm_no_network_capable_import` to return `clean: True` left the whole suite green (proven by the
+    audit's own mutation run). AG-9 is a *critical* anti-goal and this check feeds `verify_raw_inputs`'s
+    `ok` -- it must be provably falsifiable, not merely correct-looking."""
+    offender = tmp_path / "networky.py"
+    offender.write_text("import requests\nfrom urllib import request\n")
+    result = jsgv.confirm_no_network_capable_import(offender)
+    assert result["clean"] is False
+    assert result["per_file"][str(offender)]["network_hits"] == ["requests", "urllib"]
+    # and the clean/dirty distinction really is per-file, not a global constant
+    mixed = jsgv.confirm_no_network_capable_import(MODULE_PATH, offender)
+    assert mixed["clean"] is False
+    assert mixed["per_file"][str(MODULE_PATH)]["clean"] is True
+
+
 # =======================================================================================================
 # TC-1 / TC-2 -- preflight gate
 # =======================================================================================================
@@ -585,6 +601,49 @@ def test_tc12_membership_timeline_mismatch_flips_disposition_to_explicit_delete(
         assert session.exec(select(MembershipTimelineCache)).first() is None
 
 
+def test_tc12_deletion_confirmed_reconciles_stage_g_verdict_after_a_genuine_repair(engine, cfg):
+    """Closes the loop end-to-end over REAL database state (not hand-constructed dicts, unlike the
+    `test_deletion_check_*`/`test_stage_g_verdict_membership_timeline_*` unit tests above): a genuinely
+    stale row is found, genuinely deleted, and a genuine live post-delete `COUNT(*)` confirms it -- proving
+    the full corrected chain (`verify_membership_timeline_preserved_row` ->
+    `execute_membership_timeline_delete_if_stale` -> `confirm_membership_timeline_deletion_matches_
+    verification` -> `stage_g_verdict`) composes correctly for the exact repair scenario this iteration's
+    own live run actually hit (a genuine B2 mismatch, genuinely corrected)."""
+    target_date = INCIDENT_DATES[0]
+    with Session(engine) as session:
+        run = _mk_run(session, target_date)
+        _mk_result(session, run, "AAA")
+        session.commit()
+        stale_point = {"date": target_date.isoformat(), "size": 999, "entries": ["ZZZ"], "exits": [], "excluded": {}}
+        session.add(MembershipTimelineCache(
+            dataset_version="stub-stamp",
+            payload_json=json.dumps({"candidate_pool_count": 1, "points": [stale_point], "labels": {}}),
+            created_at=datetime.now(timezone.utc),
+        ))
+        session.commit()
+
+    with Session(engine) as session:
+        verification = jsgv.verify_membership_timeline_preserved_row(session, cfg, stage_f_new_dates=[])
+    assert verification["disposition"] == "explicit_delete"
+
+    with Session(engine) as session:
+        delete_action = jsgv.execute_membership_timeline_delete_if_stale(session, verification=verification)
+    assert delete_action["deleted"] is True
+
+    with Session(engine) as session:
+        live_row_count_after = len(session.exec(select(MembershipTimelineCache)).all())
+    assert live_row_count_after == 0  # sanity: the row is genuinely gone, not merely reported as deleted
+
+    deletion_check = jsgv.confirm_membership_timeline_deletion_matches_verification(
+        verification=verification, delete_action=delete_action, live_row_count_after_action=live_row_count_after,
+    )
+    assert deletion_check["matches"] is True
+
+    verdict = jsgv.stage_g_verdict(**{**_all_pass_inputs(), "membership_timeline_deletion_check": deletion_check})
+    assert verdict["category_results"]["membership_timeline_reconciled"] is True
+    assert verdict["full_pass"] is True
+
+
 def test_membership_timeline_dates_in_stage_f_new_dates_are_never_targeted(engine, cfg):
     """A date Stage F itself recorded as `new_dates` (never previously cached) must be excluded from the
     B2 verification target set -- there is nothing stale to prove about a date that was never cached
@@ -649,6 +708,46 @@ def test_named_traps_assembles_exactly_18_and_every_citation_exists(engine):
     assert result["trap_count"] == 18
     for trap in result["traps"]:
         assert trap["ok"] is True, trap
+
+
+def test_named_traps_procedural_entries_are_labelled_asserted_not_verified(engine):
+    """iter-22 AUDIT (finding B1): exactly two of the 18 traps resolve to an unconditional `ok: True` with
+    no query behind them. That cannot be fixed by code -- both are facts about the iteration history -- but
+    it MUST NOT be presented as a live spot-check. This test pins the honest labelling so a future edit
+    cannot quietly re-merge them into the evidence-bearing set, and pins the count at exactly two so a
+    third unconditional pass cannot be added without failing here."""
+    with Session(engine) as session:
+        for one_date in INCIDENT_DATES:
+            _mk_run(session, one_date, engine_identity_value="frozen-xyz")
+        session.commit()
+        expected_run_id_by_date = {d.isoformat(): rid for d, rid in zip(
+            sorted(INCIDENT_DATES), sorted(session.exec(select(ScannerRun.id)).all()),
+        )}
+    with Session(engine) as session:
+        result = jsgv.verify_named_traps(
+            session, tests_dir=BACKEND_DIR / "tests", expected_run_id_by_date=expected_run_id_by_date,
+            frozen_engine_identity="frozen-xyz",
+            boundary_recheck={"boundary_active": True, "all_dates_blocked": True},
+            pre_stage_c_run_id_by_date={
+                "2026-08-11": expected_run_id_by_date["2026-08-11"] - 1000,
+                "2026-08-12": expected_run_id_by_date["2026-08-12"] - 1000,
+            },
+        )
+    procedural = [t for t in result["traps"] if "procedural_fact" in t]
+    assert len(procedural) == 2, procedural
+    assert {t["procedural_fact"] for t in procedural} == set(jsgv._PROCEDURAL_ONLY_TRAP_CHECKS)
+    for trap in procedural:
+        assert trap["live_check_performed"] is False
+        assert trap["evidence_class"] == "procedural_not_live_verifiable"
+        assert trap["rationale"]
+        # and they must NEVER carry the live_spot_check key that the four real probes carry
+        assert "live_spot_check" not in trap
+
+    live = [t for t in result["traps"] if "live_spot_check" in t]
+    assert len(live) == 4, live
+    # every genuinely-live spot-check carries observed payload, not just a bare `ok`
+    for trap in live:
+        assert set(trap) - {"family", "trap_id", "description", "live_spot_check", "ok"}, trap
 
 
 def test_named_traps_fails_when_a_citation_is_dangling(tmp_path):
@@ -828,6 +927,36 @@ def test_operational_isolation_ok_when_nothing_listens_on_the_probed_ports():
     assert result["ok"] is True
 
 
+@pytest.mark.parametrize("which", ["backend", "frontend"])
+def test_operational_isolation_FAILS_when_a_real_listener_occupies_a_probed_port(which):
+    """iter-22 AUDIT: the pass-case test above was the ONLY coverage of this function, so hardwiring
+    `verify_operational_isolation` to return `ok: True` left the whole suite green (proven by the audit's
+    own mutation run). `operational_isolation` is one of `stage_g_verdict`'s twelve gating categories --
+    the category that stands for "no application service booted during the incident window" -- so a check
+    no test can distinguish from an unconditional pass is exactly the flagged-tautology pattern this
+    iteration is held to. Binds a real loopback listener and proves the probe reports it."""
+    import socket as _socket
+
+    listener = _socket.socket(_socket.AF_INET, _socket.SOCK_STREAM)
+    listener.setsockopt(_socket.SOL_SOCKET, _socket.SO_REUSEADDR, 1)
+    listener.bind(("127.0.0.1", 0))
+    listener.listen(1)
+    busy_port = listener.getsockname()[1]
+    try:
+        ports = {"backend_port": 48213, "frontend_port": 48214}
+        ports[f"{which}_port"] = busy_port
+        result = jsgv.verify_operational_isolation(**ports)
+        assert result[f"{which}_listening"] is True
+        assert result["ok"] is False
+    finally:
+        listener.close()
+
+    # and it goes clean again once the listener is gone -- the probe reads live state, not a constant
+    after = jsgv.verify_operational_isolation(backend_port=busy_port, frontend_port=48214)
+    assert after["backend_listening"] is False
+    assert after["ok"] is True
+
+
 # =======================================================================================================
 # TC-22 -- cross-iteration mutation accounting
 # =======================================================================================================
@@ -912,7 +1041,7 @@ def _all_pass_inputs() -> dict:
         "manifests": {"ok": True},
         "audit_evidence_and_user_state": {"ok": True},
         "cache_dispositions": {"ok": True},
-        "membership_timeline_check": {"disposition": "preserve_for_incremental_reuse"},
+        "membership_timeline_deletion_check": {"matches": True, "disposition": "preserve_for_incremental_reuse"},
         "named_traps": {"ok": True},
         "write_path_classification": {"ok": True},
         "evidence_reinterpretation_check": {"clean": True},
@@ -936,6 +1065,7 @@ def test_stage_g_verdict_full_pass_when_every_category_holds():
         ("manifests", {"ok": False}),
         ("audit_evidence_and_user_state", {"ok": False}),
         ("cache_dispositions", {"ok": False}),
+        ("membership_timeline_deletion_check", {"matches": False, "disposition": "explicit_delete"}),
         ("named_traps", {"ok": False}),
         ("write_path_classification", {"ok": False}),
         ("evidence_reinterpretation_check", {"clean": False}),
@@ -943,21 +1073,105 @@ def test_stage_g_verdict_full_pass_when_every_category_holds():
     ],
 )
 def test_stage_g_verdict_fails_when_any_single_category_fails(category, broken_value):
+    """The full 12-category tautology guard (review FAIL fix -- the old 11-case list deliberately EXCLUDED
+    the membership-timeline category, the exact gap that let its unconditional-pass bug through review).
+    Every one of `stage_g_verdict`'s 12 `category_results` keys is now covered here: flipping any ONE
+    input, including this one, must flip the verdict."""
     inputs = _all_pass_inputs()
     inputs[category] = broken_value
     verdict = jsgv.stage_g_verdict(**inputs)
     assert verdict["full_pass"] is False
-    assert category in verdict["failing_categories"]
+    # the `membership_timeline_deletion_check` PARAMETER feeds the `membership_timeline_reconciled`
+    # CATEGORY key (pre-existing asymmetry: every other parameter name already equals its category key).
+    expected_failing_category = (
+        "membership_timeline_reconciled" if category == "membership_timeline_deletion_check" else category
+    )
+    assert expected_failing_category in verdict["failing_categories"]
 
 
-def test_stage_g_verdict_membership_timeline_explicit_delete_is_still_a_pass_category():
-    """A stale row that got correctly caught-and-deleted is a SUCCESSFUL repair, not a failure -- the
-    disposition itself (never a raw boolean) carries the signal, and either legitimate disposition value
-    keeps this category passing."""
+def test_stage_g_verdict_membership_timeline_reconciled_when_deletion_confirmed_after_explicit_delete():
+    """A stale row that got correctly caught, deleted, AND confirmed gone by a live post-action COUNT(*)
+    is a SUCCESSFUL repair -- `membership_timeline_reconciled` is real evidence of the confirmed outcome,
+    never the mere fact that `disposition` held one of its two possible strings."""
     inputs = _all_pass_inputs()
-    inputs["membership_timeline_check"] = {"disposition": "explicit_delete"}
+    inputs["membership_timeline_deletion_check"] = {
+        "matches": True, "disposition": "explicit_delete", "deleted": True, "live_row_count_after_action": 0,
+    }
     verdict = jsgv.stage_g_verdict(**inputs)
     assert verdict["category_results"]["membership_timeline_reconciled"] is True
+    assert verdict["full_pass"] is True
+
+
+def test_stage_g_verdict_membership_timeline_NOT_reconciled_when_corrective_delete_silently_fails():
+    """The exact scenario the review's CRITICAL finding named: `disposition == "explicit_delete"` (a
+    corrective write was required) but the write did not verifiably take effect (`matches: False`) --
+    `membership_timeline_reconciled` must be False and the overall verdict must FAIL, never silently pass
+    through to a FULLY REPAIRED declaration and the boundary-deactivation write."""
+    inputs = _all_pass_inputs()
+    inputs["membership_timeline_deletion_check"] = {
+        "matches": False, "disposition": "explicit_delete", "deleted": False, "live_row_count_after_action": 1,
+    }
+    verdict = jsgv.stage_g_verdict(**inputs)
+    assert verdict["category_results"]["membership_timeline_reconciled"] is False
+    assert verdict["full_pass"] is False
+    assert "membership_timeline_reconciled" in verdict["failing_categories"]
+
+
+# =======================================================================================================
+# confirm_membership_timeline_deletion_matches_verification -- the real, failable check itself
+# (review FAIL fix: proves the fixed check can actually fail, closing the mutation-bar gap the coordinator
+# flagged -- only 2 of 12 acceptance checks were mutation-tested in the original submission).
+# =======================================================================================================
+
+
+def test_deletion_check_preserve_disposition_trivially_matches_with_no_delete_action_needed():
+    result = jsgv.confirm_membership_timeline_deletion_matches_verification(
+        verification={"disposition": "preserve_for_incremental_reuse"},
+        delete_action={"deleted": False, "reason": "nothing to delete"},
+        live_row_count_after_action=1,  # the preserved row is still there -- correctly irrelevant here
+    )
+    assert result["matches"] is True
+
+
+def test_deletion_check_explicit_delete_matches_when_deleted_true_and_row_confirmed_absent():
+    result = jsgv.confirm_membership_timeline_deletion_matches_verification(
+        verification={"disposition": "explicit_delete"},
+        delete_action={"deleted": True, "reason": "stale row deleted per verification mismatch"},
+        live_row_count_after_action=0,
+    )
+    assert result["matches"] is True
+
+
+def test_deletion_check_explicit_delete_does_NOT_match_when_delete_action_never_reported_deleted():
+    """The delete-if-stale action never actually ran the DELETE (e.g. it raised and was swallowed, or ran
+    against the wrong session) -- `deleted=False` even though the disposition said a delete was required."""
+    result = jsgv.confirm_membership_timeline_deletion_matches_verification(
+        verification={"disposition": "explicit_delete"},
+        delete_action={"deleted": False, "reason": "row already absent"},
+        live_row_count_after_action=0,
+    )
+    assert result["matches"] is False
+
+
+def test_deletion_check_explicit_delete_does_NOT_match_when_row_survives_the_delete():
+    """The critical silent-failure scenario: the delete action REPORTED `deleted=True`, but a live,
+    independent post-action COUNT(*) still finds the row present (e.g. a rolled-back transaction, a session
+    that never committed, or a stale read) -- this must NOT be treated as a successful repair."""
+    result = jsgv.confirm_membership_timeline_deletion_matches_verification(
+        verification={"disposition": "explicit_delete"},
+        delete_action={"deleted": True, "reason": "stale row deleted per verification mismatch"},
+        live_row_count_after_action=1,
+    )
+    assert result["matches"] is False
+
+
+def test_deletion_check_unrecognized_disposition_fails_closed():
+    result = jsgv.confirm_membership_timeline_deletion_matches_verification(
+        verification={"disposition": "not_a_real_disposition"},
+        delete_action={"deleted": False},
+        live_row_count_after_action=0,
+    )
+    assert result["matches"] is False
 
 
 # =======================================================================================================
@@ -1223,18 +1437,29 @@ def test_full_end_to_end_stage_g_shaped_fixture_reaches_fully_repaired(tmp_path,
     )
     assert pre_write_accounting["ok"] is True
 
+    # The delete-if-stale action and its real reconciliation check now run BEFORE stage_g_verdict /
+    # finalize_stage_g (review FAIL fix) -- mirrors the corrected script ordering exactly, so this
+    # end-to-end fixture exercises the SAME sequence the live CLI script now runs, not the buggy one.
+    with Session(fixture_engine) as session:
+        delete_action = jsgv.execute_membership_timeline_delete_if_stale(session, verification=membership)
+    assert delete_action["deleted"] is False  # confirmed fresh, nothing to delete
+
+    with Session(fixture_engine) as session:
+        live_membership_row_count_after_delete = len(session.exec(select(MembershipTimelineCache)).all())
+    deletion_check = jsgv.confirm_membership_timeline_deletion_matches_verification(
+        verification=membership, delete_action=delete_action,
+        live_row_count_after_action=live_membership_row_count_after_delete,
+    )
+    assert deletion_check["matches"] is True
+
     verdict = jsgv.stage_g_verdict(
         preflight_gate=preflight_gate, raw_inputs=raw_inputs, snapshot_scope=snapshot_scope,
         forward_returns=forward_returns, manifests=manifests, audit_evidence_and_user_state=audit,
-        cache_dispositions=caches, membership_timeline_check=membership, named_traps=traps,
+        cache_dispositions=caches, membership_timeline_deletion_check=deletion_check, named_traps=traps,
         write_path_classification=write_path_classification, evidence_reinterpretation_check=reinterpretation,
         operational_isolation=isolation,
     )
     assert verdict["full_pass"] is True, verdict["failing_categories"]
-
-    with Session(fixture_engine) as session:
-        delete_action = jsgv.execute_membership_timeline_delete_if_stale(session, verification=membership)
-    assert delete_action["deleted"] is False  # confirmed fresh, nothing to delete
 
     with Session(fixture_engine) as session:
         finalize = jsgv.finalize_stage_g(session, verdict=verdict)
