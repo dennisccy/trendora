@@ -176,9 +176,27 @@ Acceptance categories (all 12 passed; `stage_g_verdict.full_pass: true`):
   (`warmup.ensure_latest_snapshot`, `warmup._run_warmup`, `forward_testing._backfill`, and THIS
   iteration's own `data_manager.coverage_from_storage` edit), 1 `stage_d_authorized_write`
   (`j11_stage_d_execute.execute_stage_d_for_date`), and 7 `still_open_and_deferred` — zero unclassified,
-  zero stale table entries. The full classification table is recorded in
-  `apps/backend/app/engine/j11_stage_g_verify.py`'s `WRITE_PATH_CLASSIFICATION` module constant so no
-  future lane has to re-derive it from scratch.
+  zero stale table entries. Full classification (line numbers as of this commit — the module classifies by
+  file+enclosing-function, never by line number, exactly because these shift):
+
+  | Call site | Enclosing function | Calls | Classification |
+  |---|---|---|---|
+  | `app/api/compass.py:61` | `compass` | `get_or_create_manifest` | still_open_and_deferred |
+  | `app/engine/data_manager.py:1446` | `refresh_coverage_snapshot` | `refresh_coverage_snapshot_for` | still_open_and_deferred |
+  | `app/engine/data_manager.py:1556` | `coverage_from_storage` | `refresh_coverage_snapshot_for` | **guarded (this iteration)** |
+  | `app/engine/data_manager.py:3762` | `_do_backfill._persist` | `run_scan` | still_open_and_deferred |
+  | `app/engine/data_manager.py:4072` | `_persist_per_date_coverage_snapshots` | `refresh_coverage_snapshot_for` | still_open_and_deferred |
+  | `app/engine/data_manager.py:4632` | `_refresh_ingest_aggregates` | `get_or_create_manifest` | still_open_and_deferred |
+  | `app/engine/forward_testing.py:559` | `_backfill` | `run_scan` | guarded |
+  | `app/engine/j11_stage_d_execute.py:374` | `execute_stage_d_for_date` | `run_scan` | stage_d_authorized_write |
+  | `app/engine/scanner.py:260` | `_bootstrap` | `run_scan` | still_open_and_deferred (latent — zero live caller of `bootstrap_runs`) |
+  | `app/engine/scanner.py:348` | `resolve_run` | `run_scan` | still_open_and_deferred (ruling item 5's named gap #1) |
+  | `app/engine/warmup.py:121` | `ensure_latest_snapshot` | `run_scan` | guarded |
+  | `app/engine/warmup.py:370` | `_run_warmup` | `run_scan` | guarded |
+
+  The full classification table (with per-entry reasoning notes) also lives in
+  `apps/backend/app/engine/j11_stage_g_verify.py`'s `WRITE_PATH_CLASSIFICATION` module constant, and is
+  re-verified live on every future Stage-G-style run so no future lane has to re-derive it from scratch.
 - **Evidence-reinterpretation check**: clean over every other `j11_*.py` stage module (`verify_edge`/
   `forward_walk`/`ledger.append_entry` never referenced).
 - **Operational isolation**: live TCP probe confirms nothing listening on backend/frontend ports 8000/3000
