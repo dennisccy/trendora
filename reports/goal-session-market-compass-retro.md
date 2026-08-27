@@ -6,39 +6,42 @@
 > Codes: P0/P1/P2 = how urgent · Effort S/M/L = how much work · Risk LOW/MED/HIGH
 > = chance a change breaks something else.
 
-**Session:** market-compass · **Terminal status:** STALLED · **Iterations:** 23
+**Session:** market-compass · **Terminal status:** STALLED · **Iterations:** 24
 
 ## Candidate items
 
-### RETRO-1 · Gate-stage detection of vacuous/tautological acceptance checks
+### RETRO-1 · SQLite WAL-mode database immutability check broken
+- **Proposed:** P0 · Effort S · Risk LOW
+- **Problem:** The goal evaluator uses sha256 of the `.db` file to check if a database was left unchanged. In SQLite WAL mode, new rows can live in the `.db-wal` file and never get checkpointed to the main file, so the sha256 matches even though the database content changed. When the evaluator can't detect whether changes stuck, it reports STALLED instead of CONTINUE.
+- **Evidence:** Lessons tail — "sha256 of a WAL-mode SQLite `.db` file is NOT a proof that the database is unmutated... SQLite kept the new rows in the sibling `trendora.db-wal`... Any future immutability claim over a SQLite file must bracket `.db` + `-wal` + `-shm`, or read logical row state"
+- **Sketch:** Add a utility function that checks SQLite immutability by comparing file mtimes and checksums of `.db`, `.db-wal`, and `.db-shm` together, or by reading logical row counts from the database itself. Update goal-evaluator to call this instead of sha256-only checks. Document the pattern in judgment-rubrics or project-template.
+- **Verify idea:** Run iter-23 replay or new session and confirm the evaluator correctly detects unchanged databases in WAL mode.
 
+### RETRO-2 · Persistent pipeline quota overruns in full-depth gates
+- **Proposed:** P1 · Effort L · Risk MED
+- **Problem:** Nearly every full-depth pipeline iteration exceeds the 3600-second budget at some stage. Iterations 19, 21, and 22 massively overrun (>12k seconds each). The system trims work but violations persist, wasting wall time and suggesting either the quota is unrealistic or the pipeline stages need restructuring.
+- **Evidence:** Agent economics wall-time report — "OVER BUDGET at post-dev-fanout: 16335s > 3600s (mode=trim)" (iter 19), "OVER BUDGET at post-dev-fanout: 12749s > 3600s (mode=trim)" (iter 21), "OVER BUDGET at post-dev-fanout: 17833s > 3600s (mode=trim)" (iter 22); similar overruns in 10 other iterations
+- **Sketch:** Profile which agents inside post-dev-fanout consume the most time. Consider splitting fanout into parallel sub-stages with independent budgets, or deferring non-blocking agents (e.g., demo-narrator, ux-regression) to an optional stage. Alternatively, increase the budget if the work is necessary.
+- **Verify idea:** Run a full session and confirm max per-stage wall time is under budget, or document why the new budget is correct.
+
+### RETRO-3 · Reviewer agent bottleneck and intermittent failures
 - **Proposed:** P1 · Effort M · Risk MED
-- **Problem:** Acceptance criteria that assert a fact rather than measure one are silently passing through gates that guard irreversible actions. They appeared three times in a four-iteration incident recovery, and were caught only by downstream lanes (reviewer, auditor, evaluator), never by the gate stage that wrote them.
-- **Evidence:** Lessons tail — iter-22: "any acceptance item that no live query or test could ever falsify must be labelled as procedural/asserted, counted separately, and surfaced to the evaluator — never allowed to contribute a silent `true` to a gate." Iter-21: "A check that asserts rather than measures. The reviewer caught it — the first time in this arc the reviewer, not the auditor or the evaluator, found the decisive defect — and the fix pass had to reorder the CLI, not just the expression."
-- **Sketch:** Add a pre-gate validation rule that flags acceptance criteria lacking a falsifiable test (a case that would return false on failure). Require such checks to be marked procedural and excluded from silent pass-through. Emit a warning to the evaluator listing all procedural checks in the gate, so they appear in the verdict rationale instead of hiding inside a `true`.
-- **Verify idea:** Run a session with a deliberately vacuous acceptance check; the gate stage should catch and flag it, preventing silent pass-through.
+- **Problem:** The reviewer agent consumed 1558.6 minutes — the highest wall time of any agent, 20% of the session. It also had attempt-1 review FAILs in iters 7 and 8, requiring retries. Multiple review failures and long wall times suggest either the review task is underspecified or the agent is encountering systematic issues with its inputs.
+- **Evidence:** Agent economics — reviewer total wall 1558.6m (largest agent); Friction counters — "Attempt-1 review FAILs: 2"; wall-time breakdown iter 7: "reviewer 373.9m calls=2 failures=1", iter 8: "reviewer 300.0m calls=1 failures=1"
+- **Sketch:** Add telemetry instrumentation to track reviewer failure reasons (malformed verdict, input missing, timeout). Audit the review rubric for clarity and falsifiability. Consider parallelizing review sub-tasks or moving lighter review gates upstream to developer/qa stages.
+- **Verify idea:** Run a new session and confirm reviewer wall time is <800m and attempt-1 FAILs are zero.
 
-### RETRO-2 · Stall-detection heuristic for STALLED/REGRESSION loops
-
+### RETRO-4 · AWAITING_PUMP halts consume 503 minutes of paused time
 - **Proposed:** P1 · Effort M · Risk LOW
-- **Problem:** The session entered STALLED at iteration 10 and remained there for 8 consecutive iterations before external infrastructure work unblocked it. The loop cannot recognize or escape such stuck states; it only offers continuous retries.
-- **Evidence:** Verdict sequence — "iter 10: STALLED", "iter 11: REGRESSION", "iter 12: STALLED", "iter 13: STALLED", "iter 14: STALLED", "iter 15: STALLED", "iter 16: STALLED", "iter 17: STALLED", "iter 18: STALLED", then "iter 19: CONTINUE" (after external authorization).
-- **Sketch:** After 4 consecutive STALLED or REGRESSION verdicts, emit a human-readable decision gate to the evaluator listing the stuck condition and propose intervention points. Surface this gate in the eval log rather than silently looping; allow the user to approve the gate and resume, or pause and edit goal.md.
-- **Verify idea:** Run a recovery scenario; measure whether the loop detects the stall at iteration 4, not iteration 10, and offers a decision gate for human approval.
+- **Problem:** The session halted at AWAITING_PUMP status multiple times, accumulating 503 minutes of paused wall time. These are not user-initiated pauses (quota_pause_count = 0), suggesting the pump (subagent running tests and services) is unresponsive or the engine is not correctly detecting when it is ready.
+- **Evidence:** Agent economics — "total AWAITING_PUMP paused gaps: 503.0m"; halt sequence — "halts: AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, ... [4 entries total]"
+- **Sketch:** Add pump heartbeat monitoring to detect when the pump process is stuck or dead. Implement a timeout and failover (restart pump or escalate to user). Log the reason for each pump wait in telemetry (timeout, slow tests, service startup delay).
+- **Verify idea:** Run a new session and confirm AWAITING_PUMP total paused time is <100m and each halt is logged with a clear reason.
 
-### RETRO-3 · Budget allocation for post-dev-fanout in high-verification sessions
-
-- **Proposed:** P2 · Effort M · Risk MED
-- **Problem:** The post-dev-fanout stage exceeded budget (3600s mode=trim) in 11 of 15 consecutive full-pipeline iterations, with the largest overages occurring during incident recovery. Trim mode suppressed verification agents (qa, auditor, ui-test-designer) at the moment when scrutiny was most needed.
-- **Evidence:** Wall-time breakdown — iter-19 "OVER_BUDGET at post-dev-fanout: 16335s > 3600s (mode=trim)", iter-21 "OVER_BUDGET at post-dev-fanout: 12749s > 3600s (mode=trim)", iter-22 "OVER_BUDGET at post-dev-fanout: 17833s > 3600s (mode=trim)".
-- **Sketch:** For goal-mode sessions, increase post-dev-fanout budget to 5400s–7200s, or implement two-wave verification: fast checks (gate-blocking) in wave 1, deeper checks (non-blocking) in wave 2. Mark high-stakes iterations (those gating irreversible writes or schema changes) with a flag that enables the higher budget or extra wave.
-- **Verify idea:** Run a session with higher post-dev-fanout budget; measure whether auditor and qa complete without trim, and whether the same defects are caught in fewer iterations.
-
-### RETRO-4 · Attempt-1 review failures and pre-gate integrity check
-
-- **Proposed:** P2 · Effort S · Risk LOW
-- **Problem:** Two review attempts failed on first call (attempt-1 review FAILs: 2). Defects were caught by downstream lanes rather than by the reviewer's initial pass, suggesting incomplete first-pass criteria for gates guarding high-stakes changes.
-- **Evidence:** Friction counters — "Attempt-1 review FAILs: 2 (source: telemetry review_verdict events, attempt 1)". Lessons tail iter-21: "Two rules earned: (a) for any check gating an irreversible action, mutate the REAL production module and prove the suite fails, never a hand-built fixture; (b) the proof must run BEFORE the action, or it is a post-mortem, not a gate."
-- **Sketch:** Add a low-cost pre-review checklist for gates guarding irreversible actions. Checklist: (1) acceptance criteria are falsifiable, (2) real production code is mutated in the proof (not a mock), (3) proof runs before the action, not after. This runs in parallel with the reviewer's main review and surfaces gaps before the reviewer votes.
-- **Verify idea:** Over the next 5 sessions, measure whether attempt-1 FAILs drop to ≤1, and whether the auditor/evaluator find fewer defects (implying the pre-check catches them earlier).
+### RETRO-5 · Verdict sequence: seven-iteration STALLED loop (iters 12–18) masks underlying detection failure
+- **Proposed:** P1 · Effort M · Risk MED
+- **Problem:** The evaluator entered STALLED at iter 12 and remained stuck for seven consecutive iterations (12–18). Combined with earlier STALLED at iters 10, 22–23, this is a recurring pattern. Once the database immutability check is fixed (RETRO-1), the engine should detect stuck states earlier and escalate instead of looping silently.
+- **Evidence:** Verdict sequence — "iter 10: STALLED\niter 11: REGRESSION\niter 12: STALLED\niter 13: STALLED\niter 14: STALLED\niter 15: STALLED\niter 16: STALLED\niter 17: STALLED\niter 18: STALLED"
+- **Sketch:** Add a rule: if iter N returns STALLED and iter N-1 was also STALLED, after 4 consecutive matches escalate to user with details (evaluator reason, last verdicts, proposed recovery) instead of silently continuing. Alternatively, trigger a lightweight replay to verify actual progress was made.
+- **Verify idea:** Run a new session and confirm that if evaluator detection fails, the engine escalates within 2–4 iters instead of looping 7+ times.
 

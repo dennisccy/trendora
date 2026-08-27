@@ -1,11 +1,11 @@
 # Goal Session Summary — market-compass
 
 **Final verdict:** STALLED
-**Total iterations:** 23
-**Wall time (seconds):** 40398
+**Total iterations:** 24
+**Wall time (seconds):** 4482
 **Quota pauses:** 0
 **Started:** 2026-08-19T21:31:52.886915Z
-**Finished:** 2026-08-27T14:20:23.113521Z
+**Finished:** 2026-08-27T20:59:34.833708Z
 
 ## Branch
 
@@ -19,17 +19,17 @@ This session pushed iteration commits to `goal/market-compass`. Open a PR with:
 
 | Journey | Status | Last passing iter |
 |---|---|---|
-| J-01 | passing | goal-market-compass-iter-4 |
+| J-01 | passing | goal-market-compass-iter-23 |
 | J-02 | partial | goal-market-compass-iter-4 |
 | J-03 | partial | goal-market-compass-iter-4 |
-| J-04 | passing | goal-market-compass-iter-4 |
+| J-04 | passing | goal-market-compass-iter-23 |
 | J-05 | partial | - |
 | J-06 | partial | - |
 | J-07 | failing | - |
 | J-08 | failing | - |
 | J-09 | partial | - |
-| J-10 | passing | goal-market-compass-iter-13 |
-| J-11 | partial | - |
+| J-10 | passing | goal-market-compass-iter-23 |
+| J-11 | passing | goal-market-compass-iter-23 |
 
 ## Anti-goal violations
 
@@ -40,6 +40,7 @@ This session pushed iteration commits to `goal/market-compass`. Open a PR with:
 - [critical] AG-18 — The authorized manifest migration preserves everything (owner, 2026-08-23): the bounded next_session_manifests schema migration authorized in J-11 step 11 (ruling A1) removes the source_run_id foreign-key constraint and nothing else. ... No other table's schema may be altered under that authorization. A changed stored value is a REGRESSION, never a note. (iter goal-market-compass-iter-11)
 - [critical] AG-17 — Repair never rewrites provenance (owner, 2026-08-20): "The incident record itself is evidence: the iter-5 drill result, its handoff, the reviewer/QA evidence already produced, and the explicit statement that the committed seed could not restore these dates MUST NOT be deleted, rewritten, or silently superseded." (read together with J-11 ruling C5, "do not rewrite ... incident evidence") (iter goal-market-compass-iter-14)
 - [minor] AG-8 - Resilience to data-shape and data-scale change: ... unbounded whole-table ORM loads are forbidden (the delta engine reads column-projected selects, never full record_json sweeps). (critical) (iter goal-market-compass-iter-16)
+- [critical] OWNER RULING (docs/goal.md, 2026-08-27, binding) item 3 + its Post-Stage-G launch-condition clarification: 'The canonical database remains OFF and must not be mutated by this verification. Backend/frontend/browser verification runs against the disposable verification DB only.' / 'Do not interpret removal of those D->G launch conditions as permission to boot or mutate the canonical database.' Also the iter-23 spec's OUT OF SCOPE: 'Booting or mutating the canonical apps/backend/data/trendora.db for any purpose.' (iter goal-market-compass-iter-23)
 
 ## Telemetry
 
@@ -475,23 +476,38 @@ See `runs/goal-session-market-compass/telemetry.jsonl` for the structured event 
       pump-wait                  0.1m
       OVER BUDGET at post-dev-fanout: 17833s > 3600s (mode=trim)
       overlap saved              9.2m  (parallel steps)
-  session: 22 completed iteration(s), mean wall 149.3m
-      total reviewer                  1554.5m
-      total developer                 1223.1m
+  goal-market-compass-iter-23  depth=lean  verdict=STALLED  wall=74.6m
+      developer                   25.5m  calls=1
+      goal-evaluator              18.6m  calls=1
+      browser-qa-agent            14.7m  calls=1
+      goal-decomposer              7.5m  calls=1
+      iteration-summarizer         4.1m  calls=1
+      reviewer                     4.0m  calls=1
+      coherence-auditor            2.7m  calls=1
+      browser-qa-replay            2.1m  calls=1
+      [engine] lean-pipeline      44.4m  (contains agent time above)
+      [engine] showcase-join       0.0m  (contains agent time above)
+      (resume-skipped: coherence-auditor)
+      pump-wait                  2.9m
+      OVER BUDGET at showcase-tail: 4228s > 3600s (mode=trim)
+      overlap saved              4.7m  (parallel steps)
+  session: 23 completed iteration(s), mean wall 146.1m
+      total reviewer                  1558.6m
+      total developer                 1248.6m
       total orchestrator               484.9m
-      total goal-decomposer            446.3m
-      total goal-evaluator             365.2m
+      total goal-decomposer            453.8m
+      total goal-evaluator             383.8m
       total auditor                    340.5m
-      total coherence-auditor          209.3m
-      total iteration-summarizer       170.1m
+      total coherence-auditor          212.0m
+      total iteration-summarizer       174.2m
+      total browser-qa-agent           160.1m
       total qa                         156.5m
       total ui-test-designer           146.9m
-      total browser-qa-agent           145.4m
       total ui-impact-analyst           39.1m
       total demo-narrator               21.3m
       total readme-maintainer           11.1m
+      total browser-qa-replay            8.6m
       total ux-regression-reviewer       7.2m
-      total browser-qa-replay            6.5m
       total AWAITING_PUMP paused gaps: 503.0m
-      halts: AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, STALLED, REGRESSION_HALT, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, AWAITING_PUMP, STALLED, STALLED, STALLED, STALLED
+      halts: AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, STALLED, REGRESSION_HALT, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, AWAITING_PUMP, STALLED, STALLED, STALLED, STALLED, STALLED
 ```

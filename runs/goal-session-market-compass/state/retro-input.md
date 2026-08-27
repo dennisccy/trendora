@@ -8,8 +8,8 @@ scripts/automation/lib/retro_collect.sh — no model wrote this. Counters marked
 
 - **Terminal status:** STALLED
 - **Final verdict:** STALLED
-- **Iterations used:** 23
-- **Halted at (UTC):** 2026-08-27T14:20:23.113521Z
+- **Iterations used:** 24
+- **Halted at (UTC):** 2026-08-27T20:59:34.833708Z
 
 ## Verdict sequence
 
@@ -38,6 +38,7 @@ iter 19: CONTINUE
 iter 20: CONTINUE
 iter 21: CONTINUE
 iter 22: STALLED
+iter 23: STALLED
 ```
 
 ## Agent economics
@@ -491,25 +492,40 @@ Per-step wall breakdown (analyze_telemetry.py --wall):
       pump-wait                  0.1m
       OVER BUDGET at post-dev-fanout: 17833s > 3600s (mode=trim)
       overlap saved              9.2m  (parallel steps)
-  session: 22 completed iteration(s), mean wall 149.3m
-      total reviewer                  1554.5m
-      total developer                 1223.1m
+  goal-market-compass-iter-23  depth=lean  verdict=STALLED  wall=74.6m
+      developer                   25.5m  calls=1
+      goal-evaluator              18.6m  calls=1
+      browser-qa-agent            14.7m  calls=1
+      goal-decomposer              7.5m  calls=1
+      iteration-summarizer         4.1m  calls=1
+      reviewer                     4.0m  calls=1
+      coherence-auditor            2.7m  calls=1
+      browser-qa-replay            2.1m  calls=1
+      [engine] lean-pipeline      44.4m  (contains agent time above)
+      [engine] showcase-join       0.0m  (contains agent time above)
+      (resume-skipped: coherence-auditor)
+      pump-wait                  2.9m
+      OVER BUDGET at showcase-tail: 4228s > 3600s (mode=trim)
+      overlap saved              4.7m  (parallel steps)
+  session: 23 completed iteration(s), mean wall 146.1m
+      total reviewer                  1558.6m
+      total developer                 1248.6m
       total orchestrator               484.9m
-      total goal-decomposer            446.3m
-      total goal-evaluator             365.2m
+      total goal-decomposer            453.8m
+      total goal-evaluator             383.8m
       total auditor                    340.5m
-      total coherence-auditor          209.3m
-      total iteration-summarizer       170.1m
+      total coherence-auditor          212.0m
+      total iteration-summarizer       174.2m
+      total browser-qa-agent           160.1m
       total qa                         156.5m
       total ui-test-designer           146.9m
-      total browser-qa-agent           145.4m
       total ui-impact-analyst           39.1m
       total demo-narrator               21.3m
       total readme-maintainer           11.1m
+      total browser-qa-replay            8.6m
       total ux-regression-reviewer       7.2m
-      total browser-qa-replay            6.5m
       total AWAITING_PUMP paused gaps: 503.0m
-      halts: AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, STALLED, REGRESSION_HALT, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, AWAITING_PUMP, STALLED, STALLED, STALLED, STALLED
+      halts: AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, STALLED, REGRESSION_HALT, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, AWAITING_PUMP, STALLED, STALLED, STALLED, STALLED, STALLED
 ```
 
 ## Friction counters
@@ -523,26 +539,26 @@ Per-step wall breakdown (analyze_telemetry.py --wall):
 Last 20 lines of state/lessons.md:
 
 ```
-BEFORE the one real reconciliation check. The reviewer caught it — the first time in this arc the reviewer,
-not the auditor or the evaluator, found the decisive defect — and the fix pass had to reorder the CLI, not
-just the expression. Two rules earned: (a) for any check gating an irreversible action, mutate the REAL
-production module and prove the suite fails, never a hand-built fixture; (b) the proof must run BEFORE the
-action, or it is a post-mortem, not a gate.
-**Applies to:** any iteration whose spec contains a one-way action (a live write, a flag flip, a
-deactivation, a delete) gated on a computed verdict.
+iteration must confine the app to a clone, the ONLY reliable lever is making the default launcher itself
+fail closed, never a wrapper the harness does not call.
+**Applies to:** any iteration that boots services against a non-default database (clone, snapshot,
+fixture, restore drill), and any change to `scripts/automation/goal-iter-lean.sh` / `browser-qa-phase.sh`
+/ `qa-phase.sh` service-start blocks.
 
-## iter-22 — 2026-08-27T15:20:00Z
+## iter-23b — 2026-08-27T21:45:00Z
 
 **Verdict:** STALLED
-**Lesson:** A goal file can make a stage's own acceptance criterion physically impossible and nobody
-notices, because the impossible criterion gets "resolved" by a check that asserts rather than measures.
-`docs/goal.md:1408` assigns Stage G the "final serving/replay verification" while the same owner ruling
-(item 4) forbids booting the app until Stage G passes; the trap check for it returned an unconditional
-`ok: True` on the reasoning "this module IS Stage G". Detection rule: any acceptance item that no live
-query or test could ever falsify must be labelled as procedural/asserted, counted separately, and
-surfaced to the evaluator — never allowed to contribute a silent `true` to a gate.
-**Applies to:** any spec whose acceptance list is assembled from goal.md prose, especially where a safety
-constraint and a verification requirement reference each other.
+**Lesson:** sha256 of a WAL-mode SQLite `.db` file is NOT a proof that the database is unmutated. This
+iteration proved "canonical byte-unchanged" with matching file checksums — and it was literally true, yet
+the database's CONTENT had changed: SQLite kept the new rows in the sibling `trendora.db-wal` (mtime
+2026-08-27 20:26:08.352941 UTC) and never checkpointed them into the main file, whose sha256 and mtime
+both stayed at their 09:27 values. The instrument that actually caught it was the `-wal`/`-shm` mtime plus
+per-table `created_at` reconciliation. Any future immutability claim over a SQLite file must bracket
+`.db` + `-wal` + `-shm`, or read logical row state, and must be captured AFTER the last lane finishes —
+this run's final checksum was taken 3 minutes before the breach it was supposed to detect.
+**Applies to:** any iteration asserting a database file is unchanged (J-10/J-11-style repair or drill
+work, any `db_file_fingerprint` / provenance check in `app/engine/j11_*`), and any evaluator re-deriving
+such a claim.
 ```
 
 ## Halt context
@@ -553,6 +569,6 @@ session.json halt-relevant fields:
 {
   "status": "STALLED",
   "last_verdict": "STALLED",
-  "parked_wip_sha": "38f8a12d"
+  "parked_wip_sha": "282c4679"
 }
 ```
