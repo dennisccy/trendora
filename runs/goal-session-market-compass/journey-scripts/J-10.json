@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "journey": "J-10",
+  "name": "Bounded recovery of the two trading days the iter-5 drill deleted",
+  "default_timeout_ms": 8000,
+  "steps": [
+    {"n": 1, "journey": "J-10", "action": {"type": "goto", "url": "/stocks/AVB?asof=2026-08-12"}, "expect": {"text": "$187.89"}},
+    {"n": 2, "journey": "J-10", "action": {"type": "goto", "url": "/stocks/AVB?asof=2026-08-11"}, "expect": {"text": "$187.94"}}
+  ]
+}

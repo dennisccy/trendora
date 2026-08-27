@@ -1,0 +1,9 @@
+{
+  "daily_prices_count": 3310374,
+  "data_provider_runs_max_id": 549,
+  "mtime": 1787822829.429926,
+  "next_session_manifests_count": 24,
+  "path": "/home/dennis-chan/Git/trendora/apps/backend/data/trendora.db",
+  "sha256": "fabc79227ff6db329fb31fa55e4402f8b38248b65e19ee9654ec5caa07a4b208",
+  "size_bytes": 8365871104
+}

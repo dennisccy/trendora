@@ -1813,3 +1813,111 @@ since Stage G has passed: the forbidden-lane defect in `scripts/automation/` —
 have avoided it with the maintenance-isolation contract rather than curing it; and `goal_gate.py`'s
 duplicate-journey defect, which I saw fire again this iteration (the slice emits J-10 twice, 12 headings
 for 11 journeys) and which must be closed before any GOAL_ACHIEVED certification.
+
+## Iteration 23 — goal-market-compass-iter-23
+
+**Date:** 2026-08-27T21:45:00Z
+**Verdict:** STALLED
+**Depth dispatched:** lean — **NOT** what the spec asked for. `docs/phases/goal-market-compass-iter-23.md`
+declares `Depth: full` with a written Trigger-1 justification, but `iter-23/depth-dispatched` reads `lean`
+and only decomposer / developer / review / browser-qa / coherence ran (`iter-23/.steps/`). No QA agent, no
+independent auditor, no closure lane. The silent full→lean demotion last seen in iters 2, 6 and 8 has
+recurred after fourteen clean iterations — and this is the iteration where an unreported live incident
+happened.
+
+**Owner-facing lines:** `J-11 SERVING/REPLAY VERIFICATION: PASS` · `J-11 STATUS: PASSING` · J-11 incident
+**CLOSED** (owner ruling item 8, 2026-08-27). Countervailing, new: `CANONICAL DATABASE WAS BOOTED AND
+WRITTEN TO`, contrary to item 3 of the same ruling.
+
+**Journey deltas:**
+- **Newly passing: J-11** "Incident-bounded clean regeneration of derived state" — the session's sole
+  target and its last recovery obligation. Promoted `partial` → `passing`. `spec_hash` CHANGED
+  `01e69865…` → `55ef995c…` (the owner appended the 2026-08-27 ruling inside J-11's own block); J-11 was
+  `partial`, so no `journeys-changed.md` fired, and I re-verified it against the CURRENT text. All ten
+  other journeys' hashes are byte-identical to the recorded ones.
+- Re-verified, unchanged: J-01, J-04 (deterministic replay, both PASS) and J-10 (LLM browser-qa, PASS).
+  All three re-stamped to iter-23. J-04 KEEPS `evidence_makeup: true` for the fifth iteration running —
+  a fresh capture did land, but it is again the final-step viewport at 2026-03-30 and stops above the
+  candidate card, so it still does not display a why/why-not reason; the replay's own expects
+  ("Strong leader (81.2)", "Not priority (20)"→"TRV") are what prove the journey.
+- Not tested (explicitly out of scope per owner ruling item 9): J-02, J-03, J-05, J-06, J-09 stay
+  `partial`; J-07, J-08 stay `failing`. No `browser-infra.json` token; the iteration was NOT under
+  maintenance isolation — for the first time in fourteen iterations the app really booted.
+- Newly failing: none. **Regressed: none.**
+- Anti-goal violations: **NONE new** among AG-1..AG-18 — I checked all eighteen and re-derived the
+  data-integrity ones live. Ledger gains ONE entry of a different kind: an **owner-ruling breach**
+  (severity critical, unresolved) for the canonical-database boot. Total 8 entries, 1 unresolved.
+- Coherence: COHERENCE-PASS. Deterministic scan: CLEAN. Review: PASS_WITH_NOTES (one MINOR — two handoff
+  claims lacked a persisted evidence JSON). Browser QA: PASS 4/4. No QA report, no audit handoff — those
+  lanes never ran (see depth note above).
+
+**Reasoning:** The job the owner asked for is done and it holds — and I did not take that from anyone's
+write-up. The repaired database was copied to a throw-away copy, the real app was started against that
+copy for the first time in fourteen iterations, and the pages served the repaired days correctly. I opened
+both pictures myself. The damaged day 11 August renders with real numbers and, most importantly, still
+says plainly that its saved briefing is retrospective, frozen, not usable as forward-looking evidence, and
+that its underlying run was rebuilt after the briefing was frozen. That is exactly the honesty the rules
+demand, shown on screen rather than asserted in a document. I then re-measured every headline claim myself,
+read-only, on BOTH databases: all twenty-four saved briefings are identical to the copy certified seven
+iterations ago, column by column; none was ever marked usable as forward-looking evidence; not one of the
+seven damaged days that lack a briefing gained one; the eleven rebuilt days are all present and none was
+re-stamped; the prices reproduce their certified total to the last decimal; the quarantine row still
+carries iteration 22's timestamp and nothing later. So J-11 closes, exactly as the owner's written rule
+item 8 directs.
+ONE FINDING IS MINE ALONE, and it is why I am stopping. While that verification was running, the routine
+re-test of two older journeys **started a second copy of the app pointed at the real, protected database**
+— the one the owner said in writing must stay switched off — and wrote ten rows into five scratch tables
+there. No lane noticed: not the developer, not the reviewer, not the browser-QA agent (which correctly
+checked its OWN backend's open files and found only the copy), not the coherence check. I found it by
+noticing that the protected database's write-ahead file had been touched at 21:26 local, minutes after the
+iteration declared it untouched, and then matching the scratch rows' creation times to the log of that
+second app — the last one lands at 20:26:08.352318 UTC against a file timestamp of 20:26:08.352941, the
+same write to the millisecond. The cause is one line of automation: the replay lane starts the app with the
+ordinary settings file and no override, so it always uses the real database. TWO THINGS MAKE THIS WORSE
+THAN IT LOOKS. First, the safety proof used could never have caught it: it takes a checksum of the main
+database file, and this database keeps new writes in a sibling file until they are folded in — so the
+content changed while the bytes did not, and the final checksum was taken three minutes before the event
+anyway. Second, it was a near miss, not a safe outcome: asking a page for an old date creates a permanent
+saved briefing when that date has none. The re-test asked for 23 July and 30 March; both already had one,
+so nothing was created. Any other historical date — including the seven damaged days — and a permanent,
+forbidden record would now exist in the protected database.
+Why STALLED rather than CONTINUE? Because the next run would repeat it automatically, and every way to
+prevent that needs the owner. Only he can say whether the ten rows stay or go — and removing them is
+itself another write to the database he protected. Only he can authorize the tool fix, which his own
+ruling items 7 and 9 explicitly defer. And there is no safe alternative task: every remaining journey needs
+a browser, every browser iteration also re-tests the still-passing set, and that is the very lane that
+boots the real database; the loop also cannot shield itself by re-arming maintenance isolation, because the
+owner's clarification forbids requiring it here. Why not REGRESSION? Nothing that worked stopped working,
+no journey fell back, and no enumerated anti-goal was broken — the harm is ten rows in five recomputable
+scratch tables with zero change to any real data table, proven by a full twenty-five-table comparison I ran
+myself on both databases. What was broken is a written instruction, and I have recorded it as an unresolved
+critical entry so no future "goal achieved" can pass over it. Why not ESCALATE? Escalation asks the next
+run to go deeper; the next run must not start at all until the two questions are answered.
+One process fact: this is the fourteenth iteration running where a later lane found what the earlier ones
+missed — and the first in which the lane that would normally have caught it, the independent auditor, was
+never dispatched because the iteration was silently downgraded from full depth to lean.
+
+**Next-step recommendation:** ASK THE OWNER THREE QUESTIONS; run nothing until they are answered.
+(1) THE TEN SCRATCH ROWS now in the protected database — leave them or remove them? They are correct and
+computed from the repaired data, and the app would create them anyway on first use; but removing them
+means writing to that database again, which also needs his word. (2) MAY THE AUTOMATION BE FIXED so it can
+never start the app against the real database again? The defect is a single line —
+`scripts/automation/goal-iter-lean.sh:256-257` starts `scripts/start-backend.sh` with no `TRENDORA_CONFIG`
+— and this iteration already built the correct guard (`scripts/start-backend-j11-verify.sh`, which refuses
+to boot without an off-canonical override and worked perfectly for the browser-QA lane). His own ruling
+defers tool work, so he must reopen it. Until then EVERY future iteration boots the real database, and the
+next one may ask for a date that mints a permanent saved briefing. (3) DOES HE AGREE J-11 IS FINISHED? I
+have recorded it passing on his own item-8 rule. IF THE ANSWERS ARE "LEAVE THEM" AND "YES, FIX IT": next
+iteration = the launcher fix, then normal product work in his order — J-09, then J-05/J-06, then J-07/J-08.
+RUN IT AT FULL DEPTH; this one was specified full and silently ran lean, and the missing auditor is part of
+why the incident went unreported. THREE SMALL ITEMS STILL OWED, none blocking: the 7.8 GB throw-away copy
+and its config are still on disk at `runs/goal-market-compass-iter-23/verify-clone/` and should be deleted
+(the database file is gitignored, the config is not); the J-02/J-03 repaired-state replay named in J-11's
+own acceptance text was never run; and J-04's screenshot still needs to capture the "Next-session focus"
+card. TWO RECURRING MECHANICAL ITEMS: the four new backend files and the whole evidence folder are again
+untracked at scoring time; and the iteration's own write-enumeration covered only the developer's window,
+not the browser-QA window — I closed that gap by hand this time. FIVE OLDER OWNER QUESTIONS remain open and
+non-blocking: 3.44 GB for J-09; J-06's "underlying run unavailable" wording; J-01's first two test steps;
+whether an empty "next-session focus" is acceptable; and whether MNST joins the recovery list. ONE STANDING
+FRAMEWORK NOTE: `goal_gate.py`'s duplicate-journey-heading defect is still unfixed and must be closed
+before any GOAL_ACHIEVED certification.

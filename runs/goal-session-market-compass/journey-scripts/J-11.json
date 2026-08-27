@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "journey": "J-11",
+  "name": "Incident-bounded clean regeneration of derived state (disposable-clone serving verification)",
+  "default_timeout_ms": 8000,
+  "steps": [
+    {"n": 1, "journey": "J-11", "action": {"type": "goto", "url": "/?asof=2026-08-12"}, "expect": {"text": "Basis: rebuilt"}},
+    {"n": 2, "journey": "J-11", "action": {"type": "goto", "url": "/?asof=2026-08-11"}, "expect": {"text": "Basis: rebuilt"}}
+  ]
+}

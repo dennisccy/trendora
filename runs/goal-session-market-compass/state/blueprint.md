@@ -154,3 +154,13 @@ A10, future-safety-only — no live schema change this iteration), and corrects 
 endpoint, or IA entry changes as a result — the live `next_session_manifests` table itself is untouched this
 iteration (zero live writes, proven read-only before/after). See `docs/phases/goal-market-compass-iter-12.md`
 and `runs/goal-session-market-compass/state/assumptions.md` (iter-12 entry) for full detail.
+
+**iter-23 note (2026-08-27 — informational, no IA change, no Data Contract row change):** J-11's
+serving/replay verification (owner ruling, 2026-08-27) exercises the already-registered Today (`/`) and
+Market (`/market`) homes and every already-registered Data Contract row that feeds them (Next-session
+manifest CONTENT + FREEZE/INTEGRITY blocks, engine identity, stock sector label, regime/phase/breadth,
+sector/theme scores, evidence ledger status) — read-only, against a disposable byte-faithful clone of the
+canonical database, never the canonical database itself. No new page, nav entry, computing module, serving
+endpoint, or displayed field is introduced. This note exists only to record that the long browser-QA/replay
+isolation window (iters 9-22) ends this iteration for verification purposes, scoped to the disposable
+clone.

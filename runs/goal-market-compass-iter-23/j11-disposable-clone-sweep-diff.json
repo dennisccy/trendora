@@ -1,0 +1,13 @@
+{
+  "changed_existing_tables": [
+    "availability_cache",
+    "coverage_snapshot",
+    "event_study_cache",
+    "market_phase_cache",
+    "membership_timeline_cache"
+  ],
+  "clean": false,
+  "expected_new_tables_present": [],
+  "unexpected_new_tables": [],
+  "unexpected_removed_tables": []
+}

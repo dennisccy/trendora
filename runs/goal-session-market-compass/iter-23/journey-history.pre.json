@@ -1,0 +1,179 @@
+{
+  "journeys": {
+    "J-01": {
+      "id": "J-01",
+      "name": "Sector labels are honest and nearly complete on new runs",
+      "status": "passing",
+      "last_verified_iter": "goal-market-compass-iter-4",
+      "last_passing_iter": "goal-market-compass-iter-4",
+      "first_seen_iter": "goal-market-compass-iter-0",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-4-evidence/J-01-verify.png",
+      "spec_hash": "5217f3fe85d2a05c2f436d3ec6d140f2b7539b8798c161925a2e9e76ddab61f9",
+      "gap": "iter-21 (note only; status, last_verified_iter and spec_hash all UNCHANGED): the iteration ran under MAINTENANCE ISOLATION. reports/phase-goal-market-compass-iter-21-ui-test-results.md records Browser QA Verdict: SKIPPED with a Reason naming maintenance isolation, and runs/goal-session-market-compass/iter-21/maintenance-isolation-refusals logs the engine's own refusal of browser-qa-phase (browser QA + deterministic replay lane) at 2026-08-27T06:50:06Z. No browser or replay lane could run, so this journey was NOT re-verified and keeps its prior recorded status per the evaluator methodology's maintenance-isolation carve-out (A.3, second). No browser-infra.json token exists — the lane was withheld by contract, not failed, so pending_infra is NOT set. The evaluator independently re-derived from `git status --porcelain -uall` that this iteration's ONLY product-code changes are four NEW untracked files under apps/backend (app/engine/j11_stage_f_execute.py, scripts/run_j11_stage_f_execute.py and two test files); zero tracked production file is modified (the 11 ` M ` entries are all harness bookkeeping under runs/goal-session-market-compass/), and a grep of the porcelain output against scoring.py, compass.py, data_manager.py, research.py, forward_testing.py, models.py, scanner.py, indexes.py, warmup.py and universe_resolver.py returns ZERO matches. No served value could have moved by code change. SPOT-CHECK 1 of 2 (evaluator, this iteration): reports/qa/goal-market-compass-iter-4-evidence/J-01-verify.png re-opened — GRMN carries a real stored sector label ('Consumer Discretionary') on the 2026-08-12 board, 1/539 results, regime 73.24 Risk-on, and all three scores badged 'Not yet proven' (AG-1 honest). Consistent with `passing`. CORROBORATING LIVE EVIDENCE (read-only, no boot): the 11 Stage-D-rebuilt runs still carry 539-542 scanner_results + exactly 31 sector_scores + exactly 11 theme_scores each (sum 5,942 / 341 / 121 — identical to iteration 19's recorded Stage-D insert counts), so Stage F touched no rebuilt row. The iter-19 note stands: the 11 rebuilt dates have complete sector labels while retained neighbours carry 422 NULLs of 540, so they are NOT like-for-like comparable in any sector-level time series — Stage G and later research must account for it."
+    },
+    "J-02": {
+      "id": "J-02",
+      "name": "What changed since the previous session",
+      "status": "partial",
+      "last_verified_iter": "goal-market-compass-iter-6",
+      "last_passing_iter": "goal-market-compass-iter-4",
+      "first_seen_iter": "goal-market-compass-iter-0",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-4-evidence/J-02-verify.png",
+      "spec_hash": "4a55fbb172e17090c2d095af6a36d95e08edadeda2ed05941cbe3ce9476eb993",
+      "gap": "iter-21 (note only; status, last_verified_iter and spec_hash all UNCHANGED): the iteration ran under MAINTENANCE ISOLATION. reports/phase-goal-market-compass-iter-21-ui-test-results.md records Browser QA Verdict: SKIPPED with a Reason naming maintenance isolation, and runs/goal-session-market-compass/iter-21/maintenance-isolation-refusals logs the engine's own refusal of browser-qa-phase (browser QA + deterministic replay lane) at 2026-08-27T06:50:06Z. No browser or replay lane could run, so this journey was NOT re-verified and keeps its prior recorded status per the evaluator methodology's maintenance-isolation carve-out (A.3, second). No browser-infra.json token exists — the lane was withheld by contract, not failed, so pending_infra is NOT set. The evaluator independently re-derived from `git status --porcelain -uall` that this iteration's ONLY product-code changes are four NEW untracked files under apps/backend (app/engine/j11_stage_f_execute.py, scripts/run_j11_stage_f_execute.py and two test files); zero tracked production file is modified (the 11 ` M ` entries are all harness bookkeeping under runs/goal-session-market-compass/), and a grep of the porcelain output against scoring.py, compass.py, data_manager.py, research.py, forward_testing.py, models.py, scanner.py, indexes.py, warmup.py and universe_resolver.py returns ZERO matches. No served value could have moved by code change. Not re-verified this iteration; carried unchanged."
+    },
+    "J-03": {
+      "id": "J-03",
+      "name": "Plain-English summary with cited facts",
+      "status": "partial",
+      "last_verified_iter": "goal-market-compass-iter-6",
+      "last_passing_iter": "goal-market-compass-iter-4",
+      "first_seen_iter": "goal-market-compass-iter-0",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-4-evidence/J-03-verify.png",
+      "spec_hash": "81cd6c9267c0d734cd88b19f43baf53bcab70c7b60d60cd5b2018a76425e87e7",
+      "gap": "iter-21 (note only; status, last_verified_iter and spec_hash all UNCHANGED): the iteration ran under MAINTENANCE ISOLATION. reports/phase-goal-market-compass-iter-21-ui-test-results.md records Browser QA Verdict: SKIPPED with a Reason naming maintenance isolation, and runs/goal-session-market-compass/iter-21/maintenance-isolation-refusals logs the engine's own refusal of browser-qa-phase (browser QA + deterministic replay lane) at 2026-08-27T06:50:06Z. No browser or replay lane could run, so this journey was NOT re-verified and keeps its prior recorded status per the evaluator methodology's maintenance-isolation carve-out (A.3, second). No browser-infra.json token exists — the lane was withheld by contract, not failed, so pending_infra is NOT set. The evaluator independently re-derived from `git status --porcelain -uall` that this iteration's ONLY product-code changes are four NEW untracked files under apps/backend (app/engine/j11_stage_f_execute.py, scripts/run_j11_stage_f_execute.py and two test files); zero tracked production file is modified (the 11 ` M ` entries are all harness bookkeeping under runs/goal-session-market-compass/), and a grep of the porcelain output against scoring.py, compass.py, data_manager.py, research.py, forward_testing.py, models.py, scanner.py, indexes.py, warmup.py and universe_resolver.py returns ZERO matches. No served value could have moved by code change. Not re-verified this iteration; carried unchanged."
+    },
+    "J-04": {
+      "id": "J-04",
+      "name": "Each next-session candidate explains why and why-not",
+      "status": "passing",
+      "last_verified_iter": "goal-market-compass-iter-4",
+      "last_passing_iter": "goal-market-compass-iter-4",
+      "first_seen_iter": "goal-market-compass-iter-0",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-4-evidence/J-04-verify.png",
+      "spec_hash": "d1521389ca8fcf3fd1b7ac60e53bdb9608112247219ccbbea2ae66e99bff8ad0",
+      "gap": "iter-21 (note only; status, last_verified_iter and spec_hash all UNCHANGED): the iteration ran under MAINTENANCE ISOLATION. reports/phase-goal-market-compass-iter-21-ui-test-results.md records Browser QA Verdict: SKIPPED with a Reason naming maintenance isolation, and runs/goal-session-market-compass/iter-21/maintenance-isolation-refusals logs the engine's own refusal of browser-qa-phase (browser QA + deterministic replay lane) at 2026-08-27T06:50:06Z. No browser or replay lane could run, so this journey was NOT re-verified and keeps its prior recorded status per the evaluator methodology's maintenance-isolation carve-out (A.3, second). No browser-infra.json token exists — the lane was withheld by contract, not failed, so pending_infra is NOT set. The evaluator independently re-derived from `git status --porcelain -uall` that this iteration's ONLY product-code changes are four NEW untracked files under apps/backend (app/engine/j11_stage_f_execute.py, scripts/run_j11_stage_f_execute.py and two test files); zero tracked production file is modified (the 11 ` M ` entries are all harness bookkeeping under runs/goal-session-market-compass/), and a grep of the porcelain output against scoring.py, compass.py, data_manager.py, research.py, forward_testing.py, models.py, scanner.py, indexes.py, warmup.py and universe_resolver.py returns ZERO matches. No served value could have moved by code change. J-04 keeps `evidence_makeup: true` (methodology A.7) for the THIRD iteration running — no capture was possible under maintenance isolation. reports/qa/goal-market-compass-iter-4-evidence/J-04-verify.png shows the Dashboard Summary / 'What changed' panels at as-of 2026-03-30, NOT a candidate's why / why-not, which is this journey's actual acceptance state. The BEHAVIOUR is proven by the iteration-4 results row (reports/phase-goal-market-compass-iter-4-ui-test-results.md line 21, UT-J-04 PASS); only the capture's framing is wrong. Re-capture as a passenger task the first time the browser lane runs again — never as an iteration goal.",
+      "evidence_makeup": true
+    },
+    "J-05": {
+      "id": "J-05",
+      "name": "Each close freezes one next-session manifest, exported byte-consistently",
+      "status": "partial",
+      "last_verified_iter": "goal-market-compass-iter-3",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-market-compass-iter-0",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-3-evidence/UT-02-manifest-historical-badges.png",
+      "spec_hash": "de33a9d149ebefe4f8cf0ffb9fe86243e3f9fa9d83850c890848f268e5c54c4f",
+      "gap": "iter-21 (note only; status, last_verified_iter and spec_hash all UNCHANGED): the iteration ran under MAINTENANCE ISOLATION. reports/phase-goal-market-compass-iter-21-ui-test-results.md records Browser QA Verdict: SKIPPED with a Reason naming maintenance isolation, and runs/goal-session-market-compass/iter-21/maintenance-isolation-refusals logs the engine's own refusal of browser-qa-phase (browser QA + deterministic replay lane) at 2026-08-27T06:50:06Z. No browser or replay lane could run, so this journey was NOT re-verified and keeps its prior recorded status per the evaluator methodology's maintenance-isolation carve-out (A.3, second). No browser-infra.json token exists — the lane was withheld by contract, not failed, so pending_infra is NOT set. The evaluator independently re-derived from `git status --porcelain -uall` that this iteration's ONLY product-code changes are four NEW untracked files under apps/backend (app/engine/j11_stage_f_execute.py, scripts/run_j11_stage_f_execute.py and two test files); zero tracked production file is modified (the 11 ` M ` entries are all harness bookkeeping under runs/goal-session-market-compass/), and a grep of the porcelain output against scoring.py, compass.py, data_manager.py, research.py, forward_testing.py, models.py, scanner.py, indexes.py, warmup.py and universe_resolver.py returns ZERO matches. No served value could have moved by code change. Not re-verified this iteration; carried unchanged."
+    },
+    "J-06": {
+      "id": "J-06",
+      "name": "A frozen manifest never changes",
+      "status": "partial",
+      "last_verified_iter": "goal-market-compass-iter-3",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-market-compass-iter-0",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-3-evidence/UT-02-manifest-historical-badges.png",
+      "spec_hash": "4934b178e966fdb05cfb68537e861e0f34f961f630a57e4098f9fb69be2cdda8",
+      "gap": "iter-21 (note only; status, last_verified_iter and spec_hash all UNCHANGED): the iteration ran under MAINTENANCE ISOLATION. reports/phase-goal-market-compass-iter-21-ui-test-results.md records Browser QA Verdict: SKIPPED with a Reason naming maintenance isolation, and runs/goal-session-market-compass/iter-21/maintenance-isolation-refusals logs the engine's own refusal of browser-qa-phase (browser QA + deterministic replay lane) at 2026-08-27T06:50:06Z. No browser or replay lane could run, so this journey was NOT re-verified and keeps its prior recorded status per the evaluator methodology's maintenance-isolation carve-out (A.3, second). No browser-infra.json token exists — the lane was withheld by contract, not failed, so pending_infra is NOT set. The evaluator independently re-derived from `git status --porcelain -uall` that this iteration's ONLY product-code changes are four NEW untracked files under apps/backend (app/engine/j11_stage_f_execute.py, scripts/run_j11_stage_f_execute.py and two test files); zero tracked production file is modified (the 11 ` M ` entries are all harness bookkeeping under runs/goal-session-market-compass/), and a grep of the porcelain output against scoring.py, compass.py, data_manager.py, research.py, forward_testing.py, models.py, scanner.py, indexes.py, warmup.py and universe_resolver.py returns ZERO matches. No served value could have moved by code change. Not re-verified this iteration; carried unchanged."
+    },
+    "J-07": {
+      "id": "J-07",
+      "name": "The Today page answers the ten-second read",
+      "status": "failing",
+      "last_verified_iter": "goal-market-compass-iter-0",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-market-compass-iter-0",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-0-evidence/UT-J-07-fail.png",
+      "spec_hash": "3277c326632d90b5aa5d4331f051b419d2e71d022b640c5851acd9f105d57b72",
+      "gap": "iter-19 (note only; status, last_verified_iter and spec_hash all UNCHANGED): the iteration ran under MAINTENANCE ISOLATION. reports/phase-goal-market-compass-iter-19-ui-test-results.md records Browser QA Verdict: SKIPPED with a Reason naming maintenance isolation, and runs/goal-session-market-compass/iter-19/maintenance-isolation-refusals logs the engine's own refusal of browser-qa-phase (browser QA + deterministic replay lane) at 2026-08-26T14:01:10Z. No browser or replay lane could run, so this journey was NOT re-verified and keeps its prior recorded status per the evaluator methodology's maintenance-isolation carve-out (A.3, second). The evaluator independently re-derived from `git status --porcelain -uall` (65 paths, tracked + untracked) that this iteration's ONLY product-code changes are four new files under apps/backend (j11_stage_d_execute.py, scripts/run_j11_stage_d_execute.py and two test files) and that none of apps/backend/app/api/*, scoring.py, sectors.py, compass.py or data_manager.py is touched, so no served value could have moved by code change. Status carried unchanged; no evidence for or against was produced this iteration."
+    },
+    "J-08": {
+      "id": "J-08",
+      "name": "Market page moves over intact and history stays honest",
+      "status": "failing",
+      "last_verified_iter": "goal-market-compass-iter-1",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-market-compass-iter-0",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-1-evidence/UT-J-08-fail.png",
+      "spec_hash": "621deda83bfbe069b3899a9860d352ac2ef7f6e7f80acf0630cd39acbb2ce860",
+      "gap": "iter-19 (note only; status, last_verified_iter and spec_hash all UNCHANGED): the iteration ran under MAINTENANCE ISOLATION. reports/phase-goal-market-compass-iter-19-ui-test-results.md records Browser QA Verdict: SKIPPED with a Reason naming maintenance isolation, and runs/goal-session-market-compass/iter-19/maintenance-isolation-refusals logs the engine's own refusal of browser-qa-phase (browser QA + deterministic replay lane) at 2026-08-26T14:01:10Z. No browser or replay lane could run, so this journey was NOT re-verified and keeps its prior recorded status per the evaluator methodology's maintenance-isolation carve-out (A.3, second). The evaluator independently re-derived from `git status --porcelain -uall` (65 paths, tracked + untracked) that this iteration's ONLY product-code changes are four new files under apps/backend (j11_stage_d_execute.py, scripts/run_j11_stage_d_execute.py and two test files) and that none of apps/backend/app/api/*, scoring.py, sectors.py, compass.py or data_manager.py is touched, so no served value could have moved by code change. Status carried unchanged; no evidence for or against was produced this iteration."
+    },
+    "J-09": {
+      "id": "J-09",
+      "name": "The backend fits the host - standing memory halves with zero behavior change",
+      "status": "partial",
+      "last_verified_iter": "goal-market-compass-iter-4",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-market-compass-iter-3",
+      "last_evidence_path": "reports/perf-budgets.md:12114-12236",
+      "spec_hash": "a067a11b356f9d24bf56963bac5bee35a616b5c4af06479c92c0ae900fca9551",
+      "gap": "iter-21 (note only; status, last_verified_iter and spec_hash all UNCHANGED): the iteration ran under MAINTENANCE ISOLATION. reports/phase-goal-market-compass-iter-21-ui-test-results.md records Browser QA Verdict: SKIPPED with a Reason naming maintenance isolation, and runs/goal-session-market-compass/iter-21/maintenance-isolation-refusals logs the engine's own refusal of browser-qa-phase (browser QA + deterministic replay lane) at 2026-08-27T06:50:06Z. No browser or replay lane could run, so this journey was NOT re-verified and keeps its prior recorded status per the evaluator methodology's maintenance-isolation carve-out (A.3, second). No browser-infra.json token exists — the lane was withheld by contract, not failed, so pending_infra is NOT set. The evaluator independently re-derived from `git status --porcelain -uall` that this iteration's ONLY product-code changes are four NEW untracked files under apps/backend (app/engine/j11_stage_f_execute.py, scripts/run_j11_stage_f_execute.py and two test files); zero tracked production file is modified (the 11 ` M ` entries are all harness bookkeeping under runs/goal-session-market-compass/), and a grep of the porcelain output against scoring.py, compass.py, data_manager.py, research.py, forward_testing.py, models.py, scanner.py, indexes.py, warmup.py and universe_resolver.py returns ZERO matches. No served value could have moved by code change. Not re-verified this iteration; carried unchanged."
+    },
+    "J-10": {
+      "id": "J-10",
+      "name": "Bounded recovery of the two trading days the iter-5 drill deleted",
+      "status": "passing",
+      "last_verified_iter": "goal-market-compass-iter-13",
+      "last_passing_iter": "goal-market-compass-iter-13",
+      "first_seen_iter": "goal-market-compass-iter-6",
+      "last_evidence_path": "runs/goal-market-compass-iter-9/j10-population-evidence.json (committed; 567 population symbols each with one recorded verdict) + this evaluator's own read-only live-DB re-derivation, iter-11",
+      "spec_hash": "42ad18079fd7b367ce272c1a13960375b428c36ba9b21f0f709a09b3465384c2",
+      "gap": "iter-21 (note only; status, last_verified_iter and spec_hash all UNCHANGED): the iteration ran under MAINTENANCE ISOLATION. reports/phase-goal-market-compass-iter-21-ui-test-results.md records Browser QA Verdict: SKIPPED with a Reason naming maintenance isolation, and runs/goal-session-market-compass/iter-21/maintenance-isolation-refusals logs the engine's own refusal of browser-qa-phase (browser QA + deterministic replay lane) at 2026-08-27T06:50:06Z. No browser or replay lane could run, so this journey was NOT re-verified and keeps its prior recorded status per the evaluator methodology's maintenance-isolation carve-out (A.3, second). No browser-infra.json token exists — the lane was withheld by contract, not failed, so pending_infra is NOT set. The evaluator independently re-derived from `git status --porcelain -uall` that this iteration's ONLY product-code changes are four NEW untracked files under apps/backend (app/engine/j11_stage_f_execute.py, scripts/run_j11_stage_f_execute.py and two test files); zero tracked production file is modified (the 11 ` M ` entries are all harness bookkeeping under runs/goal-session-market-compass/), and a grep of the porcelain output against scoring.py, compass.py, data_manager.py, research.py, forward_testing.py, models.py, scanner.py, indexes.py, warmup.py and universe_resolver.py returns ZERO matches. No served value could have moved by code change. SPOT-CHECK 2 of 2 (evaluator, this iteration, strictly read-only sqlite3 mode=ro): daily_prices carries 585 rows on 2026-08-11 and 585 on 2026-08-12 — the owner-accepted terminal state — and AVB's two corrected volume cells still read exactly 554757.0 and 3706010.0. The whole-table content total reproduces the recorded ohlcv_sum 52367098848872.56 to the last decimal (SUM(volume) 52365172322564.0 + SUM(open+high+low+close) 1926526308.56), against 3,310,374 rows and max date 2026-08-12 — and this iteration's own mutation accounting records the daily_prices fingerprint 80441b37f816d41c3182d9559f03095b89d6c7973acf781c18f12b77be5024cc identical pre and post, the same value certified at iterations 16/17. Stage F moved no J-10 value at all. Consistent with `passing`. docs/goal.md's 2026-08-24 owner ruling keeps J-10 CLOSED and the 2026-08-26 ruling item 3 repeats that no additional J-10 raw recovery is authorized."
+    },
+    "J-11": {
+      "id": "J-11",
+      "name": "Incident-bounded clean regeneration of derived state",
+      "status": "partial",
+      "last_verified_iter": "goal-market-compass-iter-22",
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-market-compass-iter-8",
+      "last_evidence_path": "runs/goal-market-compass-iter-22/j11-stage-g-verify-verdict.json + j11-stage-g-verify-outcome.json + j11-stage-g-verify-mutation-accounting.json + j11-stage-g-verify-membership-timeline-check.json + j11-stage-g-verify-manifests.json (26 live-run artifacts) + this evaluator's own read-only live-DB re-derivation, iter-22 (boundary active=0 row preserved; runs 3148-3158 unique + unrestamped; daily_prices fingerprint 80441b37...; 24 manifests field-identical across 28 columns vs the certified iter-16 baseline; caches 0/0/0/0/0, index_series 1, membership_timeline 0)",
+      "spec_hash": "01e69865bb223d4d2675b66e93fbe00f383d11a539f58c31fd6ca21f4ddd6e01",
+      "gap": "Stage G's database-level acceptance gate PASSED live (12/12 categories, terminal outcome FULLY REPAIRED, boundary deactivated per ruling item 11). NOT passing: the serving/replay verification docs/goal.md:1408 assigns to Stage G ('G (final serving/replay verification)') and :1978-1985 gates on it (rebuilt runs serve the current complete raw basis; J-01/J-02/J-03 replay clean; historical serving internally consistent) was never performed - ruling item 4 forbade the application boot that would make it possible (audit finding B3; a genuine circularity inside docs/goal.md, deferred to the evaluator by the coherence lane). Requires an owner-authorized supervised boot."
+    }
+  },
+  "anti_goal_violations": [
+    {
+      "iter": "goal-market-compass-iter-2",
+      "anti_goal": "AG-2 - Decision-quality only: never present return promises, price targets, 'buy/sell' signals, or alpha claims; never place or simulate orders. Candidate framing is 'worth monitoring', never advice.",
+      "severity": "minor",
+      "evidence": "iter-2/a - the ATR caution string ended '- sized risk accordingly' (advice-flavoured), and the runtime banned-language guard scanned only build_narrative's sentences, never evaluate_selection's candidate reason/caution/why-not strings. || RESOLVED in iter-3: verified by the evaluator in reports/qa/goal-market-compass-iter-3-evidence/UT-10-result.png - the MCD and T candidate cards read 'ATR_RISK_BUDGET: ATR is 2.99% of price (p6 of universe).' with no advice tail; the guard now covers the candidate strings (TC-35, test_manifest_invariants.py). || Re-confirmed still closed in iters 4, 6, 7 and 10: no candidate, narrative or config string appears in iter-10's 4-file backend diff.",
+      "resolved": true
+    },
+    {
+      "iter": "goal-market-compass-iter-3",
+      "anti_goal": "AG-12 - Manifest immutability: a stored next_session_manifests row and its exported file are never mutated or deleted by any later ingest, rebuild, data removal, config change, or code change.",
+      "severity": "critical",
+      "evidence": "iter-3/a - the at-ingest export writer compass._write_export (apps/backend/app/engine/compass.py:841) used an unconditional path.write_text, so a second write for the same (as_of, version) replaced the bytes of an artifact an existing immutable row's export_path already pointed at. REPRODUCED by the auditor in an isolated probe. || RESOLVED IN-ITERATION by the audit lane, before any real artifact was overwritten: exclusive create open(path,'x') (compass.py:860) plus a session-autouse conftest fixture pointing TRENDORA_COMPASS_EXPORT_DIR at a per-run temp dir and a regression test (test_manifest_invariants.py:138). || Re-confirmed still closed in iters 4, 6, 7 and again in iter-10 by my own read-only query: 24 next_session_manifests rows, the 12 incident-date rows carrying exactly the content/manifest hashes and source_run_ids recorded in prior iterations, and trendora.db byte-frozen at mtime=1787482245 size=8365871104 across the whole iteration. This iteration's models.py change drops only the FK DECLARATION; no manifest row value was read-modified-written.",
+      "resolved": true
+    },
+    {
+      "iter": "goal-market-compass-iter-7",
+      "anti_goal": "AG-9 - Offline-deterministic ingest: ingest jobs run only against the committed seed / local provider fixtures - no live external network calls or paid data services without an explicit goal.md amendment. || Dated exception (owner, 2026-08-20): '...If the implementation cannot prove a request stays inside this scope, it MUST stop rather than broaden the fetch.' || J-10 step 2a (text in force during that iteration): '...If the conventions do not demonstrably agree within a stated tolerance - or if the comparison cannot be performed at all - insert nothing and STOP for owner review.'",
+      "severity": "critical",
+      "evidence": "iter-7/a - the fail-closed adjustment-convention gate was fail-OPEN on a degenerate sample: with an empty pair list it fell through to verdict='agree' with the self-indicting reason 'all 0 sampled pairs within 0.7500% relative delta'. The auditor reproduced it end to end on a FIXTURE database, writing 4 daily_prices + 2 data_provider_runs rows on a proof of nothing. || RESOLVED IN-ITERATION by the audit lane: a minimum-evidence floor requiring a non-empty comparison covering every sampled symbol, placed deliberately AFTER the mismatch branch so a genuine out-of-tolerance pair can never be downgraded to 'inconclusive' (j10_recovery.py:460-482), docstring corrected, 4 regression tests added; 27/27 pass. || NEVER REACHED PRODUCTION DATA - verified independently at the time. || Re-confirmed closed in iter-10: j10_recovery.py appears nowhere in this iteration's 4-file diff and no network call of any kind occurred (the one live-DB interaction is a read-only SELECT-only inventory script).",
+      "resolved": true
+    },
+    {
+      "iter": "goal-market-compass-iter-8",
+      "anti_goal": "AG-17 - Repair never rewrites provenance (owner, 2026-08-20): ... The incident record itself is evidence: the iter-5 drill result, its handoff, the reviewer/QA evidence already produced, and the explicit statement that the committed seed could not restore these dates MUST NOT be deleted, rewritten, or silently superseded.",
+      "severity": "critical",
+      "evidence": "reports/qa/goal-market-compass-iter-8-evidence/INVALID-forbidden-lane.md (ADDENDUM) and docs/handoffs/goal-market-compass-iter-8-audit.md finding P1. At 12:53-12:55 on 2026-08-21 the contract-forbidden deterministic replay lane ran a SECOND time and overwrote J-01-verify.png and J-04-verify.png, the two quarantined incident-evidence files. RESOLVED INSIDE THAT ITERATION by the in-pipeline auditor: original bytes restored from commit 47d50d04, the second run's bytes preserved as INVALID-rerun-2026-08-21T1254-J-0{1,4}-verify.png. || RE-VERIFIED BYTE-FOR-BYTE BY ME IN ITER-10: md5 J-01-verify.png = bd13782d00c37abd0a0ee4a17eeb852d, J-04-verify.png = 9e9cc6fe68e08e08ab496d6be6c081bd, INVALID-rerun files = eaacb5973639ca0dd96c695b968534fb and 190d16c0f5f8f0df0ec38396a68ee418 -- all four unchanged from the recorded values. || CAUSE STILL NOT FIXED IN THE PIPELINE ITSELF (the UI/replay chain has no awareness of docs/goal.md's lane gate), but the maintenance-isolation contract has now suppressed the lane for two consecutive iterations (9 and 10): iter-10's ui-test-results.md is an all-SKIPPED contract file, no evidence directory or replay artifact exists, and no boot-warmup scanner_runs row was written.",
+      "resolved": true
+    },
+    {
+      "iter": "goal-market-compass-iter-11",
+      "anti_goal": "AG-18 — The authorized manifest migration preserves everything (owner, 2026-08-23): the bounded next_session_manifests schema migration authorized in J-11 step 11 (ruling A1) removes the source_run_id foreign-key constraint and nothing else. ... No other table's schema may be altered under that authorization. A changed stored value is a REGRESSION, never a note.",
+      "severity": "critical",
+      "evidence": "runs/goal-market-compass-iter-11/j11-stage-b1-premigration-ddl.json vs the live sqlite_master text (identical to j11-stage-b1-postmigration-ddl.json — I compared both myself, read-only): `version INTEGER NOT NULL DEFAULT 1` -> `INTEGER NOT NULL`, `frozen BOOLEAN NOT NULL DEFAULT 0` -> `BOOLEAN NOT NULL`, `prospective_eligible BOOLEAN NOT NULL DEFAULT 0` -> `BOOLEAN NOT NULL`, and `version` moved from column ordinal 9 to 3. Cause: apps/backend/app/engine/j11_schema_migration.py:172-192 (create_shadow_table) rebuilds from NextSessionManifest.__table__ rather than the live DDL captured by fetch_object_ddl. Scope-of-authorization breach only — NOT the AG-18 stored-value clause: all 24 rows x 28 columns are byte-equal pre/post (verified independently), the four orphan source_run_id values are unrebound, no manifest was regenerated/rebound/rehashed/upgraded/deleted/minted, and no other table's schema or row count changed. Found by the in-pipeline auditor (finding B1), missed by the developer, reviewer and QA; documented forward and pinned by test_audit_ddl_delta_beyond_fk_removal_is_exactly_the_known_residual_set, but NOT undone — reversing it needs a second live-schema write the owner has not authorized. || RESOLVED 2026-08-24 BY EXPLICIT OWNER ACCEPTANCE, NOT BY REPAIR: docs/goal.md J-11 step 11 'OWNER RULING — iter-11 DDL residual accepted' + rulings A8/A9, and AG-18's own 'Bounded exception on record' paragraph, accept EXACTLY these four already-materialized differences and explicitly decline a second live rewrite on risk grounds. The acceptance is narrow and enumerated: NOT a general AG-18 waiver, NOT a precedent, NOT permission for further drift, and NOT a claim that iter-11 stayed inside its authorization (A8). Ruling A14 keeps iter-11's REGRESSION verdict standing. Verified by me read-only in iter-12: the residual is exactly the four accepted items and nothing more (28-column set identical, only version's ordinal and the three DEFAULTs differ from the captured pre-migration DDL), and no second live rewrite occurred (db mtime/size unchanged since iter-11). Root cause fixed for FUTURE migrations only in iter-12 (ruling A10): create_shadow_table now derives the table body from the captured live DDL and fails closed.",
+      "resolved": true
+    },
+    {
+      "iter": "goal-market-compass-iter-14",
+      "anti_goal": "AG-17 — Repair never rewrites provenance (owner, 2026-08-20): \"The incident record itself is evidence: the iter-5 drill result, its handoff, the reviewer/QA evidence already produced, and the explicit statement that the committed seed could not restore these dates MUST NOT be deleted, rewritten, or silently superseded.\" (read together with J-11 ruling C5, \"do not rewrite ... incident evidence\")",
+      "severity": "critical",
+      "evidence": "A new test in apps/backend/tests/test_j11_stage_c_cli_script.py called apps/backend/scripts/run_j11_stage_c_bounded_clear.py's main() with --confirm but no --evidence-dir; the script's argparse default pointed at the committed evidence directory runs/goal-market-compass-iter-13/, so the test truncated three committed Stage C forensic evidence files. The first dev handoff misattributed it to an unknown external cause.",
+      "resolved": true,
+      "resolution": "Fully reversed inside the same iteration and independently verified three times. The reviewer caught it and returned FAIL (reports/reviews/goal-market-compass-iter-14-review.md); the files were restored from git byte-for-byte; the test now targets tmp_path; --evidence-dir lost its filesystem default and main() returns 2 before any database or filesystem contact (run_j11_stage_c_bounded_clear.py:109-117, ahead of load_config/get_engine/_write_json in source order); and the handoff retracted its misattribution by name. The auditor hashed all 52 evidence files across iterations 9/11/12/13/14 before and after re-running the targeted suite — all byte-identical — and the evaluator independently confirmed `git status --porcelain runs/goal-market-compass-iter-13/` returns 0 lines. Recorded, not omitted: the act is critical-class; the outcome is a clean byte-for-byte restoration, so it does not force a REGRESSION halt (same treatment as the iter-8 entry, which was resolved after the damage was undone byte-for-byte)."
+    },
+    {
+      "iter": "goal-market-compass-iter-16",
+      "anti_goal": "AG-8 - Resilience to data-shape and data-scale change: ... unbounded whole-table ORM loads are forbidden (the delta engine reads column-projected selects, never full record_json sweeps). (critical)",
+      "severity": "minor",
+      "evidence": "apps/backend/app/engine/j11_preboot_guard.py:143 - `session.exec(select(MaintenanceBoundary)).all()` is an unbounded whole-table ORM load, and it now sits on the SHARED boot path every journey's serving depends on (apps/backend/app/engine/warmup.py:107). First raised by the auditor as observation B7; the evaluator confirmed it by reading the code. Practical impact is nil today - the table holds one row per named boundary and is read once per boot - and QA's own AG-8 line ('No new unbounded whole-table loads') is wrong on this point. RECORDED AS MINOR AND AS LETTER-BUT-NOT-SUBJECT: AG-8's subject is data-SCALE change, and this control table does not widen with the data basis, so the evaluator judged it a real but minor pattern breach rather than a critical one and says so openly; the owner may downgrade it to a non-violation at no cost. Fix is one line (filter by name / .limit(...) / select only the needed columns). || RESOLVED in goal-market-compass-iter-17: the unbounded select(MaintenanceBoundary) is replaced by _relevant_boundary_rows_statement() — filtered `active IS NOT FALSE`, projected to 4 columns, bounded LIMIT 101 — plus a fail-closed `len(rows) > 100` branch (apps/backend/app/engine/j11_preboot_guard.py:173-182, :218-228). Verified by the evaluator: code read directly, and tests/test_j11_preboot_guard.py + test_j11_preboot_guard_cli_scripts.py re-run -> 39 passed.",
+      "resolved": true
+    }
+  ],
+  "updated_at": "2026-08-27T15:20:00Z"
+}

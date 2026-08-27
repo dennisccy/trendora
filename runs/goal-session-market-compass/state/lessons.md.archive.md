@@ -456,3 +456,72 @@ another — before declaring the clear safe, grep the boot/warmup/resolve paths 
 its target from the PRESERVED layer, and check whether the two layers now disagree in a way that makes a
 routine start-up destructive.
 
+
+<!-- condense.sh 2026-08-27T19:44:50Z: moved 4 entries (keep-iters=5) -->
+
+## iter-16 — 2026-08-25T18:05:00Z
+
+**Verdict:** STALLED
+**Lesson:** A guard can be built, wired at the right call site, exhaustively tested and fully
+passing, and still protect nothing — because its *state* was never registered.
+`j11_preboot_guard.evaluate_boundary_for_date` correctly returns `blocked=False` on an empty
+`maintenance_boundaries` table, `register_j11_incident_boundary` has no production caller, and the
+table does not exist in the live DB at all — so the live boot path is exactly as unprotected as
+before. Worse, the guard's own green tests
+(`test_tc25_no_boundary_registered_is_a_true_noop`) are framed as "the common no-incident case"
+while being a precise model of the unprotected live state, so nothing in the suite names the gap.
+Ask of every new guard: *what is the live value of the state it reads, right now?* — the code's
+correctness and the deployment's effect are separate questions.
+**Applies to:** any iteration adding a guard/gate/feature-flag/quarantine whose behaviour keys on
+persisted state (`apps/backend/app/engine/j11_preboot_guard.py`, `warmup.py`, and any future
+boot-path or middleware check); also any "prove it on disposable test state" acceptance clause —
+treat it as necessary, never sufficient.
+
+## iter-16 — 2026-08-25T18:06:00Z
+
+**Verdict:** STALLED
+**Lesson:** Correcting the data invalidated a counterfactual that was written against the
+pre-correction data, and nothing flagged it. `_build_bars_with_transformed_close` substitutes close
+only unless `volume_override` is passed; that was coherent while stored volume was raw, but once the
+AVB volume was corrected to the compensating scale, representation B silently became
+provider-scale close × Trendora-scale volume — a hybrid matching no real state. Its fingerprint is
+unmissable once looked for: A/B came out *exactly* `bridge_factor` on both dates. The spec itself
+sanctioned dropping the override ("the write already landed, so read the corrected rows directly"),
+which is why developer, reviewer and QA all passed it — but the override never fed representation A,
+it fed B. After any state correction, re-derive every counterfactual's inputs; an exactly-round ratio
+between a representation and its counterfactual is the signature of a one-sided rescale, not a finding.
+**Applies to:** any iteration that mutates stored state which an existing diagnostic, A/B trace, or
+counterfactual reads (`j11_avb_diagnostic.py`'s trace functions, `run_j11_iter16_stage_d_readiness.py`),
+and any spec that tells an implementer to drop a substitution argument because "the real data now has
+that value".
+
+## iter-17 — 2026-08-25T21:05:00Z
+
+**Verdict:** STALLED
+**Lesson:** A test case can turn the MEASUREMENT OF AN OPEN DANGER into a green checkbox, and every
+downstream lane will inherit that framing without lying. TC-11 was specified as "the live guard returns
+`blocked: False` → PASS", but on the live DB `blocked: False` IS the exposure: `max(daily_prices.date)` is
+`2026-08-12`, an incident date with 0 `scanner_runs`, and `main.py`'s `create_db_and_tables()` runs BEFORE
+`ensure_latest_snapshot()`, so one boot both mints the owner-forbidden `maintenance_boundaries` table and
+writes a `ScannerRun` onto that quarantined date. Dev handoff, review and QA all recorded the pass; none
+stated what it means. When a spec's expected value for a safety probe is the UNSAFE value, the test case
+must require the artifact to state the consequence in prose, not just record the boolean.
+**Applies to:** any iteration whose spec asserts an expected value for a probe of a KNOWN-BROKEN or
+quarantined condition — especially `runs/**/j11-*verification*.json`-style evidence and any future
+"confirm the guard is not armed / confirm X is still absent" check.
+
+## iter-17 — 2026-08-25T21:05:00Z
+
+**Verdict:** STALLED
+**Lesson:** A cross-check whose inputs are both derived from the correction being checked cannot fail. TC-13
+asked for an A/B dollar-volume ratio "within relative tolerance of 1.0", but
+`ratio = (close_a·volume_a)/((close_a/bf)·volume_b)` cancels `close_a` entirely and reduces to
+`volume_a·bf/volume_b` — and `volume_a` was DEFINED by iter-16 as `round(provider_volume/bf)`. I confirmed
+`round(provider_volume/bf)` equals the stored volume exactly on both dates, so the ratio was algebraically
+pinned to ≈1.0 before anyone ran it, and it reproduces iter-16's own `dollar_volume_ratio_after` digit for
+digit. Before specifying a numeric tolerance check as evidence, substitute the definitions of its inputs and
+confirm the quantity can actually come out wrong.
+**Applies to:** any future J-11/AVB Stage-D readiness or verification spec proposing a ratio/tolerance
+assertion over values in `j11_avb_diagnostic.py` / `j11_avb_correction.py`, and any "independent
+cross-check" claim in `runs/goal-market-compass-iter-*/j11-*.json`.
+

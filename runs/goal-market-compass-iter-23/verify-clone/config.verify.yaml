@@ -1,0 +1,2141 @@
+# Trendora — single source of ALL tunables (NO magic numbers in calculation code).
+# Read ONLY via apps/backend/app/config.py :: load_config(). Adding a scoring literal
+# in code instead of here is an anti-goal violation.
+#
+# iter-1 CONSUMES: provider, database, universe (+filters), etfs, themes, buckets.
+# iter-2 ALSO CONSUMES: indicators, sectors, regime (weights + vix_threshold + label_edges).
+# The scoring / decision_rules / walk_forward sections below remain SCAFFOLDED (real config,
+# not code) but are NOT wired/consumed until iter-3+. All values are illustrative defaults to
+# be tuned against the walk-forward evidence; do not treat them as final.
+
+# ----------------------------------------------------------------------------------------
+# Data provider (DEFAULT = offline committed seed). The default boot/runtime path always reads
+# the committed seed; an import LIVE provider is resolved ONLY by the on-demand Data Manager
+# fetch path (from the `data_manager.providers` catalog below), never by the boot lifespan — so
+# the walk-forward evidence stays reproducible.
+provider: seed            # seed | stooq  (the offline boot/runtime provider; NOT an import source)
+
+# ----------------------------------------------------------------------------------------
+# iter-3 / iter-21 CONSUMED — Data Manager (J-17 + J-33). Every Data Manager job limit / display
+# cap AND the import provider catalog live here (anti-goal: No magic numbers — no job/range literal,
+# and NO hardcoded provider list, in app/engine/data_manager.py or app/api/data.py). The Data Manager
+# ORCHESTRATES the existing canonical create-once paths (scanner.run_scan +
+# forward_testing.backfill_run_forward_returns) — it computes no score/return of its own.
+data_manager:
+  # J-33 import-source catalog: the selectable, key-aware EOD providers. Each entry declares its key
+  # requirement + the ENVIRONMENT-VARIABLE NAME the key is read from (the NAME only — a key VALUE is
+  # NEVER written here, to the DB, the run log, or any committed file). Availability is env-detected at
+  # request time (a needs_key source is "available" only when its env_var is set). `supports_market_cap`
+  # is declared now for the J-35 expand-eligibility gate (consumed in iter-23; default false).
+  providers:
+    - id: yahoo            # the no-key runbook source, listed first (the default import source)
+      label: "Yahoo Finance"
+      needs_key: false
+      supports_market_cap: true
+    - id: tiingo
+      label: "Tiingo"
+      needs_key: true
+      env_var: TIINGO_API_KEY
+      supports_market_cap: true
+    - id: finnhub
+      label: "Finnhub"
+      needs_key: true
+      env_var: FINNHUB_API_KEY
+      supports_market_cap: true
+    - id: alpha_vantage
+      label: "Alpha Vantage"
+      needs_key: true
+      env_var: ALPHAVANTAGE_API_KEY
+      supports_market_cap: false
+    - id: stooq            # free CSV nominally, but key-gated for this IP (iter-3 lesson) — honest
+      label: "Stooq"
+      needs_key: true
+      env_var: STOOQ_API_KEY
+      supports_market_cap: false
+  default_source: yahoo     # the import source used when a job omits `source` (no-key ⇒ J-17 fetch never
+                            # fails the key gate). MUST be a real catalog id (validated at boot).
+  # ops-hardening iter-1 (J-03): no job date-range span cap (removed — was max_range_days: 370). An
+  # explicit request of any span is accepted; import_chunking.date_window_days below (chunked execution)
+  # is the safety mechanism for an unbounded span.
+  gap_preview: 60           # how many backfill-gap dates the coverage payload previews (display cap)
+  run_history_limit: 50     # how many recent fetch/backfill runs GET /api/data returns (display cap)
+  # J-34 chunked-import tunables: every chunk/backoff/sleep number the resilient FETCH loop reads lives
+  # here (anti-goal: No magic numbers — NO chunk/backoff/sleep literal in data_manager.py or the
+  # providers). Boot-validated all-positive (sleep MAY be 0); cap >= base. A large import runs in
+  # visible chunks; on a persistent 429 it retries with backoff then stops gracefully `resumable`.
+  import_chunking:
+    symbol_batch_size: 25            # symbols fetched per chunk (a symbol-batch dimension of the plan)
+    date_window_days: 90             # max calendar days per date-window chunk (the other plan dimension)
+    max_retries: 4                   # 429 retry attempts (after the first try) before pausing resumable
+    backoff_base_seconds: 1.0        # exponential backoff base: sleep = min(base * 2**attempt, cap)
+    backoff_cap_seconds: 30.0        # backoff ceiling (so a long retry never blocks the worker forever)
+    inter_request_sleep_seconds: 0.0 # polite delay between per-symbol requests (0 = none; tunable up)
+    fetch_workers: 4                 # J-46: bounded parallel fetch pool size (>= 1; 1 = serial). Per-chunk
+                                     # the symbol batch fetches on this many worker threads (network I/O
+                                     # only — DB writes stay serialized on the orchestrating thread).
+    backfill_workers: 4              # J-53: bounded parallel BACKFILL pool size (>= 1; 1 = serial). The
+                                     # multi-date snapshot backfill fans the per-date COMPUTE out to this
+                                     # many worker threads (each on its OWN read-only session — pure
+                                     # compute, no DB write), while the orchestrating thread owns every
+                                     # snapshot/forward-return WRITE serially (so SQLite writes stay
+                                     # serialized/transactional and snapshots stay create-once/identical).
+  # J-66 fine-grained, honest job-progress knobs: every polling / heartbeat / granularity number the
+  # live job card + progress instrumentation reads lives here (anti-goal: No magic numbers — NO poll/
+  # heartbeat literal in the frontend job card or data_manager.py). Boot-validated all-positive.
+  job_progress:
+    poll_interval_seconds: 1.0       # how often the /data live job card re-polls the job status endpoint
+    heartbeat_stale_seconds: 20.0    # "updated Ns ago" beyond this → the UI flags the job as possibly
+                                     # stalled (a slow-but-alive job still ticks its heartbeat under this)
+    per_symbol_ticks: true           # J-66: tick the fetch symbols counter at per-SYMBOL completion
+                                     # granularity (true) — the workers update a thread-safe completion
+                                     # counter as each symbol finishes; false falls back to per-chunk.
+
+# ----------------------------------------------------------------------------------------
+# Datastore. Engine URL from config so SQLite -> Postgres is a config-only switch.
+# A RELATIVE sqlite path is resolved against the repository root by app/db.py, so it
+# is correct regardless of the process working directory.
+database:
+  url: "sqlite:////home/dennis-chan/Git/trendora/runs/goal-market-compass-iter-23/verify-clone/trendora-clone.db"
+  # iter-24 fast-platform item B — sqlite-only connect-event PRAGMAs (app.db.make_engine). WAL lets
+  # readers proceed while a writer holds a transaction (the default DELETE journal blocks them); NORMAL
+  # sync skips an fsync between WAL commits (WAL+NORMAL is SQLite's own documented safe pairing for a
+  # single-host app — worst case: the last commit is lost on a power cut, never on an ordinary process
+  # crash). busy_timeout avoids an immediate "database is locked"; cache_size/mmap_size_bytes/temp_store
+  # size the page cache / read mmap window / temp-spill location. Applied ONLY for a sqlite database.url.
+  pragmas:
+    journal_mode: "WAL"
+    synchronous: "NORMAL"
+    busy_timeout_ms: 30000
+    cache_size: -65536           # negative = KiB -> 64 MB page cache (iter-4/J-09: was -262144/256 MB;
+                                 # halved standing pool memory, see reports/perf-budgets.md)
+    mmap_size_bytes: 0           # mmap DISABLED (iter-24 audit). A non-zero mmap_size reserves that many
+                                 # bytes of VIRTUAL address space PER pooled connection; at 1 GB x the
+                                 # pool (pool_size 10 + max_overflow 20) just ~6 connections exhausted the
+                                 # then-6144 MB `server.memory_cap_mb` `ulimit -v` cap BEFORE the cold /api/data bar
+                                 # prefill even ran -> MemoryError/PyO3-panic crash on the first /data load
+                                 # after a restart (browser-qa UT-16, reproduced 2/2). The 256 MB page cache
+                                 # above (demand-resident, not a virtual reservation) keeps reads fast.
+    temp_store: "MEMORY"
+  # Pool sized to the uvicorn worker/concurrency shape (the server: block further below allows up to
+  # server.limit_concurrency=64 simultaneous connections). ops-hardening iter-72: the prior 10+20=30 sum
+  # was SMALLER than limit_concurrency (64) -- the "comfortably covers" claim above was arithmetically
+  # false. A real concurrent-load drill on scripts/dev.sh (iter-71) reproduced the consequence live:
+  # sqlalchemy.exc.TimeoutError: QueuePool limit of size 10 overflow 20 reached, timeout 30.00, plus a
+  # 165s health-poll outage as pool-starved requests queued behind the readiness cache's own lock. 24+44=68
+  # now clears 64 with real headroom (not a razor edge) without over-provisioning idle sqlite connections.
+  pool_size: 24
+  max_overflow: 44
+
+# ----------------------------------------------------------------------------------------
+# Stock universe: ~120 liquid US common stocks spanning the example themes. The filter
+# rules are recorded here (applied where data allows in later iterations).
+universe:
+  filters:
+    min_market_cap: 2000000000     # $2B
+    min_dollar_vol: 50000000       # $50M average daily dollar volume
+    min_price: 10                  # $10 minimum share price
+    # iter-18 (J-12 hardening) — the per-date RECENCY gate: a candidate whose LAST bar is more than this
+    # many calendar days before the resolve date D is excluded (`stale_series`), so a name whose data ends
+    # mid-history exits membership cleanly and never feeds a positionally-misaligned relative-strength
+    # window (`rs_vs`). ~2 trading weeks: no US-market-wide closure approaches this (9/11 was 7 days).
+    max_staleness_days: 10
+  symbols:
+    # AI / data-centre / semis
+    - NVDA
+    - AMD
+    - AVGO
+    - MRVL
+    - ANET
+    - DELL
+    - SMCI
+    - VRT
+    - MU
+    - MSFT
+    - AMZN
+    - GOOGL
+    - META
+    - ORCL
+    - PLTR
+    - CIEN
+    - WDC
+    - STX
+    - LRCX
+    - AMAT
+    - KLAC
+    - TXN
+    - ADI
+    - NXPI
+    - "ON"      # quoted — YAML parses bare ON as boolean true
+    - MCHP
+    - QCOM
+    - INTC
+    - TSM
+    - ASML
+    - ARM
+    - TER
+    - ENTG
+    - COHR
+    - MPWR
+    - SWKS
+    - QRVO
+    - GFS
+    # software / cloud / cybersecurity
+    - CRWD
+    - PANW
+    - ZS
+    - FTNT
+    - S
+    - NET
+    - OKTA
+    - QLYS
+    - TENB
+    - RPD
+    - VRNS
+    - NOW
+    - CRM
+    - ADBE
+    - INTU
+    - WDAY
+    - TEAM
+    - HUBS
+    - SNOW
+    - DDOG
+    - MDB
+    - SHOP
+    # nuclear / uranium / power-grid / electrification
+    - CEG
+    - VST
+    - NRG
+    - CCJ
+    - LEU
+    - UEC
+    - DNN
+    - ETN
+    - PWR
+    - GEV
+    - NVT
+    - POWL
+    - HUBB
+    - AMSC
+    - EMR
+    - PH
+    # defence
+    - LMT
+    - RTX
+    - NOC
+    - GD
+    - LHX
+    - HII
+    - LDOS
+    - AXON
+    - BA
+    - KTOS
+    # homebuilders
+    - DHI
+    - LEN
+    - PHM
+    - NVR
+    - TOL
+    - KBH
+    - MTH
+    - TPH
+    - BLDR
+    # crypto-equities
+    - COIN
+    - MSTR
+    - MARA
+    - RIOT
+    - CLSK
+    - HOOD
+    # GLP-1 / pharma / medtech
+    - LLY
+    - NVO
+    - VKTX
+    - AMGN
+    - PFE
+    - REGN
+    - ISRG
+    # mega-cap / broad leaders
+    - AAPL
+    - TSLA
+    - NFLX
+    - COST
+    - V
+    - MA
+    - JPM
+    - XOM
+    - BKNG
+    - UBER
+    - WMT
+    - HD
+    - GS
+    - ABNB
+
+  # goal-market-compass iter-1 (J-01): RAW `universe_pool.csv` sector name -> a valid `etfs.sector`
+  # name — a normalization seam for a future pool refresh whose sector spelling doesn't match
+  # `etfs.sector`'s 11 names. Empty today: the pool's 11 distinct sector names already equal
+  # `etfs.sector`'s 11 names verbatim, so the pool-CSV sector fallback (`scoring.score_stocks`) is a
+  # straight, un-aliased read of `universe_pool.csv`'s `sector` column (TC-6 proves the no-op).
+  pool_sector_aliases: {}
+
+# ----------------------------------------------------------------------------------------
+# ETFs + the volatility index. Loaded into reference tables + daily_prices.
+etfs:
+  index:                  # broad-market reference (SPY is the RS benchmark)
+    - SPY
+    - QQQ
+    - IWM
+    - RSP
+  sector:                 # the 11 GICS sector SPDRs -> sector name (single source for `sectors`)
+    XLK: Technology
+    XLF: Financials
+    XLE: Energy
+    XLV: Health Care
+    XLI: Industrials
+    XLY: Consumer Discretionary
+    XLP: Consumer Staples
+    XLU: Utilities
+    XLB: Materials
+    XLRE: Real Estate
+    XLC: Communication Services
+  industry:               # industry-group ETF catalog: ticker -> {name, description} (J-58 reference
+                          # data — the leaderboard reads these instead of showing a bare ticker like
+                          # "KRE"). `name` is REQUIRED (a missing name is a loud ConfigError, never a
+                          # silent default); `description` is a plain-language one-liner. NO name or
+                          # description literal lives in code — this catalog is the single source.
+    SMH:  { name: "Semiconductors (VanEck)",            description: "Largest US-listed semiconductor makers and equipment suppliers." }
+    SOXX: { name: "Semiconductors (iShares)",           description: "Broad iShares basket of chip designers, foundries, and gear makers." }
+    IGV:  { name: "Software (iShares Expanded Tech-Software)", description: "Application and systems software companies, cloud and SaaS heavy." }
+    CIBR: { name: "Cybersecurity (First Trust Nasdaq)", description: "Network, endpoint, and identity security software and hardware vendors." }
+    HACK: { name: "Cybersecurity (Amplify ETF Managers)", description: "Cyber-defense pure-plays spanning software and security services." }
+    SKYY: { name: "Cloud Computing (First Trust)",      description: "Infrastructure, platform, and software cloud-computing providers." }
+    BOTZ: { name: "Robotics & AI (Global X)",           description: "Industrial robotics, automation, and artificial-intelligence enablers." }
+    ROBO: { name: "Robotics & Automation (ROBO Global)", description: "Robotics, automation, and enabling-technology manufacturers worldwide." }
+    URA:  { name: "Uranium Miners (Global X)",          description: "Uranium mining and nuclear-fuel-cycle companies." }
+    URNM: { name: "Uranium Miners (Sprott)",            description: "Physical uranium and uranium-mining pure-plays." }
+    ITA:  { name: "Aerospace & Defense (iShares)",      description: "US aerospace and defense primes and suppliers." }
+    XAR:  { name: "Aerospace & Defense (SPDR)",         description: "Equal-weight aerospace and defense manufacturers." }
+    XHB:  { name: "Homebuilders (SPDR)",                description: "Homebuilders plus building-products and home-improvement names." }
+    ITB:  { name: "Home Construction (iShares)",        description: "US home-construction builders and related suppliers." }
+    KRE:  { name: "Regional Banks (SPDR)",              description: "US regional and mid-size banking institutions." }
+    KBE:  { name: "Banks (SPDR)",                       description: "Broad US banking sector including money-center and regional banks." }
+    XBI:  { name: "Biotechnology (SPDR)",               description: "Equal-weight US biotechnology research and drug-development firms." }
+    IBB:  { name: "Biotechnology (iShares Nasdaq)",     description: "Largest Nasdaq-listed biotechnology companies." }
+    BKCH: { name: "Blockchain (Global X)",              description: "Companies with material exposure to blockchain and digital assets." }
+    WGMI: { name: "Bitcoin Miners (Valkyrie)",          description: "Bitcoin-mining and mining-infrastructure companies." }
+  volatility:             # CBOE Volatility Index (regime input in iter-2+)
+    - "^VIX"
+
+# ----------------------------------------------------------------------------------------
+# Major-indexes chart (J-44 / Capability 37): the dashboard "Major indexes & regime" card.
+# The symbol list + display names and the range presets are config (NO magic numbers — the
+# frontend never hardcodes a symbol, a legend name, or a range window). This is the chart's
+# presentation universe, deliberately independent of `etfs.index`/the scoring inputs, so a
+# bar-less symbol (DIA before its one-shot fetch) is listed here and honestly OMITTED at
+# serve time without ever touching regime/scoring. Read-only normalized-% display series.
+index_chart:
+  symbols:                # ticker -> legend/tooltip display name
+    - { symbol: SPY, name: "S&P 500 (SPY)" }
+    - { symbol: QQQ, name: "Nasdaq 100 (QQQ)" }
+    - { symbol: IWM, name: "Russell 2000 (IWM)" }
+    - { symbol: RSP, name: "S&P 500 Equal-Weight (RSP)" }
+    - { symbol: DIA, name: "Dow 30 (DIA)" }   # bar-less until its one-shot fetch — honestly omitted
+    # iter-22 (J-14) — deep Stooq equity-index benchmarks (real first bar 1996-01-02, per data/seed/
+    # meta.json), reaching well before the ETFs' ~1999/2005 floors above. Presentation-only: NOT added to
+    # etfs.index, so these never become a scored candidate or an RS/scoring benchmark. Already-built
+    # local databases need scripts/load_missing_index_symbols.py to pick these up (see its docstring); a
+    # fresh database loads them automatically via the existing load_prices -> all_seed_symbols path.
+    - { symbol: "^SPX", name: "S&P 500 Index (^SPX)" }
+    - { symbol: "^NDX", name: "Nasdaq 100 Index (^NDX)" }
+    - { symbol: "^DJI", name: "Dow Jones Industrial Average (^DJI)" }
+    # iter-22 (J-14) — already-loaded Yahoo + FRED-macro-proxy series, listed here too (alongside
+    # `etfs.volatility`/`macro.series[].proxy_symbol`, which already load them) so the chart legend + the
+    # /data vendor-disclosure panel show all three honest vendor categories (Stooq/Yahoo/FRED-macro
+    # proxy) required by J-14. `^VIX` is ALSO the regime VIX-gate input (etfs.volatility) — listing it
+    # here only adds a presentation line; it does not change that computation. `^TNX` is a deterministic
+    # FRED-macro PROXY, never the literal market 10-year yield — its display name says so explicitly
+    # (anti-goal: a proxy must never be presented as a real market index).
+    - { symbol: "^VIX", name: "CBOE Volatility Index (^VIX)" }
+    - { symbol: "^TNX", name: "10Y-2Y spread proxy (^TNX)" }
+  range_presets:          # key (API/URL value) -> label + trailing-calendar-day window (null = all)
+    - { key: "3M", label: "3M", days: 92 }
+    - { key: "6M", label: "6M", days: 183 }
+    - { key: "1Y", label: "1Y", days: 366 }
+    - { key: "all", label: "All", days: null }
+  default_range: "all"   # J-78: dashboard major-indexes chart defaults to full history (was "6M")
+
+# ----------------------------------------------------------------------------------------
+# Themes: manually-defined, many-to-many (a stock may appear in several). Price-confirmed,
+# NOT news-driven. Every member ticker MUST also be present in universe.symbols.
+themes:
+  ai_data_centre: [NVDA, AMD, AVGO, MRVL, ANET, DELL, SMCI, VRT, MU, MSFT, AMZN, GOOGL, ORCL, META, PLTR, CIEN]
+  semiconductors: [NVDA, AMD, AVGO, MRVL, MU, WDC, STX, LRCX, AMAT, KLAC, TXN, ADI, NXPI, "ON", MCHP, QCOM, INTC, TSM, ASML, ARM, TER, ENTG, COHR, MPWR, SWKS, QRVO, GFS]
+  cybersecurity: [CRWD, PANW, ZS, FTNT, S, NET, OKTA, QLYS, TENB, RPD, VRNS]
+  software_cloud: [MSFT, ORCL, NOW, CRM, ADBE, INTU, WDAY, TEAM, HUBS, SNOW, DDOG, MDB, SHOP, NET, PLTR]
+  nuclear_uranium: [CEG, VST, NRG, CCJ, LEU, UEC, DNN]
+  power_grid: [ETN, PWR, GEV, VRT, NVT, POWL, HUBB, AMSC, EMR, PH]
+  defense: [LMT, RTX, NOC, GD, LHX, HII, LDOS, AXON, BA, KTOS]
+  homebuilders: [DHI, LEN, PHM, NVR, TOL, KBH, MTH, TPH, BLDR]
+  crypto_equities: [COIN, MSTR, MARA, RIOT, CLSK, HOOD]
+  glp1_pharma: [LLY, NVO, VKTX, AMGN, PFE, REGN, ISRG]
+  megacap_leaders: [AAPL, MSFT, GOOGL, AMZN, META, NVDA, TSLA, AVGO, NFLX, COST, V, MA, JPM, XOM, BKNG, UBER, WMT, HD, GS, ABNB]
+
+# ----------------------------------------------------------------------------------------
+# Stock -> GICS sector REFERENCE DATA (factual classification, like the universe list and
+# theme defs — NOT a scoring magic number). Every universe.symbols entry MUST be present and
+# its value MUST be one of the etfs.sector names above (validated in config.py). Used by
+# seed_loader to set Stock.sector_id, and by scoring.py for the `rs_sector` / `sector_strength`
+# components (a stock is compared to its own sector ETF). Edge crypto-miner / multi-sector
+# names use their primary GICS classification.
+stock_sectors:
+  # AI / data-centre / semis
+  NVDA: Technology
+  AMD: Technology
+  AVGO: Technology
+  MRVL: Technology
+  ANET: Technology
+  DELL: Technology
+  SMCI: Technology
+  VRT: Industrials
+  MU: Technology
+  MSFT: Technology
+  AMZN: Consumer Discretionary
+  GOOGL: Communication Services
+  META: Communication Services
+  ORCL: Technology
+  PLTR: Technology
+  CIEN: Technology
+  WDC: Technology
+  STX: Technology
+  LRCX: Technology
+  AMAT: Technology
+  KLAC: Technology
+  TXN: Technology
+  ADI: Technology
+  NXPI: Technology
+  "ON": Technology
+  MCHP: Technology
+  QCOM: Technology
+  INTC: Technology
+  TSM: Technology
+  ASML: Technology
+  ARM: Technology
+  TER: Technology
+  ENTG: Technology
+  COHR: Technology
+  MPWR: Technology
+  SWKS: Technology
+  QRVO: Technology
+  GFS: Technology
+  # software / cloud / cybersecurity
+  CRWD: Technology
+  PANW: Technology
+  ZS: Technology
+  FTNT: Technology
+  S: Technology
+  NET: Technology
+  OKTA: Technology
+  QLYS: Technology
+  TENB: Technology
+  RPD: Technology
+  VRNS: Technology
+  NOW: Technology
+  CRM: Technology
+  ADBE: Technology
+  INTU: Technology
+  WDAY: Technology
+  TEAM: Technology
+  HUBS: Technology
+  SNOW: Technology
+  DDOG: Technology
+  MDB: Technology
+  SHOP: Technology
+  # nuclear / uranium / power-grid / electrification
+  CEG: Utilities
+  VST: Utilities
+  NRG: Utilities
+  CCJ: Energy
+  LEU: Energy
+  UEC: Energy
+  DNN: Energy
+  ETN: Industrials
+  PWR: Industrials
+  GEV: Industrials
+  NVT: Industrials
+  POWL: Industrials
+  HUBB: Industrials
+  AMSC: Industrials
+  EMR: Industrials
+  PH: Industrials
+  # defence
+  LMT: Industrials
+  RTX: Industrials
+  NOC: Industrials
+  GD: Industrials
+  LHX: Industrials
+  HII: Industrials
+  LDOS: Industrials
+  AXON: Industrials
+  BA: Industrials
+  KTOS: Industrials
+  # homebuilders
+  DHI: Consumer Discretionary
+  LEN: Consumer Discretionary
+  PHM: Consumer Discretionary
+  NVR: Consumer Discretionary
+  TOL: Consumer Discretionary
+  KBH: Consumer Discretionary
+  MTH: Consumer Discretionary
+  TPH: Consumer Discretionary
+  BLDR: Industrials
+  # crypto-equities (primary GICS; pure miners -> Financials, MSTR is a software co)
+  COIN: Financials
+  MSTR: Technology
+  MARA: Financials
+  RIOT: Financials
+  CLSK: Financials
+  HOOD: Financials
+  # GLP-1 / pharma / medtech
+  LLY: Health Care
+  NVO: Health Care
+  VKTX: Health Care
+  AMGN: Health Care
+  PFE: Health Care
+  REGN: Health Care
+  ISRG: Health Care
+  # mega-cap / broad leaders
+  AAPL: Technology
+  TSLA: Consumer Discretionary
+  NFLX: Communication Services
+  COST: Consumer Staples
+  V: Financials
+  MA: Financials
+  JPM: Financials
+  XOM: Energy
+  BKNG: Consumer Discretionary
+  UBER: Industrials
+  WMT: Consumer Staples
+  HD: Consumer Discretionary
+  GS: Financials
+  ABNB: Consumer Discretionary
+
+# ----------------------------------------------------------------------------------------
+# Stock -> industry-group ETF membership (J-58 reference data). CONFIG-DEFINED, many-to-many
+# (a stock may belong to several industry groups, like `themes`) — NOT a rule-based screen and
+# NOT a scoring magic number. Each KEY must be a universe.symbols entry; each value entry must
+# be a ticker present in `etfs.industry` above (both validated in config.py — a stray ticker is
+# a loud ConfigError, never a silent default). The Sectors leaderboard reads this to list an
+# industry ETF's universe members in its expanded panel; an ETF with no member here renders an
+# explicit empty state (never fabricated). Sector-ETF members come from `stock_sectors`, not here.
+stock_industries:
+  # --- semiconductors -> SMH / SOXX ---
+  NVDA: [SMH, SOXX]
+  AMD:  [SMH, SOXX]
+  AVGO: [SMH, SOXX]
+  MRVL: [SMH, SOXX]
+  MU:   [SMH, SOXX]
+  WDC:  [SMH, SOXX]
+  STX:  [SMH, SOXX]
+  LRCX: [SMH, SOXX]
+  AMAT: [SMH, SOXX]
+  KLAC: [SMH, SOXX]
+  TXN:  [SMH, SOXX]
+  ADI:  [SMH, SOXX]
+  NXPI: [SMH, SOXX]
+  "ON": [SMH, SOXX]
+  MCHP: [SMH, SOXX]
+  QCOM: [SMH, SOXX]
+  INTC: [SMH, SOXX]
+  TSM:  [SMH, SOXX]
+  ASML: [SMH, SOXX]
+  ARM:  [SMH, SOXX]
+  TER:  [SMH, SOXX]
+  ENTG: [SMH, SOXX]
+  COHR: [SMH, SOXX]
+  MPWR: [SMH, SOXX]
+  SWKS: [SMH, SOXX]
+  QRVO: [SMH, SOXX]
+  GFS:  [SMH, SOXX]
+  # --- robotics / AI hardware -> BOTZ / ROBO ---
+  ANET: [BOTZ, ROBO]
+  VRT:  [BOTZ, ROBO]
+  # --- software & cloud -> IGV / SKYY ---
+  MSFT: [IGV, SKYY]
+  ORCL: [IGV, SKYY]
+  NOW:  [IGV, SKYY]
+  CRM:  [IGV, SKYY]
+  ADBE: [IGV, SKYY]
+  INTU: [IGV, SKYY]
+  WDAY: [IGV, SKYY]
+  TEAM: [IGV, SKYY]
+  HUBS: [IGV, SKYY]
+  SNOW: [IGV, SKYY]
+  DDOG: [IGV, SKYY]
+  MDB:  [IGV, SKYY]
+  SHOP: [IGV]
+  PLTR: [IGV]
+  # --- cybersecurity -> CIBR / HACK ---
+  CRWD: [CIBR, HACK]
+  PANW: [CIBR, HACK]
+  ZS:   [CIBR, HACK]
+  FTNT: [CIBR, HACK]
+  S:    [CIBR, HACK]
+  NET:  [CIBR, HACK, SKYY]
+  OKTA: [CIBR, HACK]
+  QLYS: [CIBR, HACK]
+  TENB: [CIBR, HACK]
+  RPD:  [CIBR, HACK]
+  VRNS: [CIBR, HACK]
+  # --- nuclear / uranium -> URA / URNM ---
+  CCJ:  [URA, URNM]
+  LEU:  [URA, URNM]
+  UEC:  [URA, URNM]
+  DNN:  [URA, URNM]
+  # --- aerospace & defense -> ITA / XAR ---
+  LMT:  [ITA, XAR]
+  RTX:  [ITA, XAR]
+  NOC:  [ITA, XAR]
+  GD:   [ITA, XAR]
+  LHX:  [ITA, XAR]
+  HII:  [ITA, XAR]
+  LDOS: [ITA, XAR]
+  AXON: [ITA, XAR]
+  BA:   [ITA, XAR]
+  KTOS: [ITA, XAR]
+  # --- homebuilders -> XHB / ITB ---
+  DHI:  [XHB, ITB]
+  LEN:  [XHB, ITB]
+  PHM:  [XHB, ITB]
+  NVR:  [XHB, ITB]
+  TOL:  [XHB, ITB]
+  KBH:  [XHB, ITB]
+  MTH:  [XHB, ITB]
+  TPH:  [XHB, ITB]
+  BLDR: [XHB, ITB]
+  # --- banks -> KRE / KBE ---
+  JPM:  [KBE]
+  GS:   [KBE]
+  # --- biotech / large-cap pharma -> XBI / IBB ---
+  VKTX: [XBI, IBB]
+  REGN: [XBI, IBB]
+  AMGN: [XBI, IBB]
+  ISRG: [XBI]
+  # --- crypto equities & bitcoin miners -> BKCH / WGMI ---
+  COIN: [BKCH]
+  MSTR: [BKCH]
+  HOOD: [BKCH]
+  MARA: [BKCH, WGMI]
+  RIOT: [BKCH, WGMI]
+  CLSK: [BKCH, WGMI]
+  # NOTE: not every universe symbol is mapped — a stock may belong to no industry group, and an
+  # industry ETF may have no mapped member (e.g. a thinly-covered group), which renders the
+  # explicit "No universe members are mapped to this ETF" empty state. Never fabricated.
+
+# ----------------------------------------------------------------------------------------
+# A-E bucket edges (lower bound of each bucket; E is everything below D). One bucket()
+# function uses these everywhere. Consumed when scoring lands (iter-3); listed now to lock
+# the contract.
+buckets:
+  A: 90
+  B: 80
+  C: 70
+  D: 60
+
+# ----------------------------------------------------------------------------------------
+# iter-2 CONSUMED — indicator periods/windows. EVERY period the indicator/regime/sector math
+# uses comes from here (anti-goal: No magic numbers). Values are illustrative; tune later.
+indicators:
+  ma_periods: [20, 50, 150, 200]    # moving-average lengths (trading days)
+  rs_windows:                        # relative-strength lookbacks (trading days)
+    "1m": 21
+    "3m": 63
+    "6m": 126
+  atr_period: 14                     # Average True Range window
+  high_window_52w: 252               # 52-week-high window (~1 trading year)
+  vol_avg_period: 50                 # volume-trend window (recent vs prior `period` bars)
+  min_history_bars: 200              # below this a symbol's long-window components report NA
+  breadth_short_ma: 50               # universe-breadth short DMA (% of stocks above their 50-DMA)
+  breadth_long_ma: 200               # universe-breadth long DMA  (% of stocks above their 200-DMA)
+  # iter-13 (J-30) volatility-factor-family windows. Each is read as an argument by the new
+  # indicator math (No magic numbers); the values are illustrative and tunable. Computed once in
+  # the scoring/snapshot path (bars <= D) and STORED for the read-only Factor Lab — never a score input.
+  hv_window: 21                      # historical-volatility window: stdev of the last 21 daily returns
+  semivol_window: 63                 # downside-semivolatility window (negative leg only, MAR=0)
+  vol_contraction_recent: 21         # recent realized-vol window for the contraction ratio (numerator)
+  vol_contraction_prior: 63          # prior realized-vol baseline window for the ratio (denominator)
+  # iter-26 (J-16, fast-platform item F): the TRUE maximum trailing lookback any scoring/pass-3
+  # consumer needs is `high_window_52w` (252) -- every other window above (ma_periods max 200,
+  # rs_windows max 126, vol_avg_period*2 100, vcp/pullback/flat_base min_history_bars <= 90) is
+  # smaller. `scoring.py` slices each member's as-of bar series to the last `max_lookback_bars`
+  # bars BEFORE indicator/pattern computation (bars_asof on a 30-year basis can return ~5,300 bars
+  # on late dates, but every indicator only ever reads a trailing window off the end) -- 320 =
+  # 252 + a ~68-bar safety margin. The byte-identity harness (test_scoring_window.py), not this
+  # value, is the authority: it must show 0 diffs windowed vs. unwindowed; widen this if it ever doesn't.
+  max_lookback_bars: 320
+  # iter-40 (J-24, B-201 risk-budget card): the overnight-gap-profile window (median/p95/worst gap +
+  # overnight share of same-window return variance) -- 20 trading days (~1 trading month), read from
+  # the SAME max_lookback_bars-bounded trailing slice, so "20-day return variance" in the served copy
+  # matches this value exactly (no separate literal).
+  gap_window: 20
+  # The worst-trailing-N-day-return window scanned over each name's FULL as-of history (not bounded by
+  # max_lookback_bars -- see scoring.py pass-3) -- 20 trading days, matching gap_window's span.
+  worst_window_days: 20
+
+# ----------------------------------------------------------------------------------------
+# iter-2 CONSUMED — Sector/industry leadership. Component weights (must cover every component
+# and sum ~1.0) + trend-label cutoffs (Sector Score -> trend label). All from config.
+sectors:
+  weights:
+    rs_spy_1m: 0.20
+    rs_spy_3m: 0.25
+    rs_spy_6m: 0.20
+    ma_stack: 0.15
+    dist_from_high: 0.10
+    vol_trend: 0.10
+  trend_edges:                       # score >= min -> label; descending; lowest min MUST be 0
+    - { min: 70, label: "Strong uptrend" }
+    - { min: 55, label: "Uptrend" }
+    - { min: 45, label: "Neutral" }
+    - { min: 30, label: "Pullback" }
+    - { min: 0,  label: "Downtrend" }
+
+# ----------------------------------------------------------------------------------------
+# iter-3 CONSUMED — Theme leadership. Component weights (cover every theme-score component and
+# sum ~1.0) + trend-label cutoffs (Theme Score -> trend label). Price-confirmed, NOT news.
+# Components: basket RS vs SPY over 1m/3m, member breadth above the 50-DMA, and mean member
+# MA-stack participation. All from config (anti-goal: No magic numbers).
+theme_scores:
+  weights:
+    rs_spy_1m: 0.25        # equal-weight basket 1m return vs SPY 1m
+    rs_spy_3m: 0.30        # equal-weight basket 3m return vs SPY 3m
+    breadth: 0.25          # share of members above their 50-DMA (universe-relative)
+    ma_participation: 0.20 # mean member MA-stack fraction
+  trend_edges:             # score >= min -> label; descending; lowest min MUST be 0
+    - { min: 70, label: "Strong uptrend" }
+    - { min: 55, label: "Uptrend" }
+    - { min: 45, label: "Neutral" }
+    - { min: 30, label: "Pullback" }
+    - { min: 0,  label: "Downtrend" }
+
+# ========================================================================================
+# iter-3 CONSUMED — the per-stock score weights + decision rules below are now wired and
+# validated (scoring.py / setups.py). Weights/cutoffs remain illustrative hypotheses to be
+# tuned against the walk-forward evidence; the no-magic-numbers contract keeps them in config.
+# walk_forward stays SCAFFOLDED (consumed in iter-6).
+# ========================================================================================
+scores:
+  leadership:
+    weights:
+      rs_spy_1m: 0.15
+      rs_spy_3m: 0.20
+      rs_sector: 0.15
+      rs_theme: 0.10
+      ma_stack: 0.20
+      high_proximity: 0.10
+      up_down_vol: 0.10
+  entry_quality:
+    weights:
+      dist_rising_20: 0.25
+      contraction: 0.20
+      support_nearby: 0.15
+      structure: 0.20
+      reward_risk: 0.20
+  risk:
+    weights:
+      extension: 0.20
+      atr_pct: 0.15
+      liquidity: 0.10
+      regime: 0.15
+      sector_strength: 0.10
+      gap_climax: 0.15
+      below_ma: 0.10
+      rs_deterioration: 0.05
+
+regime:                              # iter-2 CONSUMED (weights + vix_threshold + label_edges)
+  vix_threshold: 20
+  weights:
+    index_ma_stack: 0.35
+    breadth_above_50dma: 0.25
+    breadth_above_200dma: 0.25
+    new_high_low: 0.15
+  labels: [Strong risk-on, Risk-on, Narrow leadership, Choppy, Defensive, Risk-off]
+  label_edges:                       # score >= min -> label; descending; must cover 0..100
+    - { min: 80, label: "Strong risk-on" }
+    - { min: 65, label: "Risk-on" }
+    - { min: 55, label: "Narrow leadership" }
+    - { min: 45, label: "Choppy" }
+    - { min: 30, label: "Defensive" }
+    - { min: 0,  label: "Risk-off" }
+
+decision_rules:
+  theme_floor: 70
+  actionable: { leadership: 80, entry: 70, risk: 60 }
+  extended: { leadership: 85, entry: 50 }
+  watch: { leadership: 75 }
+  avoid_risk: 80
+  invalidation: { ma_period: 50 }   # iter-4: the DMA that defines the invalidation level; MUST be one of indicators.ma_periods
+
+# iter-6 CONSUMED — Walk-forward forward-testing engine (app/engine/forward_testing.py).
+# The replay window (history_years), the as-of cadence (daily|weekly|monthly|quarterly), the forward
+# horizons (trading days), the min_sample honesty threshold, the default served horizon, and the
+# control-group params all come from here (anti-goal: No magic numbers — no walk-forward literal in
+# calc code). iter-18 (30y basis): history_years raised 2 → 30 so the depth is actually used —
+# `asof_cadence: quarterly` over the deep window yields the bounded as-of set for `/api/backtest`
+# (~86 real dates: quarterly targets snapped to the SPY trading calendar, which honestly starts at
+# SPY's real first committed bar, 2005-02-25 — targets before it snap to no date, never fabricated).
+walk_forward:
+  history_years: 30
+  asof_cadence: quarterly
+  horizons: [1, 5, 10, 20, 60]
+  min_sample: 30
+  default_horizon: 20          # default forward window surfaced first by the UI (Backtest evidence + research labs); must be in horizons
+  control_group:
+    seed: 20240601             # deterministic RNG seed for the random same-sector cohort (reproducible)
+    top_n: 20                  # top-ranked cohort = stocks ranked <= this in their run
+    peers_per_sector: 5        # random same-sector peers drawn per sector per run
+  # J-19 CONSUMED — Return attribution (forward_testing._attribution_slices). The rank-band edges and
+  # the contributor/detractor list size come from here so no band edge or list size literal lives in
+  # calc code (anti-goal: No magic numbers). Bands map a STORED rank to its display band; they must be
+  # ascending and non-overlapping and only the LAST band may be open (max: null = no upper bound).
+  attribution:
+    top_contributors_k: 5      # how many per-stock contributors / detractors to list (each side)
+    rank_bands:
+      - { label: "1–10",  min: 1,  max: 10 }
+      - { label: "11–50", min: 11, max: 50 }
+      - { label: "51+",   min: 51, max: null }   # open top band (all remaining ranks)
+  # iter-41 (J-25) CONSUMED — the /evidence phase-conditional drawdown/dry-spell expectations panel
+  # (forward_testing.compute_drawdown_expectations). underwater_horizons scopes which forward horizons the
+  # panel reports underwater-duration / time-to-recover for (defaults to the full horizons set so every
+  # certified claim's own horizon is covered); streak_min_n is the loss-streak honesty floor, counted in
+  # walk-forward-cadence dates (far fewer than min_sample's per-observation count, so it needs its own,
+  # smaller floor).
+  underwater_horizons: [1, 5, 10, 20, 60]
+  streak_min_n: 10
+  # ops-hardening iter-30 (AG-8, J-07) — the RUN-COUNT width of compute_forward_aggregates's OWN
+  # join-accumulator chunk (forward_testing.py). A DIFFERENT knob from research.read_batch_size (a ROWS
+  # count for yield_per) and research.factor_join_run_chunk (a different function's own run-chunk knob) —
+  # iter-29's binding lesson: reusing another function's knob as a run width can produce exactly one
+  # chunk and 0% peak reduction on the live basis. Peak live accumulator = this x symbols-per-run (~417
+  # measured), so 100 runs/chunk holds ~42K pairs instead of the full ~770K-803K per horizon (1,813-1,872
+  # distinct runs/horizon measured live, 2026-07-29). Must stay well below the live run count. Boot-validated >= 1.
+  forward_agg_run_chunk: 100
+
+# ----------------------------------------------------------------------------------------
+# iter-18 (J-10 performance) — GET /api/stocks/{ticker}/bars presentation bounding on the deep
+# 30-year basis (app/api/stocks.py). The chart never ships every deep bar by default: with no
+# `range` param the served window is the trailing `default_years` before the resolved as-of;
+# `range=full` is the explicit whole-real-history opt-in, with bars older than
+# `downsample_beyond_years` before the as-of sampled at weekly density (every sampled bar is a
+# REAL stored daily bar — never synthesized/aggregated; the series' real first bar is always
+# kept). Display-bounding only — scores/setups keep reading the immutable snapshot (bars <= D)
+# and the no-lookahead boundary is untouched (anti-goal: No magic numbers — no window literal
+# in the endpoint).
+chart_bars:
+  default_years: 5
+  downsample_beyond_years: 8
+  downsample_interval: weekly
+
+# ----------------------------------------------------------------------------------------
+# iter-11 CONSUMED — Detected price patterns. The FIRST detected pattern is VCP (Volatility
+# Contraction Pattern), a rule-based price+volume detector (app/engine/patterns.py :: detect_vcp).
+# EVERY VCP threshold lives here (anti-goal: No magic numbers — no detector literal in calc code);
+# the detector reads ONLY these keys via the typed config.patterns.vcp. Values are illustrative
+# hypotheses tuned against the committed seed so the latest snapshot flags a sensible, non-trivial
+# set (some, not all, not none) — never loosened to fabricate flags. VCP is a PATTERN, not a status:
+# it rides each stock row alongside the setup status, never enters the setup-status enum, and never
+# by itself promotes a name to Actionable.
+patterns:
+  vcp:
+    lookback_bars: 65              # base window scanned for contractions (trading days)
+    min_contractions: 2            # min number of progressively-shallower pullbacks in the base
+    max_contractions: 3            # cap on contractions considered (the most recent ones near the pivot)
+    min_contraction_pct: 3         # ZigZag reversal: a swing shallower than this % is noise, not a contraction
+    max_base_depth_pct: 35         # the deepest contraction must be <= this % (VCP bases are not crashes)
+    contraction_shrink_ratio: 0.9  # each contraction must be <= prior * this (volatility CONTRACTING) — in (0,1]
+    max_last_contraction_pct: 12   # the final (tightest) contraction must be <= this %
+    pivot_proximity_pct: 8         # latest close must be within this % below the base high (near the pivot)
+    volume_dryup_ratio: 0.9        # recent avg volume / base avg volume must be <= this (volume drying up)
+    volume_window: 10              # bars for the "recent" volume average (vs the base average)
+    min_history_bars: 65           # below this a symbol cannot be evaluated -> flagged=false / NA (never fabricated)
+  # iter-9 CONSUMED — two MORE detected patterns beyond VCP (J-28), each held to the identical
+  # pattern-not-status contract: config-driven thresholds, computed once with date <= D, price+volume
+  # only, riding ALONGSIDE the setup status (never a setup, never alone making a name Actionable),
+  # stored on the immutable snapshot, read verbatim everywhere. EVERY threshold lives here (anti-goal:
+  # No magic numbers — no detector literal in app/engine/patterns.py).
+  pullback_to_rising_dma:
+    ma_period: 50                  # the rising DMA price pulls back TO; MUST be one of indicators.ma_periods
+    min_history_bars: 90           # >= ma_period + trend_lookback_bars so the DMA slope is computable; else NA
+    trend_lookback_bars: 40        # the DMA must be RISING over this many bars (an established uptrend)
+    min_dma_slope_pct: 1.5         # the DMA must have risen at least this % over the lookback (rising, not flat)
+    max_dist_above_dma_pct: 5.0    # latest close within this % ABOVE the DMA (pulled back TO it, not extended)
+    max_undercut_pct: 2.0          # latest close tolerated up to this % BELOW the DMA (a shallow undercut; may be 0)
+    max_pullback_depth_pct: 18     # pullback from the recent (trend_lookback) high <= this % (a pullback, not a crash)
+    volume_window: 10              # bars for the "recent" (pullback) volume average reported in the reason
+  flat_base_breakout:
+    lookback_bars: 45              # window scanned; the base must sit at the high of this window
+    min_history_bars: 45           # below this (< lookback_bars) a symbol cannot be evaluated -> NA (never fabricated)
+    base_window: 25                # bars forming the base (the recent consolidation); must be <= lookback_bars
+    max_base_depth_pct: 15         # the base's high-to-low range must be <= this % (FLAT/shallow, not a deep base)
+    pivot_proximity_pct: 6.0       # latest close within this % at/below the base high (coiled under the pivot)
+    volume_window: 10              # bars for the "recent" volume average (vs the base average)
+    min_breakout_volume_ratio: 1.0 # recent avg volume / base avg volume must be >= this (volume building into the pivot)
+
+# ----------------------------------------------------------------------------------------
+# iter-10 CONSUMED — Research labs (J-25+). The Factor Lab is a READ-ONLY, cross-date aggregate over the
+# already-stored per-observation forward returns (forward_returns) JOINED to the stored factor values
+# (scanner_results typed columns + record_json component `raw`s). It recomputes NO score, return, factor,
+# or bucket — it is descriptive evidence, NOT a fitted/predictive model. EVERY tunable lives here
+# (anti-goal: No magic numbers — no decile count or factor list in app/engine/research.py):
+#   - `deciles` is the equal-count quantile count (validated > 1).
+#   - `factors` is the ORDERED, config-driven catalog the dropdown is built from (config-only factor =>
+#     no frontend edit). Each row's `source` is read VERBATIM (raws are already oriented by scoring; the
+#     decile sort never re-orients): a typed ScannerResult column (leadership_score/entry_quality_score/
+#     risk_score) OR a `<block>.components.<name>.raw` path whose <name> is a real component in
+#     scores.<block>.weights (validated at boot — an unresolvable/duplicate source fails loudly).
+#   - `direction`/`family` are DESCRIPTIVE metadata only (expected sign + grouping for J-30); they do not
+#     flip the sort. The low-sample threshold is REUSED from walk_forward.min_sample (no new threshold).
+research:
+  # iter-47 (J-105) — the streaming batch size the heavy research read-path builders pass to
+  # `yield_per(...)` when they scan the large/growing `forward_returns` table column-projected (instead
+  # of materializing it as ORM rows). A memory-safety knob (J-100's bounded-resource contract extended to
+  # the research read path), NOT a displayed value. Boot-validated `>= 1`; the SINGLE source of this batch
+  # size — there is NO inline batch literal in research.py / forward_testing.py (no-magic-numbers).
+  read_batch_size: 2000
+  # iter-29 audit (AG-8) — the RUN-COUNT width of `_factor_observations`'s join-accumulator chunk (a
+  # different unit from `read_batch_size`, which counts ROWS for `yield_per`). Peak live accumulator =
+  # this x symbols-per-run (~429 on the current basis), so 100 runs/chunk holds ~55K pairs instead of the
+  # full 792,507 (measured h=20, 19 chunks, SQL wall time UNCHANGED — the scoped index seeks are no slower
+  # than the single covering-index scan). Must stay well below the live distinct-run count per horizon
+  # (1,812-1,871 today) or the loop degenerates to one chunk and bounds nothing. Boot-validated `>= 1`.
+  factor_join_run_chunk: 100
+  # iter-55 (J-112) — rows-per-page of the Regime × Phase × Factor ranked combination table. The
+  # pagination is a pure client-side view transform; this is the SINGLE source of the 30-rows/page
+  # constant (served in the lab payload so the frontend reads it — no `30` literal in research.py).
+  regime_phase_factor_page_size: 30
+  # ops-hardening iter-31 (AG-8, J-06/J-07) — per-horizon observation-count SOFT CEILING for the
+  # all-factors Factor-Lab view's RETURN VALUE (`_all_factor_observations_by_horizon`'s `pools[h]` —
+  # `research.py:583`'s fill site, the live MemoryError frame iter-29/iter-30 both deferred). A DIFFERENT
+  # unit from `factor_join_run_chunk` (a run-count accumulator width) and `read_batch_size` (a row-count
+  # yield_per probe) — never reuse either here (the iter-29 unit-confusion lesson). Measured live basis
+  # (2026-07-29, apps/backend/data/trendora.db, ~4.97 GB): per-horizon forward_returns/pool sizes range
+  # 771,629 (h=60) to 804,372 (h=1) across the 5 configured horizons (781,965 scanner_results total,
+  # 781,417 with a realized return at >=1 horizon). The REAL memory fix is the compact per-observation
+  # encoding (a dedup'd core-record table + small per-horizon tuples, replacing 5x parallel Python
+  # dict-lists) — this ceiling is an AG-8 disclosure net: set with ~2.5x headroom above today's live max so
+  # normal operation never trips it, but a future data-scale widening logs a WARNING (never raises, never
+  # truncates a payload) instead of silently repeating this crash at a larger scale. Boot-validated >= 1.
+  factor_pool_max_observations: 2000000
+  # ops-hardening iter-36 (J-07/J-96 AG-8) — the candidate-pool SYMBOLS-axis batch width
+  # `_membership_timeline` loads bars in in-memory-bounded batches (a DIFFERENT unit from
+  # `read_batch_size`/`factor_join_run_chunk` — never reuse either here). 50 symbols/batch against the
+  # live ~590-symbol pool holds ~1/12 of the full price history resident at once instead of the whole
+  # 30-year x 590-symbol product, while still keeping the per-batch query count small (~12 batches).
+  membership_timeline_batch_symbols: 50
+  # ops-hardening iter-36 (J-07 evidence-serving-path) — the TICKER-axis chunk width
+  # `compute_drawdown_expectations` partitions a claim's resolved cohort into before reading each
+  # chunk's stored ForwardReturn rows (each chunk still `yield_per(read_batch_size)`-streamed — that
+  # reuse is `read_batch_size`'s own designed purpose, not this chunk's own width). A DIFFERENT unit
+  # from its neighbors; 50 tickers/chunk bounds a broad claim's cohort read to small chunks instead of
+  # one unbounded `.all()`.
+  drawdown_expectations_ticker_chunk: 50
+  factor_lab:
+    deciles: 10
+    factors:
+      - { key: leadership_score,    label: "Leadership score",            family: score,      direction: higher_better, source: leadership_score }
+      - { key: entry_quality_score, label: "Entry Quality score",         family: score,      direction: higher_better, source: entry_quality_score }
+      - { key: risk_score,          label: "Risk score (danger)",         family: score,      direction: lower_better,  source: risk_score }
+      - { key: rs_spy_3m,           label: "Relative strength vs SPY (3m)", family: momentum,  direction: higher_better, source: leadership.components.rs_spy_3m.raw }
+      - { key: ma_stack,            label: "Moving-average stack",         family: trend,      direction: higher_better, source: leadership.components.ma_stack.raw }
+      - { key: high_proximity,      label: "Proximity to 52-week high",    family: trend,      direction: higher_better, source: leadership.components.high_proximity.raw }
+      - { key: up_down_vol,         label: "Up/down volume",               family: momentum,   direction: higher_better, source: leadership.components.up_down_vol.raw }
+      - { key: atr_pct,             label: "ATR % (volatility level)",     family: volatility, direction: lower_better,  source: risk.components.atr_pct.raw }
+      # iter-13 (J-30) — volatility graduates to a labelled FAMILY of measures (level / contraction /
+      # downside). Each is a NEW value computed once in scoring.score_stocks (bars <= D) and STORED on
+      # the immutable snapshot as a typed ScannerResult column, read VERBATIM by compute_factor_lab.
+      # `source` is the bare column name (resolved at boot via FACTOR_TYPED_COLUMNS); they enter NO score.
+      - { key: hv,              label: "Historical volatility (HV)",          family: volatility, direction: lower_better,  source: hv }
+      - { key: vcp_contraction, label: "Volatility contraction (VCP-style)",  family: volatility, direction: lower_better,  source: vcp_contraction }
+      - { key: downside_vol,    label: "Downside volatility (semivol)",       family: volatility, direction: lower_better,  source: downside_vol }
+    # iter-12 CONSUMED / iter-18 RE-SCOPED — Multi-factor combination cohorts (J-26). EVERY tunable the
+    # read-only app.engine.research.compute_factor_combination reads lives here (anti-goal: No magic numbers
+    # — no condition count, quantile fraction, blend weight, or default in calc code). A "condition" is a
+    # catalog factor at its top/bottom quantile. The HEADLINE `Combined` cohort is now a COMPOSITE
+    # percentile-rank BLEND (the `composite` block below): each condition's stored factor value is
+    # percentile-ranked within the pool, oriented by the user's side (top = high value scores high; bottom =
+    # low value scores high), config-weighted-averaged across conditions, and the top `composite.quantile`
+    # of that blend is the cohort — a deterministic ranking/GROUPING of STORED values (exactly the class of
+    # the J-25 decile sort), NOT a fitted/ML model. It is non-empty + clears walk_forward.min_sample for a
+    # sensible selection and scales to ALL catalog factors. The exact AND-intersection rides along as a
+    # SECONDARY "strict overlap" cohort (NA + n when empty — never a fabricated 0). Both are reported beside
+    # the unconditional baseline and each single-factor cohort. The low-sample threshold is REUSED from
+    # walk_forward.min_sample (no new threshold); the quantile cutoff method is a fixed statistical rule
+    # (nearest-rank, boundary ties included) — only the `fraction`/`quantile`/`weighting` are config.
+    combination:
+      min_conditions: 2          # a combination needs >= 2 conditions (validated 1 <= min <= max)
+      # cap at the number of catalog factors (11) so a user can combine UP TO ALL catalog factors — the cap
+      # lives in config, NOT code (the engine + endpoint + UI all read this; no hard-coded cap anywhere).
+      max_conditions: 11
+      # the dropdown vocabulary — config-driven (a config-only quantile needs no frontend edit). `fraction`
+      # is the tail size a top/bottom condition selects; validated in (0, 1) with unique keys.
+      quantiles:
+        - { key: quintile, label: "Quintile (20%)",  fraction: 0.20 }
+        - { key: quartile, label: "Quartile (25%)",  fraction: 0.25 }
+        - { key: tertile,  label: "Tertile (33%)",   fraction: 0.3333 }
+        - { key: half,     label: "Half (50%)",      fraction: 0.50 }
+      # the composite rank-blend's tunables (the iter-18 headline cohort): `quantile` is the top fraction of
+      # the composite-score-sorted pool taken as the Combined cohort (a real `quantiles` key, cross-checked
+      # at boot — an unknown key fails loudly); `weighting` is the config-declared blend scheme (`equal` —
+      # each condition's oriented percentile rank weighted by `default_weight`, then normalized to sum to 1,
+      # so NO `1/k` weight literal lives in calc code). default_weight validated > 0.
+      composite:
+        quantile: quintile
+        weighting: { scheme: equal, default_weight: 1.0 }
+      # the canonical 2-condition default shown on first load — each references a real catalog factor +
+      # a real quantile key; count validated within [min_conditions, max_conditions].
+      default_conditions:
+        - { factor: rs_spy_3m, side: top,    quantile: quintile }
+        - { factor: atr_pct,   side: bottom, quantile: tertile }
+  # iter-32 CONSUMED — Downtrend Opportunity study (J-91). The read-only
+  # app.engine.research.compute_downtrend_opportunity_study groups the SAME stored event-study
+  # observation set, additively tagged with the CAUSAL as-of phase / severity band / P(bear) band at each
+  # observation's snapshot date (read from the read-only market_phase derivation, <= D). The PHASE
+  # dimension reuses market_phase.labels; the two CONTINUOUS dimensions need an explicit band catalog so
+  # the study slices them deterministically WITHOUT a hard-coded edge in calc code (anti-goal: No magic
+  # numbers). Each catalog is contiguous + full-cover (boot-validated) so every displayable reading lands
+  # in exactly one band. Horizons + min-sample are REUSED from walk_forward (no new threshold).
+  downtrend_opportunity:
+    severity_bands:                                   # over the 0..100 severity scale (contiguous)
+      - { key: calm,     label: "Calm (0–30)",       min: 0,   max: 30 }
+      - { key: elevated, label: "Elevated (30–50)",  min: 30,  max: 50 }
+      - { key: stressed, label: "Stressed (50–70)",  min: 50,  max: 70 }
+      - { key: severe,   label: "Severe (70–100)",   min: 70,  max: 100 }
+    pbear_bands:                                      # over the 0..1 filtered-P(bear) scale (contiguous)
+      - { key: low,      label: "Low P(bear) (0–0.25)",       min: 0,    max: 0.25 }
+      - { key: moderate, label: "Moderate P(bear) (0.25–0.50)", min: 0.25, max: 0.50 }
+      - { key: high,     label: "High P(bear) (0.50–0.75)",   min: 0.50, max: 0.75 }
+      - { key: extreme,  label: "Extreme P(bear) (0.75–1.0)", min: 0.75, max: 1.0 }
+  # iter-45 CONSUMED — Severity-velocity × Regime study (J-103). The read-only
+  # app.engine.research.compute_severity_velocity_study GROUPS the stored SPY forward_returns by the
+  # (regime FAMILY, velocity SIGN) at each snapshot date — both vocabularies live here so no regime/family
+  # list or sign label is hard-coded in calc code (anti-goal: No magic numbers). The families PARTITION the
+  # six regime.labels into the coarse risk-on / neutral / risk-off ("red") bands (cross-checked at boot
+  # against regime.labels — every label assigned once, none missing). The velocity-sign keys MUST be exactly
+  # [rising, flat, falling] (the SIGN of the served severity_velocity decides membership; only the labels
+  # are tunable). Horizons + the low-sample threshold are REUSED from walk_forward (no new threshold).
+  severity_velocity:
+    regime_families:                                  # partition regime.labels into coarse families
+      - { key: risk_on,  label: "Risk-on",        regimes: ["Strong risk-on", "Risk-on"] }
+      - { key: neutral,  label: "Neutral",        regimes: ["Narrow leadership", "Choppy"] }
+      - { key: risk_off, label: "Risk-off (red)", regimes: ["Defensive", "Risk-off"] }
+    velocity_signs:                                   # keys MUST be exactly [rising, flat, falling]
+      - { key: rising,  label: "Rising stress (velocity > 0)" }
+      - { key: flat,    label: "Flat (velocity = 0)" }
+      - { key: falling, label: "Falling stress (velocity < 0)" }
+  # iter-36 CONSUMED — the referee-calibration harness (J-22 / backlog B-102). Every tunable
+  # app.engine.referee_audit reads lives here (anti-goal: No magic numbers). `n_null_trials` is the real
+  # offline-run count (200); a test/CI fixture overrides this down to ~20 via an explicit cfg override,
+  # NEVER by editing this committed default. The harness runs ONLY when explicitly invoked
+  # (`python -m app.engine.referee_audit`) — this block alone changes no runtime behavior.
+  referee_audit:
+    n_null_trials: 200
+    seed: 20240601
+    contaminated_factor_horizon: 5
+    report_path: runs/goal-session-mcp-loop/state/referee-audit-report.json
+
+# ----------------------------------------------------------------------------------------
+# iter-29 CONSUMED — Market Phase & drawdown-Severity layer (J-87). The read-only derivation
+# (app/engine/market_phase.py) reads EVERY edge/weight/threshold/gate here (anti-goal: No magic numbers
+# — no literal in that module). It is strictly causal (inputs <= D): the benchmark's trailing-peak
+# drawdown + time-underwater over the lookback window, the STORED regime score (read verbatim from the
+# scanner_runs row, never recomputed), the universe breadth-below-200DMA (1 - the stored breadth), and
+# the ^VIX stress gate. The five severity weights cover the named component set and sum ~1.0 (validated
+# like regime.weights); the phase edges map the 0-100 severity to a discrete phase (descending, cover
+# 0..100, same shape as regime.label_edges). Values are illustrative hypotheses tuned against the
+# committed 2021-2026 seed (which holds the 2022 bear, SPY ~ -24.5% peak-to-trough, and ^VIX) so a
+# 2022-window as-of reads Bear/high severity and a 2024/2026 as-of reads Expansion/Recovery — never
+# loosened to fabricate a phase.
+market_phase:
+  labels: [Expansion, Pullback, Correction, Bear, Recovery]   # the discrete phase vocabulary
+  # SEVERITY -> phase: severity >= min -> label; descending; must cover 0..100. Higher severity = deeper
+  # stress. Recovery is NOT an edge band — it is a state override (still underwater but off the trough by
+  # recovery_min_off_trough_pct), applied after the edge lookup; it is listed in `labels` so phase_edges
+  # may reference it but its threshold here is the deep band it overrides FROM.
+  phase_edges:
+    - { min: 70, label: "Bear" }          # deep, sustained stress
+    - { min: 50, label: "Correction" }    # a meaningful pullback
+    - { min: 30, label: "Pullback" }      # a shallow dip
+    - { min: 0,  label: "Expansion" }     # calm uptrend (low baseline severity at/near a fresh high)
+  weights:                                # the five named severity components; must sum ~1.0
+    drawdown_depth: 0.40                   # trailing-peak peak-to-trough drawdown magnitude (the headline driver)
+    time_underwater: 0.10                  # fraction of the lookback spent below the running high-water mark
+    regime_risk: 0.20                      # the STORED regime score inverted (read verbatim)
+    breadth_below_200dma: 0.15             # fraction of the universe BELOW its 200-DMA (1 - stored breadth)
+    vix_gate: 0.15                         # ^VIX stress relative to the gate threshold
+  lookback_days: 365                       # trailing calendar-day window the peak + time-underwater span
+  drawdown_full_severity_pct: 25.0         # a 25% peak-to-trough drawdown maps drawdown_depth to 1.0 (deeper clamps)
+  vix_gate: 30.0                           # a ^VIX of 30 maps the vix_gate component to 1.0 (calmer scales below)
+  recovery_min_off_trough_pct: 8.0         # once >= 8% off the trough (still underwater) the phase reads Recovery
+  min_history_bars: 200                    # below this many benchmark bars <= D the window is insufficient -> NA/partial
+  observation_disclosure_limit: 60         # how many MOST-RECENT filter observations the payload discloses (the filter still consumes ALL <= D)
+  severity_velocity_window: 5              # iter-44 (J-102): the lookback (snapshots) the per-date severity-velocity OLS slope is fit over; strictly causal, NA at the warm-up head, positive = worsening (>= 2)
+  # iter-30 CONSUMED — J-89 downtrend-history + J-90 recovery-turn thresholds (every threshold from
+  # config; market_phase.py stays in test_no_magic_numbers's CALC_FILES). Tuned against the committed
+  # 2021-2026 seed so the 2022 bear (filtered P(bear) -> ~1) opens ONE causal downtrend episode and the
+  # 2022->2023 turn (P(bear) crosses back below the exit + SPY reclaims its trailing MA) fires the
+  # recovery-turn signal. The two retrospective Bry-Boschan cutoffs are FENCED (analysis-only — they feed
+  # only the J-89 retrospective true-bear dating, never any as-of value).
+  downtrend_pbear_threshold: 0.50          # filtered P(bear) >= 0.50 (or a Bear/Correction phase) opens a causal downtrend episode
+  recovery_signal_pbear_exit: 0.40         # the as-of must cross filtered P(bear) below 0.40 (<= downtrend) for the recovery-turn signal
+  recovery_trailing_ma_days: 50            # the index close must reclaim its 50-calendar-day trailing MA to confirm the turn
+  bry_boschan_min_phase_days: 90           # retrospective: a peak->trough decline shorter than 90 calendar days is not a true-bear phase
+  bry_boschan_min_amplitude_pct: 20.0      # retrospective: a peak-to-trough drawdown shallower than 20% is not a true-bear phase
+
+# ----------------------------------------------------------------------------------------
+# iter-29 CONSUMED — Deterministic 2-state regime-switching params for the forward FILTERED P(bear)
+# (J-88, app/engine/market_phase.py). EVERY number is read VERBATIM; the filter is a closed-form
+# Hamilton recursion over observations <= D and is NEVER EM-fit at serve time (anti-goal: No magic
+# numbers + deterministic). The observation per date is the SAME [0,1] stress reading severity is built
+# from. `transition[from][to]` is P(next=to | current=from) — each row sums ~1.0; both states are
+# persistent (high self-transition). `initial_bear` is the prior at the first observation. `emissions`
+# are per-state Gaussians on the stress reading (bear = a high mean, risk_on = a low mean) so 2022's
+# high-stress observations drive P(bear) -> 1 and a calm 2026 tape pulls it back. (These params come
+# from a committed deterministic calibration over the seed; running that calibration live is out of
+# scope — only these committed params are consumed.)
+regime_switching:
+  transition:
+    bear:    { bear: 0.92, risk_on: 0.08 }   # bear is persistent; small chance of exiting per step
+    risk_on: { bear: 0.06, risk_on: 0.94 }   # risk-on is persistent; small chance of breaking down
+  initial_bear: 0.5                           # uninformed prior at the first observation
+  emissions:
+    bear:    { mean: 0.75, std: 0.18 }        # a bear state emits a HIGH stress reading
+    risk_on: { mean: 0.20, std: 0.18 }        # a risk-on state emits a LOW stress reading
+
+# ----------------------------------------------------------------------------------------
+# iter-32 CONSUMED — OPTIONAL FRED macro feed (J-92). A real, optional, publication-lag-aligned macro
+# feed wired off-by-default into the severity / regime-switching / study layer. EVERY tunable lives here
+# (anti-goal: No magic numbers — no series id / publication-lag / enable literal in calc code). The FRED
+# key is read FROM THE ENVIRONMENT ONLY via `env_var` (the NAME only — never a key VALUE here, in the DB,
+# the run log, or any committed file; anti-goal: No secrets in source / keys env-or-session, never
+# persisted). Macro ships DEFAULT-OFF: with `enable.*` false (or no macro data present) every J-87..J-91
+# figure is BYTE-IDENTICAL to the price/breadth/VIX-only path. The live FRED/proxy pull is data-dependent
+# / non-halting — a walled provider / an uncommitted series is honestly blocked-NA, never fabricated. The
+# yield-curve 10y-2y inversion, unemployment trend, and credit-spread series + their OHLCV proxies are
+# fully testable OFFLINE against a small committed macro seed.
+macro:
+  env_var: FRED_API_KEY                        # the env-var NAME the FRED key is read from (NAME only)
+  series:
+    # yield-curve 10y-2y inversion (a leading recession/stress signal). proxy: ^TNX (10-yr yield index).
+    - { id: yield_curve_10y2y, fred_series_id: T10Y2Y,  label: "10Y-2Y Treasury spread", publication_lag_days: 1, proxy_symbol: "^TNX" }
+    # unemployment-rate trend (a coincident/lagging stress signal; reported with a calendar-month lag).
+    - { id: unemployment_rate, fred_series_id: UNRATE,   label: "Unemployment rate (trend)", publication_lag_days: 35 }
+    # high-yield credit spreads (a risk-appetite stress signal). proxy: ^VXN (Nasdaq-100 volatility).
+    - { id: credit_spread,     fred_series_id: BAMLH0A0HYM2, label: "High-yield credit spread", publication_lag_days: 1, proxy_symbol: "^VXN" }
+    # a dollar-strength proxy series (no FRED leg consumed by default — proxy bar only). proxy: ^DXY.
+    - { id: dollar_index,      fred_series_id: DTWEXBGS, label: "Broad dollar index", publication_lag_days: 1, proxy_symbol: "^DXY" }
+  enable:                                       # per-leg config-default-OFF flags (ALL false by default)
+    severity: false                            # wire macro into the J-87 severity score
+    regime_switching: false                    # wire macro into the J-88 regime-switching observation
+    study: false                               # wire macro into the J-91 study conditioning
+
+# ----------------------------------------------------------------------------------------
+# goal-mcp-loop iter-1 CONSUMED — Read-side evidence ledger location (app.engine.evidence). `ledger_path`
+# is the certified-claims ledger the read-only GET /api/evidence reads — the SAME append-only file the
+# post-decompose gate writes (via app.mcp.tools.verify_edge, set by run-goal.sh) — so the UI's displayed
+# proven-ness is consistent with what the referee certified. A RELATIVE path is resolved against the repo
+# root by config.py / app.engine.evidence (anti-goal: No magic numbers — no path literal in the resolver
+# or the endpoint). The runtime env override TRENDORA_LEDGER_PATH takes precedence when set.
+evidence:
+  ledger_path: runs/goal-session-mcp-loop/state/certified-claims.jsonl
+  # goal-mcp-loop iter-9 CONSUMED — the INTERNAL staging ledger + the online-FDR (LORD++) staging economy
+  # (app.engine.online_fdr, threaded by app.mcp.tools.verify_edge). The staging ledger is NEVER served to
+  # GET /api/evidence and never displayed — it exists so future iterations can explore multi-horizon /
+  # multi-factor edges WITHOUT permanently tightening the user-facing canonical Bonferroni bar. A relative
+  # path resolves against the repo root; run-goal.sh exports STAGING_LEDGER_PATH pointing here.
+  staging_ledger_path: runs/goal-session-mcp-loop/state/staging-ledger.jsonl
+  # The online-FDR economy is INJECTABLE + DEFAULT-OFF in code (FdrCfg.enabled=False): with enabled=false the
+  # referee stays strict Bonferroni on EVERY ledger (canonical AND staging). goal-mcp-loop iter-10 (Part B
+  # Phase 1) ACTIVATES it here (enabled=true) so the wide multi-horizon staging exploration is feasible — a
+  # strict-Bonferroni divisor over the whole candidate batch would crush it. The honesty fence in verify_edge
+  # (use_fdr = ledger == STAGING and evidence.fdr.enabled) keeps this FENCED to the internal staging ledger:
+  # the user-facing canonical /evidence bar is ALWAYS strict Bonferroni and stays byte-identical, because FDR
+  # controls the false-discovery RATE and is weaker than family-wise control — it NEVER touches the "Proven"
+  # badge. Every LORD++ tunable is consumed VERBATIM (no magic number in code).
+  fdr:
+    enabled: true           # iter-10 ACTIVATED for the staging economy ONLY (canonical stays Bonferroni via the fence)
+    alpha: 0.05             # target false-discovery rate (LORD++ α) for the staging economy
+    w0_fraction: 0.5        # initial alpha-wealth W0 = w0_fraction * alpha (0..1)
+    gamma_exponent: 1.6     # polynomial spending-sequence decay exponent (> 1 so Σ γ_j converges)
+    gamma_terms: 1000       # explicit terms for the ζ(gamma_exponent) normalizer (Euler–Maclaurin tail beyond)
+  # goal-mcp-loop iter-30 CONSUMED — the pre-registration registry (J-18 / backlog B-901): the append-only
+  # state/pre-registrations.jsonl BOTH GET /api/research/registry (via app.engine.registry) and the
+  # post-decompose gate (verify_claim.py) read through the SAME loader module, so the registry page a human
+  # browses and the machine cross-check an incoming Evidence Claim runs through can never disagree. `enforce`
+  # is the gate's teeth: when true, verify_claim.py refuses (BLOCKED, exit 3, before any referee computation)
+  # any Evidence Claim whose exact selectors do not match a registry row. ACTIVATED here (enforce: true) only
+  # after the backfill (11 rows — every proposer-guidance.md §4.1/§4.2 candidate ∪ every distinct claim
+  # selector-set in both ledgers, deduplicated) was verified complete against both ledgers (see the iter-30
+  # dev handoff) — it blocks nothing today because no current/near-term iteration submits a `## Evidence
+  # Claim` (goal.md's Evidence-frontier plateau note), and permanently closes the ad-hoc-mining door for every
+  # future one. A relative path resolves against the repo root; the runtime override TRENDORA_REGISTRY_PATH
+  # takes precedence when set; run-goal.sh exports it alongside LEDGER_PATH / STAGING_LEDGER_PATH.
+  registry:
+    path: runs/goal-session-mcp-loop/state/pre-registrations.jsonl
+    enforce: true            # iter-30: flipped true — the backfill (11 rows) is verified complete against
+                              # both ledgers (test_registry.py's round-trip tests) and the gate fixtures
+                              # (test_gate_registry_enforcement.py) prove registered/unregistered/near-miss
+                              # behave correctly. Blocks nothing today (no iteration currently carries a
+                              # ## Evidence Claim); closes the ad-hoc-mining door for every future one.
+
+# ----------------------------------------------------------------------------------------
+# goal-mcp-loop iter-35 CONSUMED — live-vs-seed drift monitor (app.engine.drift, J-21 / backlog B-304,
+# OVERLAP CHECK ONLY — the distribution-envelope check and the B-113-dependent seam scan are deferred).
+# `enabled` is the post-fetch validation stage's emergency off-switch (data_manager._run_job) — a
+# generic Fetch/Expand/`both` job compares the last `overlap_days` dates COMMON to what it just fetched
+# and the committed seed CSVs (data/seed/prices/*.csv); a byte/fixed-precision mismatch on any OHLCV
+# field is an "adjustment seam" (the vendor silently re-adjusted already-committed history). The result
+# is written ONCE to `report_path` (a RELATIVE path resolves against the repo root; the runtime env
+# override TRENDORA_DRIFT_REPORT_PATH takes precedence when set — mirrors evidence.ledger_path) and
+# re-read verbatim by both the readiness `drift` preflight component (readiness.severity.drift below)
+# and the additive `drift` field on GET /api/data. Currently DEFAULT-ON; the stage stays byte-identically
+# INERT (no artifact written, no preflight effect) until an actual live fetch runs.
+data_quality:
+  drift:
+    enabled: true
+    overlap_days: 20                                          # bounded per-symbol compare window (anti-goal #8 — never the whole history)
+    report_path: runs/goal-session-ops-hardening/state/drift-report.json
+
+# ----------------------------------------------------------------------------------------
+# Analyst-loop triad scan (app.engine.triad_scan / scan_product_triad). Tunables for the
+# deterministic scan that ranks factor cross-over cohorts by the "triad" (higher forward
+# return / shallower max-drawdown / higher frequency) and hold-out-screens the top before a
+# pattern becomes an enhancement proposal. Consumed VERBATIM by triad_scan (no literal in
+# calc code — anti-goal: No magic numbers). OPTIONAL: the module falls back to its own
+# defaults when this block is absent, so a config predating it still loads + behaves the same.
+#   weights    — relative weight of each triad leg in the z-scored cell score
+#   top_k      — how many top-ranked cells are hold-out-screened each scan
+#   horizons   — which forward horizons to scan (default: [walk_forward.default_horizon]=[20])
+#   screen     — the lightweight hold-out filter: base_edge_floor + haircut_coef·ln(batch)
+#                is the per-date holdout excess a cell must clear to survive (the multiple-
+#                testing haircut that grows with the number of cells scanned together).
+#   candidates — goal-mcp-loop iter-10 (Part B Phase 1): the FIXED, PRE-REGISTERED multi-horizon
+#                single-factor hypothesis set the staging exploration iterates (NEVER the full
+#                factor×horizon×decile cross-product — the anti-data-mining keystone). Consumed by
+#                app.engine.triad_scan:explore_multi_horizon_staging, which runs each through the
+#                referee into the INTERNAL staging ledger via verify_edge(ledger="staging"). Each
+#                entry carries a one-line economic rationale mirrored into
+#                project-extensions/proposer-guidance.md. Adding a candidate here is a deliberate
+#                pre-registration, never an ad-hoc data-mined cohort.
+# goal-mcp-loop iter-10: horizons opened to [1,5,10,20,60] (reuses compute_factor_lab + the
+# already-present walk_forward.horizons forward-return data); top_k + screen.haircut_coef raised so
+# the screen's multiple-testing haircut scales with the ~5× wider batch (screen affects only
+# scan_product_triad — NOT the staging exploration, which uses the full referee).
+# ----------------------------------------------------------------------------------------
+triad:
+  weights:
+    return: 1.0
+    drawdown: 1.0
+    frequency: 0.5
+  top_k: 50               # iter-10: raised from 20 — screen more of the ~5× wider (multi-horizon) field
+  horizons: [1, 5, 10, 20, 60]   # iter-10: open the aperture beyond h20 (was default [20])
+  screen:
+    base_edge_floor: 0.0
+    haircut_coef: 0.0025  # iter-10: raised from 0.001 (near-inert) so the batch haircut is a meaningful edge floor
+  # The PRE-REGISTERED multi-horizon candidate set (decile 10, direction positive) — a FIXED, reasoned
+  # hypothesis set: each factor is a documented h20 screen survivor re-registered at a NON-20 horizon, so
+  # each is a genuine "beyond the 20-day horizon" hypothesis. The exploration iterates ONLY this set.
+  candidates:
+    - factor: vcp_contraction
+      decile: 10
+      horizon: 10
+      direction: positive
+      rationale: "Tight volatility contractions resolve into expansion; test whether the h20-proven edge already appears at a ~2-week hold. Signal-less (non-score) — the cleanest J-07 promotion candidate (backs the factor lab only, never a /stocks badge)."
+    - factor: vcp_contraction
+      decile: 10
+      horizon: 60
+      direction: positive
+      rationale: "Does the post-contraction expansion edge persist or strengthen over a quarter? Signal-less."
+    - factor: rs_spy_3m
+      decile: 10
+      horizon: 60
+      direction: positive
+      rationale: "3-month relative-strength leadership over a hold matched to the factor's own 3-month lookback (a longer horizon is more natural than h20, where the cheap screen showed non-persistence). Signal-less; the speculative member of the set."
+    - factor: leadership_score
+      decile: 10
+      horizon: 60
+      direction: positive
+      rationale: "The system's strongest signal (hit the block-bootstrap p-floor at h20) probed at a longer hold: a high-probability staging ANCHOR that confirms the multi-horizon machinery certifies a real edge end-to-end. A score-column factor (already in proven_signals) so it does not disturb J-01/J-02/J-03; the FALLBACK, not the preferred J-07 promotion."
+  # goal-mcp-loop iter-12 (Part B Phase 1 — the deferred COMBINATIONS half): the FIXED, PRE-REGISTERED
+  # 2-factor COMBINATION candidate set. Parallel to `candidates` above but for composite (2-leg) cohorts —
+  # composite cohort, direction positive, horizon 20 (the J-08 target hold). Consumed VERBATIM by
+  # app.engine.triad_scan:explore_combination_staging, which projects each into a
+  # {kind:"combination", cohort:"composite", horizon, direction, condition:[leg1, leg2]} claim and runs it
+  # through the referee into the INTERNAL staging ledger via verify_edge(ledger="staging") under the
+  # online-FDR economy. The exploration iterates ONLY this set — NEVER the full factor×pair×horizon
+  # cross-product (the anti-data-mining keystone). Each `condition` leg is "<factor_key>:<side>:<quantile_key>"
+  # (parsed by drill_samples), with `side` matching the factor's catalog `direction` (top = higher_better,
+  # bottom = lower_better). Mirrored VERBATIM (each pair + horizon + rationale) into
+  # project-extensions/proposer-guidance.md §4.2. iter-13 PROMOTES the winner whose recorded raw
+  # block-bootstrap p clears the canonical divisor-6 bar (required_p ≈ 0.00833) with margin and surfaces J-08.
+  combination_candidates:
+    - condition: ["rs_spy_3m:top:quintile", "atr_pct:bottom:tertile"]
+      horizon: 20
+      direction: positive
+      rationale: "Momentum leadership that is NOT volatile/extended — identical to the shipped research.factor_lab.combination.default_conditions and to the J-08 example; both legs individually evidenced (rs_spy_3m PASSED strongly OOS at h60; low-ATR% is the risk-factor low-volatility/quality filter). Signal-less composite → backs the combination lab only."
+    - condition: ["leadership_score:top:quintile", "atr_pct:bottom:tertile"]
+      horizon: 20
+      direction: positive
+      rationale: "The composite Leadership score concentrated to its low-volatility members; asks whether the system's strongest signal (p-floor solo) is even cleaner filtered to orderly, low-ATR names."
+    - condition: ["rs_spy_3m:top:quintile", "high_proximity:top:tertile"]
+      horizon: 20
+      direction: positive
+      rationale: "Relative-strength leaders that are ALSO near their 52-week high (leaders in position / breakout-ready)."
+
+# ----------------------------------------------------------------------------------------
+# iter-5 CONSUMED — Scanner snapshots. The historical as-of dates the scanner persists an
+# immutable snapshot for on first boot (the LATEST data date is added programmatically in
+# bootstrap_runs, NOT listed here). Both dates below are real seed dates the regime engine
+# labels exactly "Risk-off" (verified against the committed seed) — so the seeded Risk-Off run
+# exists (J-07) and the history has >=2 dated runs that differ from the latest (J-08). Parsed to
+# datetime.date by config.py (anti-goal: No magic numbers — no date literal in calc code).
+scanner:
+  # iter-18: two representative deep-regime dates added (goal.md §E) — 2008-11-21 (GFC trough week) and
+  # 2020-03-20 (COVID crash week), both REAL SPY trading days inside the committed 30y basis. (The dot-com
+  # 2000-03 regime predates SPY's real first committed bar, 2005-02-25 — the trading calendar honestly
+  # cannot snapshot it; disclosed, never fabricated.)
+  bootstrap_dates: ["2008-11-21", "2020-03-20", "2022-10-07", "2025-04-04"]
+  # iter-18 — the BOUNDED deep-history snapshot cadence (goal.md §C(3)/§F: the offline rebuild is borne
+  # once but stays bounded + config-driven). Trading days ON/AFTER `daily_start` keep FULL daily snapshot
+  # density; days BEFORE it are backfilled only at the first trading day of each calendar month
+  # (`monthly`). Walk-forward cadence dates + the bootstrap dates above are always allowed regardless.
+  # HONEST BOUNDING DISCLOSURE (iter-18 spec §D escape hatch, invoked): the originally-planned daily
+  # window (2021-01-04 → present, ~1,379 dates) proved intractable in-iteration on this host (~7s/date,
+  # GIL-bound sequential → 3+ hours), so the daily window is bounded to the LAST TRADING MONTH while the
+  # 2005→2026 span (SPY's real calendar) is covered at monthly density (~256 dates + quarterly
+  # walk-forward + bootstraps). The aborted denser pass left an immutable create-once DAILY stretch
+  # 2021-01→2021-04 in the snapshot pool (kept — real point-in-time snapshots computed by the same
+  # engines; extra honest density, never fabricated). Widen `daily_start` earlier HERE (config, not
+  # code) to densify the recent window when compute budget allows.
+  snapshot_cadence:
+    deep_cadence: monthly
+    daily_start: "2026-06-01"
+
+# ----------------------------------------------------------------------------------------
+# iter-28 CONSUMED — Fast-ready boot + background warm-up (J-40/J-41). EVERY startup/readiness/poll
+# number the boot path (main.py lifespan), the readiness module (app.engine.readiness), the warm-up
+# controller (app.engine.warmup), and the frontend readiness badge derive from lives HERE
+# (anti-goal: No magic numbers — NO budget/poll/backoff literal in those modules). Boot-validated:
+# the budget + both poll intervals must be > 0, batch size >= 1, idle interval >= the active interval.
+# The lifespan does ONLY the minimal sync work (config/db/seed + the single latest-snapshot compute)
+# before yielding; the full historical walk-forward cadence + forward-returns warm up in the
+# BACKGROUND after the server is already serving (it never blocks /health or the read pages).
+startup:
+  readiness_budget_seconds: 30.0          # soft budget for the minimal sync boot before serving (logged on overrun)
+  warmup_batch_size: 1                     # cadence as-of dates the background warm-up persists per progress tick
+  health_poll_interval_seconds: 2.0        # badge poll cadence while warming (fast flip to Ready, not a 30s cycle)
+  health_poll_idle_interval_seconds: 30.0  # slower poll cadence the badge backs off to once Ready (>= active)
+  background_compute_history_size: 5       # ops-hardening iter-24 (J-09): recent_outcomes ring cap (>= 1)
+
+# ----------------------------------------------------------------------------------------
+# goal-mcp-loop iter-33 CONSUMED — the daily preflight verdict (J-20 / backlog B-301).
+# `app.engine.readiness:compute_preflight` extends `compute_readiness` into a composite
+# GO/DEGRADED/NO-GO verdict, rendered as the layout-level PreflightBanner on every decision surface.
+# `freshness_max_age_days` is the trading-day staleness threshold measured against a DETERMINISTIC,
+# seed-resolved reference (the seed's own latest available date — never `date.today()`, anti-goal #5),
+# so a fully-loaded seed always reads 0 days old (GO); lowering this value (e.g. via a temporary
+# TRENDORA_CONFIG override) is the sanctioned lever for inducing DEGRADED/NO-GO without mutating the
+# committed seed. `severity` maps each composed input to the verdict a breach forces — owner-reviewed
+# (B-301: "making NO-GO too easy is alarm fatigue"); both `degraded` and `no-go` must appear so the
+# fixture matrix can induce each. `verdict_history_path` is the append-only transition log (written
+# only when the verdict changes, never on every ~2s poll). iter-35 adds `drift` (J-21/B-304): a failed
+# live-vs-seed overlap check forces DEGRADED (an adjustment seam is worth a cautious look, not treated
+# as severely as a NO-GO integrity/servability breach) with the affected symbols named in the reason.
+readiness:
+  freshness_max_age_days: 5
+  severity:
+    servability: no-go
+    freshness: degraded
+    integrity: no-go
+    drift: degraded
+  verdict_history_path: runs/goal-session-mcp-loop/state/preflight-verdict-history.jsonl
+  refresh_interval_seconds: 0.5    # ops-hardening iter-70 (J-07): background-refresh cache tick cadence -- well under startup.health_poll_interval_seconds (2.0s)
+  max_stale_intervals: 3    # ops-hardening iter-71 introduced this as a synchronous-fallback threshold; ops-hardening iter-72 REMOVED that fallback (it self-amplified the live 165s/58-of-900-non-answer outage -- see app.engine.readiness.get_readiness_and_preflight's own NOTE), so this value is CURRENTLY UNCONSUMED by the readiness read path: an existing cache entry is now ALWAYS served as-is with its real, uncapped stale_for_s, never traded for a blocking recompute, however old. Kept typed/validated (never deleted) for a future consumer -- see ReadinessCfg's docstring in apps/backend/app/config.py. [iter-72 AUDIT FIX: this comment still described the removed fallback as live -- the same false-config-comment defect the pool-sizing lines above were corrected for in this SAME iteration]
+
+# ----------------------------------------------------------------------------------------
+# iter-42 (J-100) CONSUMED — bounded-resource SERVER ops guards. The SINGLE source of the uvicorn
+# concurrency cap, the heavy-endpoint request timeout, and the per-process virtual-memory cap the
+# start script enforces (anti-goal: No magic numbers — NO concurrency/timeout/memory literal lives in
+# scripts/start-backend.sh; it reads every value from here via the venv python). Under concurrent
+# dashboard / goal-mode UI-test load these keep the backend responsive + memory-bounded: the
+# concurrency cap + the single-flight coverage cache mean N parallel /api/data probes cost ~one heavy
+# compute (never N connection-holding resolves that exhaust the pool), the timeout sheds a pathological
+# heavy request so /health + light reads stay responsive, and the ulimit -v cap OOM-kills ONE runaway
+# process rather than swap-thrashing the whole VM.
+server:
+  limit_concurrency: 64                    # uvicorn --limit-concurrency: max simultaneous connections before 503 (light reads never starved by a heavy /api/data burst)
+  timeout_keep_alive_seconds: 65           # uvicorn keep-alive idle timeout (a heavy /api/data warm read is ~10s; this bounds an idle-kept connection generously above that)
+  graceful_timeout_seconds: 120            # uvicorn --timeout-graceful-shutdown: bound how long a heavy in-flight request may delay shutdown
+  memory_cap_mb: 8192                      # ulimit -v virtual-memory cap (MB) for the backend process. OWNER-RAISED 6144 -> 8192 on 2026-07-31 after the iter-42 REGRESSION_HALT — see the dated owner amendment in docs/goal.md "Additional binding notes" and reports/perf-budgets.md. Recalibration: 6144 was sized against the long-retired ~6.8 GB whole-table ORM `.all()` load (iter-19 replaced it with a streamed, column-projected load, retained footprint ~0.4-0.5 GB); MEASURED demand today is 2.6-3.7 GB VmPeak for an ISOLATED full historical forward-aggregate warm on the live 30y basis (iter-32: 2,691,600 kB; iter-38: 3,688,916 kB), and iter-42's outage was ~6 concurrent heavy computes stacking to the 6144 wall (MemoryError + `can't start new thread` -> /api/health 500s -> multi-minute outage). 8192 leaves the isolated warm at ~45% of cap and clears the observed concurrent-death point by ~27%; a pathological N-copy spike is still OOM-killed as ONE process, never a VM-wide swap freeze
+  malloc_arena_max: 2                      # iter-27 (anti-goal #8): MALLOC_ARENA_MAX exported by start-backend.sh. glibc otherwise creates up to 8*ncpus (128 on a 16-core host) independent malloc arenas, each retaining freed-but-unreturned address space; across the uvicorn threadpool + parallel backfill workers that fragments VSZ and pins the ulimit -v ceiling on a SECOND full-universe rebuild. Capping to 2 arenas bounds that fragmentation (the dominant VSZ lever behind the iter-26/iter-27 rebuild crash) — byte-identical outputs (allocator layout only, never a stored/served value)
+
+# ----------------------------------------------------------------------------------------
+# goal-mcp-loop iter-38 (J-23 / backlog B-204) — the watchlist concentration X-ray. EVERY tunable the
+# canonical app.engine.watchlist_xray:build_xray_payload composer (and the ONE shared ENB/correlation
+# helper it calls, app.engine.concentration) reads lives here (anti-goal: No magic numbers) — the
+# trailing correlation window, the connected-component cluster threshold, and the per-member
+# overlap-history honesty floor (below which a member renders NA rather than a fabricated correlation).
+# Computed fresh on every GET /api/watchlist read; no persisted field (watchlist storage schema untouched).
+watchlist:
+  xray:
+    corr_window_days: 126        # ~6 trading months trailing bars_asof_window lookback (bars <= as-of)
+    cluster_threshold: 0.7       # Pearson correlation at/above which two members join the same cluster
+    min_overlap_days: 60         # a member's own return series shorter than this renders NA throughout
+
+# ----------------------------------------------------------------------------------------
+# goal-market-compass iter-2 (J-02/J-03/J-04) — the Today-page decision surface: session-over-session
+# deltas, the deterministic plain-English narrative, and the next-session candidate-selection trace.
+# EVERY threshold/word map the three new `app.engine.session_delta` / `app.engine.compass` producers read
+# lives here (anti-goal: No magic numbers) — computed once at ingest finalize (or once on first
+# GET /api/compass for a not-yet-computed as-of) and served from the `next_session_manifests` table
+# thereafter. `selection.shadow.min_score` is reserved now for J-05/J-06's near-threshold shadow cohort —
+# unused by any code this iteration.
+compass:
+  delta:
+    rule_version: "v1"
+    market_score_min_change: 5.0     # regime-score points to report a "market" change
+    breadth_min_change_pts: 5.0      # breadth percentage points (above-50DMA / above-200DMA) to report a "breadth" change
+    rank_move_min: 2                 # sector/theme rank positions moved to report a change
+    stock_score_min_change: 8.0      # leadership-score points a bucket-crossing stock must move to report a "stock" change
+    top_k: 5                         # max sector-kind and max theme-kind change entries shown (most-moved first; mirrors the existing Top-Sectors/Top-Themes "top 5" convention)
+    max_stock_items: 10              # max stock-kind change entries evaluated/shown (bounds both compute and display — AG-8)
+    velocity_flat_band: 2.0          # |regime-score delta| below this reads as "little changed" in the narrative's direction sentence
+    pbear_bands:                     # filtered P(bear) -> narrative state word (ascending min, like market_phase.phase_edges)
+      - { min: 0.0, label: "calm" }
+      - { min: 0.20, label: "cautious" }
+      - { min: 0.40, label: "tense" }
+      - { min: 0.60, label: "stressed" }
+  selection:
+    rule_version: "v1"
+    leadership_min_score: 80.0       # the ONLY candidacy gate on Leadership (never the Actionable/A-bucket setup status)
+    entry_min_score: 70.0            # candidacy qualifier: Entry Quality score floor
+    risk_max_score: 60.0             # candidacy qualifier: Risk score ceiling (risk is a danger score — lower is safer)
+    max_candidates: 10               # cap on the Next-session focus section's candidate list
+    why_not_floor: 75.0              # a non-candidate at/above this Leadership score gets an individual why-not entry
+    why_not_cap: 20                  # max why-not entries returned (the disposition tally stays a full, uncapped count)
+    shadow:
+      min_score: 75.0                # RESERVED for J-05/J-06's near-threshold shadow cohort — not read by any iter-2 code
+  vocabulary:
+    direction_words:
+      up: "improving"
+      down: "deteriorating"
+      flat: "little changed"
+    leadership_words: { A: "Elite leader", B: "Strong leader", C: "Average leader", D: "Weak leader", E: "Laggard" }
+    entry_words: { A: "Ideal entry", B: "Good entry", C: "Fair entry", D: "Poor entry", E: "Weak entry" }
+    risk_words: { A: "Very high risk", B: "High risk", C: "Moderate risk", D: "Low risk", E: "Very low risk" }
+    # TC-11's committed banned-language list: imperative trade verbs, forecast terms, causal-attribution
+    # phrases (AG-2). Every rendered narrative sentence is scanned against this list, case-insensitively.
+    banned_terms:
+      - "buy"
+      - "sell"
+      - "should buy"
+      - "should sell"
+      - "will rise"
+      - "will fall"
+      - "target price"
+      - "guaranteed"
+      - "recommend"
+      - "act now"
+      - "because of"
+      - "caused by"
+  # goal-market-compass iter-3 (J-05/J-06) — the next-session manifest freeze/export tunables.
+  # `availability_margin_seconds` is a publication-latency allowance, never a research threshold.
+  manifest:
+    schema_version: "v1"
+    export_dir: "apps/backend/data/exports/next_session_manifests"
+    availability_margin_seconds: 60
+    schema_path: "docs/handoffs/trendora-next-session-manifest-v1.schema.json"
+
+# ----------------------------------------------------------------------------------------
+# goal-market-compass iter-3 (J-05/J-06) — the engine-identity stamp's own inputs. `engine_files` are
+# repo-root-relative paths whose CONTENT is hashed; `config_keys` are dotted config paths whose VALUES
+# are hashed. Together they define what `app.engine.engine_identity.compute_engine_identity` is
+# sensitive to — stamped on every manifest's `generation.engine_identity` and on newly created
+# `scanner_runs` rows (old rows stay NULL, "pre-stamping era", never backfilled).
+provenance:
+  engine_files:
+    - "apps/backend/app/engine/compass.py"
+    - "apps/backend/app/engine/session_delta.py"
+    - "apps/backend/app/engine/engine_identity.py"
+  config_keys:
+    - "compass.selection"
+    - "compass.delta"
+    - "compass.manifest"
+
+# ----------------------------------------------------------------------------------------
+# iter-12 CONSUMED — Methodology / Glossary catalog (J-12). The SINGLE config-backed source that
+# EXPLAINS every setup status + the VCP pattern: a plain-language meaning, the exact thresholds that
+# define each (referenced LIVE from the canonical config blocks above — never re-typed, so they always
+# match the engine; the "matching config" keystone), and a worked example. Served verbatim by
+# app.engine.methodology.build_catalog via GET /api/methodology and read by the /methodology page, the
+# /stocks setup/VCP badge tooltips, AND the /stocks setup-filter vocabulary (anti-goal: Setup & pattern
+# vocabulary is config-driven in the UI too — NO per-entry copy or status/pattern list in code).
+# Each threshold row is EITHER { label, ref, cmp?, unit? } (ref = dotted path to a real config key,
+# resolved at boot — an unresolvable ref fails the boot loudly) OR { label, text } (a prose rule).
+# Adding an entry here surfaces it on the page AND in the tooltips with NO code change. The numbers are
+# NEVER typed here — only `ref`s — so tuning a threshold above updates the glossary and the scanner
+# together (single source of truth). VCP is listed as a PATTERN, never as a 7th setup status.
+methodology:
+  intro: "How Trendora classifies every stock. Each name gets exactly one setup status (from its three independent scores plus the market regime) and may also carry a detected price pattern that rides alongside it. The thresholds below are read live from this config — they always match the scanner."
+  # iter-7 CONSUMED — Universe Selection section (J-22). The membership-rule prose + the three screen
+  # thresholds, resolved LIVE from `universe.filters` via the same `ref` mechanism as the glossary (no
+  # re-typed numbers — the displayed values always match the offline screen). Served by
+  # GET /api/methodology and rendered on /methodology; the resolved member count is read live from the
+  # one canonical `universe.symbols` by build_catalog (a read, not a literal). No hard-coded copy/number.
+  universe_selection:
+    membership_rule: "The universe is a transparent, reproducible screen — not a hand-picked list. Its candidate pool is the union of the S&P 500 and Nasdaq-100 index constituents (real index memberships) together with Trendora's prior curated names; every candidate is then screened against the liquidity, price, and market-cap filters below from real committed end-of-day data. Only names that pass all three thresholds are members; candidates that fail to fetch or fall below a threshold are omitted, never fabricated. Breadth and walk-forward evidence remain universe-relative and survivorship-biased to the current membership."
+    # goal-market-compass iter-1 (J-01): the two-source stock-sector-label disclosure. Curated first,
+    # pool-CSV fallback second, current-only limitation stated, B-114 referenced as still open.
+    sector_basis: "Each stock's sector label is resolved from two sources, in order: the curated `config.stock_sectors` mapping (Trendora's original universe) first, then — for any name the curated map does not cover — a fallback to the sector recorded in the committed candidate pool (universe_pool.csv). A name present in neither source serves no sector ('Unassigned') — never a fabricated value. Both sources describe the CURRENT sector only: there is no point-in-time sector history, so a stock's sector label at a historical as-of date reflects today's mapping, not necessarily what its sector was on that date (tracked open as backlog item B-114)."
+    thresholds:
+      - { label: "Minimum market cap", cmp: ">=", ref: "universe.filters.min_market_cap", unit: "$" }
+      - { label: "Minimum average daily dollar volume", cmp: ">=", ref: "universe.filters.min_dollar_vol", unit: "$" }
+      - { label: "Minimum share price", cmp: ">=", ref: "universe.filters.min_price", unit: "$" }
+  # goal-market-compass iter-2 (J-04): the /methodology "Next-session focus" disclosure — the
+  # candidate-selection rule prose + its live `compass.selection.*` thresholds, resolved via the SAME
+  # `ref` mechanism as Universe Selection above (never re-typed — the matching-config keystone). Served
+  # as its OWN top-level sibling key (same reasoning as sector_basis below) so the J-22 universe gate
+  # never hides it — this disclosure makes no universe-screen claim.
+  compass_selection:
+    text: "The Today page's Next-session focus list is a transparent rule over stored scores, not a prediction: a name qualifies when its Leadership score clears the floor below and its Entry Quality and Risk scores clear their own qualifiers, ranked and capped at the list size. No new blended number is computed for this — every value shown is one of the existing Leadership / Entry Quality / Risk scores plus the existing config word maps. Non-candidates at or above the floor are shown too, in a 'Not priority' list naming exactly which condition they missed and by how much."
+    thresholds:
+      - { label: "Leadership score", cmp: ">=", ref: "compass.selection.leadership_min_score" }
+      - { label: "Entry Quality score", cmp: ">=", ref: "compass.selection.entry_min_score" }
+      - { label: "Risk score", cmp: "<=", ref: "compass.selection.risk_max_score" }
+      - { label: "Focus list size", cmp: "<=", ref: "compass.selection.max_candidates" }
+  entries:
+    - key: Actionable
+      kind: setup
+      name: Actionable
+      meaning: "A strong leader at a constructive entry with contained risk — the only status the scanner treats as a fresh buy candidate, and only while the market regime is risk-on."
+      thresholds:
+        - { label: "Leadership", cmp: ">=", ref: "decision_rules.actionable.leadership" }
+        - { label: "Entry Quality", cmp: ">=", ref: "decision_rules.actionable.entry" }
+        - { label: "Risk (danger)", cmp: "<=", ref: "decision_rules.actionable.risk" }
+        - { label: "Regime", text: "Never produced when the regime is Risk-off — the Risk-off gate forces watchlist-only." }
+      example: "Leadership 92 (A), Entry 74 (C), Risk 48 in a Risk-on regime → Actionable."
+    - key: Breakout-watch
+      kind: setup
+      name: Breakout-watch
+      meaning: "A leader that is not yet at a clean entry — strong enough to watch, but its entry quality is below the Actionable cutoff, so it is a breakout candidate rather than a buy."
+      thresholds:
+        - { label: "Leadership", cmp: ">=", ref: "decision_rules.watch.leadership" }
+        - { label: "Entry Quality", text: "Below the Actionable entry cutoff — not yet a clean entry." }
+        - { label: "Risk (danger)", text: "Below the Avoid danger bound, and the name is not Actionable or Extended." }
+      example: "Leadership 78 (C), Entry 55 in a Risk-on regime → Breakout-watch."
+    - key: Pullback-watch
+      kind: setup
+      name: Pullback-watch
+      meaning: "A leader near a buyable area — its entry quality is already at or above the Actionable cutoff, but another Actionable condition is not met, so it is watched for a lower-risk pullback entry."
+      thresholds:
+        - { label: "Leadership", cmp: ">=", ref: "decision_rules.watch.leadership" }
+        - { label: "Entry Quality", cmp: ">=", ref: "decision_rules.actionable.entry" }
+        - { label: "Risk (danger)", text: "Below the Avoid danger bound; Leadership below the Actionable cutoff keeps it a watch rather than Actionable." }
+      example: "Leadership 78 (C), Entry 72 (C) in a Risk-on regime → Pullback-watch."
+    - key: Extended
+      kind: setup
+      name: Extended
+      meaning: "A strong leader whose entry is extended — too far from a low-risk entry to chase. Wait for a pullback rather than buying here."
+      thresholds:
+        - { label: "Leadership", cmp: ">=", ref: "decision_rules.extended.leadership" }
+        - { label: "Entry Quality", cmp: "<", ref: "decision_rules.extended.entry" }
+        - { label: "Risk (danger)", text: "Below the Avoid danger bound." }
+      example: "Leadership 90 (A), Entry 40 in a Risk-on regime → Extended."
+    - key: Avoid
+      kind: setup
+      name: Avoid
+      meaning: "Not a candidate — either the danger (Risk) is at or above the Avoid bound, or leadership is too weak for any setup."
+      thresholds:
+        - { label: "Risk (danger)", cmp: ">=", ref: "decision_rules.avoid_risk" }
+        - { label: "or Leadership", text: "Below the watch cutoff — too weak for any setup." }
+      example: "Risk 85 (danger at or above the avoid bound), or Leadership 60 with no qualifying setup → Avoid."
+    - key: Risk-off-watchlist
+      kind: setup
+      name: Risk-off-watchlist
+      meaning: "The Risk-off gate. When the market regime label is Risk-off, EVERY name is forced to watchlist-only and zero names are Actionable — no matter how strong the individual scores are."
+      thresholds:
+        - { label: "Regime", text: "Applies to every name whenever the market regime label is Risk-off (the lowest regime band)." }
+      example: "Any stock — even Leadership 95 (A), Entry 80 (B), Risk 30 — in a Risk-off regime → Risk-off-watchlist."
+    - key: vcp
+      kind: pattern
+      name: "VCP — Volatility Contraction Pattern"
+      meaning: "A price-and-volume base of progressively shallower pullbacks with volume drying up into a pivot near the highs. A detected PATTERN that rides ALONGSIDE the setup status — it never by itself makes a name Actionable."
+      thresholds:
+        - { label: "Min contractions", cmp: ">=", ref: "patterns.vcp.min_contractions" }
+        - { label: "Max base depth", cmp: "<=", ref: "patterns.vcp.max_base_depth_pct", unit: "%" }
+        - { label: "Each contraction vs prior", cmp: "<=", ref: "patterns.vcp.contraction_shrink_ratio" }
+        - { label: "Final contraction", cmp: "<=", ref: "patterns.vcp.max_last_contraction_pct", unit: "%" }
+        - { label: "Within pivot", cmp: "<=", ref: "patterns.vcp.pivot_proximity_pct", unit: "%" }
+        - { label: "Volume dry-up", cmp: "<=", ref: "patterns.vcp.volume_dryup_ratio" }
+      example: "3 contractions tightening 18% → 9% → 5%, recent volume at 80% of the base, 3% below the pivot → VCP."
+    - key: pullback_to_rising_dma
+      kind: pattern
+      name: "Pullback to a rising DMA"
+      meaning: "An uptrending name that has pulled back TO its rising moving average rather than crashing — price sits at/near a DMA that is sloping up, a lower-risk continuation entry. A detected PATTERN that rides ALONGSIDE the setup status — it never by itself makes a name Actionable."
+      thresholds:
+        - { label: "Moving-average basis", cmp: "=", ref: "patterns.pullback_to_rising_dma.ma_period", unit: "-day" }
+        - { label: "Rising over", cmp: "", ref: "patterns.pullback_to_rising_dma.trend_lookback_bars", unit: " bars" }
+        - { label: "Min DMA slope", cmp: ">=", ref: "patterns.pullback_to_rising_dma.min_dma_slope_pct", unit: "%" }
+        - { label: "Within (above DMA)", cmp: "<=", ref: "patterns.pullback_to_rising_dma.max_dist_above_dma_pct", unit: "%" }
+        - { label: "Undercut tolerated", cmp: "<=", ref: "patterns.pullback_to_rising_dma.max_undercut_pct", unit: "%" }
+        - { label: "Max pullback depth", cmp: "<=", ref: "patterns.pullback_to_rising_dma.max_pullback_depth_pct", unit: "%" }
+      example: "A 50-day MA up 6% over 40 bars, the close 2% above the MA and 9% off the recent high → Pullback to a rising DMA."
+    - key: flat_base_breakout
+      kind: pattern
+      name: "Flat-base breakout"
+      meaning: "A shallow, sideways base built at the highs with price coiled just under the pivot (the base high) on building volume — breakout-ready. A detected PATTERN that rides ALONGSIDE the setup status — it never by itself makes a name Actionable."
+      thresholds:
+        - { label: "Base window", cmp: "", ref: "patterns.flat_base_breakout.base_window", unit: " bars" }
+        - { label: "Max base depth", cmp: "<=", ref: "patterns.flat_base_breakout.max_base_depth_pct", unit: "%" }
+        - { label: "Within pivot", cmp: "<=", ref: "patterns.flat_base_breakout.pivot_proximity_pct", unit: "%" }
+        - { label: "Min breakout volume", cmp: ">=", ref: "patterns.flat_base_breakout.min_breakout_volume_ratio" }
+      example: "A 25-bar base only 12% deep at the 45-bar highs, the close 3% below the pivot on volume at 1.1× the base → Flat-base breakout."
+
+  # iter-4 goal-mode CONSUMED — the J-47 terminology Glossary. The SAME single config-backed catalog
+  # (this `methodology:` block → build_catalog → GET /api/methodology) now also serves a categorized,
+  # >=100-term glossary. `categories` is the ordered list of groups; `terms` is the authored vocabulary.
+  # The "Setups & Patterns" category (key `setups_patterns`) is DERIVED from `entries` above by
+  # build_catalog — its rows are NOT authored here (anti-goal: Glossary copy lives in one catalog), so an
+  # authored term may not collide with a setup/pattern key/name. Any number a term cites uses the existing
+  # `ref` mechanism (resolved live at boot — never a re-typed number; anti-goal: No magic numbers). The
+  # /methodology Glossary page and every inline info-tooltip read THESE entries (single source of truth).
+  categories:
+    - { key: scores_buckets,    label: "Scores & Buckets" }
+    - { key: setups_patterns,   label: "Setups & Patterns" }
+    - { key: regime_breadth,    label: "Regime & Breadth" }
+    - { key: universe_data,     label: "Universe & Data" }
+    - { key: forward_evidence,  label: "Forward-testing & Evidence" }
+    - { key: factor_stats,      label: "Factor Lab & Statistics" }
+    - { key: today_compass,     label: "Today & Next-Session Focus" }
+  terms:
+    # --- Scores & Buckets -----------------------------------------------------------------
+    - term: "Leadership Score"
+      category: scores_buckets
+      definition: "How strong a stock is right now — a 0–100 weighted blend of relative strength, moving-average trend stack, proximity to its 52-week high, and up/down volume. One of three deliberately independent scores; a high Leadership says nothing about whether the entry is good."
+      where: "Stocks leaderboard, Stock Detail, Dashboard candidates."
+    - term: "Entry Quality Score"
+      category: scores_buckets
+      definition: "Whether the current price location is buyable or already too extended — a 0–100 score that is INDEPENDENT of Leadership, so a great leader at a terrible entry is labelled exactly that. Higher means a lower-risk entry point."
+      where: "Stocks leaderboard, Stock Detail."
+    - term: "Risk Score"
+      category: scores_buckets
+      definition: "Danger factors for a name — extension from trend, volatility, weak regime, weak sector, climax action, and poor liquidity — as a 0–100 score where HIGHER means MORE danger (it is a danger score, not a quality score)."
+      where: "Stocks leaderboard, Stock Detail."
+    - term: "A–E bucket"
+      category: scores_buckets
+      definition: "Each 0–100 score is foregrounded as a letter grade A (strongest) through E (weakest) to resist false precision, with the raw number shown secondary. The letter edges come from config, so A means the same cutoff everywhere."
+      where: "Everywhere a score is shown."
+      thresholds:
+        - { label: "A at or above", cmp: ">=", ref: "buckets.A" }
+        - { label: "B at or above", cmp: ">=", ref: "buckets.B" }
+        - { label: "C at or above", cmp: ">=", ref: "buckets.C" }
+        - { label: "D at or above", cmp: ">=", ref: "buckets.D" }
+    - term: "composite"
+      category: scores_buckets
+      definition: "A config-weighted percentile rank-BLEND across several factors (each value converted to a 0–1 percentile rank oriented so better scores high, then weight-averaged) — the Factor Lab's multi-factor cohort. It is a descriptive rank-blend, never a fitted or predictive model."
+      where: "Research → Factor Lab combination cohorts."
+    - term: "component breakdown"
+      category: scores_buckets
+      definition: "Every score exposes the named components that produced it (component → contribution), so no number is a black box. Reading the breakdown tells you WHY a name scored what it did."
+      where: "Stock Detail score panels."
+    - term: "reason summary"
+      category: scores_buckets
+      definition: "A plain-language sentence explaining why a stock got its setup status — the human-readable companion to the component breakdown."
+      where: "Stocks leaderboard Reason column, Stock Detail."
+    - term: "setup status"
+      category: scores_buckets
+      definition: "The single classification each name gets from its three scores plus the market regime — Actionable, Breakout-watch, Pullback-watch, Extended, Avoid, or Risk-off-watchlist. Only Actionable is treated as a fresh buy candidate, and only in a risk-on regime. See the Setups & Patterns catalog for each status's exact rule."
+      where: "Stocks leaderboard Setup column, Stock Detail."
+    - term: "invalidation"
+      category: scores_buckets
+      definition: "The price level at which the idea is wrong — typically a moving average — so the cost of being wrong is visible BEFORE you act. Trendora always shows what would invalidate an idea rather than a bare 'buy'."
+      where: "Stocks leaderboard, Stock Detail, Watchlist."
+      thresholds:
+        - { label: "Invalidation DMA", cmp: "=", ref: "decision_rules.invalidation.ma_period", unit: "-day" }
+    - term: "Relative Strength (RS)"
+      category: scores_buckets
+      definition: "A stock's price performance MEASURED AGAINST a benchmark (SPY) over a lookback, not its absolute return — the core leadership input. A rising RS line means the name is outperforming the market."
+      where: "Leadership components, Factor Lab."
+    - term: "RS line new high"
+      category: scores_buckets
+      definition: "The relative-strength line (stock ÷ benchmark) makes a new high BEFORE price does — a leadership tell that the name is outperforming even while basing. Tracked as a detected pattern dimension."
+      where: "Stock Detail, patterns."
+    - term: "moving-average stack"
+      category: scores_buckets
+      definition: "Whether the moving averages are stacked in bullish order (shorter above longer, all rising) — a trend-quality component of the Leadership score. A clean stack is a strong uptrend."
+      where: "Leadership components."
+    - term: "52-week high proximity"
+      category: scores_buckets
+      definition: "How close price is to its one-year high — leaders tend to trade near their highs. A leadership component, NOT a buy signal by itself."
+      where: "Leadership components."
+      thresholds:
+        - { label: "High window", cmp: "=", ref: "indicators.high_window_52w", unit: " bars" }
+    - term: "up/down volume"
+      category: scores_buckets
+      definition: "The balance of volume on up days versus down days — accumulation versus distribution. Persistent up-volume dominance is a sign of institutional buying."
+      where: "Leadership components."
+    - term: "extension"
+      category: scores_buckets
+      definition: "How far price has stretched above its trend (e.g. above a rising moving average) — a Risk-score danger factor. An extended leader is too far from a low-risk entry to chase."
+      where: "Risk components, Extended setup."
+    - term: "climax action"
+      category: scores_buckets
+      definition: "A near-vertical, high-volume price spike that often marks exhaustion rather than a healthy entry — a danger factor inside the Risk score."
+      where: "Risk components."
+    - term: "liquidity"
+      category: scores_buckets
+      definition: "How easily a name can be traded without moving its price — proxied by average daily dollar volume. Thin liquidity is a Risk danger factor and a universe-screen gate."
+      where: "Risk components, universe screen."
+    # --- Regime & Breadth -----------------------------------------------------------------
+    - term: "market regime"
+      category: regime_breadth
+      definition: "A 0–100 score plus one of six labels describing the whole market's health — the top of the funnel (regime → sectors → industry groups → themes → stocks). In a Risk-off regime the scanner marks ZERO names Actionable."
+      where: "Dashboard, Backtest, every snapshot."
+    - term: "Strong risk-on"
+      category: regime_breadth
+      definition: "The healthiest market-regime label — a broadly strong, trending tape where leadership is widespread. The top regime band."
+      where: "Regime label."
+      thresholds:
+        - { label: "Score at or above", cmp: ">=", ref: "regime.label_edges.0.min" }
+    - term: "Risk-on"
+      category: regime_breadth
+      definition: "A healthy, buyable market-regime band below Strong risk-on — Actionable candidates are produced here."
+      where: "Regime label."
+    - term: "Narrow leadership"
+      category: regime_breadth
+      definition: "A market-regime label where only a thin set of names is leading — the indexes may hold up while breadth deteriorates. A caution band."
+      where: "Regime label."
+    - term: "Choppy"
+      category: regime_breadth
+      definition: "A directionless, whipsaw market-regime label — no sustained trend in either direction."
+      where: "Regime label."
+    - term: "Defensive"
+      category: regime_breadth
+      definition: "A weak market-regime band where risk should be reduced — below Choppy and above Risk-off."
+      where: "Regime label."
+    - term: "Risk-off"
+      category: regime_breadth
+      definition: "The weakest market-regime label — the Risk-off gate forces EVERY name to watchlist-only and zero names to Actionable, no matter how strong the individual scores are."
+      where: "Regime label, Risk-off-watchlist setup."
+      thresholds:
+        - { label: "Score below", cmp: "<", ref: "regime.label_edges.4.min" }
+    - term: "breadth"
+      category: regime_breadth
+      definition: "How MANY stocks participate in a move, not just the index level — a market-internals measure. Strong breadth confirms a rally; deteriorating breadth warns of a narrowing, fragile one."
+      where: "Dashboard breadth card, regime inputs."
+    - term: "breadth > 50-DMA"
+      category: regime_breadth
+      definition: "The percentage of universe stocks trading above their own 50-day moving average — a short-horizon breadth gauge. Falling participation here is an early warning even while the index holds."
+      where: "Dashboard breadth card, regime inputs."
+      thresholds:
+        - { label: "Short breadth DMA", cmp: "=", ref: "indicators.breadth_short_ma", unit: "-day" }
+    - term: "breadth > 200-DMA"
+      category: regime_breadth
+      definition: "The percentage of universe stocks trading above their 200-day moving average — a long-horizon, structural breadth gauge of how many names are in primary uptrends."
+      where: "Dashboard breadth card, regime inputs."
+      thresholds:
+        - { label: "Long breadth DMA", cmp: "=", ref: "indicators.breadth_long_ma", unit: "-day" }
+    - term: "net new-high/low"
+      category: regime_breadth
+      definition: "New 52-week highs minus new 52-week lows across the universe — a breadth thrust/washout indicator that feeds the regime score. Positive and rising is healthy participation."
+      where: "Dashboard breadth, regime inputs."
+    - term: "DMA"
+      category: regime_breadth
+      definition: "Daily Moving Average — the average closing price over N trading days (e.g. the 50-DMA, 200-DMA). The backbone of trend, breadth, invalidation, and several patterns."
+      where: "Charts, breadth, invalidation, patterns."
+      thresholds:
+        - { label: "MA periods", cmp: "=", ref: "indicators.ma_periods", unit: " days" }
+    - term: "50-DMA"
+      category: regime_breadth
+      definition: "The 50-day moving average — the intermediate-trend line used for breadth, the pullback-to-rising-DMA pattern, and (by default) the invalidation level."
+      where: "Charts, breadth, invalidation."
+    - term: "200-DMA"
+      category: regime_breadth
+      definition: "The 200-day moving average — the long-term-trend line. Price above a rising 200-DMA is the classic definition of a primary uptrend."
+      where: "Charts, breadth."
+    - term: "VIX"
+      category: regime_breadth
+      definition: "The market's implied-volatility ('fear') index — an elevated VIX is a risk-off input to the regime score. Trendora reads `^VIX` from stored bars, never live."
+      where: "Regime inputs."
+      thresholds:
+        - { label: "Elevated above", cmp: ">", ref: "regime.vix_threshold" }
+    - term: "regime bands"
+      category: regime_breadth
+      definition: "Soft coloured background bands behind the index and stock charts encoding the stored market regime over time (three risk-family colours), so you can see WHAT REGIME a move happened in. An honest step function between snapshot dates — never interpolated."
+      where: "Dashboard indexes chart, Stock Detail chart."
+    # --- Universe & Data ------------------------------------------------------------------
+    - term: "universe"
+      category: universe_data
+      definition: "The config-screened set of SCORED names — a transparent, reproducible liquidity/market-cap/price screen, NOT a hand-picked list. Distinct from 'symbols': the universe is what gets ranked; symbols is every ticker with bars (incl. ETFs and ^VIX)."
+      where: "Data Manager coverage, methodology universe selection."
+    - term: "symbols"
+      category: universe_data
+      definition: "EVERY ticker that has stored bars — the universe members PLUS the index/sector/industry ETFs and ^VIX. Broader than the universe (which is only the screened, scored names). The universe-vs-symbols distinction is the key to reading coverage."
+      where: "Data Manager coverage table."
+    - term: "in-universe"
+      category: universe_data
+      definition: "A coverage flag marking whether a symbol is a member of the scored universe (versus a support ticker like a sector ETF or ^VIX that has bars but is never ranked)."
+      where: "Data Manager coverage table."
+    - term: "survivorship bias"
+      category: universe_data
+      definition: "The distortion from studying only the names that SURVIVED into today's universe — winners are over-represented because failed names dropped out. Trendora labels its walk-forward evidence as universe-relative and survivorship-biased rather than hiding it."
+      where: "Backtest evidence, methodology."
+    - term: "seed dataset"
+      category: universe_data
+      definition: "The committed offline EOD price history the app boots on, so every scan is deterministic and reproducible with no network and no API keys. The default boot path is always the seed."
+      where: "Data Manager, boot."
+    - term: "EOD"
+      category: universe_data
+      definition: "End-of-day — the daily OHLCV bar finalized after the close. Trendora's canonical swing/return horizon is multi-day EOD data; intraday timeframes are secondary."
+      where: "Data Manager, provider."
+    - term: "OHLCV"
+      category: universe_data
+      definition: "Open, High, Low, Close, Volume — the five fields of a price bar. The raw material every indicator, pattern, and return is computed from."
+      where: "Charts, Data Manager."
+    - term: "bar count"
+      category: universe_data
+      definition: "How many price bars are stored for a symbol on a timeframe — a coverage figure. Too few bars (below the history threshold) means the symbol's long-window components report NA rather than a fabricated value."
+      where: "Data Manager coverage table."
+      thresholds:
+        - { label: "Min history bars", cmp: ">=", ref: "indicators.min_history_bars" }
+    - term: "date range"
+      category: universe_data
+      definition: "The first and last stored bar dates for a symbol — the coverage window. A gap inside the range is flagged separately as a missing-data diagnostic."
+      where: "Data Manager coverage table."
+    - term: "thin/missing"
+      category: universe_data
+      definition: "A coverage flag for a universe member with NO history or fewer bars than the config history threshold — i.e. INSUFFICIENT for analysis. Each carries a one-click 'pull the missing data' that fetches exactly the gap."
+      where: "Data Manager diagnostics."
+    - term: "coverage"
+      category: universe_data
+      definition: "Read-only descriptive metadata about WHAT DATA EXISTS — per-symbol bar counts, date ranges, and gaps. No canonical score, return, or bucket is recomputed from coverage figures."
+      where: "Data Manager."
+    - term: "provider"
+      category: universe_data
+      definition: "The pluggable end-of-day data SOURCE behind an abstraction — the default is the committed seed (offline, deterministic); a config-selected live provider can refresh data on demand from the Data Manager. Real data only — on failure it surfaces an explicit error and never fabricates prices."
+      where: "Data Manager source picker."
+    - term: "snapshot"
+      category: universe_data
+      definition: "An IMMUTABLE, append-only record of one full scan as-of one date — the regime, sector/theme/stock scores, setups, and patterns exactly as they were. Reads are served from the persisted snapshot, never recomputed per request."
+      where: "Scanner Runs, Backtest, as-of reads."
+    - term: "as-of date"
+      category: universe_data
+      definition: "The single global date the whole app is pointed at — pick any past trading day to replay that day's full scan with strict no-lookahead. Exactly one control governs it (serialized to the URL as ?asof= while historical)."
+      where: "Top-bar date switcher, every date-scoped page."
+    - term: "no-lookahead"
+      category: universe_data
+      definition: "The strict rule that an as-of scan uses ONLY data available on or before that date — no future bar leaks into a past score, bucket, setup, or pattern. The discipline that makes the walk-forward evidence honest."
+      where: "Backtest, historical replay."
+    - term: "Data Manager"
+      category: universe_data
+      definition: "The UI + API to grow, understand, and curate the dataset by hand — fetch real EOD history, backfill snapshots, see coverage, and seed-safely remove only user-added bars. The committed seed is never deletable."
+      where: "/data."
+    - term: "backfill"
+      category: universe_data
+      definition: "Auto-generating the immutable scanner snapshots (and their forward returns) for a date or date range from available bars — offline and deterministic. Fetching or backfilling a range grows the forward-test sample."
+      where: "Data Manager jobs."
+    - term: "resumable import"
+      category: universe_data
+      definition: "A chunked, rate-limit-aware fetch that checkpoints durably and, on a persistent 429, backs off, stops, and exposes Resume — continuing from the last completed chunk with no duplicate fetch, surviving a restart."
+      where: "Data Manager imports."
+    - term: "429"
+      category: universe_data
+      definition: "An HTTP 'too many requests' rate-limit response from a data provider. Trendora's import backs off and pauses to a resumable state rather than hammering the source or fabricating the missing bars."
+      where: "Data Manager imports."
+    - term: "intraday timeframe"
+      category: universe_data
+      definition: "A finer bar interval (1h / 15m / 5m) used for entry/setup detection and extra factors where coverage allows — committed, coverage-honest seed data only. Daily (1D) remains the canonical swing timeframe."
+      where: "Stock Detail timeframe selector."
+    - term: "^VIX"
+      category: universe_data
+      definition: "The ticker for the volatility index in the symbols set — it has bars (so it appears in coverage) but is NEVER a universe member or scored name; it feeds the regime score only."
+      where: "Data Manager coverage."
+    - term: "stage timings"
+      category: universe_data
+      definition: "Per-stage operational timings on a fetch+backfill job — for each stage that actually ran (fetch, backfill): the elapsed wall-clock, the items processed (symbols for fetch, dates for backfill), and the concurrency used. The backfill stage also shows the per-date-sum, so the multi-date backfill's parallel wall-clock can be read against the sequential per-date baseline. Descriptive job metadata only — never a canonical score; a stage that never ran is shown NA, never a fabricated zero."
+      where: "Data Manager job card."
+    - term: "concurrency"
+      category: universe_data
+      definition: "How many worker threads a job stage used in parallel — the fetch pool fetches symbols concurrently (network I/O), and the multi-date backfill computes per-date snapshots concurrently while all database writes stay serialized on one thread. The pool sizes come from config (fetch_workers / backfill_workers); 1 means serial. A higher backfill concurrency is what makes the multi-date backfill finish materially faster than the per-date sum."
+      where: "Data Manager job card stage timings."
+    # --- Forward-testing & Evidence -------------------------------------------------------
+    - term: "forward return"
+      category: forward_evidence
+      definition: "The realized price change over the next N trading days AFTER a snapshot — measured only from post-snapshot data (no lookahead). The raw evidence behind every backtest number."
+      where: "Backtest scorecard, Research."
+    - term: "horizon"
+      category: forward_evidence
+      definition: "The forward-return measurement window in trading days (1/5/10/20/60). The horizon selector re-points every realized-return figure on Backtest to that window."
+      where: "Backtest, Research event study."
+    - term: "excess return"
+      category: forward_evidence
+      definition: "A cohort's forward return MINUS a benchmark's (SPY, QQQ, or sector ETF) over the same window — what the selection added beyond simply being in the market. Excess return separates skill from market beta."
+      where: "Backtest attribution."
+    - term: "walk-forward"
+      category: forward_evidence
+      definition: "Bootstrapping evidence from history by replaying the scan as-of many past dates using ONLY data available then, then measuring the returns that came after — an expanding window of every snapshot dated ≤ the as-of date. The honest way to test rankings before live months accrue."
+      where: "Backtest, warm-up."
+    - term: "expanding window"
+      category: forward_evidence
+      definition: "The set of snapshots dated ≤ the selected as-of date that the aggregate evidence is scoped to — it GROWS as the as-of date moves forward (at the latest date it equals the full all-history aggregate)."
+      where: "Backtest aggregates."
+    - term: "hit-rate"
+      category: forward_evidence
+      definition: "The percentage of occurrences with a POSITIVE forward return — how OFTEN an idea worked, independent of how much. A high mean with a low hit-rate signals a few outliers carried the result."
+      where: "Backtest, Research event study."
+    - term: "expectancy"
+      category: forward_evidence
+      definition: "The average per-occurrence outcome — (hit-rate × average win) − (miss-rate × average loss) — i.e. what you'd expect to make PER trade on average. It blends frequency and magnitude into one figure."
+      where: "Research event study, setup/pattern lab."
+    - term: "MAE"
+      category: forward_evidence
+      definition: "Maximum Adverse Excursion — the worst drawdown from entry reached over the horizon (from post-snapshot daily lows). It measures the PAIN you'd have sat through, even on a trade that ended green."
+      where: "Research event study, risk-adjusted ratios."
+    - term: "MFE"
+      category: forward_evidence
+      definition: "Maximum Favorable Excursion — the best unrealized gain reached over the horizon (from post-snapshot daily highs). Paired with MAE it shows the full risk/reward envelope of an idea."
+      where: "Research event study."
+    - term: "dispersion"
+      category: forward_evidence
+      definition: "How SPREAD OUT the forward returns are around their mean (a standard-deviation-style measure) — high dispersion means the average hides very different outcomes, so the mean is less trustworthy."
+      where: "Research event study, attribution distribution."
+    - term: "% positive"
+      category: forward_evidence
+      definition: "The share of a cohort's occurrences that finished with a gain — the distributional companion to the mean and the same idea as hit-rate."
+      where: "Research event study."
+    - term: "median"
+      category: forward_evidence
+      definition: "The middle forward return of a cohort — robust to outliers, so a median far below the mean reveals a right-skewed, outlier-driven result."
+      where: "Research event study, attribution."
+    - term: "n (sample size)"
+      category: forward_evidence
+      definition: "The number of observations behind a statistic. Cohorts below the config minimum render NA + n rather than a fabricated number — small samples are shown honestly, never dressed up."
+      where: "Everywhere a statistic is shown."
+    - term: "low-sample"
+      category: forward_evidence
+      definition: "A flag that a cohort has fewer observations than the config minimum, so its statistic is suppressed to NA + n. Prevents reading signal into noise."
+      where: "Backtest, Research."
+    - term: "control group"
+      category: forward_evidence
+      definition: "A baseline cohort the top-ranked names are compared against — a RANDOM same-sector basket plus SPY/QQQ/sector ETFs — so sector beta is visibly separated from genuine stock selection."
+      where: "Backtest control-group comparison."
+    - term: "random same-sector control"
+      category: forward_evidence
+      definition: "A randomly drawn basket of same-sector names used as the apples-to-apples baseline — if the ranked cohort can't beat a random same-sector draw, the ranking added nothing in that slice."
+      where: "Backtest control group."
+    - term: "by-rank-band"
+      category: forward_evidence
+      definition: "Forward returns split by rank tiers (e.g. 1–10 / 11–50 / 51+) — a direct test of whether the RANKING ITSELF adds value, not just sector or market exposure."
+      where: "Backtest return attribution."
+    - term: "by-sector"
+      category: forward_evidence
+      definition: "A return-attribution breakdown that separates sector beta from stock selection — how much of a cohort's result came from being in a hot sector versus picking the right names within it."
+      where: "Backtest return attribution."
+    - term: "contributors & detractors"
+      category: forward_evidence
+      definition: "The individual tickers that drove or dragged a cohort's return — per-stock attribution so a headline number can be diagnosed as concentration or breadth, not taken at face value."
+      where: "Backtest return attribution."
+    - term: "risk-adjusted return"
+      category: forward_evidence
+      definition: "Return PER UNIT of risk — return ÷ downside-deviation, return ÷ mean-|MAE|, and a Sharpe-like ratio — so a high-return / high-drawdown cohort is never mistaken for a good one. 'Risk' uses downside vol / MAE, never healthy upside."
+      where: "Research, Backtest."
+    - term: "return / downside-dev"
+      category: forward_evidence
+      definition: "A risk-adjusted ratio dividing mean forward return by DOWNSIDE deviation (the volatility of negative returns only) — it rewards return without penalising healthy upside volatility."
+      where: "Research event study."
+    - term: "return / MAE"
+      category: forward_evidence
+      definition: "Mean forward return divided by mean maximum adverse excursion — reward earned per unit of drawdown actually endured. A pure pain-adjusted efficiency measure."
+      where: "Research event study."
+    - term: "best exit-horizon"
+      category: forward_evidence
+      definition: "The forward horizon with the highest downside-risk-adjusted return among non-low-sample horizons — the exit window the historical evidence favoured for a setup or pattern."
+      where: "Research event study horizon curve."
+    - term: "scorecard"
+      category: forward_evidence
+      definition: "The per-date forward-test report for one as-of snapshot — how that day's ranked cohort, setups, and patterns actually performed vs benchmarks at each horizon, measured only from post-snapshot bars."
+      where: "Backtest."
+    - term: "event study"
+      category: forward_evidence
+      definition: "Pooling EVERY historical occurrence of a setup or pattern and reporting the forward-return distribution, hit-rate, expectancy, MAE/MFE, best exit-horizon, and regime/sector slices — all derived once from stored data."
+      where: "Research → Setup & Pattern lab."
+    - term: "Episode"
+      category: forward_evidence
+      definition: "One overlap-honest observation in the event study: a CONTINUOUS run of the same symbol triggering a setup or pattern across consecutive snapshots is counted ONCE, recorded at its FIRST trigger date. This is the default view — collapsing overlapping signal-days so a name that simply keeps qualifying for weeks does not inflate the sample. The episode carries that first day's stored forward return / MAE / MFE / regime / sector verbatim."
+      where: "Research → Setup & Pattern lab (Episodes view, default)."
+    - term: "Pooled (per-signal-day)"
+      category: forward_evidence
+      definition: "The alternative event-study view that counts EVERY per-signal-day occurrence — each snapshot on which a name triggered the subject is one observation, even within a single continuous run. It is the raw, overlap-unaware tally; the one-click Pooled toggle reproduces the figures exactly as published before episodes were introduced. n, unique symbols, and episode count are always shown so the window overlap is never hidden."
+      where: "Research → Setup & Pattern lab (Pooled toggle)."
+    - term: "attribution"
+      category: forward_evidence
+      definition: "Decomposing a cohort's aggregate return into its sources — by sector, by rank-band, by individual contributor, plus its distribution — so a weak number is diagnosable rather than mysterious."
+      where: "Backtest."
+    - term: "benchmark (SPY/QQQ/sector ETF)"
+      category: forward_evidence
+      definition: "The reference returns a cohort's excess is measured against — the broad market (SPY), large-cap growth (QQQ), and the name's own sector ETF — so out/under-performance is always relative to a fair yardstick."
+      where: "Backtest excess returns."
+    - term: "VCP-vs-non-VCP"
+      category: forward_evidence
+      definition: "A forward-test dimension splitting names that had a detected VCP from those that didn't — the evidence that shows whether the VCP pattern actually ADDS value, rather than assuming it does."
+      where: "Backtest evidence."
+    # --- Factor Lab & Statistics ----------------------------------------------------------
+    - term: "factor"
+      category: factor_stats
+      definition: "A single measurable characteristic of a stock (e.g. RS, ATR%, historical volatility) tested for whether it sorts future returns. The Factor Lab studies factors descriptively — it is not a fitted predictive model."
+      where: "Research → Factor Lab."
+    - term: "rank-IC"
+      category: factor_stats
+      definition: "The rank Information Coefficient — the rank correlation between a factor's value and the subsequent forward return across names. Positive and stable means the factor sorts future returns; near zero means it doesn't."
+      where: "Research → Factor Lab."
+    - term: "decile"
+      category: factor_stats
+      definition: "One of ten equal-sized buckets a factor's values are sorted into (D1 = lowest, D10 = highest). Comparing mean forward returns across deciles shows whether the factor sorts returns monotonically."
+      where: "Research → Factor Lab decile sort."
+      thresholds:
+        - { label: "Deciles", cmp: "=", ref: "research.factor_lab.deciles" }
+    - term: "decile sort"
+      category: factor_stats
+      definition: "Ranking names by a factor and measuring mean forward return per decile — a clean D1→D10 monotonic rise is the visual signature of a factor that works."
+      where: "Research → Factor Lab."
+    - term: "monotonicity"
+      category: factor_stats
+      definition: "Whether mean forward return rises (or falls) consistently from decile D1 to D10 — the hallmark of a factor that genuinely sorts returns rather than one that only works at the extremes."
+      where: "Research → Factor Lab."
+    - term: "long-short spread"
+      category: factor_stats
+      definition: "The top-decile mean minus the bottom-decile mean forward return — the simplest summary of how much a factor separates winners from losers."
+      where: "Research → Factor Lab regime table."
+    - term: "regime-conditioned"
+      category: factor_stats
+      definition: "Re-measuring a factor's effectiveness WITHIN each market regime — a factor strong in the pooled data may only work in certain regimes, which the per-regime rank-IC and spread reveal."
+      where: "Research → Factor Lab regime table."
+    - term: "quantile"
+      category: factor_stats
+      definition: "A fractional cutoff of a sorted population — e.g. the top quintile (20%), quartile (25%), or tertile (33%). The composite cohort takes the top quantile of the rank-blended score."
+      where: "Research → Factor Lab combination."
+    - term: "quintile"
+      category: factor_stats
+      definition: "The top (or bottom) 20% of a sorted population — a coarser cut than a decile, used for the composite cohort's selection fraction."
+      where: "Research → Factor Lab combination."
+    - term: "percentile rank"
+      category: factor_stats
+      definition: "Where a value sits in its population from 0 to 1 (0.9 = higher than 90% of names) — the normalization the composite uses to blend differently-scaled factors fairly, oriented so better always scores higher."
+      where: "Research → Factor Lab composite."
+    - term: "factor family"
+      category: factor_stats
+      definition: "A group of related factors — score, momentum, trend, and an explicit VOLATILITY family (level / contraction / downside) — so volatility is studied as a first-class, multi-faceted input."
+      where: "Research → Factor Lab."
+    - term: "ATR%"
+      category: factor_stats
+      definition: "Average True Range as a PERCENT of price — a normalized volatility-LEVEL measure comparable across names. A Risk danger input and a volatility-family factor (lower is calmer)."
+      where: "Stocks, Risk components, Factor Lab."
+      thresholds:
+        - { label: "ATR period", cmp: "=", ref: "indicators.atr_period", unit: " bars" }
+    - term: "historical volatility (HV)"
+      category: factor_stats
+      definition: "The standard deviation of recent daily returns over a fixed window — a classic volatility-LEVEL factor. Computed once in the snapshot path and stored for the read-only Factor Lab."
+      where: "Research → Factor Lab volatility family."
+      thresholds:
+        - { label: "HV window", cmp: "=", ref: "indicators.hv_window", unit: " bars" }
+    - term: "volatility contraction"
+      category: factor_stats
+      definition: "A measure of volatility SHRINKING over time (the VCP thesis as a continuous factor) — it cross-validates the VCP pattern with decile/IC forward-test evidence rather than assuming the pattern works."
+      where: "Research → Factor Lab volatility family."
+    - term: "downside volatility (semivol)"
+      category: factor_stats
+      definition: "Volatility computed from NEGATIVE returns only — the kind of volatility that actually hurts. Used so 'risk' never penalises healthy upside movement."
+      where: "Research → Factor Lab volatility family, risk-adjusted ratios."
+    - term: "overnight-gap profile"
+      category: factor_stats
+      definition: "The distribution of overnight moves (|open − prior close| / prior close) over the gap window: the median, p95 (a near-worst case), and worst gap, plus the overnight share of the same window's close-to-close return variance. The risk an invalidation level cannot protect against, since a level only triggers on a gradual decline, never a jump past it."
+      where: "Stocks, Stock Detail risk-budget card."
+      thresholds:
+        - { label: "Gap window", cmp: "=", ref: "indicators.gap_window", unit: " bars" }
+    - term: "worst 20-day window"
+      category: factor_stats
+      definition: "The most negative trailing 20-trading-day return found ANYWHERE in a name's full available as-of history — the deepest historical drawdown-window depth. Distinct from a forward max-drawdown figure, which measures forward from one as-of date."
+      where: "Stock Detail risk-budget card."
+      thresholds:
+        - { label: "Window", cmp: "=", ref: "indicators.worst_window_days", unit: " bars" }
+    - term: "distance-to-invalidation %"
+      category: factor_stats
+      definition: "The percent distance of the latest close above the invalidation level (the same level named in the setup's invalidation note) — how much room exists before the long thesis is technically wrong."
+      where: "Stock Detail risk-budget card."
+    - term: "pivot"
+      category: factor_stats
+      definition: "The breakout trigger price at the top of a base (e.g. the base high in a VCP or flat base) — a buy is referenced TO the pivot, and proximity to it is a pattern condition."
+      where: "Patterns, Stock Detail."
+    - term: "base"
+      category: factor_stats
+      definition: "A sideways price consolidation where a stock digests a prior advance — the launchpad patterns like VCP and flat-base breakout form in. Base depth and length are pattern conditions."
+      where: "Patterns."
+    - term: "base depth"
+      category: factor_stats
+      definition: "How far a base corrects from its high to its low, as a percent — shallower bases are generally constructive. A maximum base-depth threshold gates the VCP and flat-base patterns."
+      where: "Patterns."
+    - term: "contraction"
+      category: factor_stats
+      definition: "One progressively-shallower pullback within a VCP base — each contraction should be tighter than the prior as supply dries up. The count and shrink ratio are config pattern conditions."
+      where: "VCP pattern."
+      thresholds:
+        - { label: "Min contractions", cmp: ">=", ref: "patterns.vcp.min_contractions" }
+    - term: "volume dry-up"
+      category: factor_stats
+      definition: "Volume falling to a fraction of the base average as a name coils near the pivot — a sign supply is exhausted and a breakout can move on light resistance. A VCP condition."
+      where: "VCP pattern."
+    - term: "rising DMA"
+      category: factor_stats
+      definition: "A moving average sloping UP over a lookback — price pulling back TO a rising DMA (rather than crashing through it) is a lower-risk continuation entry and a detected pattern."
+      where: "Pullback-to-rising-DMA pattern."
+    - term: "flat base"
+      category: factor_stats
+      definition: "A shallow, sideways base built right at the highs with price coiled just under the pivot on building volume — breakout-ready. A detected pattern that rides alongside the setup status."
+      where: "Flat-base-breakout pattern."
+    - term: "detected pattern"
+      category: factor_stats
+      definition: "A rule-based price/volume formation (VCP, pullback-to-rising-DMA, flat-base breakout, RS-line new high…) that rides ALONGSIDE the setup status — it never by itself makes a name Actionable, and each is forward-tested to prove its worth."
+      where: "Stocks, patterns, Backtest."
+    - term: "rank correlation"
+      category: factor_stats
+      definition: "Correlation computed on the RANKS of two variables rather than their raw values — robust to outliers and non-linearity. The basis of the rank-IC."
+      where: "Research → Factor Lab."
+    - term: "Sharpe-like ratio"
+      category: factor_stats
+      definition: "A return-per-unit-of-volatility ratio in the spirit of the Sharpe ratio — one of the risk-adjusted measures so a high-return / high-volatility cohort isn't mistaken for a good one."
+      where: "Research, Backtest risk-adjusted."
+    - term: "normalization"
+      category: factor_stats
+      definition: "Rescaling a raw component to a common range before it enters a score (e.g. 0–100) so differently-scaled inputs combine fairly. Every score component is a normalized, named value."
+      where: "Scoring engine."
+    - term: "lookback"
+      category: factor_stats
+      definition: "The trailing window of bars a measure is computed over (e.g. a 63-bar 3-month RS lookback). Longer lookbacks capture structural trend; shorter ones capture recent momentum."
+      where: "Indicators, factors."
+    # --- Today & Next-Session Focus (goal-market-compass iter-2, J-02/J-03/J-04) --------------
+    - term: "session delta"
+      category: today_compass
+      definition: "The set of stored market/breadth/sector/theme/stock changes between the current session and the immediately preceding stored session, each shown only when its magnitude clears a config threshold — smaller moves are counted as suppressed, never silently dropped."
+      where: "Today page — What-changed card."
+    - term: "next-session candidate"
+      category: today_compass
+      definition: "A name whose stored Leadership score clears the selection floor and whose Entry Quality and Risk scores clear their own qualifiers, as of the latest session — framed as worth monitoring next session, never as advice to buy or a return prediction."
+      where: "Today page — Next-session focus section."
+      thresholds:
+        - { label: "Leadership score", cmp: ">=", ref: "compass.selection.leadership_min_score" }
+    - term: "why-not"
+      category: today_compass
+      definition: "The explicit list of non-candidates near the selection floor, each naming which condition it missed and by how much (a distance), so absence from the focus list is as explainable as presence on it."
+      where: "Today page — Next-session focus section."
+    - term: "retrospective stamp"
+      category: today_compass
+      definition: "A visible note on a historical Today-page view stating that its summary was reconstructed under the CURRENT rule/config rather than generated live on that date — historical reads never silently pass off a rebuilt view as the original."
+      where: "Today page — summary card (historical as-of only)."

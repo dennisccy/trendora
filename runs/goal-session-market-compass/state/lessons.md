@@ -175,68 +175,24 @@ exact recipe (query, column order, serialization, separator, sort) beside the va
 fingerprint fails to reproduce, downgrade the conclusion to "recipe unknown" rather than "value
 unreproducible" unless the underlying data is independently shown to differ.
 
-## iter-16 — 2026-08-25T18:05:00Z
-
-**Verdict:** STALLED
-**Lesson:** A guard can be built, wired at the right call site, exhaustively tested and fully
-passing, and still protect nothing — because its *state* was never registered.
-`j11_preboot_guard.evaluate_boundary_for_date` correctly returns `blocked=False` on an empty
-`maintenance_boundaries` table, `register_j11_incident_boundary` has no production caller, and the
-table does not exist in the live DB at all — so the live boot path is exactly as unprotected as
-before. Worse, the guard's own green tests
-(`test_tc25_no_boundary_registered_is_a_true_noop`) are framed as "the common no-incident case"
-while being a precise model of the unprotected live state, so nothing in the suite names the gap.
-Ask of every new guard: *what is the live value of the state it reads, right now?* — the code's
-correctness and the deployment's effect are separate questions.
+## iter-16 — 2026-08-25T18:05:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration adding a guard/gate/feature-flag/quarantine whose behaviour keys on
 persisted state (`apps/backend/app/engine/j11_preboot_guard.py`, `warmup.py`, and any future
 boot-path or middleware check); also any "prove it on disposable test state" acceptance clause —
 treat it as necessary, never sufficient.
 
-## iter-16 — 2026-08-25T18:06:00Z
-
-**Verdict:** STALLED
-**Lesson:** Correcting the data invalidated a counterfactual that was written against the
-pre-correction data, and nothing flagged it. `_build_bars_with_transformed_close` substitutes close
-only unless `volume_override` is passed; that was coherent while stored volume was raw, but once the
-AVB volume was corrected to the compensating scale, representation B silently became
-provider-scale close × Trendora-scale volume — a hybrid matching no real state. Its fingerprint is
-unmissable once looked for: A/B came out *exactly* `bridge_factor` on both dates. The spec itself
-sanctioned dropping the override ("the write already landed, so read the corrected rows directly"),
-which is why developer, reviewer and QA all passed it — but the override never fed representation A,
-it fed B. After any state correction, re-derive every counterfactual's inputs; an exactly-round ratio
-between a representation and its counterfactual is the signature of a one-sided rescale, not a finding.
+## iter-16 — 2026-08-25T18:06:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration that mutates stored state which an existing diagnostic, A/B trace, or
 counterfactual reads (`j11_avb_diagnostic.py`'s trace functions, `run_j11_iter16_stage_d_readiness.py`),
 and any spec that tells an implementer to drop a substitution argument because "the real data now has
 that value".
 
-## iter-17 — 2026-08-25T21:05:00Z
-
-**Verdict:** STALLED
-**Lesson:** A test case can turn the MEASUREMENT OF AN OPEN DANGER into a green checkbox, and every
-downstream lane will inherit that framing without lying. TC-11 was specified as "the live guard returns
-`blocked: False` → PASS", but on the live DB `blocked: False` IS the exposure: `max(daily_prices.date)` is
-`2026-08-12`, an incident date with 0 `scanner_runs`, and `main.py`'s `create_db_and_tables()` runs BEFORE
-`ensure_latest_snapshot()`, so one boot both mints the owner-forbidden `maintenance_boundaries` table and
-writes a `ScannerRun` onto that quarantined date. Dev handoff, review and QA all recorded the pass; none
-stated what it means. When a spec's expected value for a safety probe is the UNSAFE value, the test case
-must require the artifact to state the consequence in prose, not just record the boolean.
+## iter-17 — 2026-08-25T21:05:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration whose spec asserts an expected value for a probe of a KNOWN-BROKEN or
 quarantined condition — especially `runs/**/j11-*verification*.json`-style evidence and any future
 "confirm the guard is not armed / confirm X is still absent" check.
 
-## iter-17 — 2026-08-25T21:05:00Z
-
-**Verdict:** STALLED
-**Lesson:** A cross-check whose inputs are both derived from the correction being checked cannot fail. TC-13
-asked for an A/B dollar-volume ratio "within relative tolerance of 1.0", but
-`ratio = (close_a·volume_a)/((close_a/bf)·volume_b)` cancels `close_a` entirely and reduces to
-`volume_a·bf/volume_b` — and `volume_a` was DEFINED by iter-16 as `round(provider_volume/bf)`. I confirmed
-`round(provider_volume/bf)` equals the stored volume exactly on both dates, so the ratio was algebraically
-pinned to ≈1.0 before anyone ran it, and it reproduces iter-16's own `dollar_volume_ratio_after` digit for
-digit. Before specifying a numeric tolerance check as evidence, substitute the definitions of its inputs and
-confirm the quantity can actually come out wrong.
+## iter-17 — 2026-08-25T21:05:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any future J-11/AVB Stage-D readiness or verification spec proposing a ratio/tolerance
 assertion over values in `j11_avb_diagnostic.py` / `j11_avb_correction.py`, and any "independent
 cross-check" claim in `runs/goal-market-compass-iter-*/j11-*.json`.
@@ -378,3 +334,33 @@ query or test could ever falsify must be labelled as procedural/asserted, counte
 surfaced to the evaluator — never allowed to contribute a silent `true` to a gate.
 **Applies to:** any spec whose acceptance list is assembled from goal.md prose, especially where a safety
 constraint and a verification requirement reference each other.
+
+## iter-23 — 2026-08-27T21:45:00Z
+
+**Verdict:** STALLED
+**Lesson:** A "run only against a disposable clone" contract cannot be enforced by convention — the
+harness enforces nothing. `scripts/automation/goal-iter-lean.sh:256-257` starts the deterministic replay
+lane with `bash scripts/start-backend.sh` and no `TRENDORA_CONFIG`, so it silently booted the CANONICAL
+`apps/backend/data/trendora.db` and wrote 10 cache rows into it while the iteration's own boot correctly
+used the clone. The developer had already built the right guard (`scripts/start-backend-j11-verify.sh`
+refuses to boot without an off-canonical override) — it just was not on the lane's path. If a future
+iteration must confine the app to a clone, the ONLY reliable lever is making the default launcher itself
+fail closed, never a wrapper the harness does not call.
+**Applies to:** any iteration that boots services against a non-default database (clone, snapshot,
+fixture, restore drill), and any change to `scripts/automation/goal-iter-lean.sh` / `browser-qa-phase.sh`
+/ `qa-phase.sh` service-start blocks.
+
+## iter-23b — 2026-08-27T21:45:00Z
+
+**Verdict:** STALLED
+**Lesson:** sha256 of a WAL-mode SQLite `.db` file is NOT a proof that the database is unmutated. This
+iteration proved "canonical byte-unchanged" with matching file checksums — and it was literally true, yet
+the database's CONTENT had changed: SQLite kept the new rows in the sibling `trendora.db-wal` (mtime
+2026-08-27 20:26:08.352941 UTC) and never checkpointed them into the main file, whose sha256 and mtime
+both stayed at their 09:27 values. The instrument that actually caught it was the `-wal`/`-shm` mtime plus
+per-table `created_at` reconciliation. Any future immutability claim over a SQLite file must bracket
+`.db` + `-wal` + `-shm`, or read logical row state, and must be captured AFTER the last lane finishes —
+this run's final checksum was taken 3 minutes before the breach it was supposed to detect.
+**Applies to:** any iteration asserting a database file is unchanged (J-10/J-11-style repair or drill
+work, any `db_file_fingerprint` / provenance check in `app/engine/j11_*`), and any evaluator re-deriving
+such a claim.

@@ -1,0 +1,58 @@
+{
+  "canonical_db_path": "/home/dennis-chan/Git/trendora/apps/backend/data/trendora.db",
+  "canonical_provenance_after_clone": {
+    "daily_prices_count": 3310374,
+    "data_provider_runs_max_id": 549,
+    "mtime": 1787822829.429926,
+    "next_session_manifests_count": 24,
+    "path": "/home/dennis-chan/Git/trendora/apps/backend/data/trendora.db",
+    "sha256": "fabc79227ff6db329fb31fa55e4402f8b38248b65e19ee9654ec5caa07a4b208",
+    "size_bytes": 8365871104
+  },
+  "canonical_provenance_before": {
+    "daily_prices_count": 3310374,
+    "data_provider_runs_max_id": 549,
+    "mtime": 1787822829.429926,
+    "next_session_manifests_count": 24,
+    "path": "/home/dennis-chan/Git/trendora/apps/backend/data/trendora.db",
+    "sha256": "fabc79227ff6db329fb31fa55e4402f8b38248b65e19ee9654ec5caa07a4b208",
+    "size_bytes": 8365871104
+  },
+  "canonical_unchanged": {
+    "equal": true,
+    "mismatched_fields": []
+  },
+  "canonical_url": "sqlite:///apps/backend/data/trendora.db",
+  "clone_db_path": "/home/dennis-chan/Git/trendora/runs/goal-market-compass-iter-23/verify-clone/trendora-clone.db",
+  "clone_provenance": {
+    "daily_prices_count": 3310374,
+    "data_provider_runs_max_id": 549,
+    "mtime": 1787861243.9921787,
+    "next_session_manifests_count": 24,
+    "path": "/home/dennis-chan/Git/trendora/runs/goal-market-compass-iter-23/verify-clone/trendora-clone.db",
+    "sha256": null,
+    "size_bytes": 8365871104
+  },
+  "clone_url": "sqlite:////home/dennis-chan/Git/trendora/runs/goal-market-compass-iter-23/verify-clone/trendora-clone.db",
+  "finished_at": 1787861260.665037,
+  "launch_guard_passes_for_verify_config": {
+    "config_path": "/home/dennis-chan/Git/trendora/runs/goal-market-compass-iter-23/verify-clone/config.verify.yaml",
+    "database_url": "sqlite:////home/dennis-chan/Git/trendora/runs/goal-market-compass-iter-23/verify-clone/trendora-clone.db"
+  },
+  "launch_guard_refuses_when_unset": {
+    "message": "TRENDORA_CONFIG is not set -- a launch without it targets the CANONICAL database (app.config.load_config's own default-path fallback); refusing to boot",
+    "raised": true
+  },
+  "next_steps": {
+    "boot_backend": "bash scripts/start-backend-j11-verify.sh",
+    "boot_frontend": "bash scripts/start-frontend.sh",
+    "export_env": {
+      "TRENDORA_COMPASS_EXPORT_DIR": "/home/dennis-chan/Git/trendora/runs/goal-market-compass-iter-23/verify-clone/exports/next_session_manifests",
+      "TRENDORA_CONFIG": "/home/dennis-chan/Git/trendora/runs/goal-market-compass-iter-23/verify-clone/config.verify.yaml"
+    },
+    "warning": "NEVER call GET /api/compass?as_of=<one of the 7 manifest-less incident dates 2026-05-12/05-13/07-10/07-13/07-24/07-27/08-03> -- this mints a historical manifest and is a hard verification FAIL. Verify those dates only via GET /runs or GET /runs/{run_id}."
+  },
+  "started_at": 1787861211.1588125,
+  "tc1_clone_matches_canonical": true,
+  "verify_config_path": "/home/dennis-chan/Git/trendora/runs/goal-market-compass-iter-23/verify-clone/config.verify.yaml"
+}

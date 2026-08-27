@@ -3,183 +3,6 @@
 Append-only. Each entry records a scoring decision that required interpreting an
 ambiguous goal, so the owner can veto it early.
 
-## iter-16 — goal-decomposer (grounding the AVB correction formula in the diagnostic's own already-proven transform)
-
-**Ambiguity:** The coordinator's ruling states the corrected values "must be derived deterministically from the already-committed iteration-15 provider evidence... and the proven surrounding stored convention" but deliberately does not prescribe the formula or the literal corrected values — "deriving them is the implementation's job." Two evidence-grounded formulas are numerically available at plan time: `corrected_volume = stored_volume_before / bridge_factor` (since `stored_volume_before` currently equals the raw provider volume on both bad dates) or `corrected_volume = provider_volume / bridge_factor` (reading the provider figure directly from the iteration-15 fetch artifact). These are numerically identical today but conceptually different derivations.
-
-**We chose:** Specify `corrected_volume(date) = provider_volume(date) / bridge_factor`, reading `provider_volume` directly from the committed `j11-avb-provider-fetch-evidence.json` artifact — the SAME `expected_inverse_volume_ratio = 1/bridge_factor` transform the AVB diagnostic already computes and has proven matches the four surrounding calibration dates. Reasoning: grounding the formula in the independently-sourced provider figure (rather than in Trendora's own currently-wrong stored value, which happens to coincide with it only because the defect being fixed IS "stored volume was never transformed from the raw provider figure") keeps the derivation's provenance honest and auditable even though the two paths are numerically identical right now; it also directly reuses a formula and tolerance check the codebase already has tested and proven, rather than introducing a new one.
-
-**Reversible:** yes — this is a specification choice for which input variable the derivation formula names, not a persisted decision; the spec itself requires the developer to fail closed and STOP if the resulting cross-check does not land within tolerance, so a wrong formula choice cannot silently produce an unverified write.
-
-## iter-16 — goal-decomposer (the pre-boot guard's "cleared" state must be explicit, never inferred from partial per-date progress)
-
-**Ambiguity:** The owner ruling requires the guard be "reusable and state-driven, not hardcoded" and "preserve normal latest-snapshot startup behaviour once the maintenance boundary is legitimately cleared," without specifying HOW "cleared" is determined. A plausible simpler design would infer clearance per-date from whether a `ScannerRun` already exists for that date (no new state needed at all) — but `docs/goal.md` J-11 step 13's failure/retry semantics separately establish that a partially-completed multi-date regeneration attempt must NOT be treated as accepted progress ("the clean-regeneration unit is the complete 11-date incident set, not an individual date checkpoint"), and per-date `ScannerRun`-presence inference would silently violate that rule the first time a future Stage D attempt fails partway through.
-
-**We chose:** Require the guard's active/cleared decision to be driven by an EXPLICIT, persisted boundary-state marker (active-by-default for the current 11-date incident, date membership sourced from the existing `INCIDENT_DATES` canonical set) rather than inferred from partial per-date `ScannerRun` presence, and required a dedicated test (TC-28) simulating a partially-completed attempt to prove the guard still blocks in that case. Reasoning: this is the only design that is simultaneously state-driven (satisfies the ruling's literal requirement) and consistent with the ALREADY-BINDING step-13 whole-unit retry semantics; inferring clearance from row presence would be simpler to build but would create exactly the kind of silent, undetected safety regression this session's lessons (iteration 15's own B1 finding) exist to prevent.
-
-**Reversible:** yes — this is a design constraint on a not-yet-built module; nothing is persisted or executed yet. If a future iteration's implementation finds a better-justified state representation that still satisfies both the ruling's text and step 13's whole-unit semantics, this entry does not bind it, and no evidence or artifact depends on this exact mechanism.
-
-## iter-16 — goal-decomposer (certified-baseline supersession scope: only the daily_prices fingerprint field, not a wholesale re-certification)
-
-**Ambiguity:** The "Raw inputs" Acceptance amendment states "the post-correction fingerprint becomes the new certified J-11 raw-input baseline... every check above is evaluated against that new baseline" without specifying whether the WHOLE certified-baseline artifact must be rebuilt from a fresh iteration-16 capture, or only the one field the correction actually affects.
-
-**We chose:** Scope the supersession narrowly — `load_stage_d_certified_baseline`'s `daily_prices_fingerprint` field is superseded by the post-correction value; every other field it composes (`manifest_ddl`, `manifest_dump`, `manifest_row_count`, `data_provider_runs_count`, `watchlist_count`) continues to source, unchanged, from the original iteration-13 artifacts. Reasoning: the AVB correction touches only `daily_prices`; none of the other certified fields' underlying tables are touched by this iteration (proven by TC-17), so re-deriving them from a fresh iteration-16 capture would be a needless second source of truth for values that have not changed and are already certified — exactly the kind of drift iteration 11's REGRESSION lesson warns against ("a SQLite rebuild has two possible sources of truth... they are not the same object"). Narrow supersession keeps the baseline's provenance chain honest and auditable field-by-field.
-
-**Reversible:** yes — this is a composition-scope choice for a not-yet-built artifact; if a future iteration or the owner prefers a wholesale re-certification instead, that is an additive change (capture everything fresh) with no prior evidence to unwind, since the narrow version's fields are a strict subset of what a wholesale capture would also produce.
-
-## iter-16 — goal-evaluator (reading "proven on disposable test state" as necessary, not sufficient)
-
-**Ambiguity:** The owner's 2026-08-25 pre-boot-guard ruling says "Until that guard is proven on
-disposable test state, maintenance isolation remains ACTIVE and the live backend must not be booted."
-The guard IS proven on disposable test state (19 fixture tests, all passing, calling the real
-`warmup.ensure_latest_snapshot`). But its state was never registered against the live database — no
-`maintenance_boundaries` table exists there, `register_j11_incident_boundary` has no production caller,
-and `evaluate_boundary_for_date` returns `blocked=False` on an empty table — so booting the backend
-today still writes a `ScannerRun` onto 2026-08-12. The ruling does not say whether satisfying its
-literal proof clause is enough to lift isolation, or whether its stated purpose ("prevents canonical
-producer writes for dates explicitly quarantined") must also hold in production.
-
-**We chose:** treat the clause as a NECESSARY condition only — maintenance isolation stays ACTIVE, and
-the ruling's precondition for resuming any application/browser/replay lane is recorded as NOT
-satisfied. Reasoning: (a) the sufficient reading is self-defeating — it would let a guard that is inert
-in production unlock booting the live backend, immediately causing the exact write the ruling was
-written to prevent; (b) the ruling's own operative sentence requires a guard that "prevents ... writes
-for dates explicitly quarantined by an ACTIVE ... boundary", and on the live database there is no
-active boundary, so nothing is prevented; (c) fail-closed is this goal file's posture throughout J-10
-and J-11. What I explicitly did NOT do: call the implementation defective — it is correct, genuinely
-reusable and genuinely state-driven (its core check contains zero incident-specific conditionals), and
-arming it needs a live write that this iteration was never authorized to make, so I recorded it as a
-scope collision rather than an oversight. I also scoped the danger honestly: the window is now until
-Stage D completes, Stage D itself is not endangered (controlled writer, not a booted service), and the
-boot path self-heals once the eleven dates hold runs again because `run_scan` is create-once.
-
-**Reversible:** yes — one owner line either way. Nothing is mutated, deleted or foreclosed by keeping
-isolation active; if the owner reads their own clause as sufficient, lifting isolation is a one-line
-instruction, and the recommendation already names arming the boundary as option one.
-
-## iter-16 — goal-evaluator (recording the boot-path `select(MaintenanceBoundary)` as a MINOR AG-8 entry)
-
-**Ambiguity:** AG-8's text forbids "unbounded whole-table ORM loads", and
-`j11_preboot_guard.py:143` issues `session.exec(select(MaintenanceBoundary)).all()` on the shared boot
-path (auditor observation B7, evaluator-confirmed by reading the code). But AG-8's title and body are
-about resilience to data-shape and data-SCALE change ("widening the data basis must never crash an
-existing page or exhaust memory"), and `maintenance_boundaries` is a control table holding one row per
-named boundary, read once per boot — it never widens with the data basis. `docs/goal.md` does not say
-whether AG-8's letter binds outside its stated subject.
-
-**We chose:** record it in the ledger as `severity: minor`, `resolved: false`, with the
-letter-but-not-subject reasoning stated openly in the entry itself. Reasoning: (a) the pattern the
-anti-goal names is literally present, and on the boot path every journey's serving depends on, so
-silently declaring it a non-violation would be the evaluator overruling the owner's text without
-saying so; (b) the fail-closed "when unsure, treat as critical" rail governs the critical/minor axis
-and I am NOT unsure there — a one-row table read once per boot cannot exhaust memory or crash a page;
-(c) recording it costs one boolean and gives the next iteration a concrete one-line rider, whereas
-omitting it would leave QA's incorrect "No new unbounded whole-table loads" line as the only record.
-Consequence I accepted knowingly: an unresolved entry blocks GOAL_ACHIEVED until fixed — acceptable,
-since the fix is one line and GOAL_ACHIEVED is far away (J-07 and J-08 still failing, J-11 incomplete).
-
-**Reversible:** yes — one boolean, or one owner line downgrading it to a non-violation; the full
-reasoning and file:line are preserved in the ledger entry either way.
-
-## iter-16 — goal-evaluator (STALLED again, on the first iteration whose gate answered YES)
-
-**Ambiguity:** This is the fourth consecutive STALLED, and it is the first where the readiness gate
-answered `YES`. Real non-owner work exists (re-run readiness with `volume_override` to correct the
-recorded label, bound the AG-8 select, add the missing live-shaped guard test), which reads like
-CONTINUE under the methodology's C.5. The stall-window reading is also arguable — iterations 13-16
-each made genuine forward progress, so this is not a "no progress" stall.
-
-**We chose:** STALLED under C.2 (every unblock path for the current blocker is human-owned),
-first-match-wins, with the three tractable items named explicitly as riders rather than hidden.
-Reasoning: (a) the owner's own ruling text ends this step verbatim — "Even if the subsequent readiness
-evaluation returns `J-11 STAGE D READY: YES`, STOP for owner review" — so a CONTINUE would let the
-decomposer plan the one step the owner forbade; (b) arming the pre-boot guard, the only item with real
-operational consequence, requires a live write outside this iteration's two-cell authorization, and
-every live write this session has been separately and explicitly authorized; (c) none of the tractable
-riders can change the gate's answer — both AVB-A and AVB-B are in `_AVB_READY_CLASSIFICATIONS`; (d) the
-mechanical consequence is asymmetric in the SAFE direction, as in iteration 15: a stopped engine starts
-no backend, and an unarmed guard means starting the backend is exactly what must not happen. What I
-explicitly did NOT do: describe the tractable work as out of scope or illegal — it is listed as three
-named riders, and arming the guard is promoted to the FIRST item of the recommendation, ahead of the
-Stage D decision itself.
-
-**Reversible:** yes — one owner line (or an instruction plus `--resume`) restarts the session with
-nothing repaired, nothing lost and no journey status changed.
-
-## iter-17 — goal-decomposer (bundling the AVB-A label-correction rider into the maintenance-boundary lifecycle iteration)
-
-**Ambiguity:** The owner's 2026-08-25 "J-11 maintenance-boundary lifecycle AUTHORIZED" ruling scopes
-this iteration precisely to the guard/lifecycle work (arm/disarm entrypoints, the AG-8 fix, fail-closed
-hardening, 9 named tests) and is silent on iteration 16's three small riders. The AG-8 fix and a named
-test for the live-shaped case are already subsumed by the ruling's own requirements 3 and 6, but the
-`volume_override` AVB label correction is not mentioned anywhere in the new ruling.
-
-**We chose:** fold the `volume_override` re-run into this iteration as one small additional backend
-item. Reasoning: (a) it is read-only against the live DB (same discipline iterations 12-16 already use),
-writes nothing, and cannot change the `READY: YES` answer (both `AVB-A` and `AVB-B` are in
-`_AVB_READY_CLASSIFICATIONS`); (b) iteration 16's own recommendation explicitly asked for it to "ride
-along whenever the next run happens," and this is that next run; (c) leaving a known-dishonest `AVB-B`
-label and an unsupported "other tickers shifted" claim on the live record for a further iteration would
-compound exactly the uncorrected-record risk this goal's AG-1 honesty posture exists to prevent, at
-effectively zero marginal risk or scope cost. This is explicitly NOT a re-run of
-`run_j11_avb_correction.py` (spent, "do not redo") — only the read-only classification/diagnostic is
-re-derived, into a new iter-17 artifact, leaving iteration 16's own artifact byte-unedited.
-
-**Reversible:** yes — this produces one new, additive, read-only evidence artifact; it edits no code path
-any other requirement depends on, and if a future decomposer or the owner judges it should not have been
-bundled, the artifact can simply be ignored with nothing to unwind.
-
-## iter-17 — goal-evaluator (scoring an understated-but-not-false safety framing)
-
-**Ambiguity:** The coordinator asked me to judge whether this iteration's claims are "honestly stated" given
-that TC-11's green `blocked: False` records an open live exposure. `docs/goal.md` sets no rule for the case
-where an iteration's every stated fact is true, its owner-facing status lines are exactly as specified, and
-the ONE thing omitted is what the recorded result means for the live system. AG-1's honesty posture governs
-proven-language about scores, not the framing of a safety probe; the methodology's honesty self-check (E.5)
-asks whether I marked unverifiable things `unknown`, not how to grade another lane's emphasis.
-
-**We chose:** score it as UNDERSTATED, not dishonest — no anti-goal entry, no verdict penalty, no downgrade
-of J-11's advance — while making the exposure the HEADLINE of eval.md, the evaluator log and J-11's `gap`,
-ahead of the delivered work. Reasoning: (a) every individual claim checks out and I re-derived all of them;
-the four owner-facing lines (`NOT ACTIVE`, `NOT ARMED`, `READY: YES`, `AUTHORIZED: NO`) are exactly right
-and do carry the substance; (b) the owner's own ruling text already documents that ordinary boot mints the
-table, so the owner is not being misled about a fact they do not have; (c) the root cause is the SPEC, which
-defined the probe's unsafe answer as its passing value — blaming the developer for inheriting his own
-spec's framing would misplace the defect; (d) the fail-closed rail applies to critical/minor severity, and
-there is no violation to grade here. What I explicitly did NOT do: soften the exposure, call it a footnote,
-or leave it at the auditor's placement — I raised it above the delivered slice everywhere it appears, and
-stated plainly that a reader of the developer/reviewer/QA reports alone would not learn it.
-
-**Reversible:** yes — nothing is mutated or foreclosed. If the owner judges the framing a reportable
-honesty breach, adding a ledger entry is one JSON object, and every figure and derivation is preserved.
-
-## iter-17 — goal-evaluator (STALLED a fifth time, when the safety hole is real but no non-owner action closes it)
-
-**Ambiguity:** This is the fifth consecutive STALLED (iters 13-17), and it carries the strongest pull toward
-CONTINUE the session has seen: B1 is an exposure that is live RIGHT NOW and fires from an ordinary act
-(anyone starting the backend), with no decision required for it to happen. `docs/goal.md`'s Loop-mechanics
-gate arguably permits safety work ("plus explicit prerequisites such as the depth/safety control"), and
-iteration 15 faced this same shape and the tractable answer then WAS to build something (the guard, which
-iteration 16 duly built). Real non-owner work also exists this iteration (four named riders). The
-methodology's C.5 would read that as CONTINUE.
-
-**We chose:** STALLED under C.2 (first-match-wins), with the four riders named explicitly rather than
-hidden, and the safety decision promoted to the first item of the recommendation. The load-bearing new
-reasoning, which distinguishes this from iteration 15: I checked directly whether ANY non-owner engineering
-closes the hole, and none does. Making the guard fail closed on a missing table has zero effect, because
-`main.py` creates the table before the guard ever runs (verified by reading `main.py` and
-`warmup.py`). Making it fail closed on an EMPTY table would block every normal boot forever and break every
-other journey's future browser lane — a design decision with wide blast radius that the owner owns. And
-inferring quarantine from per-date `ScannerRun` absence would re-introduce exactly the inference the
-iter-16 decomposer rejected against step 13's whole-unit retry semantics. So unlike iteration 15, there is
-no buildable safety deliverable left: arming needs a table whose creation the owner forbade by name, and
-the rebuild needs a fresh written instruction. The mechanical consequence is also asymmetric in the SAFE
-direction — a stopped engine starts no backend, and starting the backend is precisely what must not happen.
-
-**Reversible:** yes — one owner line (or an instruction plus `--resume`) restarts the session with nothing
-repaired, nothing lost and no journey status changed; if the owner prefers the riders done first, they are
-already listed and need no rework here.
-
 ## iter-18 — goal-decomposer (bundling three small evidence/test riders into the table-create-and-live-arm iteration; excluding framework-level riders)
 
 **Ambiguity:** The owner's newest 2026-08-25 ruling ("J-11 exact maintenance-boundary table creation
@@ -733,3 +556,82 @@ reading. If the owner rules that Stage G was the database gate and serving verif
 work, J-11 flips to `passing` on the next iteration's evidence with no work redone; if the owner rules the
 serving check belongs to Stage G, the next iteration performs it under a supervised boot and closes the gap
 by name. No row was written, withheld, or deleted on the strength of this interpretation.
+
+## iter-23 — goal-decomposer (verification launch mechanism: `TRENDORA_CONFIG` override, not a
+`config.yaml` edit; Depth kept at `full` despite the ruling saying full depth is "not required")
+
+**Ambiguity:** The 2026-08-27 owner ruling ("OWNER RULING — J-11 database recovery accepted; one final
+serving verification remains" + its "Post-Stage-G launch-condition clarification") requires booting the
+real app against "a disposable, byte-faithful SQLite snapshot/clone" while the canonical database AND its
+committed `config.yaml` stay untouched, but names no specific technical mechanism for pointing the app at
+the clone. Separately, it states `CHAIN_REQUIRE_FULL_DEPTH=true` is "NOT required" for this task without
+saying whether full depth remains permitted or should default to lean; the dispatch's own engine-computed
+depth recommendation for this iteration is independently `full`.
+
+**We chose:** (1) direct the developer to the already-existing, already-tested `TRENDORA_CONFIG` env-var
+config-file override (`apps/backend/app/config.py:3147-3157`, "used by tests" per its own docstring) to
+load a disposable verification-only YAML whose only delta from the committed `config.yaml` is
+`database.url`, rather than editing the committed `config.yaml` in place or inventing a new override
+mechanism — the smallest, already-proven lever, needing no new code. (2) keep `Depth: full` for this
+iteration rather than downshifting to lean, because the dispatch's binding engine recommendation is `full`
+and the task independently meets full-depth Trigger 1 (cross-cutting): real backend + frontend + browser +
+replay execution exercising the interaction of ≥5 distinct engine modules (scanner, data_manager, compass,
+forward_testing, the seven cache tables), none of which is covered end-to-end by any single existing
+journey's own test suite. The owner's "not required" wording removes an obligation; it does not forbid
+using full depth when independently justified by the dispatch recommendation and the trigger rubric.
+
+**Reversible:** yes — both are execution-mechanism/process choices, not data mutations. A future iteration
+could pick a different override mechanism or a different depth with no rework of already-completed
+verification evidence, since neither choice touches the canonical database or any already-frozen J-11
+Stage D-G evidence.
+
+## iter-23 — goal-evaluator (the `/market` 404: "Today / Market Compass serving path works" read as
+satisfied by `/`, not blocked by a route that does not exist yet)
+
+**Ambiguity:** Owner ruling item 4 requires the verification to establish that "the Today / Market Compass
+serving path works". The iter-23 spec's TC-4 turned that into a literal check that `/market` renders
+HTTP 200 with every card from the former dashboard inventory. `/market` does not exist —
+`apps/frontend/app/market/` is absent and J-08 (the journey that would build it) has never shipped, so the
+route returns 404. The goal text does not say whether "Market Compass serving path" names the `/market`
+ROUTE or the Market Compass FEATURE (the compass content), which today lives on `/`.
+
+**We chose:** read it as the feature, and score TC-4 as inapplicable rather than failed. Reasoning:
+(a) the Compass content — summary, what-changed, next-session focus, manifest strip with basis disclosure
+— demonstrably renders on `/` in both J-11 screenshots, so the serving path the ruling cares about was
+genuinely exercised; (b) `/market` is a `[TARGET]`-tagged, not-yet-built row in `blueprint.md`, and the
+coherence auditor independently reached the same reading; (c) the alternative would make this iteration
+fail on a J-08 product gap that ruling item 9 explicitly defers ("Advancing J-08... resumes in a LATER
+iteration"), i.e. it would block J-11 closure on work the owner forbade this iteration from doing; (d) the
+developer flagged it honestly instead of silently building the route, which is the correct call under the
+spec's own scope boundary. What I explicitly did NOT do: treat `/market` as working, or drop it — it is
+recorded as a live-re-confirmed J-08 gap for the next decomposer.
+
+**Reversible:** yes — one owner line settles it. If he rules that `/market` itself had to render, the
+remedy is to re-run the same clone-backed verification after J-08 ships the route; nothing about J-11's
+already-captured clone evidence would need redoing.
+
+## iter-23b — goal-evaluator (J-11 closed even though the ITERATION breached the canonical-DB
+protection, because the BREACH sat outside J-11's own verification)
+
+**Ambiguity:** Owner ruling item 3 requires that "Backend/frontend/browser verification runs against the
+disposable verification DB only" and that the canonical DB "must not be mutated by this verification".
+Item 8 then says J-11 may be marked PASSING once "the disposable repaired-state serving/replay
+verification passes without an unacceptable product-data side effect", adding "No further owner
+authorization is required". This iteration satisfied item 8 on the clone AND breached item 3 on the
+canonical database in the same window. The text does not say whether a breach elsewhere in the iteration
+voids an otherwise-conforming verification.
+
+**We chose:** close J-11 (`passing`) and halt the SESSION on the breach, rather than withhold the journey
+status. Reasoning: (a) every J-11 artifact traces to the guarded clone-backed boot — the browser-QA lane
+verified via `/proc` that its backend held only the clone open, and I independently matched every cache
+row on each database to its own boot by `created_at`, so the canonical writes provably belong to the
+J-01/J-04 regression replay, a separate activity that is not part of J-11's verification; (b) item 8's
+condition is met on its own terms and its "no further authorization required" wording means withholding
+the status would be me adding a condition the owner did not write; (c) the breach is not silently
+absorbed — it is recorded as an unresolved critical ledger entry and is the stated reason for the halt, so
+the owner decides it explicitly. What I explicitly did NOT do: call the iteration compliant, or let the
+loop continue.
+
+**Reversible:** yes — nothing was mutated by this reading. If the owner rules that any canonical-DB
+contact voids the verification, J-11 returns to `partial` and the same check re-runs on a fresh clone once
+the launcher is fixed; the existing clone evidence would still stand as the method proof.

@@ -1,0 +1,89 @@
+{
+  "clone_path": "/home/dennis-chan/Git/trendora/runs/goal-market-compass-iter-23/verify-clone/trendora-clone.db",
+  "manifests": {
+    "certified_row_count": 24,
+    "generated_at": "2026-08-27T20:08:42.938791+00:00",
+    "live_row_count": 24,
+    "manifest_diff_check": {
+      "certified_row_count": 24,
+      "checked_at": "2026-08-27T20:08:42.937515+00:00",
+      "diff": {
+        "equal": true,
+        "extra_ids": [],
+        "mismatches": [],
+        "missing_ids": [],
+        "post_row_count": 24,
+        "pre_row_count": 24
+      },
+      "live_row_count": 24,
+      "ok": true
+    },
+    "manifest_less_incident_dates": [
+      "2026-05-12",
+      "2026-05-13",
+      "2026-07-10",
+      "2026-07-13",
+      "2026-07-24",
+      "2026-07-27",
+      "2026-08-03"
+    ],
+    "no_manifest_minted_for_manifest_less_dates": true,
+    "ok": true,
+    "zero_rows_by_date": {
+      "2026-05-12": 0,
+      "2026-05-13": 0,
+      "2026-07-10": 0,
+      "2026-07-13": 0,
+      "2026-07-24": 0,
+      "2026-07-27": 0,
+      "2026-08-03": 0
+    }
+  },
+  "raw_inputs": {
+    "certified_daily_prices_fingerprint": "80441b37f816d41c3182d9559f03095b89d6c7973acf781c18f12b77be5024cc",
+    "fingerprint_matches": true,
+    "fresh_daily_prices": {
+      "fingerprint": "80441b37f816d41c3182d9559f03095b89d6c7973acf781c18f12b77be5024cc",
+      "id_sum": 5479295003075,
+      "max_date": "2026-08-12",
+      "min_date": "1996-01-02",
+      "ohlcv_sum": 52367098848872.56,
+      "row_count": 3310374
+    },
+    "generated_at": "2026-08-27T20:08:42.912850+00:00",
+    "network_scan": {
+      "clean": true,
+      "per_file": {
+        "/home/dennis-chan/Git/trendora/apps/backend/app/engine/j11_disposable_clone.py": {
+          "clean": true,
+          "imported_roots": [
+            "__future__",
+            "hashlib",
+            "pathlib",
+            "re",
+            "sqlite3",
+            "typing",
+            "yaml"
+          ],
+          "network_hits": []
+        },
+        "/home/dennis-chan/Git/trendora/apps/backend/scripts/run_j11_disposable_clone.py": {
+          "clean": true,
+          "imported_roots": [
+            "__future__",
+            "app",
+            "argparse",
+            "json",
+            "pathlib",
+            "sys",
+            "time",
+            "typing"
+          ],
+          "network_hits": []
+        }
+      }
+    },
+    "ok": true,
+    "recipe": "j11_maintenance.capture_pre_reset_inventory(session)['daily_prices']['fingerprint'] == sha256(sorted-key JSON of {row_count, min_date, max_date, id_sum, sum(open+high+low+close+volume)}) -- the SAME recipe every earlier J-11 stage's own preflight already reuses."
+  }
+}
