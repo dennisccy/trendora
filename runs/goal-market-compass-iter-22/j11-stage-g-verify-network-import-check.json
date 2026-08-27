@@ -1,0 +1,37 @@
+{
+  "clean": true,
+  "per_file": {
+    "/home/dennis-chan/Git/trendora/apps/backend/app/engine/j11_stage_g_verify.py": {
+      "clean": true,
+      "imported_roots": [
+        "__future__",
+        "app",
+        "ast",
+        "datetime",
+        "json",
+        "pathlib",
+        "socket",
+        "sqlalchemy",
+        "sqlmodel",
+        "typing"
+      ],
+      "network_hits": []
+    },
+    "/home/dennis-chan/Git/trendora/apps/backend/scripts/run_j11_stage_g_verify.py": {
+      "clean": true,
+      "imported_roots": [
+        "__future__",
+        "app",
+        "argparse",
+        "json",
+        "os",
+        "pathlib",
+        "sqlalchemy",
+        "sqlmodel",
+        "sys",
+        "typing"
+      ],
+      "network_hits": []
+    }
+  }
+}

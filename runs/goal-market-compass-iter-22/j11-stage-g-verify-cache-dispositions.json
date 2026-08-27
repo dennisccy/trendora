@@ -1,0 +1,42 @@
+{
+  "generated_at": "2026-08-27T09:26:57.189133+00:00",
+  "ok": true,
+  "per_table": {
+    "availability_cache": {
+      "live_count": 0,
+      "ok": true,
+      "recorded_disposition": "explicit_delete"
+    },
+    "coverage_snapshot": {
+      "live_count": 0,
+      "ok": true,
+      "recorded_disposition": "explicit_delete"
+    },
+    "event_study_cache": {
+      "live_count": 0,
+      "ok": true,
+      "recorded_disposition": "explicit_delete"
+    },
+    "forward_aggregate_cache": {
+      "live_count": 0,
+      "ok": true,
+      "recorded_disposition": "explicit_delete"
+    },
+    "index_series_cache": {
+      "fresh_stamp": "d2026-08-12-c60699",
+      "ok": true,
+      "recorded_disposition": "prove_unaffected_leave_alone",
+      "row_count": 1,
+      "stored_stamp": "d2026-08-12-c60699"
+    },
+    "market_phase_cache": {
+      "live_count": 0,
+      "ok": true,
+      "recorded_disposition": "explicit_delete"
+    },
+    "membership_timeline_cache": {
+      "note": "content correctness verified separately by verify_membership_timeline_preserved_row",
+      "recorded_disposition": "preserve_for_incremental_reuse"
+    }
+  }
+}

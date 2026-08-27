@@ -1,0 +1,39 @@
+{
+  "certified_row_count": 24,
+  "generated_at": "2026-08-27T09:26:56.041611+00:00",
+  "live_row_count": 24,
+  "manifest_diff_check": {
+    "certified_row_count": 24,
+    "checked_at": "2026-08-27T09:26:56.040590+00:00",
+    "diff": {
+      "equal": true,
+      "extra_ids": [],
+      "mismatches": [],
+      "missing_ids": [],
+      "post_row_count": 24,
+      "pre_row_count": 24
+    },
+    "live_row_count": 24,
+    "ok": true
+  },
+  "manifest_less_incident_dates": [
+    "2026-05-12",
+    "2026-05-13",
+    "2026-07-10",
+    "2026-07-13",
+    "2026-07-24",
+    "2026-07-27",
+    "2026-08-03"
+  ],
+  "no_manifest_minted_for_manifest_less_dates": true,
+  "ok": true,
+  "zero_rows_by_date": {
+    "2026-05-12": 0,
+    "2026-05-13": 0,
+    "2026-07-10": 0,
+    "2026-07-13": 0,
+    "2026-07-24": 0,
+    "2026-07-27": 0,
+    "2026-08-03": 0
+  }
+}

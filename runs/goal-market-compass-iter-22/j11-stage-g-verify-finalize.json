@@ -1,0 +1,6 @@
+{
+  "boundary_deactivated": true,
+  "generated_at": "2026-08-27T09:27:08.666663+00:00",
+  "outcome": "FULLY_REPAIRED",
+  "terminal_lines": "J-11 STAGE D EXECUTED: YES\nJ-11 STAGE E COMPLETE: YES\nJ-11 STAGE F COMPLETE: YES\nJ-11 STAGE G VERIFIED: YES\nJ-11 INCIDENT STATUS: FULLY REPAIRED"
+}

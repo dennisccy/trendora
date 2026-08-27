@@ -59,6 +59,7 @@ from app.engine import evidence  # ops-hardening iter-7 (J-06): the finalize hoo
 from app.engine import forward_testing, scanner
 from app.engine import market_phase  # ops-hardening iter-2 (J-05): the ingest finalize hook warms this
 from app.engine import compass  # goal-market-compass iter-2 (J-02/J-03/J-04): the finalize hook warms this
+from app.engine import j11_preboot_guard  # goal-market-compass iter-22 (J-11 Stage G): guards coverage_from_storage's self-heal write
 from app.engine.ledger import FORWARD_WALK_TYPE, read_entries
 from app.engine.prices import (
     _BarCache,
@@ -1544,8 +1545,15 @@ def coverage_from_storage(session: Session, cfg: Config, *, as_of: Optional[date
             return _tag_coverage_status(json.loads(row.payload_json), "current")
         # no persisted row: heal an explicit switcher selection of a real already-ingested historical date
         # (see docstring) — real coverage, self-healed to storage — rather than a false empty-DB sentinel.
+        # goal-market-compass iter-22 (J-11 Stage G): guarded by the SAME already-tested fail-closed idiom
+        # already live at warmup.py/forward_testing.py — a page visit to a date an ACTIVE maintenance
+        # boundary quarantines (e.g. a J-11 incident date whose ScannerRun exists but whose derived cache
+        # layer was deliberately cleared) must never repopulate coverage_snapshot via this request-path
+        # write. When blocked, fall through unchanged to the existing stale/all-zero fallback chain below.
         if as_of is not None and _scanner_run_exists(session, resolved_asof):
-            return _tag_coverage_status(refresh_coverage_snapshot_for(session, cfg, resolved_asof), "current")
+            boundary = j11_preboot_guard.evaluate_boundary_for_date_fail_closed(session, resolved_asof)
+            if not boundary["blocked"]:
+                return _tag_coverage_status(refresh_coverage_snapshot_for(session, cfg, resolved_asof), "current")
         # iter-27: the exact-match key missed (current stamp) — check for a real row under an OLDER stamp
         # for this SAME asof_key before conceding to the all-zero sentinel (see docstring above).
         stale_row = session.exec(

@@ -1,0 +1,7 @@
+{
+  "finalize_outcome": "FULLY_REPAIRED",
+  "generated_at": "2026-08-27T09:27:08.666663+00:00",
+  "membership_timeline_delete_reconciles": true,
+  "post_write_mutation_accounting_ok": true,
+  "stage_g_verdict_full_pass": true
+}

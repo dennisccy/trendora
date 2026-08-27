@@ -1,0 +1,74 @@
+[
+  {
+    "enclosing_function": "compass",
+    "file": "app/api/compass.py",
+    "line": 61,
+    "matched_name": "get_or_create_manifest"
+  },
+  {
+    "enclosing_function": "refresh_coverage_snapshot",
+    "file": "app/engine/data_manager.py",
+    "line": 1446,
+    "matched_name": "refresh_coverage_snapshot_for"
+  },
+  {
+    "enclosing_function": "coverage_from_storage",
+    "file": "app/engine/data_manager.py",
+    "line": 1556,
+    "matched_name": "refresh_coverage_snapshot_for"
+  },
+  {
+    "enclosing_function": "_do_backfill._persist",
+    "file": "app/engine/data_manager.py",
+    "line": 3762,
+    "matched_name": "run_scan"
+  },
+  {
+    "enclosing_function": "_persist_per_date_coverage_snapshots",
+    "file": "app/engine/data_manager.py",
+    "line": 4072,
+    "matched_name": "refresh_coverage_snapshot_for"
+  },
+  {
+    "enclosing_function": "_refresh_ingest_aggregates",
+    "file": "app/engine/data_manager.py",
+    "line": 4632,
+    "matched_name": "get_or_create_manifest"
+  },
+  {
+    "enclosing_function": "_backfill",
+    "file": "app/engine/forward_testing.py",
+    "line": 559,
+    "matched_name": "run_scan"
+  },
+  {
+    "enclosing_function": "execute_stage_d_for_date",
+    "file": "app/engine/j11_stage_d_execute.py",
+    "line": 374,
+    "matched_name": "run_scan"
+  },
+  {
+    "enclosing_function": "_bootstrap",
+    "file": "app/engine/scanner.py",
+    "line": 260,
+    "matched_name": "run_scan"
+  },
+  {
+    "enclosing_function": "resolve_run",
+    "file": "app/engine/scanner.py",
+    "line": 348,
+    "matched_name": "run_scan"
+  },
+  {
+    "enclosing_function": "ensure_latest_snapshot",
+    "file": "app/engine/warmup.py",
+    "line": 121,
+    "matched_name": "run_scan"
+  },
+  {
+    "enclosing_function": "_run_warmup",
+    "file": "app/engine/warmup.py",
+    "line": 370,
+    "matched_name": "run_scan"
+  }
+]

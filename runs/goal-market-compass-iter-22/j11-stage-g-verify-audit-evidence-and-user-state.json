@@ -1,0 +1,48 @@
+{
+  "canonical_ledger_entry_count": 7,
+  "canonical_ledger_statuses": [
+    "FAIL",
+    "FAIL",
+    "FAIL",
+    "FAIL",
+    "FAIL",
+    "FAIL",
+    "FAIL"
+  ],
+  "canonical_seven_all_fail": true,
+  "certified_ledger_file_hash_ok": true,
+  "data_provider_runs_count_ok": true,
+  "fresh_pre_reset_inventory_slice": {
+    "certified_claims_ledger": {
+      "exists": true,
+      "path": "/home/dennis-chan/Git/trendora/runs/goal-session-mcp-loop/state/certified-claims.jsonl",
+      "sha256": "5d435cff51aff4e8a0072e466c50ad76c8063f8883a20fdbd78db8286135e721"
+    },
+    "data_provider_runs_count": 549,
+    "staging_ledger": {
+      "exists": true,
+      "path": "/home/dennis-chan/Git/trendora/runs/goal-session-mcp-loop/state/staging-ledger.jsonl",
+      "sha256": "3e85847e8d7424e3f473b758c18f83e5819db8c66904c5a4ec4b490c463f441a"
+    },
+    "watchlist_count": 6
+  },
+  "generated_at": "2026-08-27T09:26:57.183803+00:00",
+  "ok": true,
+  "provider_runs_full_dump_row_count": 549,
+  "registrations_line_count": 11,
+  "registrations_path": "/home/dennis-chan/Git/trendora/runs/goal-session-mcp-loop/state/pre-registrations.jsonl",
+  "staging_ledger_entry_count": 7,
+  "staging_ledger_file_hash_ok": true,
+  "staging_ledger_statuses": [
+    "FAIL",
+    "FAIL",
+    "FAIL",
+    "FAIL",
+    "FAIL",
+    "FAIL",
+    "FAIL"
+  ],
+  "staging_seven_all_fail": true,
+  "watchlist_count_ok": true,
+  "watchlist_full_dump_row_count": 6
+}

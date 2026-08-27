@@ -1,0 +1,75 @@
+{
+  "boundary_check": {
+    "active_flip_correct": true,
+    "mismatched_columns": [
+      "active",
+      "updated_at"
+    ],
+    "ok": true,
+    "only_expected_columns_changed": true
+  },
+  "boundary_diff": {
+    "equal": false,
+    "extra_ids": [],
+    "mismatches": [
+      {
+        "column": "active",
+        "id": 1,
+        "post": false,
+        "pre": true
+      },
+      {
+        "column": "updated_at",
+        "id": 1,
+        "post": "2026-08-27T09:27:08.662797",
+        "pre": "2026-08-25T23:49:26.589515"
+      }
+    ],
+    "missing_ids": [],
+    "post_row_count": 1,
+    "pre_row_count": 1
+  },
+  "checks": {
+    "changed_tables_reconcile_to_stage_d_e_f_and_this_iterations_conditional_writes": true,
+    "maintenance_boundary_content_change_matches_expectation": true,
+    "no_unexpected_new_tables": true,
+    "no_unexpected_removed_tables": true
+  },
+  "expected_changed_by_sweep": [
+    "availability_cache",
+    "coverage_snapshot",
+    "event_study_cache",
+    "forward_aggregate_cache",
+    "forward_returns",
+    "market_phase_cache",
+    "membership_timeline_cache",
+    "scanner_results",
+    "scanner_runs",
+    "sector_scores",
+    "theme_scores"
+  ],
+  "generated_at": "2026-08-27T09:27:09.339715+00:00",
+  "live_membership_timeline_row_count_post": 0,
+  "membership_timeline_delete_reconciles": true,
+  "ok": true,
+  "table_diff": {
+    "changed_existing_tables": [
+      "availability_cache",
+      "coverage_snapshot",
+      "event_study_cache",
+      "forward_aggregate_cache",
+      "forward_returns",
+      "market_phase_cache",
+      "membership_timeline_cache",
+      "scanner_results",
+      "scanner_runs",
+      "sector_scores",
+      "theme_scores"
+    ],
+    "clean": false,
+    "expected_new_tables_present": [],
+    "unexpected_new_tables": [],
+    "unexpected_removed_tables": []
+  },
+  "unexplained_by_sweep": []
+}

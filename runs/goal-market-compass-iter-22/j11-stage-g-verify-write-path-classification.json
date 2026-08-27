@@ -1,0 +1,110 @@
+{
+  "classified": [
+    {
+      "classification": "still_open_and_deferred",
+      "enclosing_function": "compass",
+      "file": "app/api/compass.py",
+      "line": 61,
+      "matched_name": "get_or_create_manifest",
+      "note": "the GET /api/compass request-path call site of compass.get_or_create_manifest -- the SAME species of gap as the two ruling-item-5-named ones, but not itself named by ruling item 5's text or this iteration's coordinator note as something Stage G must resolve (see the iteration's own scoping decision, logged to assumptions.md). Deliberately NOT touched (compass.py shows zero diff -- TC-21)."
+    },
+    {
+      "classification": "still_open_and_deferred",
+      "enclosing_function": "refresh_coverage_snapshot",
+      "file": "app/engine/data_manager.py",
+      "line": 1446,
+      "matched_name": "refresh_coverage_snapshot_for",
+      "note": "reachable only via the ingest-finalize hook or the boot warm-up safety net (both externally unreachable during maintenance isolation, and both gated by the SAME create-once/latest-date semantics as above) -- not itself boundary-guarded. Same coverage-write family as this iteration's OWN closed gap, but a DIFFERENT call site; not touched this iteration."
+    },
+    {
+      "classification": "guarded",
+      "enclosing_function": "coverage_from_storage",
+      "file": "app/engine/data_manager.py",
+      "line": 1556,
+      "matched_name": "refresh_coverage_snapshot_for",
+      "note": "THIS iteration's own edit -- j11_preboot_guard.evaluate_boundary_for_date_fail_closed checked immediately before the self-heal write; on blocked=True it falls through unchanged to the function's existing stale/all-zero fallback chain."
+    },
+    {
+      "classification": "still_open_and_deferred",
+      "enclosing_function": "_do_backfill._persist",
+      "file": "app/engine/data_manager.py",
+      "line": 3762,
+      "matched_name": "run_scan",
+      "note": "docs/goal.md ruling item 5's SECOND named deferred gap ('ordinary Data Manager persistence paths capable of calling run_scan()') -- the ordinary backfill/import job's per-date worker-fast-path race branch. Deliberately NOT touched this iteration."
+    },
+    {
+      "classification": "still_open_and_deferred",
+      "enclosing_function": "_persist_per_date_coverage_snapshots",
+      "file": "app/engine/data_manager.py",
+      "line": 4072,
+      "matched_name": "refresh_coverage_snapshot_for",
+      "note": "the ingest-finalize per-date coverage warm loop -- same family and same reasoning as the two coverage-write entries directly above; not touched this iteration."
+    },
+    {
+      "classification": "still_open_and_deferred",
+      "enclosing_function": "_refresh_ingest_aggregates",
+      "file": "app/engine/data_manager.py",
+      "line": 4632,
+      "matched_name": "get_or_create_manifest",
+      "note": "the ingest-finalize manifest-freeze call site (the legitimate, ordinary producer of new manifests). Self-limiting by create-once + prog.new_snapshot_dates semantics (only fires for a date THIS SAME ingest job just created), but not itself boundary-guarded -- same family as the two named gaps, recorded honestly rather than silently treated as safe merely because it is lower-probability."
+    },
+    {
+      "classification": "guarded",
+      "enclosing_function": "_backfill",
+      "file": "app/engine/forward_testing.py",
+      "line": 559,
+      "matched_name": "run_scan",
+      "note": "the walk-forward asof-date loop reachable only from warmup._run_warmup -- j11_preboot_guard.evaluate_boundary_for_date_fail_closed checked per-date before this call (iteration 18)."
+    },
+    {
+      "classification": "stage_d_authorized_write",
+      "enclosing_function": "execute_stage_d_for_date",
+      "file": "app/engine/j11_stage_d_execute.py",
+      "line": 374,
+      "matched_name": "run_scan",
+      "note": "Stage D's own owner-authorized regeneration write (iteration 19); not a request-path gap."
+    },
+    {
+      "classification": "still_open_and_deferred",
+      "enclosing_function": "_bootstrap",
+      "file": "app/engine/scanner.py",
+      "line": 260,
+      "matched_name": "run_scan",
+      "note": "reachable only via scanner.bootstrap_runs, which has ZERO production call sites anywhere in apps/backend/app (verified by the SAME live grep/AST re-enumeration this table is built from) -- a latent, currently-unreachable gap, not an active one. Recorded honestly rather than omitted merely because it is dormant today."
+    },
+    {
+      "classification": "still_open_and_deferred",
+      "enclosing_function": "resolve_run",
+      "file": "app/engine/scanner.py",
+      "line": 348,
+      "matched_name": "run_scan",
+      "note": "docs/goal.md ruling item 5's FIRST named deferred gap, verbatim -- an explicit `?as_of=` request can reach this unguarded call. Deliberately NOT touched this iteration (OUT OF SCOPE; scanner.py shows zero diff -- TC-21)."
+    },
+    {
+      "classification": "guarded",
+      "enclosing_function": "ensure_latest_snapshot",
+      "file": "app/engine/warmup.py",
+      "line": 121,
+      "matched_name": "run_scan",
+      "note": "the synchronous latest-snapshot boot path -- j11_preboot_guard.evaluate_boundary_for_date checked inline immediately before this call (iteration 16)."
+    },
+    {
+      "classification": "guarded",
+      "enclosing_function": "_run_warmup",
+      "file": "app/engine/warmup.py",
+      "line": 370,
+      "matched_name": "run_scan",
+      "note": "the background historical warm-up cadence loop -- j11_preboot_guard.evaluate_boundary_for_date_fail_closed checked per-date before this call (iteration 18)."
+    }
+  ],
+  "counts_by_classification": {
+    "guarded": 4,
+    "stage_d_authorized_write": 1,
+    "still_open_and_deferred": 7
+  },
+  "generated_at": "2026-08-27T09:27:08.643491+00:00",
+  "ok": true,
+  "stale_table_entries": [],
+  "total_sites_found": 12,
+  "unclassified": []
+}

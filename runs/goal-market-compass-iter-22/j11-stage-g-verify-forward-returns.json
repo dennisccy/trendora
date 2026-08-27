@@ -1,0 +1,167 @@
+{
+  "checks": {
+    "population_a_matches_stage_e_recorded_fill": true,
+    "population_a_pre_was_zero": true,
+    "population_b_delta_from_pre_stage_e_baseline_is_zero": true,
+    "population_b_never_decreased": true,
+    "population_c_latest_run_observable_ceiling_respected": true,
+    "population_c_no_row_beyond_stored_prices": true
+  },
+  "generated_at": "2026-08-27T09:26:56.035680+00:00",
+  "incident_run_ids": [
+    3148,
+    3149,
+    3150,
+    3151,
+    3152,
+    3153,
+    3154,
+    3155,
+    3156,
+    3157,
+    3158
+  ],
+  "live": {
+    "all_checks_pass": true,
+    "checks": {
+      "population_a_pre_was_zero": true,
+      "population_b_never_decreased": true,
+      "population_c_latest_run_observable_ceiling_respected": true,
+      "population_c_no_row_beyond_stored_prices": true
+    },
+    "generated_at": "2026-08-27T09:26:56.035650+00:00",
+    "population_a_rebuilt_incident_runs": {
+      "3148": {
+        "newly_inserted": 2771,
+        "post": 2771,
+        "pre": 0
+      },
+      "3149": {
+        "newly_inserted": 2769,
+        "post": 2769,
+        "pre": 0
+      },
+      "3150": {
+        "newly_inserted": 2216,
+        "post": 2216,
+        "pre": 0
+      },
+      "3151": {
+        "newly_inserted": 2215,
+        "post": 2215,
+        "pre": 0
+      },
+      "3152": {
+        "newly_inserted": 1659,
+        "post": 1659,
+        "pre": 0
+      },
+      "3153": {
+        "newly_inserted": 1658,
+        "post": 1658,
+        "pre": 0
+      },
+      "3154": {
+        "newly_inserted": 1103,
+        "post": 1103,
+        "pre": 0
+      },
+      "3155": {
+        "newly_inserted": 1103,
+        "post": 1103,
+        "pre": 0
+      },
+      "3156": {
+        "newly_inserted": 549,
+        "post": 549,
+        "pre": 0
+      },
+      "3157": {
+        "newly_inserted": 549,
+        "post": 549,
+        "pre": 0
+      },
+      "3158": {
+        "newly_inserted": 0,
+        "post": 0,
+        "pre": 0
+      }
+    },
+    "population_a_total_newly_inserted": 16592,
+    "population_b_retained_run_holes": {
+      "never_decreased": true,
+      "post_by_run_id": {
+        "353": 554,
+        "354": 555,
+        "363": 1106,
+        "364": 1106,
+        "368": 554,
+        "369": 1110,
+        "370": 495,
+        "371": 58,
+        "372": 554,
+        "680": 550,
+        "681": 551,
+        "718": 1109,
+        "719": 1109,
+        "727": 1109,
+        "728": 1109,
+        "731": 555,
+        "732": 1109,
+        "733": 496,
+        "734": 58,
+        "735": 555,
+        "1438": 1106,
+        "1439": 58,
+        "1509": 495,
+        "1921": 553
+      },
+      "post_total": 16614,
+      "pre_by_run_id": {
+        "353": 554,
+        "354": 555,
+        "363": 1106,
+        "364": 1106,
+        "368": 554,
+        "369": 1110,
+        "370": 495,
+        "371": 58,
+        "372": 554,
+        "680": 550,
+        "681": 551,
+        "718": 1109,
+        "719": 1109,
+        "727": 1109,
+        "728": 1109,
+        "731": 555,
+        "732": 1109,
+        "733": 496,
+        "734": 58,
+        "735": 555,
+        "1438": 1106,
+        "1439": 58,
+        "1509": 495,
+        "1921": 553
+      },
+      "pre_total": 16614
+    },
+    "population_c_not_yet_mature": {
+      "latest_run_check": {
+        "asof_date": "2026-08-12",
+        "forward_return_row_count": 0,
+        "latest_run_present": true,
+        "observable_days": 0,
+        "observable_horizon_count": 0,
+        "ok": true
+      },
+      "max_daily_price_date": "2026-08-12",
+      "max_measured_date": "2026-08-12",
+      "no_row_beyond_stored_prices": true
+    }
+  },
+  "ok": true,
+  "population_b_delta_from_pre_stage_e_baseline": 0,
+  "population_b_is_zero_correct_outcome": true,
+  "recorded_population_a_total": 16592,
+  "recorded_population_b_pre_total": 16614
+}

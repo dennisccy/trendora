@@ -1,0 +1,19 @@
+{
+  "category_results": {
+    "audit_evidence_and_user_state": true,
+    "cache_dispositions": true,
+    "evidence_reinterpretation_check": true,
+    "forward_returns": true,
+    "manifests": true,
+    "membership_timeline_reconciled": true,
+    "named_traps": true,
+    "operational_isolation": true,
+    "preflight_gate": true,
+    "raw_inputs": true,
+    "snapshot_scope": true,
+    "write_path_classification": true
+  },
+  "failing_categories": [],
+  "full_pass": true,
+  "generated_at": "2026-08-27T09:27:08.653520+00:00"
+}

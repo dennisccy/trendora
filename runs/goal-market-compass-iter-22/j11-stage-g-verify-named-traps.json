@@ -1,0 +1,164 @@
+{
+  "generated_at": "2026-08-27T09:27:08.421265+00:00",
+  "ok": true,
+  "trap_count": 18,
+  "traps": [
+    {
+      "citation": "test_j11_stage_b1_migration.py::test_tc9_deleting_scanner_run_with_fk_enforcement_on_succeeds_and_manifest_survives",
+      "citation_exists": true,
+      "description": "manifest survival does not depend on FK enforcement being off",
+      "family": "schema_identity_retry",
+      "ok": true,
+      "trap_id": 1
+    },
+    {
+      "citation": "test_j11_stage_d_execute.py::test_mutation_accounting_fails_when_manifest_changed",
+      "citation_exists": true,
+      "description": "deleting and rebuilding an incident ScannerRun does not rewrite its historical manifest",
+      "family": "schema_identity_retry",
+      "ok": true,
+      "trap_id": 2
+    },
+    {
+      "citation": "test_manifest_invariants.py::test_basis_disclosure_reads_rebuilt_when_the_source_run_is_recreated",
+      "citation_exists": true,
+      "description": "source_run_id remains historical provenance and is never rebound to the new run's id",
+      "family": "schema_identity_retry",
+      "ok": true,
+      "trap_id": 3
+    },
+    {
+      "citation": "test_manifest_invariants.py::test_basis_disclosure_reads_unavailable_when_the_source_run_is_gone",
+      "citation_exists": true,
+      "description": "basis_disclosure still reports rebuilt/unavailable correctly once the schema contract is reconciled",
+      "family": "schema_identity_retry",
+      "ok": true,
+      "trap_id": 4
+    },
+    {
+      "description": "all 11 rebuilt runs in one successful attempt share the frozen engine_identity",
+      "family": "schema_identity_retry",
+      "live_spot_check": "all_11_runs_share_frozen_identity",
+      "observed": {
+        "2026-05-12": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+        "2026-05-13": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+        "2026-07-10": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+        "2026-07-13": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+        "2026-07-24": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+        "2026-07-27": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+        "2026-08-03": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+        "2026-08-05": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+        "2026-08-10": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+        "2026-08-11": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+        "2026-08-12": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55"
+      },
+      "ok": true,
+      "trap_id": 5
+    },
+    {
+      "citation": "test_j11_stage_d_execute.py::test_tc5_loop_stops_on_check_b_identity_drift_before_calling_run_scan",
+      "citation_exists": true,
+      "description": "an engine/config identity change mid-attempt prevents piecemeal continuation",
+      "family": "schema_identity_retry",
+      "ok": true,
+      "trap_id": 6
+    },
+    {
+      "citation": "test_j11_stage_d_execute.py::test_tc5_loop_stops_at_first_pre_existing_run_and_attempts_no_further_date",
+      "citation_exists": true,
+      "description": "a simulated failure after a subset of dates are rebuilt leaves the attempt incomplete, never partial progress",
+      "family": "schema_identity_retry",
+      "ok": true,
+      "trap_id": 7
+    },
+    {
+      "description": "a retry re-clears and rebuilds the full 11-date set rather than resuming from one date",
+      "family": "schema_identity_retry",
+      "live_spot_check": "stage_d_recorded_evidence_covers_the_full_11_date_set",
+      "observed_date_count": 11,
+      "ok": true,
+      "trap_id": 8
+    },
+    {
+      "citation": "test_j11_stage_c_preflight.py::test_tc18_comparison_gate_stops_on_daily_prices_provider_runs_and_watchlist_drift",
+      "citation_exists": true,
+      "description": "immutable manifests and audit evidence survive a retry byte-unchanged",
+      "family": "schema_identity_retry",
+      "ok": true,
+      "trap_id": 9
+    },
+    {
+      "citation": "test_j11_stage_f_execute.py::test_tc6_index_series_cache_stamp_matches_prove_unaffected",
+      "citation_exists": true,
+      "description": "an unrelated cache is not invalidated solely because it happens to carry a version field",
+      "family": "schema_identity_retry",
+      "ok": true,
+      "trap_id": 10
+    },
+    {
+      "citation": "test_j10_recovery.py::test_gated_recovery_persists_evidence_before_any_verdict_is_used",
+      "citation_exists": true,
+      "description": "completing remaining J-10 raw rows does not falsely imply the existing 2026-08-11/12 ScannerRuns were recomputed",
+      "family": "j10_j11_sequencing",
+      "ok": true,
+      "trap_id": 1
+    },
+    {
+      "description": "J-10 can reach its raw-recovery terminal state without J-11 having run",
+      "family": "j10_j11_sequencing",
+      "live_spot_check": "j10_closed_before_j11_stage_c_ever_ran",
+      "ok": true,
+      "trap_id": 2
+    },
+    {
+      "citation": "test_j11_stage_c_preflight.py::test_tc2_comparison_gate_passes_when_certified_state_matches_fresh_state",
+      "citation_exists": true,
+      "description": "J-11 cannot start before J-10 raw recovery reaches terminal state",
+      "family": "j10_j11_sequencing",
+      "ok": true,
+      "trap_id": 3
+    },
+    {
+      "boundary_recheck_ok": true,
+      "description": "normal product/research lanes remain blocked after J-10 and before J-11 Stage G",
+      "family": "j10_j11_sequencing",
+      "live_spot_check": "boundary_still_active_at_stage_g_preflight_time",
+      "ok": true,
+      "trap_id": 4
+    },
+    {
+      "description": "the final repaired-state J-01/J-02/J-03 replay belongs to J-11 Stage G, not J-10 acceptance",
+      "family": "j10_j11_sequencing",
+      "live_spot_check": "this_iteration_is_stage_g_per_its_own_spec",
+      "ok": true,
+      "trap_id": 5
+    },
+    {
+      "description": "the stale recovery-era 2026-08-11/2026-08-12 runs are recognized as temporary until J-11 replaces them",
+      "family": "j10_j11_sequencing",
+      "live_spot_check": "stage_d_replaced_the_recovery_era_08_11_08_12_runs",
+      "ok": true,
+      "post_stage_d_run_id_2026_08_11": 3157,
+      "post_stage_d_run_id_2026_08_12": 3158,
+      "pre_stage_c_run_id_2026_08_11": 3150,
+      "pre_stage_c_run_id_2026_08_12": 3148,
+      "trap_id": 6
+    },
+    {
+      "citation": "test_j11_maintenance.py::test_tc6_id_reuse_trap_still_reports_rebuilt_not_original",
+      "citation_exists": true,
+      "description": "source_run_id equality alone never proves original-source identity after a rebuild",
+      "family": "j10_j11_sequencing",
+      "ok": true,
+      "trap_id": 7
+    },
+    {
+      "citation": "test_j11_maintenance.py::test_tc6_id_reuse_trap_still_reports_rebuilt_not_original",
+      "citation_exists": true,
+      "description": "exact numeric id reuse still yields basis_disclosure = rebuilt when the frozen source timestamp differs",
+      "family": "j10_j11_sequencing",
+      "ok": true,
+      "trap_id": 8
+    }
+  ]
+}

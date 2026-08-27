@@ -1,0 +1,49 @@
+{
+  "clean": true,
+  "per_file": {
+    "/home/dennis-chan/Git/trendora/apps/backend/app/engine/j11_avb_correction.py": {
+      "clean": true,
+      "hits": []
+    },
+    "/home/dennis-chan/Git/trendora/apps/backend/app/engine/j11_avb_diagnostic.py": {
+      "clean": true,
+      "hits": []
+    },
+    "/home/dennis-chan/Git/trendora/apps/backend/app/engine/j11_avb_provider_fetch.py": {
+      "clean": true,
+      "hits": []
+    },
+    "/home/dennis-chan/Git/trendora/apps/backend/app/engine/j11_maintenance.py": {
+      "clean": true,
+      "hits": []
+    },
+    "/home/dennis-chan/Git/trendora/apps/backend/app/engine/j11_preboot_guard.py": {
+      "clean": true,
+      "hits": []
+    },
+    "/home/dennis-chan/Git/trendora/apps/backend/app/engine/j11_schema_migration.py": {
+      "clean": true,
+      "hits": []
+    },
+    "/home/dennis-chan/Git/trendora/apps/backend/app/engine/j11_stage_c.py": {
+      "clean": true,
+      "hits": []
+    },
+    "/home/dennis-chan/Git/trendora/apps/backend/app/engine/j11_stage_d.py": {
+      "clean": true,
+      "hits": []
+    },
+    "/home/dennis-chan/Git/trendora/apps/backend/app/engine/j11_stage_d_execute.py": {
+      "clean": true,
+      "hits": []
+    },
+    "/home/dennis-chan/Git/trendora/apps/backend/app/engine/j11_stage_e_execute.py": {
+      "clean": true,
+      "hits": []
+    },
+    "/home/dennis-chan/Git/trendora/apps/backend/app/engine/j11_stage_f_execute.py": {
+      "clean": true,
+      "hits": []
+    }
+  }
+}
