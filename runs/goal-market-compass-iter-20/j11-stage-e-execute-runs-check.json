@@ -1,0 +1,138 @@
+{
+  "checked_at": "2026-08-26T21:06:41.635936+00:00",
+  "ok": true,
+  "per_date": {
+    "2026-05-12": {
+      "expected_run_id": 3148,
+      "forward_return_count": 0,
+      "id_matches": true,
+      "identity_matches": true,
+      "observed_created_at": "2026-08-26T10:52:55.552946",
+      "observed_engine_identity": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+      "observed_run_id": 3148,
+      "ok": true,
+      "present": true,
+      "zero_forward_returns": true
+    },
+    "2026-05-13": {
+      "expected_run_id": 3149,
+      "forward_return_count": 0,
+      "id_matches": true,
+      "identity_matches": true,
+      "observed_created_at": "2026-08-26T10:52:56.281659",
+      "observed_engine_identity": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+      "observed_run_id": 3149,
+      "ok": true,
+      "present": true,
+      "zero_forward_returns": true
+    },
+    "2026-07-10": {
+      "expected_run_id": 3150,
+      "forward_return_count": 0,
+      "id_matches": true,
+      "identity_matches": true,
+      "observed_created_at": "2026-08-26T10:52:56.923029",
+      "observed_engine_identity": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+      "observed_run_id": 3150,
+      "ok": true,
+      "present": true,
+      "zero_forward_returns": true
+    },
+    "2026-07-13": {
+      "expected_run_id": 3151,
+      "forward_return_count": 0,
+      "id_matches": true,
+      "identity_matches": true,
+      "observed_created_at": "2026-08-26T10:52:57.552981",
+      "observed_engine_identity": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+      "observed_run_id": 3151,
+      "ok": true,
+      "present": true,
+      "zero_forward_returns": true
+    },
+    "2026-07-24": {
+      "expected_run_id": 3152,
+      "forward_return_count": 0,
+      "id_matches": true,
+      "identity_matches": true,
+      "observed_created_at": "2026-08-26T10:52:58.179261",
+      "observed_engine_identity": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+      "observed_run_id": 3152,
+      "ok": true,
+      "present": true,
+      "zero_forward_returns": true
+    },
+    "2026-07-27": {
+      "expected_run_id": 3153,
+      "forward_return_count": 0,
+      "id_matches": true,
+      "identity_matches": true,
+      "observed_created_at": "2026-08-26T10:52:58.818940",
+      "observed_engine_identity": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+      "observed_run_id": 3153,
+      "ok": true,
+      "present": true,
+      "zero_forward_returns": true
+    },
+    "2026-08-03": {
+      "expected_run_id": 3154,
+      "forward_return_count": 0,
+      "id_matches": true,
+      "identity_matches": true,
+      "observed_created_at": "2026-08-26T10:52:59.462404",
+      "observed_engine_identity": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+      "observed_run_id": 3154,
+      "ok": true,
+      "present": true,
+      "zero_forward_returns": true
+    },
+    "2026-08-05": {
+      "expected_run_id": 3155,
+      "forward_return_count": 0,
+      "id_matches": true,
+      "identity_matches": true,
+      "observed_created_at": "2026-08-26T10:53:00.107686",
+      "observed_engine_identity": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+      "observed_run_id": 3155,
+      "ok": true,
+      "present": true,
+      "zero_forward_returns": true
+    },
+    "2026-08-10": {
+      "expected_run_id": 3156,
+      "forward_return_count": 0,
+      "id_matches": true,
+      "identity_matches": true,
+      "observed_created_at": "2026-08-26T10:53:00.741138",
+      "observed_engine_identity": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+      "observed_run_id": 3156,
+      "ok": true,
+      "present": true,
+      "zero_forward_returns": true
+    },
+    "2026-08-11": {
+      "expected_run_id": 3157,
+      "forward_return_count": 0,
+      "id_matches": true,
+      "identity_matches": true,
+      "observed_created_at": "2026-08-26T10:53:01.385580",
+      "observed_engine_identity": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+      "observed_run_id": 3157,
+      "ok": true,
+      "present": true,
+      "zero_forward_returns": true
+    },
+    "2026-08-12": {
+      "expected_run_id": 3158,
+      "forward_return_count": 0,
+      "id_matches": true,
+      "identity_matches": true,
+      "observed_created_at": "2026-08-26T10:53:02.010362",
+      "observed_engine_identity": "53d2ffd10cdbf89ef16681111bd900766e00e5809bc4ebc7d4b5f2bf1b7f6c55",
+      "observed_run_id": 3158,
+      "ok": true,
+      "present": true,
+      "zero_forward_returns": true
+    }
+  }
+}

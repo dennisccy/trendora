@@ -1,0 +1,9 @@
+{
+  "checked_at": "2026-08-26T21:07:58.261673+00:00",
+  "margin_mb": 7422.7,
+  "memory_cap_kb": 8388608,
+  "memory_cap_mb": 8192,
+  "vm_peak_kb": 787772,
+  "vm_peak_mb": 769.3,
+  "within_cap": true
+}

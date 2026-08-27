@@ -3,192 +3,6 @@
 Append-only. Each entry records a scoring decision that required interpreting an
 ambiguous goal, so the owner can veto it early.
 
-## iter-14 — goal-decomposer (closing the iter-13 identity-comparison blind spot at Stage D, not by patching completed Stage C code)
-
-**Ambiguity:** The coordinator's directive to "close the identity-comparison blind spot the iteration-13
-auditor found" names the finding (`j11_stage_c.py:264-334`'s `compare_preflight_to_certified` CAPTURES
-`stage_c_attempt_identity` but never COMPARES it) without saying whether the fix is a patch to that
-already-executed function, or new comparison call-sites built for Stage D. `docs/goal.md` does not
-itself define what "closing" this gap requires.
-
-**We chose:** Realize the fix entirely as NEW code for Stage D — the three fail-closed identity checks
-(A/B/C) reusing `j11_maintenance.check_attempt_identity_consistency` — and leave `j11_stage_c.py`
-unmodified. Reasoning: Stage C's own deletion reads no identity at all (grep-verified, iter-13's own
-docstring states this), so the captured-but-uncompared value was always inert for Stage C specifically;
-the blind spot's real future consequence is entirely at Stage D, whose whole correctness claim is "every
-rebuilt run shares one frozen identity" (step 12). Stage C already executed and is on the binding
-"do not redo" list (`iteration-state.md`); patching dead code in a completed, closed stage for cosmetic
-completeness adds risk (touching frozen, already-audited code) for no operational benefit, since no future
-call site would ever exercise the patched comparison.
-
-**Reversible:** yes — if a future iteration finds value in also patching `j11_stage_c.py`'s inert capture
-for documentation/consistency, that is a small additive change; nothing in this iteration's Stage D work
-depends on `j11_stage_c.py` being touched, and no evidence or artifact from Stage C is altered either way.
-
-## iter-14 — goal-decomposer (AVB counterfactual B's "raw provider close" is derived arithmetically, never re-fetched)
-
-**Ambiguity:** The coordinator's three counterfactual ADV representations name "B: raw provider close ×
-raw provider volume" without saying how to obtain a raw (unbridged) provider close for 2026-08-11/12,
-when only the bridged close is stored in `daily_prices` and AG-9's recovery-fetch exception is exhausted
-(no new network call is authorized).
-
-**We chose:** Derive representation B's close arithmetically as `stored_bridged_close / bridge_factor`
-(the persisted `2.7930001225759193` from `runs/goal-market-compass-iter-9/j10-population-evidence.json`),
-never via a new fetch. Reasoning: `j10_recovery.py`'s bridge step is a single scalar multiply applied to
-all four OHLC fields and explicitly never to volume (verified: `volume=b.volume` unchanged at the
-application site) — the transform is invertible with the already-known, already-persisted factor, so the
-"raw provider" scale is fully recoverable from stored data without touching the network, AG-9, or J-10's
-closed status. Volume for both A and B is identical (the same stored value), since volume was never
-bridged in either direction — this is itself a finding the diagnostic must state plainly, not obscure.
-
-**Reversible:** yes — this is a read-only arithmetic derivation choice for a diagnostic artifact; it
-mutates nothing, and if the developer's own re-derivation of the bridge application disagrees (finds
-volume WAS touched, or finds the multiply was not a single uniform scalar), the spec's own TC requires
-reporting that correction and re-deriving representation B correctly rather than trusting this entry.
-
-## iter-14 — goal-evaluator (overturning four lanes' AVB-B to AVB-D on the volume half)
-
-**Ambiguity:** The iteration spec's Goal 4 defines AVB-B as "material effect, but the canonical stored
-convention is internally consistent" and AVB-D as "evidence insufficient — STAGE D NOT READY, do not
-guess", without saying whether "internally consistent" may be established from the transform's CODE
-(what J-10 did) plus contract text (`docs/goal.md`: "volume is not a price and is not scaled"), or must
-be established from MEASUREMENT of the stored series (the spec's own TC-21 says "from the stored series
-itself, never from finance convention alone"). The developer, reviewer, QA and auditor all landed on
-AVB-B; the auditor explicitly noted that on the artifact's own evidence it is "AVB-D territory".
-**We chose:** AVB-D, i.e. `J-11 STAGE D READY: NO`. Reasoning: (a) the code and the contract establish
-what J-10 DID and that it was authorized, not that the RESULT is on one consistent basis — which is
-what AVB-B asserts; (b) the artifact's classifier never reads volume and cannot emit the one label that
-would flag a volume problem, so its "+raw" half is an assertion, not a measurement; (c) the auditor's
-two rescuing props do not survive checking (the calibration series does carry volume —
-`j10_recovery.py:643` + `yahoo_provider.py:351-369`; the pool-wide check excludes the only symbol at
-risk); (d) the deciding measurement was discarded in iteration 9 (`j10_recovery.py:644` kept only
-`b.close`) and now needs a network call AG-9 forbids; (e) my own read-only statistics lean the other
-way on 2026-08-11 (deflating by the exact bridge factor moves it from the 98.7th to the 39.8th
-percentile of AVB's own distribution) and the provider demonstrably re-based AVB's price series between
-the ingest and the comparison fetch. Fail-closed is the goal file's own posture throughout J-10/J-11.
-What I explicitly did NOT do: claim AVB-C (the "materially affects canonical Stage D output" half is
-not met — the traced impact is bucket E→E, admission unchanged, eligibility False→False), or assert
-that the volume IS wrong.
-**Reversible:** yes — one bounded read-only comparison fetch of AVB's volume for already-stored days
-(one dated goal.md amendment) settles it either way, and a dated owner acceptance of the residual
-reaches the same place without any fetch; nothing is mutated, deleted or foreclosed by recording NO,
-and the AVB rows themselves are untouched.
-
-## iter-14 — goal-evaluator (recording the in-iteration evidence overwrite as a CRITICAL but RESOLVED anti-goal entry)
-
-**Ambiguity:** A new test overwrote three committed iteration-13 Stage C evidence files — the class of
-act AG-17 ("the incident record ... MUST NOT be deleted, rewritten") and ruling C5 ("do not rewrite ...
-incident evidence") forbid. But it never shipped: the reviewer FAILed the iteration, the files were
-restored byte-for-byte, and the root cause was fixed inside the same iteration. `docs/goal.md` does not
-say whether a violation caught and fully reversed within its own iteration belongs in the ledger at all,
-and a `critical` + `unresolved` pair would mechanically force a REGRESSION halt.
-**We chose:** record it, severity `critical`, `resolved: true`, with the mechanism and the restoration
-proof preserved verbatim. Reasoning: (a) omitting it would make the ledger dishonest about what the
-iteration actually did to the repository; (b) the `resolved` flag's operative question is whether the
-violation still demands action, and it does not — three parties plus my own `git status --porcelain`
-check confirm the byte-for-byte restoration; (c) this matches the session's own precedent (the iter-8
-entry was resolved after the damage was undone byte-for-byte), whereas the iter-11 entry was resolved
-only by an explicit owner acceptance because the damage was NOT undone.
-**Reversible:** yes — one boolean, with the full original evidence text retained, so the owner or a
-later evaluator can flip it back at no cost.
-
-## iter-14 — goal-evaluator (STALLED again, when a non-owner-owned honesty fix demonstrably exists)
-
-**Ambiguity:** Iteration 13 returned STALLED partly because ruling C10 reserved an owner inspection
-point; the owner answered by commissioning this hardening iteration, so that particular gate is spent.
-Real, non-destructive, non-owner-owned work exists right now (close the classifier gap, give the
-readiness artifact a producer, port the missing negative tests, commit the artifacts), which reads like
-CONTINUE on the methodology's C.5.
-**We chose:** STALLED, with the honesty fix offered as explicit option (c). Reasoning: (a) that work
-cannot change the answer — re-running the corrected classifier on the same inputs still has no volume
-comparable and still lands on AVB-D, so it converts a dishonest YES into an honest NO and stops there;
-(b) every path that can actually clear the gate is human-owned — a new AG-9 amendment for a bounded
-comparison fetch, a dated acceptance of the residual, or a rewording of the gate — and C.2 sits above
-C.5 with first-match-wins; (c) Stage D itself still requires a separate, fresh owner instruction by the
-owner's own C10/A12 pattern, so a CONTINUE would let the engine plan the one iteration that is
-forbidden; (d) `docs/goal.md`'s Loop-mechanics gate shuts every other product/research/browser lane
-until Stage G. What I explicitly did NOT do: hide the tractable work or call it illegal — it is named
-as its own option and as a mechanical rider.
-**Reversible:** yes — one owner line (or an instruction plus `--resume`) restarts the session with
-nothing repaired, nothing lost and no status changed.
-
-## iter-15 — goal-decomposer (the "compensating" volume hypothesis's exact arithmetic)
-
-**Ambiguity:** The coordinator's Goal 3 asks for "whatever bridge-adjusted comparison tests whether price and volume rebasing compensate" and an "expected inverse volume ratio where relevant," without stating the exact formula. `docs/goal.md`/AG-9's dated exception #2 authorizes the fetch but not a specific compensation formula, and J-10's own evidence never modeled volume at all, so there is no precedent in this codebase for what "compensating" means numerically.
-
-**We chose:** Modeled the compensating hypothesis as a reverse-split-like rebase where price and share-count-traded move inversely: `expected_inverse_volume_ratio = 1 / bridge_factor`, i.e. `volume_ratio = stored_volume/provider_volume` should land near `1/bridge_factor` under "bridged+compensating" (dollar volume `close*volume` approximately conserved across the rebase), versus near `1` under "bridged+raw" (volume never transformed) and near `1` for both ratios under "raw+raw". This spec instructs the tolerance to reuse the SAME relative-tolerance idiom the existing calibration-window price-ratio check already uses, as a named, documented module-level constant.
-
-**Reversible:** yes — this is a diagnostic formula choice, not a decision affecting any persisted row. The spec explicitly requires the developer to treat this as a testable hypothesis validated against the REAL fetched evidence (Goal 2), not an assumption to encode blindly; if the fetched data implies a different rebase mechanic (e.g., a non-inverse relationship), the classifier must follow the actual evidence and the dev handoff must record the correction, per this iteration's own fail-closed, evidence-over-assumption posture.
-
-## iter-15 — goal-decomposer (readiness-time identity re-derivation vs the binding "do not redo" protection on iteration 14's frozen artifact)
-
-**Ambiguity:** `iteration-state.md`'s binding "Do not redo" list protects `runs/goal-market-compass-iter-14/j11-stage-d-attempt-identity.json` ("recompute at Stage D freeze time, never hardcode") and the coordinator's Goal 9 separately asks this iteration to "recompute and report the current engine identity honestly" for readiness purposes while explicitly forbidding treating it as a frozen, reusable Stage D execution identity. It is not stated whether re-deriving the identity again THIS iteration, for a different (readiness-reporting) purpose, counts as "redoing" the protected iteration-14 item.
-
-**We chose:** Re-deriving the identity again this iteration is NOT a violation of the "do not redo" protection, because the protected item is Stage D's own freeze-for-execution act (a specific, consequential, do-not-repeat operational step), not the general capability of computing `engine_identity` read-only. This spec requires the re-derivation to be written to a distinctly-purposed artifact (this iteration's own fresh preflight capture, under `runs/goal-market-compass-iter-15/`) carrying explicit `readiness_time_only: true` / `authorizing: false` / `reusable_for_stage_d_execution: false` fields, and forbids writing it anywhere a future Stage D freeze would read as a pre-existing frozen value — so iteration 14's artifact stays untouched and un-superseded as the historical record of ITS OWN attempt, while this iteration's observation is clearly a new, separate, non-binding reading.
-
-**Reversible:** yes — this is a labeling/scoping choice for a read-only observation; it deletes nothing, mutates nothing, and does not freeze any value a future Stage D could accidentally inherit. If a future decomposer or the owner judges even a readiness-time re-derivation should be avoided, that is a one-line spec change with no prior evidence to unwind.
-
-## iter-15 — goal-evaluator (keeping J-10 `passing` after measuring a real defect in its own output)
-
-**Ambiguity:** J-10 "Bounded recovery of the two deleted trading days" is recorded `passing` and was
-explicitly CLOSED by the owner (`docs/goal.md`, 2026-08-24: "J-10 is closed and MUST NOT be reopened").
-This iteration's authorized fetch proves, for the first time from measurement rather than inference, that
-J-10's own output is defective for AVB: it multiplied the close by the bridge factor 2.7930 and wrote the
-provider's untouched volume beside it, while Trendora's own stored convention on the four surrounding days
-divides volume by the same factor (dollar_volume_ratio ~1.0000 there vs exactly 2.7930 on the two
-recovered dates). So a journey recorded `passing` demonstrably produced two bars whose dollar volume is
-2.793x too high. `docs/goal.md` does not say whether a closed journey's status may be reopened by a later
-measurement of its output.
-
-**We chose:** keep `passing`, do NOT re-stamp `last_verified_iter`, and record the full measurement as a
-prominent caveat in J-10's `gap` plus in `eval.md`'s journey table and the iteration-state digest.
-Reasoning: (a) the methodology's REGRESSION trigger requires a journey to MOVE `passing` -> `failing` from
-this iteration's verification, and under maintenance isolation NO journey was tested at all — the
-methodology's own carve-out says never `failing`/`regressed` on that basis; (b) nothing that worked stopped
-working and no stored value moved — the condition has been in the data unchanged since iteration 9, so
-this iteration measured it rather than caused it; (c) the owner's own ruling closed J-10, and flipping its
-status would reopen it in substance, which the ruling forbids by name; (d) the finding already has a
-correct home with real consequences — it is exactly what J-11's AVB-C gate is blocking on, so it is
-recorded where it actually gates work rather than where it would only relitigate a closed decision. What I
-explicitly did NOT do: soften the finding, describe it as hypothetical, or let `passing` stand without the
-caveat attached — the J-10 gap now states the measurement, the 2.793x figure, and the honest nuance
-(deflated, 2026-08-12 is still a ~96.9th-percentile share day, so only the DOLLAR figure is unambiguously
-wrong; 2026-08-11 is almost entirely a scale artifact) so no later reader can take `passing` to mean AVB's
-recovered bars are on the right basis.
-
-**Reversible:** yes — one string. Every figure, the derivation and the full narrative are preserved in the
-journey history and the evaluator log, so the owner or a later evaluator can reclassify at no cost and with
-nothing to re-derive.
-
-## iter-15 — goal-evaluator (STALLED again, when the tractable non-owner work is now a SAFETY item)
-
-**Ambiguity:** Iterations 13 and 14 both returned STALLED while acknowledging tractable non-owner work
-existed; both times that work was cosmetic-to-moderate (honesty fixes, negative tests) and provably could
-not change the gate's answer. This iteration is different in kind: the tractable work now includes the
-auditor's B1 — a pre-boot guard preventing an irreversible unauthorized write that is ARMED RIGHT NOW and
-can fire from an ordinary act (anyone starting the backend), with no decision required for it to happen.
-That is a much stronger pull toward CONTINUE with a safety target than iters 13/14 faced, and
-`docs/goal.md`'s Loop-mechanics gate arguably permits it ("plus explicit prerequisites such as the
-depth/safety control").
-
-**We chose:** STALLED, with the B1 guard promoted to the FIRST item of the recommendation — ahead of the
-AVB decision itself, and ahead of where the auditor placed it in emphasis. Reasoning: (a) the methodology's
-tree is first-match-wins and C.2 matches — every route through the CURRENT blocker (the AVB convention) is
-owner-owned, and Stage D is an irreversible step needing sanction by the plan's own C10/A12 pattern; (b)
-the B1 guard is not pure engineering — what it should do (refuse to boot? boot read-only? keyed on which
-condition?) is a design decision about application behaviour, and the auditor reached the same conclusion
-independently from a different direction; (c) the mechanical consequence is ASYMMETRIC IN THE SAFE
-DIRECTION here, unlike a normal stall: a stopped engine starts no backend, so halting is strictly safer for
-B1 than continuing, whereas CONTINUE puts the decomposer one step from the unauthorized rebuild; (d) B1
-cannot change the gate's answer either — it protects the gate's preconditions, it does not clear them.
-What I explicitly did NOT do: bury B1, call it out of scope, or leave it at the auditor's priority — I
-raised it above the AVB decision in the recommendation precisely because it is the only item that can go
-wrong without anyone deciding anything.
-
-**Reversible:** yes — one owner line (or an instruction plus `--resume`) restarts the session with nothing
-repaired, nothing lost and no status changed; if the owner prefers the guard built first, that is option
-one of the recommendation and needs no rework here.
-
 ## iter-16 — goal-decomposer (grounding the AVB correction formula in the diagnostic's own already-proven transform)
 
 **Ambiguity:** The coordinator's ruling states the corrected values "must be derived deterministically from the already-committed iteration-15 provider evidence... and the proven surrounding stored convention" but deliberately does not prescribe the formula or the literal corrected values — "deriving them is the implementation's job." Two evidence-grounded formulas are numerically available at plan time: `corrected_volume = stored_volume_before / bridge_factor` (since `stored_volume_before` currently equals the raw provider volume on both bad dates) or `corrected_volume = provider_volume / bridge_factor` (reading the provider figure directly from the iteration-15 fetch artifact). These are numerically identical today but conceptually different derivations.
@@ -606,3 +420,108 @@ designed.
 **Reversible:** yes — nothing is mutated by this reading; if the owner intends the value reading, the
 remedy is an owner ruling recorded in `docs/goal.md`, and the eleven rebuilt runs' membership is already
 recorded independently of the stamp.
+
+## iter-20 — goal-decomposer (scoping this iteration to Stage E alone, not Stage E+F or E+F+G)
+
+**Ambiguity:** `docs/goal.md`'s Stage D→G ruling authorizes the full Stage D→E→F→G sequence in one
+instruction and frames it as one continuous "Goal Mode resume" (item 13), and item 7 authorizes Stage E
+unconditionally once Stage D succeeds — so no further owner action gates starting it. But as iteration
+19's own logged assumption entry already established for Stage D, nothing in the ruling requires the
+authorized sequence to be delivered inside one decomposer iteration/dispatch, and nothing forecloses a
+future decomposer from continuing to split it stage-by-stage.
+
+**We chose:** scope iteration 20 to Stage E alone — re-verify Stage D's frozen state fresh, repair
+forward-return holes over the retained + rebuilt snapshot set, and STOP with the item-14 terminal-outcome
+status lines — leaving Stage F (cache invalidation) and Stage G (full verification/acceptance gate) to
+later iterations. Reasoning: (a) this is the exact discipline iteration 19 already established and logged
+for Stage D, and every prior J-11 stage/step in this session (B1, Stage C, the AVB correction, the guard
+build, the table-create-and-arm, Stage D) has been its own iteration; (b) Stage E has its own distinct
+live-database mutation with its own failure mode (a three-population forward-return classification, and a
+real risk — found during this planning pass — that the wrong existing entry point could mint a
+`ScannerRun` outside the eleven-date incident boundary) that deserves focused reviewer/auditor attention
+undiluted by Stage F's separate cache-invalidation risk surface (seven named caches, each requiring its
+own disposition proof); (c) the decomposer's own priority rubric forbids bundling two risky changes in one
+diff, and Stage F is easily large enough on its own to count as a second risky change.
+
+**Reversible:** yes — if Stage E's live execution succeeds cleanly this iteration, nothing about stopping
+there forecloses Stage F/G in a later iteration; if a future decomposer judges the stages should have been
+combined, no work already done needs to be undone, only continued.
+
+## iter-20 — goal-decomposer (requiring the per-run `backfill_run_forward_returns` loop; forbidding `backfill_forward_returns()`'s whole-DB entry point for Stage E)
+
+**Ambiguity:** `docs/goal.md` J-11 step 5 names two existing functions side by side — "run the existing
+create-once canonical forward-return machinery (`forward_testing.backfill_forward_returns` /
+`backfill_run_forward_returns`...)" — without stating which one Stage E's execution should call, or
+whether the choice matters.
+
+**We chose:** require the execution module to iterate every existing `ScannerRun` (retained + the 11
+Stage-D-rebuilt rows) and call `forward_testing.backfill_run_forward_returns(session, run, config)` once
+per run, and forbid calling `forward_testing.backfill_forward_returns()`'s whole-database entry point
+anywhere in the new module or its CLI script. Reasoning: (a) reading `forward_testing._backfill()` (the
+function `backfill_forward_returns()` delegates to) directly shows that BEFORE it inserts any forward
+return, it first "ensures a persisted snapshot for every walk-forward cadence date" by calling
+`scanner.run_scan` for any `walk_forward_asof_dates()`-computed date lacking an existing `ScannerRun`,
+guarded only by the J-11 boundary check for dates that happen to be incident dates;
+`walk_forward_asof_dates()` computes a `quarterly`, 30-year cadence grid independent of the scanner's own
+`monthly` deep-cadence snapshot schedule, so nothing already on record proves every one of its target
+dates already carries a run — calling the whole-DB entry point risks minting a `ScannerRun` outside the
+11-date incident boundary as a side effect, which the ruling's item 7 forbids ("may not... broaden into
+unrelated historical cleanup") and which no lane in this session has yet audited; (b)
+`backfill_run_forward_returns()` performs the identical create-once forward-return INSERT with no such
+side effect (its own docstring: "it never UPDATEs a `scanner_runs` / `scanner_results` / `*_scores`
+row"), and per step 5's own wording this per-run path, applied "over the retained + rebuilt snapshot set,"
+is sufficient to fill every derivable hole in both named hole populations; (c) this is exactly the class
+of gap this session's own lessons (iter-15, iter-18) warn against — trusting a hand-built or textually
+side-by-side summary of two functions instead of reading the called function's actual body before a live
+write.
+
+**Reversible:** yes — this is an implementation-path constraint on code not yet written; a future
+iteration could revisit it if live evidence later proves `walk_forward_asof_dates()`'s target set is
+provably a subset of already-existing runs, but the safer per-run path costs nothing today (same
+create-once semantics, same resulting rows, only a different iteration surface) and needs no retraction.
+
+## iter-20 — goal-evaluator (a harness permission refusal is not the ruling's "refusal")
+
+**Ambiguity:** `docs/goal.md` ruling item 14 puts the attempt into INCOMPLETE-and-STOP on "any failure,
+refusal or unmet gate from Stage D onward", and item 10 makes any such failure require a complete C→G
+restart. The developer's own first attempt to run the Stage E CLI was refused by Claude Code's Bash
+permission classifier BEFORE the Python process started (recorded, and retained as SUPERSEDED, in
+`runs/goal-market-compass-iter-20/j11-stage-e-live-execution-blocked.json`). The ruling never says
+whether a tooling-permission denial counts as the "refusal" that voids the attempt.
+
+**We chose:** read "refusal" as a refusal by the recovery machinery itself — a preflight gate refusing to
+proceed, the live guard refusing a write, an unmet acceptance check — and NOT as a harness-level
+permission denial. Reasoning: (a) the denial produced zero database side effects (I verified the
+pre-run count 6,797,728 independently three ways, and the whole 16,592-row insert forms one contiguous
+id block ending at the table maximum, so no earlier partial write exists); (b) the owner then executed
+the identical command themselves and it completed with every pre-check and post-check passing, so the
+attempt has exactly one live execution, not a failed one plus a retry; (c) the strict reading would force
+a complete C→G restart — re-deleting and re-regenerating eleven days — over an event that touched
+nothing, which cannot be the intent of a ruling whose failure semantics exist to prevent piecemeal
+half-repairs; (d) the developer correctly refused to work around the denial, which is the behaviour the
+rule protects.
+
+**Reversible:** yes — one owner line settles it. Stage E's write is additive and create-once/idempotent,
+so if the owner reads item 14 strictly, the remedy is a fresh whole-attempt restart and nothing recorded
+here needs to be undone or hidden; the retained SUPERSEDED marker preserves the full first-attempt record.
+
+## iter-20 — goal-evaluator (goal.md step 5's retained-run holes read as a mistaken premise, not an unmet requirement)
+
+**Ambiguity:** `docs/goal.md` J-11 step 5 asserts "So holes exist on retained runs" and requires the audit
+to distinguish population (b), "holes on otherwise-retained runs caused by the original 2026-08-11/12 bar
+deletion". Stage E inserted ZERO rows on all 3,117 retained runs. The goal text does not say what it means
+if that population turns out to be empty — a correct outcome, or a repair that did not happen.
+
+**We chose:** score population (b) = 0 as CORRECT and complete, not as an unmet requirement, on the
+strength of my own re-derivation (the cascade deletes an affected run's forward returns whole, so a
+retained-run hole cannot exist; live data shows zero non-rebuilt rows measuring into 2026-08-10/11/12).
+Reasoning: (a) the requirement is to REPORT the three populations with their own counts, which was done;
+(b) the alternative reading would demand fabricating rows to reach a non-zero count, which the same step
+forbids outright ("Never fabricate a forward return to reach row-count parity"); (c) the premise is a
+factual claim about the code, and the code says otherwise. What I explicitly did NOT do: treat this as
+harmless — I carried it forward as a binding design input for Stage G, whose acceptance list will ask
+whether the forward-return holes were repaired.
+
+**Reversible:** yes — nothing is mutated by this reading; if the owner wants the premise re-examined, the
+underlying evidence (the cascade code path and the live grouped counts) is recorded and re-runnable
+read-only, and no row was created or withheld on the strength of the interpretation.

@@ -1,0 +1,14 @@
+{
+  "certified_row_count": 24,
+  "checked_at": "2026-08-26T21:06:41.759937+00:00",
+  "diff": {
+    "equal": true,
+    "extra_ids": [],
+    "mismatches": [],
+    "missing_ids": [],
+    "post_row_count": 24,
+    "pre_row_count": 24
+  },
+  "live_row_count": 24,
+  "ok": true
+}

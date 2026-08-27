@@ -1,28 +1,39 @@
 # Iteration State — market-compass
 
-**After iteration:** 19 · **Date:** 2026-08-26 · **Verdict:** CONTINUE
+**After iteration:** 20 · **Date:** 2026-08-27 · **Verdict:** CONTINUE
 
 ## Journeys
 
-3 passing (J-01 J-04 J-10) · 6 partial (J-02 J-03 J-05 J-06 J-09 J-11) · 2 failing (J-07 J-08) — 11 total. No journey tested this iteration (maintenance isolation forbade browser QA + replay); all statuses carried, not re-verified. Anti-goal ledger: 7 total, 0 unresolved.
+3 passing (J-01 J-04 J-10) · 6 partial (J-02 J-03 J-05 J-06 J-09 J-11) · 2 failing (J-07 J-08) — 11 total. Iter-20 ran
+under maintenance isolation (browser QA + replay forbidden by contract): ALL statuses carried, none re-verified, none promotable. J-04 keeps `evidence_makeup: true` (capture defect only).
 
 ## Active blockers
 
-- **J-11 Stage E is the next AUTHORIZED step** (owner ruling 2026-08-26, commit `5fe72f5c`, items 1/7/8/9 approve D→G). Owner: dev. No new human approval is needed to start it.
-- **App + browser lane stay OFF until Stage G passes** (ruling item 4 + Loop mechanics). Owner: human operator — keep `CHAIN_MAINTENANCE_ISOLATION=true` and `CHAIN_REQUIRE_FULL_DEPTH=true` on every resume.
-- **Stage G design blocked until the stamp question is settled** (auditor B1): `engine_identity` `53d2ffd1…` is just the current engine's stamp and cannot prove attempt membership. Use the recorded set — `scanner_runs` ids **3148–3158**, created 2026-08-26 10:52:55.552946 → 10:53:02.010362Z — and assert no twelfth run carries that stamp. Owner: owner ruling in `docs/goal.md`.
-- **Two live write paths still unguarded, deferred by ruling item 5:** `scanner.resolve_run` (`scanner.py:338-347`) and `data_manager`'s backfill. Post-Stage-G hardening. Owner: owner.
+- **Live write paths reachable from any page request (human-deferred, `docs/goal.md` ruling item 5).** `scanner.py:338-348`
+  creates a day-record for any `?as_of=` with NO quarantine check (zero boundary refs in that file — verified);
+  `compass.py:1041-1060` mints a saved briefing for any non-newest date, and 7 of the 11 incident dates have none while
+  2026-08-12 is now the frontier. KEEP BACKEND + FRONTEND + BROWSER QA OFF through Stage G; do NOT patch these.
+- **Normal Market Compass work (J-01..J-09, esp. J-07/J-08) blocked until Stage G passes** (item 12).
+- Binding launch conditions for D→G (item 13): `CHAIN_MAINTENANCE_ISOLATION=true` + `CHAIN_REQUIRE_FULL_DEPTH=true`.
+  Depth MUST be `full`; `lean` is not equivalent.
 
 ## Last 2 verdicts
 
-- iter 19: CONTINUE — Stage D executed live and cleanly (11 runs, ids 3148-3158, one stamp); evaluator re-derived every figure read-only and cross-diffed the whole DB against iter-18's end sweep: exactly the 4 authorized tables changed. Nothing failed, so the ruling's STOP trigger never fired.
-- iter 18: STALLED — boundary ACTIVE + guard ARMED achieved, but Stage D was not yet authorized.
+- iter 20: CONTINUE — J-11 Stage E executed live and cleanly (+16,592 forward returns on the 11 rebuilt runs; nothing
+  outside `forward_returns` moved). Stage F is already authorized by ruling item 8, so no human action gates the next step.
+- iter 19: CONTINUE — J-11 Stage D executed live and cleanly (11 runs, ids 3148-3158, one frozen identity).
 
 ## Do not redo
 
-- **Stage D is DONE and verified** — never re-run `run_j11_stage_d_execute.py`, re-freeze the identity, or restamp any run. Evidence: `runs/goal-market-compass-iter-19/j11-stage-d-execute-*.json`.
-- **Do not re-derive** raw-price immutability, manifest immutability, or the legacy/NULL run populations for iterations ≤19: `daily_prices` fingerprint `80441b37…` unchanged, all 24 manifests content-identical to the iter-16 certified baseline, identity split 34/3083/11 intact.
-- **Do not create or re-arm** the `maintenance_boundaries` row — live, ACTIVE, exactly 11 dates, verified.
-- **Do not touch** `apps/backend/app/api/*`, `scoring.py`, `sectors.py`, `compass.py`, `data_manager.py` — their untouched state is the only basis J-01/J-04/J-10 carry forward on.
-- **The identity equality is settled, not a defect** — recomputed from disk, mathematically forced (provenance files last changed iter-12, `config.yaml` iter-4). See the Stage G blocker above instead.
-- **J-04's screenshot is a known capture defect** (`evidence_makeup: true`) — re-capture as a passenger task when browser QA resumes, never as an iteration goal.
+- **Stage D — DONE, verified live.** Runs 3148-3158 on the 11 `INCIDENT_DATES`, created 2026-08-26
+  10:52:55.552946-10:53:02.010362, all stamped `53d2ffd1…`. Re-verify read-only; never re-run.
+- **Stage E — DONE, verified live (iter-20).** `forward_returns` 6,797,728 → 6,814,320, ids 6,844,114-6,860,705, per-run
+  2771/2769/2216/2215/1659/1658/1103/1103/549/549/0; idempotent — never "resume from the next unfinished run".
+  Evidence: `runs/goal-market-compass-iter-20/j11-stage-e-execute-*.json`.
+- **Population (b) = 0 is CORRECT, not a missing repair** — retained-run holes are structurally impossible
+  (`data_manager.py:1967-2011` + `:2173-2177` delete an affected run's rows whole), so step 5's "holes exist on retained
+  runs" is a mistaken premise; Stage G accepts zero without weakening its gate.
+- **Boundary + live pre-boot guard — ACTIVE/ARMED, verified.** `j11-incident-recovery`, `active=1`, exactly the 11 dates,
+  unchanged since 2026-08-25. Never re-arm, re-create or deactivate before Stage G.
+- **Carry into the Stage G spec (audit B1/B2/B5):** preflight must compare `created_at` AND assert one run per incident
+  date; needs a content-level instrument for `scanner_results`/`sector_scores`/`theme_scores`/`data_provider_runs`/`watchlist`; must record why 16,566 deleted became 16,592 restored (+26).

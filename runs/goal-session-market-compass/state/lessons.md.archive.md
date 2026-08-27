@@ -417,3 +417,20 @@ true-end mtime now — one `stat` proving the single authorized write was the on
 **Applies to:** any future destructive maintenance iteration (J-11 Stages D/E/F), and any "we wrote
 nothing" or "we wrote only X" claim on `trendora.db`.
 
+
+<!-- condense.sh 2026-08-26T15:14:37Z: moved 1 entries (keep-iters=5) -->
+
+## iter-14 — 2026-08-25T01:15:00Z
+
+**Verdict:** STALLED
+**Lesson:** A classifier whose vocabulary contains a label it can never emit has already decided. The
+AVB diagnostic (`apps/backend/app/engine/j11_avb_diagnostic.py:159-267`) offers four labels including
+`bridged+compensating` — the only one that could flag a volume problem — but no code path can produce
+it, because the function never reads `volume` at all; it also reports `volume_a_equals_b: true` as a
+finding when `volume_b` is literally assigned `stored_volume`. Both signatures — an unreachable branch
+and a tautological assertion — are cheap to grep for and each one silently converted an untested half
+of a question into a "proven" answer that four review lanes accepted.
+**Applies to:** any iteration that adds a classifier, gate, or verdict function — before trusting its
+output, check that every label/branch in its declared vocabulary is reachable from its actual inputs,
+and that no reported "finding" is true by construction.
+

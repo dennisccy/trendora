@@ -131,16 +131,7 @@ compared, and against what.
 **Applies to:** any future destructive maintenance iteration (J-11 Stages D/E/F), and any "we wrote
 nothing" or "we wrote only X" claim on `trendora.db`.
 
-## iter-14 — 2026-08-25T01:15:00Z
-
-**Verdict:** STALLED
-**Lesson:** A classifier whose vocabulary contains a label it can never emit has already decided. The
-AVB diagnostic (`apps/backend/app/engine/j11_avb_diagnostic.py:159-267`) offers four labels including
-`bridged+compensating` — the only one that could flag a volume problem — but no code path can produce
-it, because the function never reads `volume` at all; it also reports `volume_a_equals_b: true` as a
-finding when `volume_b` is literally assigned `stored_volume`. Both signatures — an unreachable branch
-and a tautological assertion — are cheap to grep for and each one silently converted an untested half
-of a question into a "proven" answer that four review lanes accepted.
+## iter-14 — 2026-08-25T01:15:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration that adds a classifier, gate, or verdict function — before trusting its
 output, check that every label/branch in its declared vocabulary is reachable from its actual inputs,
 and that no reported "finding" is true by construction.
@@ -322,3 +313,20 @@ content comparison on the one table whose immutability is an anti-goal (all 28 c
 in-place UPDATE (auditor B2). Normalize ORM-vs-sqlite serialization first (datetime `T` separator, bool
 `False` vs `0`) or the comparison false-alarms.
 **Applies to:** any evaluator or auditor scoring a live-database write iteration in this session.
+
+## iter-20 — 2026-08-27T04:20:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** `docs/goal.md` J-11 step 5 states as fact that the incident left forward-return holes on
+retained (non-incident) runs. It is wrong about this codebase: `data_manager._cascade_targets`
+(`apps/backend/app/engine/data_manager.py:1967-2011`) invalidates a run when ANY of its `ForwardReturn`
+rows measures into a removed bar date, and `remove_price_data` (`:2173-2177`) then deletes that run's
+rows WHOLE — so a run that would carry a partial hole is deleted entirely and becomes an incident date.
+A retained-run hole is structurally impossible, and the live data agrees (zero non-rebuilt rows measure
+into 2026-08-10/11/12). Three lanes reached the right "zero" answer via a 15-combination single-calendar
+enumeration, which is not exhaustive because `measured_date` resolves PER SYMBOL (run 3154 horizon 1
+splits into 2026-08-04 for 428 symbols and 08-05 for 124).
+**Applies to:** any iteration whose acceptance criteria are copied from a `docs/goal.md` factual premise
+about how the code behaves — re-derive the premise from the code path before scoring "requirement unmet"
+or "requirement met"; specifically, J-11 Stage G must treat population (b) = 0 as the CORRECT answer,
+not a missing repair, and must not weaken its gate to accommodate a premise that was never true.

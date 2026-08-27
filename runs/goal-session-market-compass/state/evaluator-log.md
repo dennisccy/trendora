@@ -1499,3 +1499,105 @@ let a forbidden test lane run is still unfixed in `scripts/automation/` — elev
 avoided it with the maintenance-isolation contract rather than curing it; and `goal_gate.py`'s
 duplicate-journey-heading defect is still unfixed and must be closed before any GOAL_ACHIEVED
 certification.
+
+## Iteration 20 — goal-market-compass-iter-20
+
+**Date:** 2026-08-27T04:20:00Z
+**Verdict:** CONTINUE
+**Depth dispatched:** full (`runs/goal-session-market-compass/iter-20/depth-dispatched` reads `full`,
+matching the spec's own `Depth: full` line — the silent full→lean demotion that fired in iters 2, 6 and 8
+did NOT recur, for the twelfth iteration running, and neither did the forbidden browser/replay lane; the
+engine recorded its refusal in `iter-20/maintenance-isolation-refusals` at 2026-08-26T21:40:14Z)
+
+**Owner-facing lines:** `J-11 STAGE D EXECUTED: YES` · `J-11 STAGE E COMPLETE: YES` ·
+`J-11 STAGE F COMPLETE: NO` · `J-11 STAGE G VERIFIED: NO` ·
+`J-11 INCIDENT STATUS: NOT REPAIRED — ATTEMPT INCOMPLETE` · `J-11 MAINTENANCE BOUNDARY: ACTIVE` ·
+`J-11 LIVE PRE-BOOT GUARD: ARMED`. All confirmed by this evaluator against the live database,
+read-only, with no correction needed.
+
+**Journey deltas:**
+- Newly passing: none. Newly failing: none. **Regressed: none.**
+- **Advanced within `partial`: J-11** "Incident-bounded clean regeneration of derived state" — this
+  iteration's sole target. Stage E executed live and completely; Stages F/G untouched. Re-stamped
+  `last_verified_iter` to iter-20; `spec_hash` UNCHANGED at `01e69865…` — I ran
+  `goal_gate.py hash-journeys` myself and **all eleven** journeys' hashes are byte-identical to the
+  recorded ones, so `docs/goal.md` has not moved since iteration 19 and no `journeys-changed.md` fired.
+  The 2026-08-26 ruling (commit `5fe72f5c`) is the same text iteration 19 scored against; Stage E
+  needed no amendment, and none was made.
+- Carried, NOT re-verified (maintenance isolation — browser QA and the replay lane were forbidden by
+  contract, so every journey keeps its prior recorded status): J-01, J-04, J-10 stay `passing`; J-02,
+  J-03, J-05, J-06, J-09 stay `partial`; J-07, J-08 stay `failing`. Two spot-checks: J-01's iter-4
+  screenshot (GRMN carries a real stored sector label, scores badged "Not yet proven") and J-10
+  re-derived read-only (585 `daily_prices` rows on each of 2026-08-11/12; AVB volumes 554757 / 3706010
+  intact; whole-table count 3,310,374 and value total 52,367,098,848,872.56 identical to iter-19's
+  record). Both consistent. J-04 keeps `evidence_makeup: true` — no capture was possible this iteration.
+- Anti-goal violations: **NONE new.** Ledger unchanged at **7 total, 0 unresolved.** AG-5, AG-9, AG-12
+  and AG-17 were the four at real risk and all four HELD, each verified by my own greps, code reading
+  and read-only database queries.
+- Coherence: COHERENCE-PASS. Deterministic scan: CLEAN. Review: PASS_WITH_NOTES (two MINOR). QA: PASS.
+  Audit: PASS_WITH_GAPS (T1 IMPORTANT, fixed in-audit; B1/B2/B3/B4/T2 gaps; B5/B6/B7 observations).
+  Closure: CLOSURE-PASS.
+
+**Reasoning:** The one job the owner's written plan allowed was done, and it worked — and I did not take
+that from anyone's write-up. I opened the 8.4 GB database read-only and re-measured everything myself.
+16,592 missing performance records were filled in on the eleven damaged days, exactly the number the tool
+claimed. The single strongest thing I can say about the safety of that write is one nobody else reported
+and I re-derived: the new records sit in one unbroken block of ids ending at the very top of the table,
+holding nothing that belongs to any other day — so nothing else was written into that table during the
+run, and nothing after it. Everything outside the one repaired table is untouched: the day-records still
+number 3,128 with exactly one per damaged date, carrying the same ids and the same creation times to the
+microsecond as three iterations ago; all twenty-four saved briefings still date from 20 August; the raw
+price data reproduces its earlier total to the last decimal; and the quarantine is still switched on over
+exactly the eleven dates, unchanged since it was armed. I re-ran the tests myself: 55 passed. Two
+corrections against the material handed to me, plus one thing I found on my own. FIRST, the whole
+iteration turns on a claim that 3,117 surviving days needed no repair at all — a claim that, stated
+carelessly, would be the perfect cover for a job half done. Three lanes proved it by counting calendar
+combinations, which is the wrong instrument (measurement dates are resolved per company, not on one
+shared calendar, so the count is not exhaustive). The independent auditor found this and gave the right
+proof; I re-derived that proof myself from the deletion code rather than accepting it: a day that loses
+even one measurement bar is itself thrown away whole, so a surviving day carrying a partial gap cannot
+exist. The live data agrees exactly — zero surviving-day records point at any of the three dates where a
+gap could sit. SECOND, and this is mine: the plan's own text asserts those gaps DO exist on surviving
+days. It is simply wrong about this codebase. That matters for the final step, whose acceptance list will
+ask whether those gaps were repaired; the honest answer is "there were none", and if nobody writes that
+down now, the final step will either fail on a true statement or be quietly weakened. THIRD, the headline
+safety fact has got worse, not better, and I confirmed both halves in the code myself: asking any page for
+a damaged date still creates a day-record with no quarantine check whatsoever, and — because the newest
+stored day is now a rebuilt one — asking for any of the seven damaged days that have no saved briefing
+would permanently create one. That is the exact act the plan forbids by name. Only the app being off
+prevents it. Why CONTINUE rather than a halt? Because the next step needs no person's permission: the
+owner's written instruction authorizes Stage E, F and G in one ruling, and I read item 8 myself — Stage F
+follows a successful Stage E unconditionally. The instruction's "stop" is attached to a failure, a refusal
+or an unmet gate, and none happened: all four pre-checks passed, all eleven after-checks passed, the
+outcome file records success. Why not REGRESSION? Nothing that worked stopped working, no journey was
+tested so none could fail, not one value outside the single authorised table moved, and the ledger gained
+no entry. Why not ESCALATE? This run already used the full depth the owner's launch conditions require for
+the whole repair, and full depth is what produced these findings. One process fact: this is the eleventh
+iteration running where a later lane found what the earlier ones missed — and the third in a row where
+part of what was missed was missed by the independent auditor too, and found here.
+
+**Next-step recommendation:** DO THE NEXT REPAIR STEP — Stage F, refreshing the stored answers the app
+keeps in memory. Nobody needs to approve it; the owner's written plan already allows it once the step just
+finished succeeded, and it did. KEEP THE APP OFF AND KEEP BROWSER TESTING OFF — this is now more important
+than it was, not less. I checked both dangerous routes in the code myself: asking any page for a date
+still creates a day-record with no quarantine check, and asking for any of the seven damaged days that
+carry no saved briefing (12 and 13 May, 10, 13, 24 and 27 July, 3 August) would permanently create one.
+Only the app being off prevents either. THREE THINGS THE FINAL STEP MUST BE DESIGNED AROUND, recorded so
+nobody rediscovers them: (1) the plan's claim that surviving days carry gaps is false — the final check
+must read "zero" there as the right answer, not a missing repair; (2) the accident deleted 16,566 records
+and the repair created 16,592, and the 26-record difference is expected but written down nowhere — record
+it before the final check asks "is this complete?"; (3) the step's own safety check never compares the
+rebuilt days' creation times and never insists there is exactly one record per date — both hold today, I
+verified them, but a stray page request could still break them, so the final check needs a stronger
+version. SMALLER ITEMS, none of which changes the above: three of the tool's self-checks pass without
+testing anything (one compares zero against a hard-coded zero); one unused import; and the retained record
+of the blocked first attempt still ends with a stale "STAGE E COMPLETE: NO" line that a careless search
+would find. ONE MECHANICAL ITEM: this iteration's four new backend files and its whole evidence folder are
+still untracked in git at the time of scoring — confirm they reach version control. FIVE OLDER OWNER
+QUESTIONS remain open and non-blocking: whether 3.44 GB is acceptable for J-09; J-06's "underlying run
+unavailable" wording; the rewording of J-01's first two test steps; whether an empty "next-session focus"
+is acceptable; and whether MNST joins the recovery list. TWO STANDING FRAMEWORK NOTES: the defect that once
+let a forbidden test lane run is still unfixed in `scripts/automation/` — twelve iterations running have
+avoided it with the maintenance-isolation contract rather than curing it; and `goal_gate.py`'s
+duplicate-journey-heading defect is still unfixed and must be closed before any GOAL_ACHIEVED
+certification.
