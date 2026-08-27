@@ -2077,6 +2077,33 @@ manifest artifact (it must be self-describing and self-caveating).
        re-litigation of J-10/J-11 historical evidence. The next Goal Mode resume should decompose toward
        this final serving verification and then return to normal Market Compass product work.
 
+       #### Post-Stage-G launch-condition clarification
+       *(owner, 2026-08-27 — binding; clarifies THIS ruling, does not revise or delete anything earlier)*
+
+       The launch conditions in item **13. Launch conditions for Goal Mode recovery execution** of the
+       earlier "OWNER RULING — J-11 Stage D through Stage G recovery execution AUTHORIZED" (hereafter
+       §13) — `CHAIN_MAINTENANCE_ISOLATION=true` and `CHAIN_REQUIRE_FULL_DEPTH=true` — applied
+       **specifically to the now-completed Stage D → G live recovery execution**. Those requirements are
+       **SPENT**. They are **NOT** launch requirements for the separately authorized post-Stage-G
+       disposable-DB serving/replay verification defined in items 2-4 above. For that final verification:
+
+       - `CHAIN_MAINTENANCE_ISOLATION=true` **MUST NOT** be required, because the authorized task
+         explicitly requires real backend/frontend/browser/replay execution against the disposable
+         verification database — the exact activity maintenance isolation forbids.
+       - The canonical repaired database remains **OFF** and protected exactly as item 3 requires.
+         Backend/frontend/browser/replay may operate **only** against the disposable repaired-state clone.
+       - `CHAIN_REQUIRE_FULL_DEPTH=true` is **NOT** required for this final product verification; normal
+         Goal Mode evaluation depth may be used.
+       - Do **not** interpret removal of those D→G launch conditions as permission to boot or mutate the
+         canonical database.
+       - Do **not** reopen Stage D, E, F or G database recovery.
+
+       This clarification supersedes §13 **only** for the new post-Stage-G disposable serving-verification
+       task. §13 remains historically correct, preserved and unrevised as the launch requirement that
+       applied to the completed D → G execution. The sole purpose of this clarification is to prevent the
+       decomposer/evaluator from treating the completed recovery's launch environment as a blocker to the
+       one remaining browser/replay verification.
+
   - Acceptance:
     - Every item below is a required check, proven by named tests **plus** live read-only
       verification — not by narrative assertion in a handoff.
