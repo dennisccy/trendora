@@ -1,18 +1,18 @@
 # Goal Session Summary — market-compass
 
-**Final verdict:** ABORTED
-**Total iterations:** 21
-**Wall time (seconds):** 1650
+**Final verdict:** STALLED
+**Total iterations:** 23
+**Wall time (seconds):** 40398
 **Quota pauses:** 0
 **Started:** 2026-08-19T21:31:52.886915Z
-**Finished:** 2026-08-27T03:06:28.268224Z
+**Finished:** 2026-08-27T14:20:23.113521Z
 
 ## Branch
 
 This session pushed iteration commits to `goal/market-compass`. Open a PR with:
 
     gh pr create --base main --head goal/market-compass \
-      --title "feat: market-compass — ABORTED" \
+      --title "feat: market-compass — STALLED" \
       --body-file runs/goal-session-market-compass/summary.md
 
 ## Final journey state
@@ -444,23 +444,54 @@ See `runs/goal-session-market-compass/telemetry.jsonl` for the structured event 
       pump-wait                  0.3m
       unattributed (glue)        0.0m  (wall − agents(active) − quota)
   goal-market-compass-iter-21  depth=?  verdict=?  wall=?  (incomplete/interrupted attempt)
-  session: 20 completed iteration(s), mean wall 130.6m
-      total reviewer                  1213.3m
-      total developer                 1113.8m
-      total orchestrator               472.6m
-      total goal-decomposer            399.6m
-      total goal-evaluator             332.7m
-      total auditor                    300.0m
-      total coherence-auditor          160.4m
-      total iteration-summarizer       152.9m
-      total qa                         146.3m
+  goal-market-compass-iter-21  depth=full  verdict=CONTINUE  wall=307.7m
+      reviewer                   142.6m  calls=1
+      coherence-auditor           44.1m  calls=1
+      developer                   37.0m  calls=1
+      goal-decomposer             25.2m  calls=1
+      auditor                     18.7m  calls=1
+      goal-evaluator              17.5m  calls=1
+      ui-test-designer            10.4m  calls=1
+      orchestrator                 7.6m  calls=1
+      qa                           4.3m  calls=1
+      [engine] full-pipeline     220.8m  (contains agent time above)
+      [engine] showcase-join       0.0m  (contains agent time above)
+      pump-wait                  0.7m
+      OVER BUDGET at post-dev-fanout: 12749s > 3600s (mode=trim)
+      unattributed (glue)        0.2m  (wall − agents(active) − quota)
+  goal-market-compass-iter-22  depth=full  verdict=STALLED  wall=365.4m
+      reviewer                   198.6m  calls=2
+      developer                   72.3m  calls=2
+      auditor                     21.8m  calls=1
+      goal-decomposer             21.5m  calls=1
+      iteration-summarizer        17.2m  calls=2
+      goal-evaluator              15.0m  calls=1
+      ui-test-designer            12.9m  calls=1
+      qa                           5.9m  calls=1
+      coherence-auditor            4.7m  calls=1
+      orchestrator                 4.7m  calls=1
+      [engine] full-pipeline     316.4m  (contains agent time above)
+      [engine] showcase-join       0.0m  (contains agent time above)
+      pump-wait                  0.1m
+      OVER BUDGET at post-dev-fanout: 17833s > 3600s (mode=trim)
+      overlap saved              9.2m  (parallel steps)
+  session: 22 completed iteration(s), mean wall 149.3m
+      total reviewer                  1554.5m
+      total developer                 1223.1m
+      total orchestrator               484.9m
+      total goal-decomposer            446.3m
+      total goal-evaluator             365.2m
+      total auditor                    340.5m
+      total coherence-auditor          209.3m
+      total iteration-summarizer       170.1m
+      total qa                         156.5m
+      total ui-test-designer           146.9m
       total browser-qa-agent           145.4m
-      total ui-test-designer           123.6m
       total ui-impact-analyst           39.1m
       total demo-narrator               21.3m
       total readme-maintainer           11.1m
       total ux-regression-reviewer       7.2m
       total browser-qa-replay            6.5m
       total AWAITING_PUMP paused gaps: 503.0m
-      halts: AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, STALLED, REGRESSION_HALT, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, AWAITING_PUMP, STALLED, STALLED, STALLED
+      halts: AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, STALLED, REGRESSION_HALT, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, AWAITING_PUMP, STALLED, STALLED, STALLED, STALLED
 ```

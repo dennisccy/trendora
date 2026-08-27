@@ -7,9 +7,9 @@ scripts/automation/lib/retro_collect.sh — no model wrote this. Counters marked
 ## Outcome
 
 - **Terminal status:** STALLED
-- **Final verdict:** CONTINUE
-- **Iterations used:** 20
-- **Halted at (UTC):** 2026-08-26T14:51:13.414388Z
+- **Final verdict:** STALLED
+- **Iterations used:** 23
+- **Halted at (UTC):** 2026-08-27T14:20:23.113521Z
 
 ## Verdict sequence
 
@@ -35,6 +35,9 @@ iter 16: STALLED
 iter 17: STALLED
 iter 18: STALLED
 iter 19: CONTINUE
+iter 20: CONTINUE
+iter 21: CONTINUE
+iter 22: STALLED
 ```
 
 ## Agent economics
@@ -428,31 +431,91 @@ Per-step wall breakdown (analyze_telemetry.py --wall):
       pump-wait                165.8m
       OVER BUDGET at post-dev-fanout: 16335s > 3600s (mode=trim)
       unattributed (glue)        0.1m  (wall − agents(active) − quota)
-  session: 19 completed iteration(s), mean wall 136.2m
-      total reviewer                  1174.0m
-      total developer                 1085.3m
-      total orchestrator               463.2m
-      total goal-decomposer            381.8m
-      total goal-evaluator             312.2m
-      total auditor                    281.4m
-      total coherence-auditor          156.8m
-      total iteration-summarizer       152.9m
+  goal-market-compass-iter-20  depth=full  verdict=?  wall=?  (incomplete/interrupted attempt)
+      goal-decomposer             17.8m  calls=1
+      [engine] showcase-join       0.0m  (contains agent time above)
+      pump-wait                  0.3m
+  goal-market-compass-iter-20  depth=full  verdict=?  wall=?  (incomplete/interrupted attempt)
+      reviewer                    39.4m  calls=1
+      developer                   28.5m  calls=1
+      auditor                     18.6m  calls=1
+      ui-test-designer            11.6m  calls=1
+      orchestrator                 9.4m  calls=1
+      qa                           4.2m  calls=1
+      [engine] full-pipeline     111.8m  (contains agent time above)
+      [engine] showcase-join       0.0m  (contains agent time above)
+      (resume-skipped: goal-decomposer)
+      pump-wait                 40.1m
+      OVER BUDGET at post-dev-fanout: 4641s > 3600s (mode=trim)
+  goal-market-compass-iter-20  depth=full  verdict=?  wall=?  (incomplete/interrupted attempt)
+      [engine] showcase-join       0.0m  (contains agent time above)
+      [engine] full-pipeline       0.0m  (contains agent time above)
+      (resume-skipped: goal-decomposer)
+  goal-market-compass-iter-20  depth=full  verdict=CONTINUE  wall=24.1m
+      goal-evaluator              20.5m  calls=1
+      coherence-auditor            3.6m  calls=1
+      [engine] showcase-join       0.0m  (contains agent time above)
+      [engine] full-pipeline       0.0m  (contains agent time above)
+      (resume-skipped: goal-decomposer)
+      pump-wait                  0.3m
+      unattributed (glue)        0.0m  (wall − agents(active) − quota)
+  goal-market-compass-iter-21  depth=?  verdict=?  wall=?  (incomplete/interrupted attempt)
+  goal-market-compass-iter-21  depth=full  verdict=CONTINUE  wall=307.7m
+      reviewer                   142.6m  calls=1
+      coherence-auditor           44.1m  calls=1
+      developer                   37.0m  calls=1
+      goal-decomposer             25.2m  calls=1
+      auditor                     18.7m  calls=1
+      goal-evaluator              17.5m  calls=1
+      ui-test-designer            10.4m  calls=1
+      orchestrator                 7.6m  calls=1
+      qa                           4.3m  calls=1
+      [engine] full-pipeline     220.8m  (contains agent time above)
+      [engine] showcase-join       0.0m  (contains agent time above)
+      pump-wait                  0.7m
+      OVER BUDGET at post-dev-fanout: 12749s > 3600s (mode=trim)
+      unattributed (glue)        0.2m  (wall − agents(active) − quota)
+  goal-market-compass-iter-22  depth=full  verdict=STALLED  wall=365.4m
+      reviewer                   198.6m  calls=2
+      developer                   72.3m  calls=2
+      auditor                     21.8m  calls=1
+      goal-decomposer             21.5m  calls=1
+      iteration-summarizer        17.2m  calls=2
+      goal-evaluator              15.0m  calls=1
+      ui-test-designer            12.9m  calls=1
+      qa                           5.9m  calls=1
+      coherence-auditor            4.7m  calls=1
+      orchestrator                 4.7m  calls=1
+      [engine] full-pipeline     316.4m  (contains agent time above)
+      [engine] showcase-join       0.0m  (contains agent time above)
+      pump-wait                  0.1m
+      OVER BUDGET at post-dev-fanout: 17833s > 3600s (mode=trim)
+      overlap saved              9.2m  (parallel steps)
+  session: 22 completed iteration(s), mean wall 149.3m
+      total reviewer                  1554.5m
+      total developer                 1223.1m
+      total orchestrator               484.9m
+      total goal-decomposer            446.3m
+      total goal-evaluator             365.2m
+      total auditor                    340.5m
+      total coherence-auditor          209.3m
+      total iteration-summarizer       170.1m
+      total qa                         156.5m
+      total ui-test-designer           146.9m
       total browser-qa-agent           145.4m
-      total qa                         142.1m
-      total ui-test-designer           112.0m
       total ui-impact-analyst           39.1m
       total demo-narrator               21.3m
       total readme-maintainer           11.1m
       total ux-regression-reviewer       7.2m
       total browser-qa-replay            6.5m
       total AWAITING_PUMP paused gaps: 503.0m
-      halts: AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, STALLED, REGRESSION_HALT, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, AWAITING_PUMP, STALLED, STALLED, STALLED
+      halts: AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, STALLED, REGRESSION_HALT, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, AWAITING_PUMP, STALLED, STALLED, STALLED, STALLED
 ```
 
 ## Friction counters
 
 - **Quota pauses:** 0 (source: session.json quota_pause_count / .quota-pause-count)
-- **Attempt-1 review FAILs:** 1 (source: telemetry review_verdict events, attempt 1)
+- **Attempt-1 review FAILs:** 2 (source: telemetry review_verdict events, attempt 1)
 - **Malformed-verdict rewrites:** 0 (source: telemetry deterministic_gate events with an invalid raw verdict; the gates' .malformed-verdict-count only tracks consecutive strikes)
 
 ## Lessons tail
@@ -460,26 +523,26 @@ Per-step wall breakdown (analyze_telemetry.py --wall):
 Last 20 lines of state/lessons.md:
 
 ```
-`GET /api/compass?as_of=<date>`; and a 12th run minted on any of the 16 runless-but-barred dates would
-carry the identical `engine_identity`, silently breaking the final stage's membership check. After any
-live rebuild, re-derive what an ordinary request would now DO — do not carry forward the previous
-iteration's exposure analysis.
-**Applies to:** any iteration executing J-11 Stage E/F/G, and any future live rebuild that changes which
-date is `max(ScannerRun.asof_date)` or populates a previously-empty date.
+BEFORE the one real reconciliation check. The reviewer caught it — the first time in this arc the reviewer,
+not the auditor or the evaluator, found the decisive defect — and the fix pass had to reorder the CLI, not
+just the expression. Two rules earned: (a) for any check gating an irreversible action, mutate the REAL
+production module and prove the suite fails, never a hand-built fixture; (b) the proof must run BEFORE the
+action, or it is a post-mortem, not a gate.
+**Applies to:** any iteration whose spec contains a one-way action (a live write, a flag flip, a
+deactivation, a delete) gated on a computed verdict.
 
-## iter-19b — 2026-08-26T15:40:00Z
+## iter-22 — 2026-08-27T15:20:00Z
 
-**Verdict:** CONTINUE
-**Lesson:** The strongest mutation-accounting evidence is a CROSS-ITERATION diff, not the iteration's own
-before/after pair. Recomputing `j11_maintenance.capture_full_table_sweep` live and diffing it against the
-PREVIOUS iteration's recorded end-state sweep (`iter-18/j11-iter18-full-table-sweep-after.json`) proves
-both "this iteration wrote only where authorized" AND "nothing drifted between the iterations" in one
-step — something an in-iteration pair structurally cannot show. Pair it with a real field-by-field
-content comparison on the one table whose immutability is an anti-goal (all 28 columns of
-`next_session_manifests` vs the iter-16 certified baseline), because the rowid sweep alone cannot see an
-in-place UPDATE (auditor B2). Normalize ORM-vs-sqlite serialization first (datetime `T` separator, bool
-`False` vs `0`) or the comparison false-alarms.
-**Applies to:** any evaluator or auditor scoring a live-database write iteration in this session.
+**Verdict:** STALLED
+**Lesson:** A goal file can make a stage's own acceptance criterion physically impossible and nobody
+notices, because the impossible criterion gets "resolved" by a check that asserts rather than measures.
+`docs/goal.md:1408` assigns Stage G the "final serving/replay verification" while the same owner ruling
+(item 4) forbids booting the app until Stage G passes; the trap check for it returned an unconditional
+`ok: True` on the reasoning "this module IS Stage G". Detection rule: any acceptance item that no live
+query or test could ever falsify must be labelled as procedural/asserted, counted separately, and
+surfaced to the evaluator — never allowed to contribute a silent `true` to a gate.
+**Applies to:** any spec whose acceptance list is assembled from goal.md prose, especially where a safety
+constraint and a verification requirement reference each other.
 ```
 
 ## Halt context
@@ -489,7 +552,7 @@ session.json halt-relevant fields:
 ```json
 {
   "status": "STALLED",
-  "last_verdict": "CONTINUE",
-  "parked_wip_sha": "0c445647"
+  "last_verdict": "STALLED",
+  "parked_wip_sha": "38f8a12d"
 }
 ```
