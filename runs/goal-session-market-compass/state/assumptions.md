@@ -535,3 +535,70 @@ the next-step recommendation, so no later reader assumes step 2 is unconditional
 remain readable even when its own price range is gone, J-06 returns to `partial` and the fix is a bounded
 follow-up (serve the stored manifest on an exact-date match before as-of validation, keeping today's error
 mapping for every other path).
+
+## iter-28 — goal-decomposer ("Leadership rotation" read as a display-only filtered re-presentation of the already-served `session_delta.changes`, not a new computed value)
+
+**Ambiguity:** `docs/goal.md` names "leadership rotation" as one of J-07's six body sections (step 1) and
+one of the Today compass's Key Capabilities, but gives it no independent computation spec — unlike
+what-changed (J-02), the summary (J-03), or next-session focus (J-04), each of which has its own
+Acceptance/Steps block. It is not stated whether "rotation" is a new engine-computed value or a
+re-presentation of already-served data.
+
+**We chose:** treat it as a presentational grouping of the already-registered `session_delta.changes` array
+(`GET /api/compass`), filtered client-side to `kind ∈ {sector, theme, stock}` — the SAME field What-changed
+already renders, just narrowed to rotation-relevant kinds for a focused view. Grounds: (a) the goal's own
+"Consistency (single source)" acceptance text for every J-07 section requires "every word, delta, and echo
+on `/` is a served field... the frontend performs no threshold comparison, delta computation, or word
+selection" — filtering an already-closed-vocabulary `kind` field is a display concern, not a computation;
+(b) a second computation would duplicate `session_delta`'s already-canonical stock-leadership-bucket-
+crossing and sector/theme rank-move logic, which the coherence audit would flag as a second producer for
+the same value; (c) no goal.md text anywhere else defines a distinct "rotation" algorithm to build against.
+
+**Reversible:** yes — a scoping/interpretation call with no schema or data-model impact. If the owner rules
+"leadership rotation" needs its own distinct computation (e.g. a rotation-specific ranking not present in
+`session_delta`), a future iteration adds a new field under the existing single producer
+(`build_manifest_payload`) without touching what this iteration ships.
+
+## iter-28 — goal-decomposer (new `state_band` direction words frozen inside the manifest content block, computed once at write, not recomputed at read)
+
+**Ambiguity:** J-07 step 3 requires three served direction words (regime, stress, breadth) that do not
+exist as a field anywhere today. `docs/goal.md` does not say whether these words belong inside the
+persisted, immutable `next_session_manifests` content (frozen with the rest of the manifest, like
+`session_delta`) or should instead be computed fresh on every read from the two already-canonical endpoints
+(`GET /api/dashboard`, `GET /api/market-phase`) without ever being persisted.
+
+**We chose:** compute and freeze `state_band` inside `build_manifest_payload`, the same single producer as
+`session_delta`/`narrative`, stored as part of the manifest content and served via the existing
+`GET /api/compass` — never recomputed at read. Grounds: (a) the goal's own "Compute-at-ingest" constraint
+says "the manifest freeze and everything the compass serves are produced in the ingest finalize tail or by
+create-once, and served from storage; no request-path recompute (warm reads perform zero producer calls)"
+— a read-path recompute would violate this directly; (b) `session_delta`'s run-over-run comparison (the
+closest existing precedent for a "current vs previous run" derived value) is already frozen inside the
+manifest for exactly this reason; (c) freezing it makes historical/retrospective reads of `state_band`
+stable and reproducible under `content_hash`, matching every other derived-content field's contract.
+
+**Reversible:** yes — an implementation-placement call, additive and non-destructive. If the owner rules
+`state_band` should NOT be part of the immutable manifest (e.g., because it is presentation-only and should
+be free to change if the word map is retuned), a future iteration can move the computation to a read-time
+helper without any stored-data migration, since no other value depends on `state_band` being frozen.
+
+## iter-28 — goal-decomposer (all live browser-qa `as_of` values this iteration constrained to the already-manifested safe set, to guarantee zero new manifest mints)
+
+**Ambiguity:** J-08 steps 3-5 require exercising a historical `?asof=D` view (a "pre-feature historical run
+date D", the J-05 frontier date, and a fresh-tab load of D) but do not name which calendar date(s) to use.
+Per the pump coordinator note and the iter-27 incident, ANY live `GET /api/compass?as_of=<D>` for a `D`
+without an existing manifest row permanently mints one (create-once-on-GET) — sanctioned ordinary product
+behaviour, but this iteration's own safety posture (nine prior process incidents this session) favors
+proving J-08 without any new live mint at all if an already-safe date can satisfy every step.
+
+**We chose:** constrain every live browser-qa `as_of` this iteration to `{no param (Latest), "2026-08-12",
+"2025-04-15"}` — both explicitly named dates already carry manifest rows (2025-04-15 has v1/v2 from
+iter-26/27's own regenerate evidence; 2026-08-12 is the frontier with v1-v6), so EVERY live call this
+iteration is a pure read, zero new mints, while still satisfying J-08's literal requirements: 2025-04-15
+serves the "pre-feature historical run date D" with a visible retrospective label (step 3) and the fresh-tab
+scoped-load check (step 5); 2026-08-12 serves the frontier at-ingest check (step 4).
+
+**Reversible:** yes — a test-data scoping call with no product-code or database impact. If a future iteration
+needs to exercise the create-once-on-GET mint path itself (a date with NO existing manifest), that is a
+new, explicitly authorized live action for that iteration's own plan — none of this iteration's evidence
+would need redoing.

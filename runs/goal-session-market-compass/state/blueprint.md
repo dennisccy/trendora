@@ -60,7 +60,7 @@ The other ten nav entries keep their route, order position, and content unchange
 
 | Value / entity | Computed by (single module/function) | Served by (single endpoint) | Notes |
 |---|---|---|---|
-| Next-session manifest — CONTENT block (`session_delta`, `narrative.sentences`, `selection.candidates`, `selection.why_not`, `selection.disposition_tally`, `content_hash`) | `app.engine.compass.build_manifest_payload` (assembles `app.engine.session_delta.compute_delta`, the narrative sentence builder, and `app.engine.compass.evaluate_selection`) — **[LIVE — iter-2 build]** | `GET /api/compass` — **[LIVE — iter-2 build]** | stored in `next_session_manifests` (iter-2 schema: `as_of`, the three content blocks, `content_hash`, `created_at`, source-run link); computed once at ingest finalize (or once on first GET for a not-yet-computed `as_of`) and served from storage thereafter — zero producer calls on a warm hit |
+| Next-session manifest — CONTENT block (`session_delta`, `narrative.sentences`, `state_band` **[TARGET — iter-28 build]**, `selection.candidates`, `selection.why_not`, `selection.disposition_tally`, `content_hash`) | `app.engine.compass.build_manifest_payload` (assembles `app.engine.session_delta.compute_delta`, the narrative sentence builder, and `app.engine.compass.evaluate_selection`) — **[LIVE — iter-2 build]** | `GET /api/compass` — **[LIVE — iter-2 build]** | stored in `next_session_manifests` (iter-2 schema: `as_of`, the three content blocks, `content_hash`, `created_at`, source-run link); computed once at ingest finalize (or once on first GET for a not-yet-computed `as_of`) and served from storage thereafter — zero producer calls on a warm hit |
 | Next-session manifest — FREEZE/INTEGRITY block (`mode`, `version`, `frozen`, `generation.*`, engine identity, `candidate_rule_hash`, `cohort_rule_hash`, `manifest_config_hash`, dataset/universe stamps, `comparison_cohort` + `near_threshold_shadow` as frozen stored rows with full matching-context, `prospective_eligible`, `available_at_utc`, `manifest_hash`, `caveats`, exported file, `basis` read-time disclosure) | SAME `app.engine.compass.build_manifest_payload`/writer + `app.engine.engine_identity` for the identity value + `app.engine.compass.basis_disclosure` for the read-time `basis` field **[TARGET — iter-3 build in progress; `basis` fail-closed fix — iter-11]** | SAME `GET /api/compass` (additive response fields) — plus a NEW action endpoint `POST /api/compass/regenerate` that mints a new version through the identical writer (an action route, not a second read path) **[TARGET — iter-3 build in progress]** | additive columns onto `next_session_manifests` **[TARGET]**; the iter-2 single-column `as_of` UNIQUE index is replaced by a composite `(as_of, version)` UNIQUE index (constraint/index change only — no existing row's stored values change); export file bytes == stored `payload_json` (at-ingest mode only); validates against `docs/handoffs/trendora-next-session-manifest-v1.schema.json` **[TARGET]**; append-only, never UPDATEd (AG-12). `basis.status` is `"available" \| "unavailable" \| "rebuilt"` **[LIVE]**, extended to a 4th fail-closed unverifiable/unknown literal for the missing/malformed/incomplete-`generation_json` case **[TARGET — iter-11]** — same function, same endpoint, no new producer |
 | Engine identity | `app.engine.engine_identity` **[TARGET — iter-3 build in progress]** | embedded in `GET /api/compass` (`generation.engine_identity`) and `GET /api/runs` (`ScannerRun.engine_identity`, additive nullable column) | stamped only at manifest build / `persist_run_payload`; pre-existing rows stay NULL ("pre-stamping era") |
 | Stock sector label | `ScannerResult.sector`, stored once at scan time in `scoring.score_stocks` — `config.stock_sectors` first, pool-CSV fallback via `universe.pool_sector_aliases` second (**[LIVE — iter-1]**, `scoring.py:453-458`) | `GET /api/stocks`, `GET /api/stocks/{ticker}` | current-only basis (no point-in-time sector history — B-114 stays open); unknown serves `sector: null` → UI renders "Unassigned", never fabricated; new-run Unassigned coverage 0/539 as of run 3081 |
@@ -195,3 +195,23 @@ reachable through the live route for the first time; no new computing module, se
 field, page, or nav entry is introduced, and `snapshot_serving.resolved_run`/`scanner.run_scan` themselves
 are unmodified, so every OTHER page's self-heal behavior (`/`, `/stocks`, `/sectors`, `/themes`, dashboard,
 market-phase) is unaffected. Nothing in this iteration changes any row above.
+
+
+**iter-28 update (2026-08-28 — additive, no IA change):** the Next-session manifest CONTENT block row's
+field list gains `state_band` — three served direction words (`regime`, `stress`, `breadth`), each with a
+signed delta, computed ONCE inside the SAME `app.engine.compass.build_manifest_payload` producer (a new
+`build_state_band`-style helper alongside the existing `session_delta`/`narrative` builders) and served by
+the SAME `GET /api/compass` endpoint — no new producer, no new route. `state_band.<band>.direction_word`
+reuses the existing `compass.vocabulary.direction_words` map (never a second word map);
+`state_band.<band>.delta` is a signed float, `null` when no previous run exists. `regime` compares stored
+`regime_score`, `stress` compares stored market-phase `severity` ("severity velocity"), `breadth` compares
+stored `breadth_above_50dma`, each banded by a config-only threshold under `compass.delta.*`
+(`test_no_magic_numbers.py` coverage — `compass.py` is already a `CALC_FILES` entry). Added additively to
+`docs/handoffs/trendora-next-session-manifest-v1.schema.json` (loosely-typed object property, no
+`schema_version` bump, consistent with the iter-11/iter-12 additive-extension precedent). This iteration
+also fulfills the already-registered `[TARGET]` "Today (/)" and "Market (/market)" Information Architecture
+rows from baseline (page reorder + verbatim relocation of the former dashboard body to a new `/market`
+route + sidebar rename/addition) — no IA change, since both rows and their canonical homes were already
+declared at baseline. See `docs/phases/goal-market-compass-iter-28.md` for full detail. The `[TARGET]` tag
+on `state_band` and on the Today/Market IA rows flips to `[LIVE]` only once the goal-evaluator confirms
+J-07/J-08 passing with evidence — this note records the iter-28 PLAN, not a delivered/verified state.
