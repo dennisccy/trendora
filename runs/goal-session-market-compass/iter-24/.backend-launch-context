@@ -1,0 +1,4 @@
+LOCKED_AT=2026-08-27T23:45:25Z
+BACKEND_START_CMD=bash\ /home/dennis-chan/Git/trendora/scripts/start-backend-j11-verify.sh
+FRONTEND_START_CMD=bash\ /home/dennis-chan/Git/trendora/scripts/start-frontend.sh
+OVERRIDE_ACTIVE=yes

@@ -197,31 +197,12 @@ quarantined condition — especially `runs/**/j11-*verification*.json`-style evi
 assertion over values in `j11_avb_diagnostic.py` / `j11_avb_correction.py`, and any "independent
 cross-check" claim in `runs/goal-market-compass-iter-*/j11-*.json`.
 
-## iter-18 — 2026-08-26T00:55:00Z
-
-**Verdict:** STALLED
-**Lesson:** A guard scoped to "boot-initiated paths" leaves the request-triggered path open, and this
-codebase's read path WRITES: `scanner.resolve_run` (`apps/backend/app/engine/scanner.py:348`) calls
-`run_scan` create-once for whatever date `?as_of=` names, reached from every read endpoint via
-`app/engine/snapshot_serving.py:42`. Four lanes (dev, reviewer, QA, auditor) enumerated the `run_scan`
-call graph and all four missed it — the auditor explicitly counted "exactly three boot-initiated plus a
-fourth (data_manager)" when `grep -rn "run_scan(" app/` returns six. The generalizable rule: enumerate
-writers with a grep over the whole package and classify each one, never from a hand-built call graph;
-and when a safety property is scoped by TRIGGER ("boot-initiated"), the artifact must name the triggers
-it does NOT cover, because the reader will hear "the writes are blocked".
+## iter-18 — 2026-08-26T00:55:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration adding a guard/quarantine/kill-switch scoped by trigger class; any
 iteration that would lift maintenance isolation or re-enable browser QA on this project; anything
 touching `warmup.py`, `forward_testing.py`, `scanner.py`, `snapshot_serving.py` or `data_manager.py`.
 
-## iter-18 — 2026-08-26T00:55:00Z
-
-**Verdict:** STALLED
-**Lesson:** Arming the quarantine silently disabled a whole subsystem: `ensure_latest_snapshot` returns
-`None` for a blocked latest date, and `main.py:113` starts the background warm-up only `if latest is not
-None`, so no background warm-up runs at all and readiness reports `awaiting_snapshot` instead of `ready`.
-Safe and fail-closed, but it means the two call sites this iteration guarded are currently unreachable on
-boot — the delivered guards are defence-in-depth for a future state, not today's protection. Ask of every
-new blocking guard: what ELSE keys off the value this guard now suppresses?
+## iter-18 — 2026-08-26T00:55:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any future iteration that boots the backend or resumes browser QA on this project (the
 different readiness badge and the 2026-07-23 "latest" are EXPECTED, not a regression); any change to
 `warmup.py`/`main.py` boot sequencing or `readiness.py`.
@@ -364,3 +345,35 @@ this run's final checksum was taken 3 minutes before the breach it was supposed 
 **Applies to:** any iteration asserting a database file is unchanged (J-10/J-11-style repair or drill
 work, any `db_file_fingerprint` / provenance check in `app/engine/j11_*`), and any evaluator re-deriving
 such a claim.
+
+## iter-24 — 2026-08-28T00:05:00Z
+
+**Verdict:** ESCALATE
+**Lesson:** A spec's PROSE can silently disable a whole verification lane. `replay_lane_spec_journeys`
+(`scripts/automation/lib/replay-lane.sh:75-77`) does `grep -iE '<label>' "$SPEC" | head -1` — FIRST
+matching line wins. Iter-24's `Target journeys` bullet wrapped onto a line reading "…see
+Required-still-passing and TESTING", which matched before the real bullet two lines later and carries no
+`J-NN` token, so `REQUIRED_JOURNEYS` parsed EMPTY, `_use_replay=no`, and J-01/J-04/J-10 went unverified
+with NO error — the engine logged only "replay: no", indistinguishable from "nothing to replay". Two
+durable rules: never let a journey-set label appear in prose before its own bullet, and never read
+"replay: no" as benign — cross-check that `reports/phase-<iter>-regression-replay-results.md` exists
+whenever the spec names a non-empty Required-still-passing set.
+**Applies to:** any iteration whose spec mentions "Target journeys" / "Required-still-passing" outside
+its own metadata bullet; any evaluator scoring an iteration where the replay lane reported no results;
+any future fix to `lib/replay-lane.sh`'s journey-set parsing.
+
+## iter-24b — 2026-08-28T00:05:00Z
+
+**Verdict:** ESCALATE
+**Lesson:** The iter-24 launch-context lock guarantees CONSISTENCY, not canonical-DB PROTECTION. It
+resolves the launch command ONCE at iteration start and refuses later drift — so with no override set at
+start-up, the locked value IS `bash scripts/start-backend.sh` and every lane consistently boots the
+canonical DB, by design. Protection therefore still depends on `CHAIN_START_BACKEND_CMD`/`TRENDORA_CONFIG`
+being present in the ENGINE's environment BEFORE `goal-iter-lean.sh` starts; an override established
+mid-run (inside a dispatch) is too late to be locked. Corollary for verification: iter-24's live
+clone-only boot does NOT prove the fix, because the owner had set the ambient override and the pre-fix
+code (`git show HEAD:…/goal-iter-lean.sh:254-261`) would have honoured it identically — the regression
+test is the proof, the live boot is only a confound-free demonstration of the outcome.
+**Applies to:** any iteration needing an isolated/disposable database; any claim that the canonical DB
+"can no longer be booted"; any future extension of the guard to the five sibling scripts
+(`browser-qa-phase.sh`, `qa-phase.sh`, `run-phase.sh`, `demo-phase.sh`, `run-benchmark.sh`).

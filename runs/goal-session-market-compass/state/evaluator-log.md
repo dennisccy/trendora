@@ -1921,3 +1921,106 @@ non-blocking: 3.44 GB for J-09; J-06's "underlying run unavailable" wording; J-0
 whether an empty "next-session focus" is acceptable; and whether MNST joins the recovery list. ONE STANDING
 FRAMEWORK NOTE: `goal_gate.py`'s duplicate-journey-heading defect is still unfixed and must be closed
 before any GOAL_ACHIEVED certification.
+
+## Iteration 24 — goal-market-compass-iter-24
+
+**Date:** 2026-08-28T00:05:00Z
+**Verdict:** ESCALATE
+**Depth dispatched:** lean — **NOT** what the spec asked for, for the SECOND iteration running and the
+fifth time this session (iters 2, 6, 8, 23, 24). `docs/phases/goal-market-compass-iter-24.md` declares
+`Depth: full` with a written Trigger-1 justification; `iter-24/depth-dispatched` reads `lean`. The engine
+log records why, verbatim: "spec asked FULL but the deterministic ladder demotes it to LEAN (reason:
+full-cap; prior verdict: STALLED; evaluator depth recommendation: full)". So my own binding `full`
+recommendation was overridden by a cost rung. No QA agent, no independent auditor, no closure lane — on
+an iteration that modified the engine's own shared launch machinery.
+
+**Owner-facing lines:** `LAUNCHER FIX: LANDED AND VERIFIED` · `CANONICAL DATABASE: UNTOUCHED THIS
+ITERATION` (`.db`+`-wal`+`-shm` all byte-identical to their iter-23 values) · `ANTI-GOAL LEDGER: 8 total,
+0 unresolved` (the iter-23 breach is now closed) · Countervailing, new: `THIS ITERATION'S REGRESSION
+RE-TEST NEVER RAN AND NOTHING REPORTED IT`.
+
+**Journey deltas:**
+- Newly passing: none. Newly failing: none. **Regressed: none.**
+- **J-11** "Incident-bounded clean regeneration of derived state" — `journeys-changed.md` fired
+  (`spec_hash 55ef995c… → 012568db…`, the owner appended a new ruling inside J-11's own block). Prior
+  pass VOID until re-verified. I re-verified against the CURRENT text and kept it `passing`, re-stamped
+  to iter-24 with the new hash. Basis: the delta is ONE purely additive hunk (`docs/goal.md:2194`,
+  +46/-0) whose operative content is "J-11 STATUS: PASSING — CLOSED" plus an explicit instruction not to
+  re-verify; no acceptance criterion was added or tightened; and the state J-11 certifies is byte-intact.
+  This is a documentary + state-integrity verification, NOT a fresh browser pass — recorded as such in
+  `last_evidence_path` and in the assumption ledger. All ten other hashes are byte-identical to the
+  recorded ones — I ran `goal_gate.py hash-journeys` myself and compared all eleven.
+- Held, NOT re-verified: J-01, J-04, J-10 stay `passing` with `last_verified_iter` deliberately left at
+  iter-23 (see the headline finding — the replay lane never ran). J-02, J-03, J-05, J-06, J-09 stay
+  `partial`; J-07, J-08 stay `failing`. Product surface delta is zero, so methodology A.6 evidence
+  durability holds their status; nothing was promoted on this iteration. No `browser-infra.json` token,
+  and this was NOT maintenance isolation — the browser lane recorded SKIPPED for "no target journeys".
+  Two spot-checks, both consistent: J-01's iter-23 capture (GRMN, real stored sector "Consumer
+  Discretionary", 1/539, regime 73.18, scores badged "Not yet proven") and J-10's (AVB at 2026-08-12,
+  Leadership 26.22 / Entry Quality 52.07 / Risk 34.39, chart volume 3.71M, 1254 bars). J-04 keeps
+  `evidence_makeup: true` for the sixth iteration running.
+- Anti-goal violations: **NONE new** among AG-1..AG-18 — I answered all eighteen explicitly. Ledger
+  **8 total, 0 unresolved**: the iter-23 owner-ruling breach is RESOLVED on two grounds I verified
+  myself (owner ruling items 2 and 3 disposed of it in writing; the authorised remedy landed and I ran
+  its test — 18 passed, 0 failed, refusal observed firing — with no further harm).
+- Coherence: COHERENCE-PASS. Deterministic scan: CLEAN. Review: PASS (2 NOTEs). No QA report, no audit
+  handoff — those lanes never ran (see depth note above).
+
+**Reasoning:** The one job the owner authorised was done and it works — and I did not take that from
+anyone's write-up. The engine now decides once, at the start of a run, which start-up command to use, and
+refuses any later start-up that does not match. I ran the new safety test myself: eighteen checks, all
+passed, and I watched the refusal actually fire with its own message. I also proved the protected database
+was never opened this run — its three files are unchanged to the byte and to the second since yesterday
+evening — while the throw-away copy was the one written to, at 00:49, matching the app's own log line to
+the millisecond. ONE HONESTY POINT THAT IS MINE ALONE: the live boot does NOT by itself prove the fix. The
+owner had set the alternate start-up command in the environment before launching, and I read the old code
+— it would have honoured that same setting. The proof is the test, not the boot. And the guard's real
+promise is narrower than it sounds: it keeps the start-up command CONSISTENT with whatever was chosen at
+the start; it does not by itself protect the real database, because with nothing chosen the ordinary
+launcher is what gets locked in. ONE FINDING IS MINE ALONE, and it is why I am escalating. This
+iteration's own re-test of the three working journeys never happened, and no lane said so. The plan
+document mentions the phrase "Required-still-passing" once in a sentence before it reaches the real list,
+and the engine reads only the first line containing that phrase, so the list came out empty. I reproduced
+the exact parse and got an empty list. The re-test lane then did nothing and logged only "replay: no",
+which reads like "nothing to do". No journey is harmed — not one line of the app changed this run, so
+yesterday's proof still stands, and I re-opened two screenshots to confirm — but the safety net silently
+went missing in the very iteration whose purpose was to close a silent safety hole. Why ESCALATE rather
+than CONTINUE? Because a light run just lost its whole regression safety net without reporting it, while
+changing the engine's shared start-up machinery with no independent auditor present. It is also the only
+lever that works: this spec asked for full depth and was demoted anyway on cost, whereas a prior ESCALATE
+verdict is ranked above that cost rule, so the next iteration genuinely gets the auditor. Why not STALLED?
+Nothing waits on the owner — his ruling item 5 says in writing that normal work resumes once this fix
+lands and is verified, and item 6 tells the loop not to stop for reversible cleanup. Why not REGRESSION?
+Nothing that worked stopped working, no enumerated anti-goal was broken, and the one unresolved critical
+entry is now properly closed. One process fact: this is the fifteenth iteration running where a later lane
+found what the earlier ones missed — and the second in a row where the lane that would normally have
+caught it, the independent auditor, was never dispatched because the iteration was demoted from full depth.
+
+**Next-step recommendation:** RESUME NORMAL PRODUCT WORK, WITH THE DEEPER CHECKS ON. (1) Build **J-09**
+"The backend fits the host" — the goal file's own next item and the smallest one, a configuration value
+plus a measurement; the owner's ruling item 5 needs no further permission. (2) FIX THE PLAN-READING BUG I
+FOUND, in the same round: the engine reads only the first line containing "Required-still-passing"
+(`scripts/automation/lib/replay-lane.sh:75-77`), so a passing mention of that phrase earlier in the
+document silently empties the re-test list. Two ways, and the cheap one should be done regardless — never
+let that phrase appear before the real list, and better, make the engine prefer the line that actually
+contains journey numbers. Add a check so that a non-empty re-test list producing no results is REPORTED,
+not logged as a quiet "replay: no". (3) RE-TEST J-01, J-04 and J-10 FOR REAL — they were skipped through
+no fault of their own, and next round is the first to touch the app again since the database incident.
+(4) ASK THE PLAN TO SAY `Depth enforcement: required` — that switch is ranked above the cost rule and is
+the only in-document way to make the deeper review stick; it needs NO environment variable turned back on
+(standing guidance says `CHAIN_REQUIRE_FULL_DEPTH` and `CHAIN_MAINTENANCE_ISOLATION` stay OFF).
+(5) ONE RESIDUAL TO CARRY: the guard protects consistency, not the real database — an iteration needing an
+isolated copy must still supply the alternate start-up command in the engine's environment BEFORE it
+begins, exactly as the owner did by hand this run. The same unguarded fallback also remains in five
+sibling scripts (`browser-qa-phase.sh:141-145`, `qa-phase.sh:100-104`, `run-phase.sh:249-252`,
+`demo-phase.sh:184-187`, `run-benchmark.sh:407`), latent and out of scope by the owner's own ruling.
+SMALLER ITEMS, none blocking: the 7.8 GB throw-away copy at `runs/goal-market-compass-iter-23/verify-clone/`
+may now be deleted (ruling item 4 — the fix is verified); J-04's screenshot still needs re-taking to
+include the candidate card; the developer's checklist ticked "J-01/J-04/J-10 remain green" while its own
+prose said they were not re-tested, and the reviewer recorded `definition_of_done: complete` over it;
+the reviewer's own NOTE that REL-5/REL-14 wrap the guard in `|| true` is correct and harmless (a refusal
+means no boot, which is the safe direction) but should stay on the record. FIVE OLDER OWNER QUESTIONS
+remain open and non-blocking: whether 3.44 GB is acceptable for J-09; J-06's "underlying run unavailable"
+wording; the rewording of J-01's first two test steps; whether an empty "next-session focus" is
+acceptable; and whether MNST joins the recovery list. ONE STANDING FRAMEWORK NOTE: `goal_gate.py`'s
+duplicate-journey-heading defect is still unfixed and must be closed before any GOAL_ACHIEVED certification.

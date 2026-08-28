@@ -525,3 +525,35 @@ confirm the quantity can actually come out wrong.
 assertion over values in `j11_avb_diagnostic.py` / `j11_avb_correction.py`, and any "independent
 cross-check" claim in `runs/goal-market-compass-iter-*/j11-*.json`.
 
+
+<!-- condense.sh 2026-08-27T22:20:06Z: moved 2 entries (keep-iters=5) -->
+
+## iter-18 — 2026-08-26T00:55:00Z
+
+**Verdict:** STALLED
+**Lesson:** A guard scoped to "boot-initiated paths" leaves the request-triggered path open, and this
+codebase's read path WRITES: `scanner.resolve_run` (`apps/backend/app/engine/scanner.py:348`) calls
+`run_scan` create-once for whatever date `?as_of=` names, reached from every read endpoint via
+`app/engine/snapshot_serving.py:42`. Four lanes (dev, reviewer, QA, auditor) enumerated the `run_scan`
+call graph and all four missed it — the auditor explicitly counted "exactly three boot-initiated plus a
+fourth (data_manager)" when `grep -rn "run_scan(" app/` returns six. The generalizable rule: enumerate
+writers with a grep over the whole package and classify each one, never from a hand-built call graph;
+and when a safety property is scoped by TRIGGER ("boot-initiated"), the artifact must name the triggers
+it does NOT cover, because the reader will hear "the writes are blocked".
+**Applies to:** any iteration adding a guard/quarantine/kill-switch scoped by trigger class; any
+iteration that would lift maintenance isolation or re-enable browser QA on this project; anything
+touching `warmup.py`, `forward_testing.py`, `scanner.py`, `snapshot_serving.py` or `data_manager.py`.
+
+## iter-18 — 2026-08-26T00:55:00Z
+
+**Verdict:** STALLED
+**Lesson:** Arming the quarantine silently disabled a whole subsystem: `ensure_latest_snapshot` returns
+`None` for a blocked latest date, and `main.py:113` starts the background warm-up only `if latest is not
+None`, so no background warm-up runs at all and readiness reports `awaiting_snapshot` instead of `ready`.
+Safe and fail-closed, but it means the two call sites this iteration guarded are currently unreachable on
+boot — the delivered guards are defence-in-depth for a future state, not today's protection. Ask of every
+new blocking guard: what ELSE keys off the value this guard now suppresses?
+**Applies to:** any future iteration that boots the backend or resumes browser QA on this project (the
+different readiness badge and the 2026-07-23 "latest" are EXPECTED, not a regression); any change to
+`warmup.py`/`main.py` boot sequencing or `readiness.py`.
+

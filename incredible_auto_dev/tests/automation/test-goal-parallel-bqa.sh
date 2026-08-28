@@ -370,6 +370,11 @@ grep -q "Forking browser-qa service boot" "$WORK/lean-A.log" \
 # journey-history, so the builder fail-safes to the full goal text, but the
 # slice FILES still land). state/golden-gaps added — SPEED-23 persists the
 # golden-coverage gap (J-02 passes via the LLM lane with no golden here).
+# 2026-08-27: iter-1/.backend-launch-context added — the iter-24 fix
+# (goal_iter_lock_backend_launch_context, lib/common.sh) locks the resolved
+# backend/frontend launch command into this sentinel file ONCE per run,
+# unconditionally, before the SPEED-2/3 fork spawn points — so it lands in
+# every mode's tree (off, replay, full alike).
 EXPECTED_TREE="./docs/goal.md
 ./docs/handoffs/${ITER}-dev.md
 ./docs/phases/${ITER}.md
@@ -377,6 +382,7 @@ EXPECTED_TREE="./docs/goal.md
 ./reports/phase-${ITER}-ui-test-results.llm.md
 ./reports/phase-${ITER}-ui-test-results.md
 ./reports/reviews/${ITER}-review.md
+./runs/goal-session-pbtest/iter-1/.backend-launch-context
 ./runs/goal-session-pbtest/iter-1/.steps/browser-qa.done
 ./runs/goal-session-pbtest/iter-1/.steps/developer.done
 ./runs/goal-session-pbtest/iter-1/.steps/review-1.done

@@ -1595,3 +1595,250 @@ direction — a stopped engine starts no backend, and starting the backend is pr
 repaired, nothing lost and no journey status changed; if the owner prefers the riders done first, they are
 already listed and need no rework here.
 
+
+<!-- condense.sh 2026-08-27T22:20:06Z: moved 4 entries (keep-iters=5) -->
+
+## iter-18 — goal-decomposer (bundling three small evidence/test riders into the table-create-and-live-arm iteration; excluding framework-level riders)
+
+**Ambiguity:** The owner's newest 2026-08-25 ruling ("J-11 exact maintenance-boundary table creation
+and live arm AUTHORIZED") scopes this iteration precisely to schema creation, boundary activation, and
+closing the background-warmup coverage gap, and is silent on iteration 17's own "FOUR SMALL JOBS RIDE
+ALONG" plus "TWO STANDING FRAMEWORK NOTES" recommendations. `docs/goal.md` does not say whether an
+evaluator's recommended non-owner riders should ride along with an owner-authorized live-database
+iteration.
+
+**We chose:** fold in three of the four small jobs — refusal tests for the two iteration-17
+evidence-writing CLI tools; correcting the AVB diagnostic note's "genuinely independent" wording;
+correcting the iteration-17 report's damaged-date list — as low-risk backend/evidence-artifact edits,
+explicitly sequenced after the primary safety work and marked non-blocking. We excluded the fourth small
+job (the `build_review_packet`/git-diff-only proof gap) and both "standing framework notes" (the
+`scripts/automation` forbidden-lane defect and `goal_gate.py`'s duplicate-journey-heading defect), because
+all three are `.claude`/`scripts/automation` FRAMEWORK/tooling defects, not Trendora product code —
+outside a goal-mode product iteration's remit per CLAUDE.md's mode separation, and consistent with how
+iterations 13-17 have already carried them forward untouched rather than pulling them into product specs.
+Reasoning for including the first three: each is a zero-risk, isolated edit to evidence artifacts or test
+coverage for already-built tooling (no live-database interaction, no code path any Data Contract value
+depends on), directly requested by the immediately-prior evaluator as safe to ride along ("none of which
+can change that decision"), and mirrors iteration 17's own precedent of bundling the AVB label-correction
+rider into the maintenance-boundary lifecycle iteration.
+
+**Reversible:** yes — all three folded-in riders are additive test coverage or corrections to
+already-written prose in evidence/report artifacts; none touches the live database or any code path a
+Data Contract value depends on. If a future decomposer or the owner judges any of the three should not
+have been bundled, they can be reverted or ignored with nothing else to unwind.
+
+## iter-18 — goal-evaluator (the ruling's boot gate opened, but the Loop-mechanics lane gate did not)
+
+**Ambiguity:** The owner's 2026-08-25 ruling items 5 and 6 (`docs/goal.md:1703-1711`) state the boot
+prohibition as a condition: *"Do not boot the app until: the table exists; the J-11 row is active; and a
+direct live guard probe proves the latest quarantined date is blocked"* and *"The live guard must be
+proven ARMED before normal backend boot is allowed."* All three conditions are now satisfied and
+independently verified, so by its own terms that specific prohibition has lapsed. But item 9 of the same
+ruling says *"Even if all three are established, STOP"*, and the separate, older Loop-mechanics clause
+(`docs/goal.md:2087-2090`) says *"No developer, reviewer, QA, browser-QA, evaluator, coherence, research or
+proposer lane may run against the knowingly damaged database before J-11 Stage G passes."* The goal file
+never says which of these governs iteration 19's depth/isolation setting.
+
+**We chose:** read them as governing DIFFERENT things and both still binding — the ruling's boot gate has
+lapsed (booting is no longer forbidden by that clause), while the Loop-mechanics gate independently keeps
+every normal lane shut until Stage G, so maintenance isolation should stay ON and browser QA must NOT
+resume. Reasoning: (a) the two clauses have different subjects (an act vs. a set of lanes) and different
+triggers (guard ARMED vs. Stage G passed), so satisfying one cannot discharge the other; (b) item 9's
+STOP is scoped to the table-create/arm iteration and its stated rationale is Stage D authorization, so it
+does not by itself re-impose the boot ban; (c) independently of both, I found that
+`scanner.resolve_run` still writes a canonical `ScannerRun` for any `?as_of=` date with no boundary check,
+so treating the boot gate's lapse as "safe to run the app again" would re-open, by a different door, the
+exact accident the ruling exists to prevent. What I explicitly did NOT do: call the boot gate still
+closed — that would misquote the owner's own condition, which is met.
+
+**Reversible:** yes — one owner line either way, and it is an operator-only control (maintenance isolation
+is set by the human dispatching the spec, `.claude/anti-patterns/25`), so this evaluator's reading is a
+recommendation, not a setting. Nothing is mutated or foreclosed by keeping isolation on for one more
+iteration.
+
+## iter-18 — goal-evaluator (STALLED a sixth time, with a real engineering item on the table)
+
+**Ambiguity:** This is the sixth consecutive STALLED (iters 13-18) and the first where the authorized work
+fully SUCCEEDED. Genuinely buildable non-owner work exists: a boundary check on `scanner.resolve_run`
+(my own finding), a boundary check on `data_manager._do_backfill` (auditor B4), and the warm-up counter
+decision (auditor B2 / reviewer MINOR). The methodology's C.5 would read available tractable work as
+CONTINUE, and iteration 15 faced a similar shape where the answer WAS to build something.
+
+**We chose:** STALLED under C.2 (first-match-wins), with all three items named explicitly as riders rather
+than hidden. The load-bearing new reasoning: closing the `resolve_run` hole requires editing
+`app/api/*` / the serving path, and the untouched state of exactly those files
+(`apps/backend/app/api/*`, `scoring.py`, `sectors.py`, `compass.py`) is the ONLY basis on which J-01, J-04
+and J-10 currently carry forward as passing — the iteration spec's own TC-17 makes that argument. Editing
+them while browser QA is forbidden would destroy the carry-forward argument for three journeys and could
+not be verified by anything. It also requires deciding what a blocked page request should RETURN, which is
+a user-visible product decision, the same class the auditor declined to make unilaterally for B2. So none
+of the three is safe non-owner work; each needs an owner call, and the critical path (Stage D -> Stage G ->
+lanes reopen) is owner-owned end to end. The mechanical consequence is asymmetric in the SAFE direction:
+a stopped engine boots no backend and issues no `?as_of=` request.
+
+**Reversible:** yes — one owner line (or an instruction plus `--resume`) restarts the session with nothing
+repaired, nothing lost and no journey status changed; if the owner prefers the riders done first, they are
+already listed and need no rework here.
+
+## iter-18 — goal-evaluator (riders 6b/6c edited prior-iteration evidence artifacts; scored as NOT an AG-17 breach)
+
+**Ambiguity:** AG-17 says *"The incident record itself is evidence: the iter-5 drill result, its handoff,
+the reviewer/QA evidence already produced ... MUST NOT be deleted, rewritten, or silently superseded."*
+Rider 6b rewrote two `note` fields IN PLACE inside `runs/goal-market-compass-iter-17/j11-avb-bridge-diagnostic.json`,
+and rider 6c inserted a correction block into `reports/phase-goal-market-compass-iter-17-ui-test-plan.md`.
+The auditor, meanwhile, declined to correct iteration 17's QA report (finding E1) *citing AG-17*. So the
+same iteration applies two different standards to three iteration-17 artifacts.
+
+**We chose:** score both riders as NOT an AG-17 violation, and record no ledger entry. Reasoning: (a) AG-17's
+protected set is the *iter-5 drill* incident record specifically, and neither artifact is iter-5 drill
+evidence; (b) neither correction is *silent* — 6b's replacement text names itself as an iter-18 correction
+and quotes the wording it repudiates, and 6c is purely additive with a dated correction heading, so the
+prior claim remains readable in both; (c) both riders were ordered by the iteration spec, which the owner's
+own ruling scope permits. What I explicitly did NOT do: endorse the inconsistency — the auditor's stricter
+line on the QA report is defensible and its recommendation to *annotate rather than rewrite* is the better
+pattern; 6b's in-place edit would have been safer as an appended correction, as 6c's was.
+
+**Reversible:** yes — both artifacts are committed text with the original recoverable from git; adding a
+ledger entry later is one JSON object, and every figure is preserved.
+
+
+<!-- condense.sh 2026-08-27T23:45:18Z: moved 5 entries (keep-iters=5) -->
+
+## iter-19 — goal-decomposer (scoping this iteration to Stage D alone, not the full authorized D→G sequence)
+
+**Ambiguity:** The owner's 2026-08-26 ruling ("J-11 Stage D through Stage G recovery execution
+AUTHORIZED") authorizes the complete Stage D → E → F → G sequence in one ruling and states failure/retry
+semantics as a single "whole attempt," but it never states whether that authorized sequence must be
+delivered inside one decomposer iteration/dispatch or may span several, each re-verifying the frozen
+identity and boundary state before continuing.
+
+**We chose:** scope iteration 19 to Stage D only — freeze the fresh attempt identity, regenerate exactly
+the 11 canonical incident dates through the existing `scanner.run_scan`/`persist_run_payload` path, and
+STOP with the ruling's own item-14 terminal-outcome status lines — leaving Stage E (forward-return hole
+repair), Stage F (cache invalidation) and Stage G (full verification/acceptance gate) to later
+iterations. Reasoning: (a) every prior J-11 stage/step in this session (B1 migration, Stage C clear, the
+AVB correction, the pre-boot guard build, the table-create-and-arm) was its own iteration, and the
+codebase's own `j11_stage_d.py` module is deliberately readiness-only ("It performs NO Stage D
+execution") — a separation of concerns the existing code already encodes; (b) Stage D, Stage E and Stage
+F are each independently risky live mutations with distinct failure modes (identity/layer-boundary
+correctness; forward-return hole classification; per-cache disposition), and the decomposer's own
+priority rubric forbids bundling two risky changes in one diff because a joint failure is undiagnosable —
+that risk is worse, not smaller, when the changes are sequential stages of the SAME destructive attempt;
+(c) nothing in the ruling requires single-dispatch delivery — it requires a consistent frozen identity and
+continuous maintenance isolation across the attempt, both of which hold whether the attempt spans one
+iteration or several, and item 13's "next Goal Mode resume" language describes one continuous engine run
+(which can still process multiple internal iterations), not one single dispatch; iteration 20's Stage E
+work will re-verify the frozen identity is unchanged before proceeding rather than assuming it.
+
+**Reversible:** yes — if Stage D's live execution succeeds cleanly this iteration, nothing about stopping
+there forecloses Stage E/F/G in iteration 20; if the owner or a future decomposer judges the stages should
+have been combined, no work already done needs to be undone, only continued.
+
+## iter-19 — goal-decomposer (excluding iteration 18's remaining evidence-correction riders from this iteration)
+
+**Ambiguity:** Iteration 18's evaluator recommendation carried four small non-blocking jobs. This
+iteration's owner ruling explicitly defers two of them (the ordinary-request and Data-Manager guard gaps:
+"Ordinary request / Data-Manager guard gaps are recorded but deferred... Record these gaps as post-J-11
+maintenance-boundary hardening work after Stage G"). It does not explicitly say whether the two remaining
+low-risk documentation items — annotating iteration 17's QA report and fixing the "nothing else changed"
+evidence method to a true content hash — should ride along with the Stage D iteration, the way similar
+small riders rode along with iterations 17 and 18.
+
+**We chose:** defer both to a future iteration rather than bundling them into iteration 19. Reasoning: (a)
+the new ruling's own repeated language ("Do not expand the Stage D recovery iteration...", item 12's "Do
+not use this authorization to work on...unrelated product backlog while J-11 remains incomplete") sets a
+materially stricter scope tone than the two prior rulings that authorized the small riders iterations
+17/18 bundled; (b) Stage D is itself the single riskiest live-database operation this session has
+performed since Stage C, and the decomposer's own tie-breaking rule prefers the smallest concrete change
+set for a risky journey — adding unrelated evidence-file edits, however low-risk in isolation, dilutes
+reviewer/auditor attention at exactly the iteration needing maximum scrutiny; (c) unlike iterations 17/18's
+riders, neither remaining item blocks or is blocked by Stage D's own correctness, so no cost is paid by
+waiting one more iteration.
+
+**Reversible:** yes — both are pure evidence/documentation corrections to already-committed text;
+deferring them loses no information and either can be picked up in the very next non-Stage-D-critical
+iteration.
+
+## iter-19 — goal-decomposer (requiring a fresh live preflight re-verification, including a re-derived AVB classification, immediately before Stage D's first write)
+
+**Ambiguity:** The iteration-18 "Do not redo" note in the iteration-state digest says Stage D readiness
+(`READY: YES`, `AVB-A`) is "carried by citation... do not re-derive." Taken literally that could be read
+to forbid re-running the AVB diagnostic or the Stage D preflight gate this iteration. But `docs/goal.md`'s
+own Stage C precedent (C2) required a mandatory fresh preflight immediately before Stage C's first
+destructive statement, "do NOT trust iteration-10/11/12 counts merely because they were certified," and
+`j11_stage_d.py`'s own docstring states a real future Stage D execution "must call
+[`freeze_stage_d_attempt_identity`] fresh, immediately before its first write" — the existing code was
+built expecting exactly this re-verification step.
+
+**We chose:** read the "do not redo" note as governing the PLANNING question (whether Stage D is
+theoretically ready and authorized — settled, and not to be re-litigated) rather than the EXECUTION
+precondition (whether the live state a destructive write is about to act on still matches what was
+certified) and require the Stage D execution script to re-run the existing preflight/readiness tooling —
+the same functions, not a reimplementation — immediately before writing. Reasoning: (a) this is the
+identical pattern C2 already established for Stage C, and the goal text never suspends it for Stage D; (b)
+two live-database iterations (17, table-missing; 18, table-create-and-arm) happened between the iter-17
+readiness capture and now, and while neither should have touched `daily_prices` or engine/scoring code,
+"should not have" is exactly the kind of claim this session's own audits have repeatedly found needs
+independent re-derivation rather than trust; (c) the check is cheap (read-only, reuses existing functions)
+against an irreversible, high-consequence write.
+
+**Reversible:** yes — this only adds a read-only verification step; if the re-verification simply
+reproduces the iter-17 figures (the expected outcome), nothing changes and no extra artifact contradicts
+anything already on record.
+
+## iter-19 — goal-evaluator (CONTINUE rather than a seventh STALLED, on the ruling's own STOP condition)
+
+**Ambiguity:** The owner's 2026-08-26 ruling item 14 says the recovery attempt "must end in one of two
+honest states" — SUCCESS (D/E/F/G all YES, FULLY REPAIRED) or INCOMPLETE — and adds "There is no third
+state." The INCOMPLETE block's instruction ends "...and STOP." But INCOMPLETE's stated trigger is "any
+failure, refusal or unmet gate from Stage D onward before Stage G passes," and none of those occurred:
+Stage D executed completely with every check passing. The ruling never says whether a *clean, unfinished*
+attempt (Stage D done, E/F/G not yet started, which is the shape the iteration-19 decomposer deliberately
+chose and logged) is the INCOMPLETE state that must STOP, or simply the middle of an authorized sequence.
+
+**We chose:** read the STOP as attached to its stated trigger — a failure, refusal or unmet gate — and
+therefore NOT fired this iteration, so the verdict is CONTINUE with Stage E as the target. Reasoning:
+(a) the ruling's items 1, 7, 8 and 9 explicitly authorize Stage E, Stage F and Stage G, so no human-owned
+action gates the next step and decision-tree C.2 does not match; (b) unlike the three prior rulings
+(iters 16/17/18), this one contains NO unconditional "even if everything succeeds, STOP" clause — the
+earlier rulings' item 9 said exactly that, and its absence here is a deliberate change; (c) item 13 frames
+the D→G execution as one continuous "Goal Mode resume" with fixed launch conditions, which supports
+continuing inside the same engine run; (d) the strict "no third state ⇒ stop after every unfinished stage"
+reading would make a multi-iteration D→G impossible, so Stage G could never be reached — which cannot be
+the intent of a ruling that authorizes Stage G. What I explicitly did NOT do: treat this as permission to
+relax anything else — maintenance isolation, the ACTIVE boundary and the app staying OFF all remain
+binding, and I said so as the first rider.
+
+**Reversible:** yes — one owner line stops the run with nothing repaired further, nothing lost and no
+journey status changed; the Stage D evidence and the recorded attempt-membership set (run ids 3148-3158)
+survive either way, and if the owner prefers a per-stage authorization the riders are already listed and
+need no rework here.
+
+## iter-19 — goal-evaluator (ruling item 2's "do not reuse the iteration-14 identity" read procedurally, not as a value requirement)
+
+**Ambiguity:** Ruling item 2 says "Do **not** reuse: the iteration-10 identity; the iteration-14 identity;
+the iteration-16/17/18 readiness identity; or any historical frozen identity," and the phase spec's
+DEFINITION OF DONE bullet 2 requires the frozen identity be "distinct from every historical identity
+already on disk." The frozen Stage D identity `53d2ffd1…` EQUALS the iteration-14 and
+iteration-16/17/18 readiness values (the auditor's B1). The spec's own TC-3 contradicts both, requiring
+only an honest "equal-or-not" comparison.
+
+**We chose:** score the requirement as MET on the procedural reading — recompute fresh with the canonical
+function, never copy — and record the equality openly rather than as a violation. Reasoning: (a) I
+recomputed the digest myself from the three provenance files on disk plus the recorded config subset and
+reproduced `53d2ffd1…` exactly, and `git log` shows those files last changed at iter-12 and `config.yaml`
+at iter-4, all clean in the working tree — so the equality is mathematically forced, not a copied value;
+(b) the same ruling's item 6 forbids changing scoring formulas/thresholds and item 12 requires the
+identity be "recomputed with the canonical `compute_engine_identity` ... never hardcoded", so the value
+reading is unsatisfiable without violating the same ruling; (c) `compute_engine_identity` hashes only code
+files and config keys and never touches data, so item 2's "must represent the actual code, config and
+certified data baseline" cannot be a value test on the data component either. What I explicitly did NOT
+do: call this harmless — I carried the auditor's real consequence forward as a blocking design input for
+Stage G (identity alone cannot establish attempt membership; use the recorded run-id set 3148-3158 and
+assert no twelfth run carries the stamp), and named it as the one item to settle before Stage G is
+designed.
+
+**Reversible:** yes — nothing is mutated by this reading; if the owner intends the value reading, the
+remedy is an owner ruling recorded in `docs/goal.md`, and the eleven rebuilt runs' membership is already
+recorded independently of the stamp.
+

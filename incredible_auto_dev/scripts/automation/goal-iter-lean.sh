@@ -96,6 +96,19 @@ mkdir -p "$REPO_ROOT/docs/handoffs"
 # expensive developer build. Any doubt → the step re-runs (today's behavior).
 ITER_DIR="$(goal_iter_dir "$ITER_NAME" 2>/dev/null || true)"
 
+# ── Backend/frontend launch-context lock (iter-24 fix) ────────────────────
+# Resolve BACKEND_START_CMD/FRONTEND_START_CMD from CHAIN_START_BACKEND_CMD/
+# CHAIN_START_FRONTEND_CMD (or the plain scripts/start-*.sh default) EXACTLY
+# ONCE for this run, as early as possible — before any backend can start —
+# and lock the result (lib/common.sh::goal_iter_lock_backend_launch_context).
+# run_browser_qa_boot_and_replay below reads the locked value instead of
+# re-deriving it, and ensure_services_running's own guard refuses any backend
+# launch whose QA_BACKEND_START_CMD has drifted from what was locked here —
+# closing the gap that let iteration 23's routine regression re-test silently
+# boot the canonical database while a disposable-clone override was in force
+# for the same run (goal.md OWNER RULING item 3).
+goal_iter_lock_backend_launch_context "$ITER_DIR"
+
 # ── TOKEN-7: pre-baked review packet ──────────────────────────────────────
 # Built once the developer settles — BEFORE the SPEED-2/3 fork spawn points
 # (the packet's stat tail reads tracked runs/ paths, and a forked lane
@@ -251,14 +264,14 @@ run_browser_qa_boot_and_replay() {
 QA_BACKEND_LOG=$(_qa_log_path "goal-iter-backend")
 QA_FRONTEND_LOG=$(_qa_log_path "goal-iter-frontend")
 
-BACKEND_START_CMD="${CHAIN_START_BACKEND_CMD:-}"
-FRONTEND_START_CMD="${CHAIN_START_FRONTEND_CMD:-}"
-if [[ -z "$BACKEND_START_CMD" && -f "$REPO_ROOT/scripts/start-backend.sh" ]]; then
-  BACKEND_START_CMD="bash $REPO_ROOT/scripts/start-backend.sh"
-fi
-if [[ -z "$FRONTEND_START_CMD" && -f "$REPO_ROOT/scripts/start-frontend.sh" ]]; then
-  FRONTEND_START_CMD="bash $REPO_ROOT/scripts/start-frontend.sh"
-fi
+# iter-24 fix: reuse the launch command locked ONCE at the top of this script
+# (goal_iter_lock_backend_launch_context) instead of independently re-deriving
+# it from CHAIN_START_BACKEND_CMD/CHAIN_START_FRONTEND_CMD here every time this
+# function runs (inline, or inside the SPEED-2/3 fork) — that independent
+# re-derivation is exactly what let an override established elsewhere in the
+# same run go unhonored (iteration 23's canonical-DB boot).
+BACKEND_START_CMD="${GOAL_ITER_BACKEND_LAUNCH_CMD:-}"
+FRONTEND_START_CMD="${GOAL_ITER_FRONTEND_LAUNCH_CMD:-}"
 
 _BACKEND_PORT="${CHAIN_BACKEND_PORT:-8000}"
 _FRONTEND_PORT="${CHAIN_FRONTEND_PORT:-3000}"

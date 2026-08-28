@@ -1432,6 +1432,87 @@ sys.exit(1)
 PYEOF
 }
 
+# ── Backend/frontend launch-context lock (iter-24 fix) ────────────────────
+# Root cause (goal.md OWNER RULING item 3, iter-23 eval "The violation,
+# precisely"): goal-iter-lean.sh used to resolve BACKEND_START_CMD from
+# CHAIN_START_BACKEND_CMD independently, INSIDE run_browser_qa_boot_and_replay,
+# every time that function ran. A disposable-clone/alternate-DB override
+# supplied for one part of an iteration was never guaranteed to reach every
+# other backend-launch point in the SAME run (the deterministic-replay lane's
+# routine J-01/J-04 re-test silently fell back to `bash scripts/start-backend.sh`
+# with no TRENDORA_CONFIG, booting the protected canonical database and writing
+# 10 rows into it).
+#
+# The fix: resolve the launch commands EXACTLY ONCE per goal-iter-lean.sh
+# invocation, as early as possible (before any backend can start), and lock
+# the result into GOAL_ITER_BACKEND_LAUNCH_CMD / GOAL_ITER_FRONTEND_LAUNCH_CMD
+# (exported — inherited by the SPEED-2/3 forked subshells and by the
+# quota-retry pre-hook, since all of them are subshells/callbacks of THIS
+# process, never a fresh process that could lose the export) plus a
+# per-iteration sentinel file (inspectable/auditable evidence of what was
+# locked). Every backend-launch call site must resolve from this locked value
+# — never re-derive independently. `ensure_services_running`'s own guard
+# (below) enforces that: it is the single chokepoint every self-boot path
+# (initial boot, REL-5 restart, REL-14 preflight retry, the quota-retry
+# pre-hook) already funnels through, so checking there closes the gap for all
+# of them at once instead of patching each call site separately.
+#
+# A caller that never locks a context (every script besides goal-iter-lean.sh
+# — qa-phase.sh, browser-qa-phase.sh, demo-phase.sh, run-phase.sh,
+# run-benchmark.sh) leaves GOAL_ITER_BACKEND_LAUNCH_CMD unset, so the guard is
+# a complete no-op for them — this fix changes nothing outside goal-iter-lean.sh
+# (owner ruling item 3's explicit scope; a broader refactor is NOT authorized).
+goal_iter_lock_backend_launch_context() {
+  local iter_dir="${1:-}"
+  local backend_cmd="${CHAIN_START_BACKEND_CMD:-}"
+  local frontend_cmd="${CHAIN_START_FRONTEND_CMD:-}"
+  local override_active="no"
+  [[ -n "${CHAIN_START_BACKEND_CMD:-}" ]] && override_active="yes"
+  if [[ -z "$backend_cmd" && -n "${REPO_ROOT:-}" && -f "$REPO_ROOT/scripts/start-backend.sh" ]]; then
+    backend_cmd="bash $REPO_ROOT/scripts/start-backend.sh"
+  fi
+  if [[ -z "$frontend_cmd" && -n "${REPO_ROOT:-}" && -f "$REPO_ROOT/scripts/start-frontend.sh" ]]; then
+    frontend_cmd="bash $REPO_ROOT/scripts/start-frontend.sh"
+  fi
+  export GOAL_ITER_BACKEND_LAUNCH_CMD="$backend_cmd"
+  export GOAL_ITER_FRONTEND_LAUNCH_CMD="$frontend_cmd"
+  if [[ -n "$iter_dir" ]]; then
+    mkdir -p "$iter_dir" 2>/dev/null || true
+    { printf 'LOCKED_AT=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+      printf 'BACKEND_START_CMD=%q\n'  "$backend_cmd"
+      printf 'FRONTEND_START_CMD=%q\n' "$frontend_cmd"
+      printf 'OVERRIDE_ACTIVE=%s\n' "$override_active"
+    } > "$iter_dir/.backend-launch-context.tmp.$$" 2>/dev/null \
+      && mv -f "$iter_dir/.backend-launch-context.tmp.$$" "$iter_dir/.backend-launch-context" 2>/dev/null \
+      || rm -f "$iter_dir/.backend-launch-context.tmp.$$" 2>/dev/null || true
+  fi
+  echo "[goal-iter-lean] Backend launch context locked for this run (override active: $override_active)." >&2
+}
+
+# backend_launch_context_refuse <operation> [detail]
+# FAIL CLOSED, same shape as maintenance_isolation_refuse above: a backend
+# launch whose QA_BACKEND_START_CMD has drifted from the context
+# goal_iter_lock_backend_launch_context locked at iteration start is refused —
+# loudly, recorded, and BEFORE any backend process is spawned — rather than
+# silently proceeding with whatever command this call site happened to end up
+# with (iteration 23's exact failure mode).
+backend_launch_context_refuse() {
+  local op="${1:-unknown-operation}" detail="${2:-}"
+  echo "[backend-launch-context] REFUSING to start a backend whose launch command does not match the context locked at iteration start: ${op}${detail:+ — $detail}" >&2
+  echo "[backend-launch-context] Failing closed (iter-24 fix) instead of silently falling back to a different launch command — see goal_iter_lock_backend_launch_context in lib/common.sh." >&2
+  local dir="${ITER_DIR:-}"
+  if [[ -n "$dir" ]]; then
+    mkdir -p "$dir" 2>/dev/null || true
+    printf '%s\toperation=%s\tdetail=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$op" "$detail" \
+      >> "$dir/backend-launch-context-refusals" 2>/dev/null || true
+  fi
+  if declare -F record_telemetry_event >/dev/null 2>&1; then
+    record_telemetry_event "backend_launch_context_refused" \
+      "$(printf '{"operation":"%s","detail":"%s"}' "$op" "$detail")" 2>/dev/null || true
+  fi
+  return 1
+}
+
 # ── Idempotent service bootstrap (shared by qa-phase.sh and browser-qa-phase.sh) ──
 #
 # Starts the backend (and optionally frontend) if they are not already running.
@@ -1476,17 +1557,36 @@ ensure_services_running() {
 
   # Backend: 2 attempts × 45s = the same 90s ceiling as the previous single shot,
   # but now re-SPAWNS on failure and reclaims a stale/drifted uvicorn by cwd.
-  if [[ -n "${QA_BACKEND_HEALTH_URL:-}" && -n "${QA_BACKEND_START_CMD:-}" ]]; then
-    # Backend ready_re is permissive: a 404/405 on /health still proves uvicorn is
-    # listening and routing. Projects that namespace routes (e.g. /api/health) would
-    # otherwise be wrongly judged DOWN and torn down on every attempt. QA_BACKEND_UP
-    # is advisory only (no verdict gates on it), so "reachable" is the right bar.
-    if _start_service_with_retries "backend" \
-         "$QA_BACKEND_HEALTH_URL" "$QA_BACKEND_START_CMD" "${QA_BACKEND_LOG:-/dev/null}" \
-         45 2 QA_BACKEND_LOG_TAIL "kill_stale_backend_server" '^[1-5][0-9][0-9]$'; then
-      export QA_BACKEND_UP="yes"
-    else
+  if [[ -n "${QA_BACKEND_HEALTH_URL:-}" ]]; then
+    # Launch-context guard (iter-24 fix): when goal-iter-lean.sh has locked a
+    # backend launch command for this run (GOAL_ITER_BACKEND_LAUNCH_CMD, set by
+    # goal_iter_lock_backend_launch_context), THIS call's QA_BACKEND_START_CMD
+    # must be byte-identical to it — whether the mismatch is a different
+    # command or empty/unset (a call site that lost the override entirely).
+    # Refuse and return BEFORE _start_service_with_retries ever runs: no
+    # process is spawned and no log file is created for a refused attempt.
+    # A caller that never locked a context (every script besides
+    # goal-iter-lean.sh) leaves GOAL_ITER_BACKEND_LAUNCH_CMD unset, so this is
+    # a no-op there — unchanged behavior outside goal-iter-lean.sh.
+    if [[ -n "${GOAL_ITER_BACKEND_LAUNCH_CMD:-}" \
+          && "${QA_BACKEND_START_CMD:-}" != "${GOAL_ITER_BACKEND_LAUNCH_CMD}" ]]; then
       export QA_BACKEND_UP="no"
+      export QA_BACKEND_LOG_TAIL="refused: backend launch command drifted from the context locked at iteration start (locked: ${GOAL_ITER_BACKEND_LAUNCH_CMD}; this call: ${QA_BACKEND_START_CMD:-<empty>})"
+      backend_launch_context_refuse "ensure_services_running/backend" "$QA_BACKEND_LOG_TAIL"
+      return 1
+    fi
+    if [[ -n "${QA_BACKEND_START_CMD:-}" ]]; then
+      # Backend ready_re is permissive: a 404/405 on /health still proves uvicorn is
+      # listening and routing. Projects that namespace routes (e.g. /api/health) would
+      # otherwise be wrongly judged DOWN and torn down on every attempt. QA_BACKEND_UP
+      # is advisory only (no verdict gates on it), so "reachable" is the right bar.
+      if _start_service_with_retries "backend" \
+           "$QA_BACKEND_HEALTH_URL" "$QA_BACKEND_START_CMD" "${QA_BACKEND_LOG:-/dev/null}" \
+           45 2 QA_BACKEND_LOG_TAIL "kill_stale_backend_server" '^[1-5][0-9][0-9]$'; then
+        export QA_BACKEND_UP="yes"
+      else
+        export QA_BACKEND_UP="no"
+      fi
     fi
   fi
 
@@ -1528,8 +1628,12 @@ ensure_services_running() {
     fi
   fi
 
-  # ALWAYS 0: the five bare call sites run under `set -e`. Failure is surfaced
-  # via QA_*_UP / QA_*_LOG_TAIL, never a non-zero return.
+  # ALWAYS 0 for an ordinary boot failure: the five bare call sites run under
+  # `set -e`. Failure is surfaced via QA_*_UP / QA_*_LOG_TAIL, never a
+  # non-zero return. The two FAIL-CLOSED refusals above (maintenance
+  # isolation; a backend launch command that drifted from the context locked
+  # at iteration start) are the deliberate exceptions — those return 1
+  # specifically so `set -e` aborts the caller instead of a silent boot.
   return 0
 }
 

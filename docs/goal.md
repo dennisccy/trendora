@@ -2194,6 +2194,52 @@ manifest artifact (it must be self-describing and self-caveating).
       the demo requirement is replaced by the pre/post inventory, the mutation reconciliation, the
       cache-invalidation proof, and the manifest-immutability evidence.
 
+       ### OWNER RULING — J-11 CLOSED; one authorized launcher fix, then normal work resumes
+       *(owner, 2026-08-27 — binding)*
+
+       A **later** owner decision than the acceptance ruling above. It closes J-11 and sets the
+       continuation policy for this goal. It revises no earlier ruling, evidence or Stage result.
+
+       **1. J-11 is CLOSED.** The final serving/replay verification ran against the disposable clone
+       and passed. J-11 is accepted as **PASSING**. Do **not** reopen J-11 recovery or J-11 serving
+       verification.
+       ```
+       J-11 STATUS: PASSING — CLOSED
+       ```
+
+       **2. The accidental iteration-23 canonical-DB boot is a historical HARNESS contract violation,
+       not a Trendora product-data regression.** The 10 resulting rows across the five recomputable
+       derived cache tables are **accepted in place**. Do not delete them. Do not perform cleanup
+       writes merely to restore the pre-verification cache state. Do not manually delete or alter
+       `trendora.db-wal`.
+
+       **3. Exactly one narrow Goal Mode tooling fix is AUTHORIZED** — the demonstrated launcher
+       defect in `incredible_auto_dev/scripts/automation/goal-iter-lean.sh`. Scope, exhaustively:
+       - when an iteration supplies an alternate `TRENDORA_CONFIG` and/or `CHAIN_START_BACKEND_CMD`,
+         every browser-QA, deterministic-replay, retry and restart backend launch MUST preserve that
+         same launch context;
+       - it MUST never silently fall back to the canonical database while an alternate
+         verification/QA database is in force;
+       - missing required launch context MUST fail closed **before** backend boot;
+       - add a focused regression test reproducing the iteration-23 failure.
+       No broader Goal Mode refactor, stall-detector redesign, depth-system redesign or unrelated
+       automation cleanup is authorized.
+
+       **4. The iteration-23 disposable clone** (`runs/goal-market-compass-iter-23/verify-clone/`) is
+       kept only until this launcher fix is verified. It may then be deleted as disposable evidence
+       infrastructure.
+
+       **5. Normal Market Compass product work resumes immediately** once the launcher defect is fixed
+       and verified. No further owner authorization is needed for ordinary non-destructive product
+       iterations.
+
+       **6. Owner continuation policy for this goal (binding).** Do **not** STALL merely for reversible
+       cleanup choices, disposable-artifact cleanup, or correctly recomputable derived-cache residue —
+       prefer the non-destructive / no-cleanup default, record it, and continue. Owner approval is
+       still REQUIRED for: raw/canonical data repair; immutable-manifest mutation; schema migration;
+       new network/provider access; destructive user-state changes; or another genuinely irreversible
+       product-contract decision.
+
 <!-- Continuous-improvement auto-journeys: the goal-proposer appends NEW Must-have journeys ONLY
      between the two markers below (see the goal-self-extension skill). The human-authored journeys
      above and the Anti-goals below are never machine-edited. An empty block = nothing auto-proposed yet. -->

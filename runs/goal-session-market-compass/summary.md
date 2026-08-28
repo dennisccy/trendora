@@ -1,18 +1,18 @@
 # Goal Session Summary — market-compass
 
-**Final verdict:** STALLED
+**Final verdict:** AWAITING_PUMP
 **Total iterations:** 24
-**Wall time (seconds):** 4482
+**Wall time (seconds):** 4729
 **Quota pauses:** 0
 **Started:** 2026-08-19T21:31:52.886915Z
-**Finished:** 2026-08-27T20:59:34.833708Z
+**Finished:** 2026-08-27T23:38:56.951532Z
 
 ## Branch
 
 This session pushed iteration commits to `goal/market-compass`. Open a PR with:
 
     gh pr create --base main --head goal/market-compass \
-      --title "feat: market-compass — STALLED" \
+      --title "feat: market-compass — AWAITING_PUMP" \
       --body-file runs/goal-session-market-compass/summary.md
 
 ## Final journey state
@@ -491,11 +491,18 @@ See `runs/goal-session-market-compass/telemetry.jsonl` for the structured event 
       pump-wait                  2.9m
       OVER BUDGET at showcase-tail: 4228s > 3600s (mode=trim)
       overlap saved              4.7m  (parallel steps)
+  goal-market-compass-iter-24  depth=lean  verdict=?  wall=?  (incomplete/interrupted attempt)
+      developer                   69.1m  calls=1
+      goal-decomposer              9.6m  calls=1
+      reviewer                     0.0m  calls=1  failures=1
+      [engine] lean-pipeline      69.2m  (contains agent time above)
+      [engine] showcase-join       0.0m  (contains agent time above)
+      pump-wait                  0.5m
   session: 23 completed iteration(s), mean wall 146.1m
       total reviewer                  1558.6m
-      total developer                 1248.6m
+      total developer                 1317.7m
       total orchestrator               484.9m
-      total goal-decomposer            453.8m
+      total goal-decomposer            463.4m
       total goal-evaluator             383.8m
       total auditor                    340.5m
       total coherence-auditor          212.0m
@@ -509,5 +516,5 @@ See `runs/goal-session-market-compass/telemetry.jsonl` for the structured event 
       total browser-qa-replay            8.6m
       total ux-regression-reviewer       7.2m
       total AWAITING_PUMP paused gaps: 503.0m
-      halts: AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, STALLED, REGRESSION_HALT, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, AWAITING_PUMP, STALLED, STALLED, STALLED, STALLED, STALLED
+      halts: AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, STALLED, REGRESSION_HALT, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, AWAITING_PUMP, STALLED, STALLED, STALLED, STALLED, STALLED, AWAITING_PUMP
 ```
