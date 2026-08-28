@@ -577,3 +577,42 @@ iteration's exposure analysis.
 **Applies to:** any iteration executing J-11 Stage E/F/G, and any future live rebuild that changes which
 date is `max(ScannerRun.asof_date)` or populates a previously-empty date.
 
+
+<!-- condense.sh 2026-08-28T16:17:25Z: moved 2 entries (keep-iters=5) -->
+
+## iter-20 — 2026-08-27T04:20:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** `docs/goal.md` J-11 step 5 states as fact that the incident left forward-return holes on
+retained (non-incident) runs. It is wrong about this codebase: `data_manager._cascade_targets`
+(`apps/backend/app/engine/data_manager.py:1967-2011`) invalidates a run when ANY of its `ForwardReturn`
+rows measures into a removed bar date, and `remove_price_data` (`:2173-2177`) then deletes that run's
+rows WHOLE — so a run that would carry a partial hole is deleted entirely and becomes an incident date.
+A retained-run hole is structurally impossible, and the live data agrees (zero non-rebuilt rows measure
+into 2026-08-10/11/12). Three lanes reached the right "zero" answer via a 15-combination single-calendar
+enumeration, which is not exhaustive because `measured_date` resolves PER SYMBOL (run 3154 horizon 1
+splits into 2026-08-04 for 428 symbols and 08-05 for 124).
+**Applies to:** any iteration whose acceptance criteria are copied from a `docs/goal.md` factual premise
+about how the code behaves — re-derive the premise from the code path before scoring "requirement unmet"
+or "requirement met"; specifically, J-11 Stage G must treat population (b) = 0 as the CORRECT answer,
+not a missing repair, and must not weaken its gate to accommodate a premise that was never true.
+
+## iter-21 — 2026-08-27T09:30:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** Emptying a cache table is not a durable state — it is only durable if every WRITE path
+back into that table is enumerated and closed. Stage F correctly deleted `coverage_snapshot`, but
+`coverage_from_storage`'s self-heal branch (`apps/backend/app/engine/data_manager.py:1544-1546`)
+calls `refresh_coverage_snapshot_for` → `_upsert_coverage_snapshot` on the READ path whenever an
+explicit `?as_of=` names a date backed by a real `ScannerRun` — which, after Stage D, includes all
+eleven incident dates — and `data_manager.py` imports no boundary guard at all. One page visit
+would repopulate a table the repair just cleared, for a quarantined date, and the same visit's
+`membership_timeline_cached` MISS would prune the row Stage F deliberately preserved. Five lanes
+(dev, review, QA, audit, coherence) each verified the deletion happened; none asked what could put
+the rows back. The spec named this function once, but only as a reason to *classify* the table.
+**Applies to:** any iteration that deletes or invalidates cached/derived rows as a correctness fix —
+grep every caller of the table's model for an upsert/insert reachable from a request path BEFORE
+asserting "no stale derived state remains"; and specifically J-11 Stage G, whose acceptance list
+includes "caches consistent with the rebuilt state" and must therefore assert cleanliness after the
+application is allowed to boot, or foreclose the write first.
+

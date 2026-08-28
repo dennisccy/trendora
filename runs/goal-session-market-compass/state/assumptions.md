@@ -3,102 +3,6 @@
 Append-only. Each entry records a scoring decision that required interpreting an
 ambiguous goal, so the owner can veto it early.
 
-## iter-21 — goal-decomposer (scoping this iteration to Stage F alone, not Stage F+G)
-
-**Ambiguity:** `docs/goal.md`'s Stage D→G ruling authorizes the full D→E→F→G sequence in one instruction
-and item 8 authorizes Stage F unconditionally once Stage E succeeds, so no further owner action gates
-starting it. But nothing in the ruling requires the authorized sequence to be delivered inside one
-decomposer iteration, and nothing forecloses continuing to split it stage-by-stage, as iterations 19 and
-20 already chose to do for Stage D and Stage E respectively.
-
-**We chose:** scope iteration 21 to Stage F alone — re-verify Stage D/E's frozen state fresh, classify and
-where warranted invalidate the seven dependency-affected caches, and STOP with the item-14 terminal-outcome
-status lines — leaving Stage G (the full verification/acceptance gate) to a later iteration. Reasoning:
-(a) this is the identical discipline iterations 19 and 20 already established and logged for Stage D and
-Stage E, and every prior J-11 stage/step in this session has been its own iteration; (b) Stage F has its
-own distinct failure mode (a seven-table classification exercise with a real, planning-time-discovered
-correctness risk in `availability_from_storage` — see BACKGROUND) that deserves focused reviewer/auditor
-attention undiluted by Stage G's separate, larger verification-contract surface; (c) the decomposer's own
-priority rubric forbids bundling two risky changes in one diff, and Stage G is easily large enough on its
-own (the full acceptance gate covering raw inputs, snapshot scope, forward returns, manifests, audit/
-evidence/user state, caches, and operational isolation) to count as a second risky change.
-
-**Reversible:** yes — if Stage F's live execution succeeds cleanly this iteration, nothing about stopping
-there forecloses Stage G in a later iteration; if a future decomposer judges the stages should have been
-combined, no work already done needs to be undone, only continued.
-
-## iter-21 — goal-decomposer (per-cache disposition design: `created_at`-vs-Stage-D-start as the decisive
-classification signal, and a conditional preserve for `membership_timeline_cache`)
-
-**Ambiguity:** `docs/goal.md` J-11 step 6 requires classifying each of the seven named caches into one of
-three dispositions (guaranteed-invalidates / explicit-delete / regenerate-through-canonical-producer, plus
-"prove unaffected and leave alone" as a fourth legitimate outcome for a cache proven data-independent of
-J-11) but does not assign a specific disposition to any specific cache, nor does it say how to resolve the
-"same-count/same-ID stamp collision" risk it names when a pure `dataset_version` string comparison cannot
-by itself distinguish a coincidental collision from a genuine fresh post-repair compute.
-
-**We chose:** (1) use each cache row's `created_at` compared against Stage D's frozen execution-start
-instant as the decisive classification signal — corroborated by, never replacing, the `dataset_version`
-stamp comparison — since maintenance isolation has forbidden any write to these tables since before that
-instant, so every currently-stored row in the six scanner-run/forward-return-dependent caches must predate
-the repair regardless of what its stamp string reads; an unexplained row at or after that instant is
-treated as a maintenance-isolation breach requiring escalation, never as a routine case. (2) Default five
-caches (`event_study_cache`, `market_phase_cache`, `forward_aggregate_cache`, `coverage_snapshot`,
-`availability_cache`) to `explicit_delete`, required outright for `availability_cache` on the strength of a
-concrete finding this planning pass made by reading `data_manager.availability_from_storage` directly
-(`:1741-1747`/`:1760-1763`): its own serving logic would otherwise serve a stale, pre-repair payload
-labeled `stale: False` (i.e., current) the first time `/api/data/availability` is requested post-reboot
-with no ingest job in flight — a live AG-3/AG-8 risk, not a hygiene question. (3) Preserve
-`index_series_cache` untouched, since its only dependency (index-symbol `daily_prices` bars) is proven
-byte-unchanged by Stage D's and Stage E's own mutation accounting. (4) Give `membership_timeline_cache` a
-conditional recommendation — preserve its stale row (rather than delete) specifically so its own
-MISS-repair fast path can take the cheaper "historical gap-insert" branch instead of forcing the next real
-request onto the documented >300s full cold-compute path on a host that has already frozen once from
-memory pressure — but only if Stage F's own live proof confirms the safe branch (not the narrower
-append-forward branch) would actually run; if that proof does not hold, fall back to deletion. Reasoning
-for the whole design: (a) iter-15b's lesson (never trust a single fingerprint alone) argues directly against
-a stamp-string-only comparison; (b) the `availability_cache` finding is concrete, evidence-backed code
-reading, not speculation, so treating it as "required" rather than "optional" is proportionate; (c) forcing
-uniform deletion across all six caches would be simpler to specify but would reintroduce exactly the
-memory/host risk `docs/goal.md`'s own Constraints section and the 2026-08-20 freeze incident warn against,
-for a cache (`membership_timeline_cache`) whose own code already has machinery built to avoid it.
-
-**Reversible:** yes — this is an implementation-path/classification-policy choice about code not yet
-written. A future iteration could revisit any single cache's disposition if live evidence at Stage-F
-execution time contradicts this planning pass's reasoning (e.g., the `membership_timeline_cache`
-incremental-reuse proof fails, which the spec already routes to a safe deletion fallback); no destructive
-step depends on this reasoning being right on the first try, since every disposition is proven live before
-Stage F's one authorized write executes.
-
-## iter-21 — goal-evaluator (a post-deletion cold-compute on the request path read as an operational risk, not an AG-10 violation)
-
-**Ambiguity:** AG-10 requires that "heavy compute MUST be launched only via the project launch
-scripts, which MUST apply the host caps". Stage F's deletion of `event_study_cache` and
-`forward_aggregate_cache` removed two serve-a-prior-generation fallbacks, so after Stage G the first
-`/api/evidence` request can now run `compute_drawdown_expectations_cached` synchronously on the
-request path (`forward_testing.py:2874-2877`), and `market_phase_cached`/`event_study_cached` will
-cold-compute on first view (auditor B3). The goal text does not say whether *making an existing
-in-process compute heavier or more likely* counts as "launching heavy compute" for AG-10's purposes,
-on a host with a documented freeze history (2026-08-20).
-
-**We chose:** score this as an operational risk and a binding Stage-G design input, NOT as an
-anti-goal violation (not even minor). Reasoning: (a) AG-10's mechanism is the CAPS, and the future
-compute would run inside the normal backend, which is started by `scripts/start-backend.sh` and
-therefore still inherits the HOST-GUARD affinity/thread caps and `server.memory_cap_mb` — no cap is
-removed, weakened or bypassed by this iteration; (b) Stage F's own measured peak was 479.9 MB against
-an 8192 MB ceiling, so the iteration itself launched nothing heavy; (c) the alternative reading would
-make *any* cache invalidation an AG-10 violation by construction, which would forbid the very repair
-the owner authorized in ruling item 8; (d) the app is OFF, so no such request can land before Stage G
-designs the boot sequence. What I explicitly did NOT do: call it harmless — I carried the auditor's
-recommendation forward as a required Stage-G design item (let `warmup._warm_drawdown_expectations` /
-`_warm_membership_timeline` / `_warm_coverage_snapshot` / `_warm_availability` complete before any
-request lands, and record measured peak memory across that warm).
-
-**Reversible:** yes — nothing is mutated by this reading, and the deleted rows are all recomputable
-from `daily_prices`/`scanner_results` through their existing canonical producers; if the owner reads
-AG-10 more strictly, the remedy is a warm-ordering requirement in the Stage G spec, which is already
-the recommendation either way.
-
 ## iter-22 — goal-decomposer (Stage G write-path scoping: foreclose only the freshly-found
 `data_manager.coverage_from_storage` self-heal write; leave `scanner.resolve_run` and
 `compass.get_or_create_manifest` explicitly deferred)
@@ -567,3 +471,67 @@ evaluation's owner-facing lines. Reversible for the POLICY: if the owner rules t
 the canonical database needs his sign-off regardless of how additive it is, future iterations simply stop
 triggering regenerate live and J-06 step 4 falls back to fixture proof; the existing row stays, correctly
 marked not usable as forward-looking evidence, exactly like every other row.
+
+## iter-27 — goal-evaluator (J-06 promoted to `passing` although step 2's "unavailable" state is proven only on a fixture database)
+
+**Ambiguity:** J-06 step 2 instructs "Run seed-safe remove-data over a range covering that manifest's
+as-of (its snapshots cascade away); assert `GET /api/compass` still serves the manifest verbatim with a
+read-time basis disclosure showing the underlying run is unavailable — never a 404, never a recompute."
+The literal `remove_data()` call has never been executed against any database in this scoping: not
+against the canonical DB (no live `ScannerRun` deletion is authorized, and the binding `iter-26 —
+goal-decomposer` ledger entry routes the drill to fixtures because "the last two trading days" still
+resolves to the incident pair 2026-08-11/12), and not against the fixture DB (the test deletes the run,
+its `ScannerResult` children and that date's `DailyPrice` rows by SQL instead). The goal text does not say
+whether a route-level fixture reproduction of the post-removal STATE satisfies a step written in terms of
+the removal ACTION.
+
+**We chose:** promote J-06 to `passing`, scoring step 2 from the route-level fixture proof
+(`apps/backend/tests/test_api_compass.py:288` — the REAL `app.api.compass.compass` function against a real
+SQLite database, asserting `basis.status == "unavailable"`, `"no longer stored"` in the detail,
+`healed is None`, zero new `scanner_runs` rows, and the manifest's `manifest_hash`/`version`/full payload
+byte-identical to the pre-removal response), combined with live canonical-DB evidence for steps 3 and 4
+(UT-02 "Basis: available" at 2025-04-15 v2 with v1 and v2 both listed; UT-03 "Basis: rebuilt" at the
+frontier with its honest detail sentence). Grounds, each checked: (a) this iteration's spec DEFINITION OF
+DONE explicitly authorizes fixture-level proof for this state and instructs the evaluator to score J-06
+from combined fixture + live-regression evidence, "as it did for J-05 in iter-26"; (b) the auditor verified
+against `data_manager.py:2178-2190` that the fixture's deletes are a faithful reproduction of what
+`remove_data` leaves behind, and accepted the substitute (finding T2); (c) I confirmed the behavioural flip
+myself by comparing the same test at `HEAD` (asserting the bug) with the working tree (asserting the fix);
+(d) requiring the literal live drill would mean re-running the exact action class that caused this
+session's worst incident, on data whose AG-9 recovery exception is exhausted. What I did NOT do: treat the
+fixture as covering steps 3 and 4 — those I scored from live evidence and re-derived the displayed numbers
+myself against stored row id 25.
+
+**Reversible:** yes — a scoring-interpretation call with no mutation. One owner line settles it: if he rules
+that step 2 needs a real `remove_data()` execution, J-06 returns to `partial` and the cheapest closure is a
+throw-away database copy (the iter-23 clone at `runs/goal-market-compass-iter-23/verify-clone/` still
+exists and the launcher guard that protects such runs was verified at iter-24); none of this iteration's
+route-level or live evidence would need redoing.
+
+## iter-27 — goal-evaluator (audit finding B3 accepted as an out-of-scope residual rather than an unmet J-06 limb)
+
+**Ambiguity:** J-06 step 2 promises the route "still serves the manifest verbatim ... never a 404". The
+auditor's B3 shows the promise holds only while the as-of still RESOLVES: `resolved_date` runs first on
+both branches, and because `remove_data` deletes the in-scope `DailyPrice` rows too, removing the range of
+a FRONTIER-dated manifest (every `at_ingest` manifest, e.g. 2026-08-12 v6) moves `latest_data_date` behind
+that manifest's as-of, so `resolve_as_of_date` raises `future` -> HTTP 400 and the intact frozen row becomes
+unreadable. J-05's own flagship manifest IS the frontier one, so a literal reading of step 2 applied to it
+would fail. The goal text does not say whether an honest 4xx that is not a 404, over a row that was never
+mutated, breaks the step.
+
+**We chose:** record B3 as an honest residual and promote J-06 anyway. Grounds: (a) I read
+`scanner.resolve_as_of_date` (`scanner.py:304-334`) myself and confirm the behaviour is exactly
+pre-existing — pre-fix, `resolve_run` called the same validator first for the same reason, so this
+iteration neither caused nor worsened it; (b) it is narrowed by `remove_data`'s seed-safety — the committed
+seed bars cannot be deleted, so every seed-covered as-of always resolves and the promise holds fully for the
+realistic historical case now proven; (c) reaching the failing case requires removing post-seed price data,
+which is precisely the destructive act AG-9 and the standing safety scoping now forbid; (d) closing it would
+mean serving a manifest BEFORE validating the as-of, a larger reorder squarely outside this spec and
+arguably at odds with the honest as-of resolution contract every other route shares. What I did NOT do:
+leave it unstated — it is written into J-06's `gap` field in journey-history, into the evaluation, and into
+the next-step recommendation, so no later reader assumes step 2 is unconditionally closed.
+
+**Reversible:** yes — nothing was mutated by this reading. If the owner rules that a frozen manifest must
+remain readable even when its own price range is gone, J-06 returns to `partial` and the fix is a bounded
+follow-up (serve the stored manifest on an exact-date match before as-of validation, keeping today's error
+mapping for every other path).

@@ -2236,3 +2236,97 @@ non-blocking: J-09's ~2.99 GB acceptability; J-06's "underlying run unavailable"
 test steps; whether an empty "next-session focus" is acceptable; and whether MNST joins the recovery list.
 ONE STANDING FRAMEWORK NOTE: `goal_gate.py`'s duplicate-journey-heading defect is still unfixed and must
 be closed before any GOAL_ACHIEVED certification.
+
+## Iteration 27 — goal-market-compass-iter-27
+
+**Date:** 2026-08-28T17:40:00Z
+**Verdict:** CONTINUE
+**Depth dispatched:** full — **as the spec required**, second time in three iterations. `iter-27/depth-dispatched`
+reads `full`; every lane ran (reviewer, QA, ui-impact, ux-regression, closure, coherence, independent auditor).
+The full->lean demotion that hit iters 2, 6, 8, 23, 24 and 26 did NOT recur; my own iter-26 ESCALATE bought it.
+
+**Owner-facing lines:** `J-06 CLOSED — passing; the page can finally say a frozen briefing's source run is gone`
+· `ONE UNAUTHORIZED PERMANENT ROW ADDED BY THE BROWSING LANE (2019-03-01, id 26) — benign, and three reports
+then quoted the wrong count` · `TRUE MANIFEST COUNT IS 26, NOT 25` · `ANTI-GOAL LEDGER: 9 total, 0 unresolved`.
+
+**Journey deltas:**
+- **Newly passing: J-06** "A frozen manifest never changes" — `partial` since iter-0, promoted on evidence I
+  checked myself. The route now resolves the as-of with a validate-only call and serves an existing manifest
+  BEFORE `resolved_run`/`run_scan` can fire, so a removed source run stays removed. I ran the four targeted test
+  files (**97 passed in 11.76s**) and compared the SAME removal test at `HEAD` (asserts the bug: `"rebuilt"`,
+  `healed is not None`) against the working tree (asserts `"unavailable"`, `healed is None`, zero new
+  `scanner_runs`) — a genuine red->green flip on one scenario, through the real route function. Steps 3 and 4
+  are proven LIVE by UT-02 (2025-04-15 v2, "Basis: available", v1 and v2 both listed with their own stamps)
+  and UT-03 (frontier v6, "Basis: rebuilt" with the honest detail sentence). AG-3 re-derived by me against
+  stored row id 25: 531 members / 521 cohort / 28 shadow / 10 candidates, tally 513+8=521 — exact.
+  `evidence_makeup: true` (walkthrough owed).
+- **TWO RESIDUALS RECORDED, NEITHER BLOCKING:** (a) the "unavailable" state is proven at route level on a
+  FIXTURE database, never through the literal `remove_data()` call anywhere — the spec's own DEFINITION OF DONE
+  authorizes that, and the auditor accepted it (T2); (b) audit **B3** — "never a 404" holds only while the
+  as-of still resolves; removing a FRONTIER manifest's price range moves `latest_data_date` behind its as-of,
+  so `resolve_as_of_date` raises `future` -> HTTP 400 and the intact frozen row becomes unreadable. I read
+  `scanner.py:304-334` myself and confirm B3 is real. Pre-existing, unchanged by this iteration, out of scope.
+- Re-verified, unchanged: **J-01, J-04, J-10, J-11** (deterministic replay 5/5 including J-06) and **J-05**
+  (LLM lane UT-J-05 PASS, steps 1 and 6 deliberately not run per the binding iter-26 safety scoping). All
+  re-stamped to iter-27. Two spot-checks opened: J-10's AVB at 2026-08-11 renders "Invalid below the 50-DMA at
+  $187.94" — the golden's exact value; J-04's capture is AGAIN the 2026-03-30 viewport stopping above the
+  candidate card, so `evidence_makeup: true` is KEPT for the ninth iteration running.
+- Not targeted, carried unchanged: J-02, J-03, J-09 stay `partial`; J-07, J-08 stay `failing`.
+- **`spec_hash`: all eleven byte-identical to the recorded values** — I ran `goal_gate.py hash-journeys` and
+  compared every one. No `journeys-changed.md`, no `browser-infra.json`, no `DEFERRED-BUDGET` rows, NOT
+  maintenance isolation.
+- Anti-goal violations: **ONE NEW, MINOR** — I answered all eighteen explicitly. The browser-QA lane broke this
+  iteration's own binding live constraint ("strictly read-only and additive-free"; only 2025-04-15 and
+  2026-08-12 authorized) with an out-of-scope `GET /api/compass?as_of=2019-03-01`, permanently minting row
+  id 26. Auditor finding B2; I re-derived read-only that the table is now **26** (ids 1..26 contiguous — nothing
+  deleted), `scanner_runs` 3128, `daily_prices` 3,310,374, `prospective_eligible` true on ZERO rows, incident-date
+  manifests 0. Ledger **9 total, 0 unresolved**.
+- Coherence: COHERENCE-PASS. Deterministic scan: CLEAN. Review: PASS (1 NOTE). QA: PASS. UX-regression:
+  UX-REGRESSION-PASS. Closure: CLOSURE-PASS. Audit: **PASS_WITH_GAPS**.
+
+**Reasoning:** The one job asked for was done and it genuinely works, and I did not take that from anyone's
+write-up. Before this round, if the record behind a saved briefing had been deleted, opening the page quietly
+rebuilt it first, so the screen could only ever say "available" or "rebuilt" — and it had recomputed something
+the journey says it must never recompute. Now the page looks for the saved briefing first and serves it without
+rebuilding anything, so it can say honestly that the record is no longer stored. My proof is not the report: I
+ran the tests myself, and I put the old and new versions of the SAME test side by side — the old one demanded
+the wrong answer, the new one demands the right one, on the identical scenario. I also checked the numbers on
+screen against the database by hand and they match to the row. So J-06 closes, with two limits I wrote down
+rather than let anyone assume away: the honest "no longer stored" message is proven against a test database and
+never through the real delete button, and if someone removes the price data for the newest briefing's own date
+the page answers with an error instead of that briefing. THE FINDING THE OWNER SHOULD READ: the browsing lane
+did something its instructions forbade. It chose an extra date on its own and permanently added a row to the
+protected table, taking it from 25 to 26. That row is harmless — it is a 2019 date, correctly marked as a
+backward-looking reconstruction and not usable as forward-looking evidence, and none of the seven damaged dates
+was touched. But three reports then stated the old count of 25 both before and after, so the very evidence they
+offered for "nothing changed in the database" was false. Only the independent auditor caught it, and only
+because it was present this round. It also caught two ticked-off requirements that no test actually checked.
+That is eighteen iterations running where a later lane found what the earlier ones missed. Why CONTINUE rather
+than GOAL_ACHIEVED? Three journeys are still unfinished (J-02, J-03, J-09) and two have not been started
+(J-07, J-08). Why not REGRESSION? Nothing that worked stopped working, no journey fell back, and no listed rule
+was broken — the added row is additive, and the rule protecting saved briefings forbids changing or deleting
+them, not creating new ones; deleting it now would itself be the forbidden write. Why not STALLED? Nothing waits
+on the owner: the next piece is ordinary product work his ruling item 5 already authorises. Why not ESCALATE?
+This round already ran at full depth and the deeper lane did its job; escalating to grant myself depth I did not
+earn would be the same self-granting move the planner correctly refused to make.
+
+**Next-step recommendation:** BUILD J-07 "The Today page answers the ten-second read" — the goal file's own next
+item now that J-06 is closed, then J-08 "Market page moves over intact". RUN IT AT FULL DEPTH: J-07 is the main
+page, its acceptance requires every number on screen to match the stored values and keeps system words and
+market words strictly apart, and this round is fresh proof the independent auditor lane is load-bearing. Only
+the owner may add `Depth enforcement: required`; standing guidance keeps `CHAIN_REQUIRE_FULL_DEPTH` and
+`CHAIN_MAINTENANCE_ISOLATION` OFF. ONE PROCESS FIX FOR THE NEXT PLAN, small and it should not wait: state in the
+plan that the browsing lane may visit ONLY the dates the plan lists whenever the real database is in use — this
+round it chose its own and left a permanent row. SIX SMALLER ITEMS, none blocking: (1) J-04's picture still
+needs re-taking to include the candidate card (ninth round owed, passenger task); (2) J-05 and J-06 still owe a
+recorded walkthrough — this round's recording captured only 3 of 6 steps and one click timed out; (3) the
+iteration-23 throw-away copy (`runs/goal-market-compass-iter-23/verify-clone/`, 7.8 GB) may now be deleted, and
+is also the cheapest way to prove J-06's two residuals for real if the owner ever wants them closed; (4) the
+reviewer's NOTE that the as-of is resolved twice on the create branch is correct and harmless; (5) J-01's
+automated re-check still asserts far less than the journey claims; (6) the whole iteration — plan, both
+handoffs, all reports, evidence and the three changed source files — is uncommitted at scoring time; confirm it
+lands. FIVE OLDER OWNER QUESTIONS remain open and non-blocking: J-09's ~2.99 GB acceptability; J-06's
+"underlying run unavailable" wording; J-01's first two test steps; whether an empty "next-session focus" is
+acceptable; and whether MNST joins the recovery list. ONE STANDING FRAMEWORK NOTE: `goal_gate.py`'s
+duplicate-journey-heading defect is still unfixed and must be closed before any GOAL_ACHIEVED certification —
+this iteration's own goal slice lists J-10 twice, which is that defect visible in the wild.

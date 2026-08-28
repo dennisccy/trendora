@@ -225,36 +225,13 @@ in-place UPDATE (auditor B2). Normalize ORM-vs-sqlite serialization first (datet
 `False` vs `0`) or the comparison false-alarms.
 **Applies to:** any evaluator or auditor scoring a live-database write iteration in this session.
 
-## iter-20 — 2026-08-27T04:20:00Z
-
-**Verdict:** CONTINUE
-**Lesson:** `docs/goal.md` J-11 step 5 states as fact that the incident left forward-return holes on
-retained (non-incident) runs. It is wrong about this codebase: `data_manager._cascade_targets`
-(`apps/backend/app/engine/data_manager.py:1967-2011`) invalidates a run when ANY of its `ForwardReturn`
-rows measures into a removed bar date, and `remove_price_data` (`:2173-2177`) then deletes that run's
-rows WHOLE — so a run that would carry a partial hole is deleted entirely and becomes an incident date.
-A retained-run hole is structurally impossible, and the live data agrees (zero non-rebuilt rows measure
-into 2026-08-10/11/12). Three lanes reached the right "zero" answer via a 15-combination single-calendar
-enumeration, which is not exhaustive because `measured_date` resolves PER SYMBOL (run 3154 horizon 1
-splits into 2026-08-04 for 428 symbols and 08-05 for 124).
+## iter-20 — 2026-08-27T04:20:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration whose acceptance criteria are copied from a `docs/goal.md` factual premise
 about how the code behaves — re-derive the premise from the code path before scoring "requirement unmet"
 or "requirement met"; specifically, J-11 Stage G must treat population (b) = 0 as the CORRECT answer,
 not a missing repair, and must not weaken its gate to accommodate a premise that was never true.
 
-## iter-21 — 2026-08-27T09:30:00Z
-
-**Verdict:** CONTINUE
-**Lesson:** Emptying a cache table is not a durable state — it is only durable if every WRITE path
-back into that table is enumerated and closed. Stage F correctly deleted `coverage_snapshot`, but
-`coverage_from_storage`'s self-heal branch (`apps/backend/app/engine/data_manager.py:1544-1546`)
-calls `refresh_coverage_snapshot_for` → `_upsert_coverage_snapshot` on the READ path whenever an
-explicit `?as_of=` names a date backed by a real `ScannerRun` — which, after Stage D, includes all
-eleven incident dates — and `data_manager.py` imports no boundary guard at all. One page visit
-would repopulate a table the repair just cleared, for a quarantined date, and the same visit's
-`membership_timeline_cached` MISS would prune the row Stage F deliberately preserved. Five lanes
-(dev, review, QA, audit, coherence) each verified the deletion happened; none asked what could put
-the rows back. The spec named this function once, but only as a reason to *classify* the table.
+## iter-21 — 2026-08-27T09:30:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration that deletes or invalidates cached/derived rows as a correctness fix —
 grep every caller of the table's model for an upsert/insert reachable from a request path BEFORE
 asserting "no stale derived state remains"; and specifically J-11 Stage G, whose acceptance list
@@ -411,3 +388,26 @@ explicit assumption-ledger entry, NOT holding the journey open forever (that is 
 anti-pattern, an unsatisfiable acceptance criterion looping).
 **Applies to:** any journey step whose premise depends on the frontier/newest date; any evaluator deciding
 whether fixture evidence may substitute for a live observation.
+
+## iter-27 — 2026-08-28T17:40:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** A test lane can breach an explicit "read-only and additive-free" live constraint with the
+product's own shipped, correct behaviour: the browser-QA lane's out-of-plan
+`GET /api/compass?as_of=2019-03-01` minted permanent `next_session_manifests` row id 26 through the
+ordinary create-once-on-GET path, which no code guard would ever flag — and three downstream reports then
+cited the stale count 25 as proof that "nothing changed in the database". Where a plain GET can write,
+the authorized-inputs list has to be stated to the lane that issues the requests, and every row-count
+claim must be re-derived AFTER the browsing lane finishes, never delegated.
+**Applies to:** any iteration whose plan declares a live/canonical-DB scope limit, and any iteration whose
+evidence includes before/after row counts on `next_session_manifests`, `scanner_runs` or `daily_prices`.
+
+## iter-27b — 2026-08-28T17:40:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** The strongest available proof that this fix performs no writes was not a row count but driving
+the real route over a connection opened `mode=ro` (the auditor's method: a control `CREATE TABLE` on the
+same connection was refused, then every `GET /api/compass` still succeeded). A row count cannot see an
+idempotent write; a read-only connection forecloses it. Copy this method for any future "this path only
+reads" claim.
+**Applies to:** any iteration claiming a serving path is read-only against the canonical database.

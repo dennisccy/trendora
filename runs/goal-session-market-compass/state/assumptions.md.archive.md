@@ -1950,3 +1950,102 @@ whether the forward-return holes were repaired.
 underlying evidence (the cascade code path and the live grouped counts) is recorded and re-runnable
 read-only, and no row was created or withheld on the strength of the interpretation.
 
+
+<!-- condense.sh 2026-08-28T16:17:25Z: moved 3 entries (keep-iters=5) -->
+
+## iter-21 — goal-decomposer (scoping this iteration to Stage F alone, not Stage F+G)
+
+**Ambiguity:** `docs/goal.md`'s Stage D→G ruling authorizes the full D→E→F→G sequence in one instruction
+and item 8 authorizes Stage F unconditionally once Stage E succeeds, so no further owner action gates
+starting it. But nothing in the ruling requires the authorized sequence to be delivered inside one
+decomposer iteration, and nothing forecloses continuing to split it stage-by-stage, as iterations 19 and
+20 already chose to do for Stage D and Stage E respectively.
+
+**We chose:** scope iteration 21 to Stage F alone — re-verify Stage D/E's frozen state fresh, classify and
+where warranted invalidate the seven dependency-affected caches, and STOP with the item-14 terminal-outcome
+status lines — leaving Stage G (the full verification/acceptance gate) to a later iteration. Reasoning:
+(a) this is the identical discipline iterations 19 and 20 already established and logged for Stage D and
+Stage E, and every prior J-11 stage/step in this session has been its own iteration; (b) Stage F has its
+own distinct failure mode (a seven-table classification exercise with a real, planning-time-discovered
+correctness risk in `availability_from_storage` — see BACKGROUND) that deserves focused reviewer/auditor
+attention undiluted by Stage G's separate, larger verification-contract surface; (c) the decomposer's own
+priority rubric forbids bundling two risky changes in one diff, and Stage G is easily large enough on its
+own (the full acceptance gate covering raw inputs, snapshot scope, forward returns, manifests, audit/
+evidence/user state, caches, and operational isolation) to count as a second risky change.
+
+**Reversible:** yes — if Stage F's live execution succeeds cleanly this iteration, nothing about stopping
+there forecloses Stage G in a later iteration; if a future decomposer judges the stages should have been
+combined, no work already done needs to be undone, only continued.
+
+## iter-21 — goal-decomposer (per-cache disposition design: `created_at`-vs-Stage-D-start as the decisive
+classification signal, and a conditional preserve for `membership_timeline_cache`)
+
+**Ambiguity:** `docs/goal.md` J-11 step 6 requires classifying each of the seven named caches into one of
+three dispositions (guaranteed-invalidates / explicit-delete / regenerate-through-canonical-producer, plus
+"prove unaffected and leave alone" as a fourth legitimate outcome for a cache proven data-independent of
+J-11) but does not assign a specific disposition to any specific cache, nor does it say how to resolve the
+"same-count/same-ID stamp collision" risk it names when a pure `dataset_version` string comparison cannot
+by itself distinguish a coincidental collision from a genuine fresh post-repair compute.
+
+**We chose:** (1) use each cache row's `created_at` compared against Stage D's frozen execution-start
+instant as the decisive classification signal — corroborated by, never replacing, the `dataset_version`
+stamp comparison — since maintenance isolation has forbidden any write to these tables since before that
+instant, so every currently-stored row in the six scanner-run/forward-return-dependent caches must predate
+the repair regardless of what its stamp string reads; an unexplained row at or after that instant is
+treated as a maintenance-isolation breach requiring escalation, never as a routine case. (2) Default five
+caches (`event_study_cache`, `market_phase_cache`, `forward_aggregate_cache`, `coverage_snapshot`,
+`availability_cache`) to `explicit_delete`, required outright for `availability_cache` on the strength of a
+concrete finding this planning pass made by reading `data_manager.availability_from_storage` directly
+(`:1741-1747`/`:1760-1763`): its own serving logic would otherwise serve a stale, pre-repair payload
+labeled `stale: False` (i.e., current) the first time `/api/data/availability` is requested post-reboot
+with no ingest job in flight — a live AG-3/AG-8 risk, not a hygiene question. (3) Preserve
+`index_series_cache` untouched, since its only dependency (index-symbol `daily_prices` bars) is proven
+byte-unchanged by Stage D's and Stage E's own mutation accounting. (4) Give `membership_timeline_cache` a
+conditional recommendation — preserve its stale row (rather than delete) specifically so its own
+MISS-repair fast path can take the cheaper "historical gap-insert" branch instead of forcing the next real
+request onto the documented >300s full cold-compute path on a host that has already frozen once from
+memory pressure — but only if Stage F's own live proof confirms the safe branch (not the narrower
+append-forward branch) would actually run; if that proof does not hold, fall back to deletion. Reasoning
+for the whole design: (a) iter-15b's lesson (never trust a single fingerprint alone) argues directly against
+a stamp-string-only comparison; (b) the `availability_cache` finding is concrete, evidence-backed code
+reading, not speculation, so treating it as "required" rather than "optional" is proportionate; (c) forcing
+uniform deletion across all six caches would be simpler to specify but would reintroduce exactly the
+memory/host risk `docs/goal.md`'s own Constraints section and the 2026-08-20 freeze incident warn against,
+for a cache (`membership_timeline_cache`) whose own code already has machinery built to avoid it.
+
+**Reversible:** yes — this is an implementation-path/classification-policy choice about code not yet
+written. A future iteration could revisit any single cache's disposition if live evidence at Stage-F
+execution time contradicts this planning pass's reasoning (e.g., the `membership_timeline_cache`
+incremental-reuse proof fails, which the spec already routes to a safe deletion fallback); no destructive
+step depends on this reasoning being right on the first try, since every disposition is proven live before
+Stage F's one authorized write executes.
+
+## iter-21 — goal-evaluator (a post-deletion cold-compute on the request path read as an operational risk, not an AG-10 violation)
+
+**Ambiguity:** AG-10 requires that "heavy compute MUST be launched only via the project launch
+scripts, which MUST apply the host caps". Stage F's deletion of `event_study_cache` and
+`forward_aggregate_cache` removed two serve-a-prior-generation fallbacks, so after Stage G the first
+`/api/evidence` request can now run `compute_drawdown_expectations_cached` synchronously on the
+request path (`forward_testing.py:2874-2877`), and `market_phase_cached`/`event_study_cached` will
+cold-compute on first view (auditor B3). The goal text does not say whether *making an existing
+in-process compute heavier or more likely* counts as "launching heavy compute" for AG-10's purposes,
+on a host with a documented freeze history (2026-08-20).
+
+**We chose:** score this as an operational risk and a binding Stage-G design input, NOT as an
+anti-goal violation (not even minor). Reasoning: (a) AG-10's mechanism is the CAPS, and the future
+compute would run inside the normal backend, which is started by `scripts/start-backend.sh` and
+therefore still inherits the HOST-GUARD affinity/thread caps and `server.memory_cap_mb` — no cap is
+removed, weakened or bypassed by this iteration; (b) Stage F's own measured peak was 479.9 MB against
+an 8192 MB ceiling, so the iteration itself launched nothing heavy; (c) the alternative reading would
+make *any* cache invalidation an AG-10 violation by construction, which would forbid the very repair
+the owner authorized in ruling item 8; (d) the app is OFF, so no such request can land before Stage G
+designs the boot sequence. What I explicitly did NOT do: call it harmless — I carried the auditor's
+recommendation forward as a required Stage-G design item (let `warmup._warm_drawdown_expectations` /
+`_warm_membership_timeline` / `_warm_coverage_snapshot` / `_warm_availability` complete before any
+request lands, and record measured peak memory across that warm).
+
+**Reversible:** yes — nothing is mutated by this reading, and the deleted rows are all recomputable
+from `daily_prices`/`scanner_results` through their existing canonical producers; if the owner reads
+AG-10 more strictly, the remedy is a warm-ordering requirement in the Stage G spec, which is already
+the recommendation either way.
+

@@ -1,40 +1,40 @@
 # Iteration State — market-compass
 
-**After iteration:** 26 · **Date:** 2026-08-28 · **Verdict:** ESCALATE
+**After iteration:** 27 · **Date:** 2026-08-28 · **Verdict:** CONTINUE
 
 ## Journeys
 
-5 passing (J-01 J-04 J-05 J-10 J-11) · 4 partial (J-02 J-03 J-06 J-09) · 2 failing (J-07 J-08) — 11 total
+6 passing (J-01 J-04 J-05 J-06 J-10 J-11) · 3 partial (J-02 J-03 J-09) · 2 failing (J-07 J-08) — 11 total
 
 ## Active blockers
 
-- **J-06 last unmet limb (dev-owned, next target):** the live route can never disclose that a frozen
-  manifest's source run is gone. `apps/backend/app/api/compass.py:59` calls `resolved_run()` before
-  `basis_disclosure()`, and `run_scan`'s self-heal recreates the missing `ScannerRun` first — so a request
-  only ever sees `available`/`rebuilt` and has recomputed, which J-06 step 2 forbids; the same machinery
-  can mint permanent rows from a plain page view. (iter-3 audit B2, re-verified iter-26.)
-- **Depth demotion (human-owned):** spec asked `Depth: full`, engine dispatched `lean` — 6th time this
-  session. Only the owner may add `Depth enforcement: required`; `CHAIN_REQUIRE_FULL_DEPTH` /
-  `CHAIN_MAINTENANCE_ISOLATION` stay OFF.
+- **None dev-blocking.** J-06 closed; J-07 "The Today page answers the ten-second read" is next, then
+  J-08 — ordinary work authorised by owner ruling item 5.
+- **Process (put it in the next plan):** the browser-QA lane exceeded this iteration's "read-only and
+  additive-free" live constraint and permanently minted `next_session_manifests` row id 26
+  (`as_of=2019-03-01`). Benign, but the plan must list the ONLY dates that lane may visit live, and
+  row-count claims must be re-derived after it finishes. **True count is 26, not 25.**
+- **J-06 residuals, not blocking:** "unavailable" is proven at route level on a fixture DB, never through a
+  real `remove_data()`; removing a FRONTIER manifest's price range makes it unreadable (400 `future`, B3).
 - Non-blocking owner questions: J-09 2.99 GB · J-06 wording · J-01 test steps · empty focus · MNST.
 
 ## Last 2 verdicts
 
-- iter 26: ESCALATE — J-05 promoted to passing on live+route-fixture evidence; J-06's remaining gap sits in
-  the shared serving path (`resolved_run`) and needs the auditor that the lean demotion removed.
-- iter 25: CONTINUE — replay lane repaired and ran 3/3; J-09 re-measured as an honest, uncorroborated miss.
+- iter 27: CONTINUE — J-06 promoted; route now serves an existing manifest before any self-heal, so
+  "Basis: unavailable" is honestly reachable (97 tests pass; HEAD-vs-worktree flip confirmed by evaluator).
+- iter 26: ESCALATE — J-05 promoted; J-06's remaining gap sat in the shared serving path and needed the
+  independent auditor that the lean demotion had removed.
 
 ## Do not redo
 
-- **J-11 is CLOSED** (owner ruling 2026-08-27 item 1). Never reopen recovery or serving verification.
+- **J-06 is done** — route reorder (`app/api/compass.py` fast path + `latest_manifest_for_date`), flipped
+  route-level test, restore/warm-path tests, and the auditor's TC-5/TC-9 tests all landed; 97 pass.
+- **J-11 is CLOSED** (owner ruling item 1) and **J-05 is done** (iter-26 live evidence; step 2 fixture-only,
+  permanently unprovable here — assumptions.md). Only walkthroughs are owed.
 - **Do NOT run the live remove+backfill drill** for J-05 step 1 / J-06 steps 1-3: "the last two trading
-  days" still resolves to 2026-08-11/12, the incident pair, AG-9 exception exhausted. Fixtures cover it.
-- **J-05 is done** — export byte-equality, strip figures, disposition partition and `engine_identity`
-  stamping re-derived live at iter-26; step 2's flagship state is fixture-only and permanently unprovable
-  here (assumptions.md). Only the walkthrough is owed.
-- **Launcher fix landed and verified** (iter-24). The canonical DB boot is sanctioned ordinary work
-  (owner item 5); do not re-arm maintenance isolation.
-- **TC-15 AST scanner fixed** (`test_manifest_invariants.py`); the four orphaned export files were
-  investigated and must NOT be deleted (TC-10 finding: leftover test-fixture artifacts).
-- Passenger tasks only, never an iteration goal: J-04's screenshot re-take (8th owed), J-05/J-06
-  walkthrough recordings.
+  days" still resolves to 2026-08-11/12, the incident pair; AG-9 exception exhausted. Fixtures cover it.
+- **Do NOT delete manifest row id 26** (2019-03-01) or any manifest row — AG-12 forbids it; the record was
+  corrected in the dev handoff instead.
+- **Launcher fix verified** (iter-24); canonical DB boot is sanctioned work; the iter-23 clone
+  (`runs/goal-market-compass-iter-23/verify-clone/`, 7.8 GB) may now be deleted.
+- Passenger tasks only, never an iteration goal: J-04's screenshot re-take (9th owed), J-05/J-06 walkthroughs.

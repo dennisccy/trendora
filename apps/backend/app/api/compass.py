@@ -24,6 +24,7 @@ from app.engine.compass import (
     ManifestNotYetFrozen,
     basis_disclosure,
     get_or_create_manifest,
+    latest_manifest_for_date,
     list_manifest_versions,
     manifest_row_payload,
     regenerate_manifest,
@@ -56,6 +57,21 @@ def _read_time_additions(session: Session, row) -> dict:  # noqa: ANN001 -- Next
 
 @router.get("/compass")
 def compass(as_of: Optional[str] = None, session: Session = Depends(get_session)) -> dict:
+    # iter-27 (J-06 step 2's last unmet limb): resolve the as-of STRING to a concrete date FIRST via
+    # `resolved_date` -- this validates/maps as-of errors identically to `resolved_run`'s own internal
+    # ordering (`scanner.resolve_run` calls `resolve_as_of_date` before `run_scan`) but creates nothing
+    # and never self-heals a `ScannerRun`. Only when NO manifest already exists for the resolved date do
+    # we fall through to `resolved_run`/`get_or_create_manifest`, which may still create a run or mint a
+    # manifest -- exactly as before. This keeps a frozen manifest whose source run has since been removed
+    # from ever triggering a silent recompute: `basis_disclosure` (inside `_read_time_additions`) is a
+    # pure read-only `ScannerRun` SELECT, so it can now honestly observe `"unavailable"`.
+    resolved = resolved_date(session, as_of)
+    existing = latest_manifest_for_date(session, resolved)
+    if existing is not None:
+        payload = manifest_row_payload(existing)
+        payload.update(_read_time_additions(session, existing))
+        return payload
+
     run = resolved_run(session, as_of)
     try:
         row = get_or_create_manifest(session, run)

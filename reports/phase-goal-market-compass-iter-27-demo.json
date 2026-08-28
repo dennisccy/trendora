@@ -1,0 +1,132 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-market-compass-iter-27",
+  "base_url": "http://localhost:3255",
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Open the Today page",
+      "narration": "Let's start by opening the Today page, where the Manifest card displays the status of our market data.",
+      "point_out": "The page loads with several cards below the compass summary, including a card titled 'Manifest' near the bottom.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "goto",
+        "url": "/"
+      },
+      "expect": {
+        "text": "Manifest"
+      }
+    },
+    {
+      "n": 2,
+      "title": "View an intact historical manifest (April 2025)",
+      "narration": "When we look at data from April 2025, the Manifest card shows 'Basis: available' because both the frozen manifest and its underlying data source are intact and unchanged.",
+      "point_out": "Inside the Manifest card, the green badge reads 'Basis: available' with no gray detail text beside it. The version badge shows 'version 2' and 'retrospective'.",
+      "journey": "J-05",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "goto",
+        "url": "/?asof=2025-04-15"
+      },
+      "expect": {
+        "text": "Basis: available"
+      }
+    },
+    {
+      "n": 3,
+      "title": "Verify the regenerate control still works (cancel)",
+      "narration": "The 'Regenerate manifest' button is available but gated by a confirmation modal. Let's click it to see the modal, then cancel to keep the data as it is.",
+      "point_out": "A modal titled 'Confirm manifest regenerate' opens. After clicking Cancel, the modal closes and the Manifest card remains unchanged with the same green 'Basis: available' badge.",
+      "journey": "J-06",
+      "new": false,
+      "verified": true,
+      "section": "full_tour",
+      "action": {
+        "type": "click",
+        "target": {
+          "css": "[data-testid=\"compass-manifest-regenerate-button\"]"
+        }
+      }
+    },
+    {
+      "n": 4,
+      "title": "Close the confirm modal",
+      "narration": "The confirmation modal is now open. We'll click Cancel to dismiss it without making any changes.",
+      "point_out": "The modal closes and we're back to the Manifest card with all its badges unchanged.",
+      "journey": "J-06",
+      "new": false,
+      "verified": true,
+      "section": "full_tour",
+      "action": {
+        "type": "click",
+        "target": {
+          "role": "button",
+          "name": "Cancel"
+        }
+      },
+      "expect": {
+        "text": "Basis: available"
+      }
+    },
+    {
+      "n": 5,
+      "title": "View the frontier manifest (August 2026)",
+      "narration": "Now let's look at the most recent data from August 2026. Here the Manifest card shows 'Basis: rebuilt' because the underlying data source was recreated after this manifest was frozen.",
+      "point_out": "Inside the Manifest card, the amber badge reads 'Basis: rebuilt' with gray detail text beside it saying 'the source scanner run was recreated after this manifest was frozen'. The version badge shows 'version 6' and 'at ingest'.",
+      "journey": "J-05",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "goto",
+        "url": "/?asof=2026-08-12"
+      },
+      "expect": {
+        "text": "Basis: rebuilt"
+      }
+    },
+    {
+      "n": 6,
+      "title": "Refresh the page",
+      "narration": "Let's refresh the page to confirm that the manifest status is stable and doesn't change on reload.",
+      "point_out": "After refresh, the Manifest card still shows 'version 6' and the amber 'Basis: rebuilt' badge — nothing has changed.",
+      "journey": "J-06",
+      "new": false,
+      "verified": true,
+      "section": "full_tour",
+      "action": {
+        "type": "click",
+        "target": {
+          "role": "button",
+          "name": "Refresh"
+        }
+      },
+      "expect": {
+        "text": "Basis: rebuilt"
+      }
+    },
+    {
+      "n": 7,
+      "title": "Understand the 'Basis: unavailable' state",
+      "narration": "This iteration also enables a new 'Basis: unavailable' state for cases where a frozen manifest's underlying data has been removed. This state is proven by an automated backend test rather than shown here, because no date in the current database is in that specific state. The fix makes this honest reporting possible for the first time.",
+      "point_out": "The backend now serves an existing manifest before attempting any self-healing, allowing it to honestly report when a source has been removed — a capability that was previously masked by automatic data recreation.",
+      "journey": "J-06",
+      "new": true,
+      "verified": true,
+      "section": "full_tour",
+      "action": {
+        "type": "goto",
+        "url": "/"
+      },
+      "expect": {
+        "text": "Manifest"
+      }
+    }
+  ]
+}

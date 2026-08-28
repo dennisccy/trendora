@@ -1039,6 +1039,23 @@ def _freeze_manifest(
     return row
 
 
+def latest_manifest_for_date(session: Session, as_of: date) -> Optional[NextSessionManifest]:
+    """The LATEST stored `NextSessionManifest` version for `as_of`, or `None` if none exists yet — a
+    pure read: no run lookup, no write, no self-heal. Factored out of `get_or_create_manifest`'s
+    existing-row check (below) so both call sites share the ONE query shape for "does a manifest
+    already exist for this date" (single source, no duplicate query shape for the same fact).
+
+    iter-27 (J-06 step 2's last unmet limb): this lets `GET /api/compass` probe for an existing
+    manifest BEFORE ever resolving/self-healing a `ScannerRun`, so a frozen manifest whose source run
+    has been removed can be served with an honest `basis.status == "unavailable"` instead of the read
+    path silently recreating the run first."""
+    return session.exec(
+        select(NextSessionManifest)
+        .where(NextSessionManifest.as_of == as_of)
+        .order_by(NextSessionManifest.version.desc())
+    ).first()
+
+
 def get_or_create_manifest(
     session: Session, current_run: ScannerRun, config: Optional[Config] = None, *, producer: str = "on_demand_get",
 ) -> NextSessionManifest:
@@ -1052,11 +1069,7 @@ def get_or_create_manifest(
     (non-frontier) `as_of` still create-once-mints here regardless of caller (mode resolves
     `retrospective` since a later run already exists)."""
     cfg = config or get_config()
-    existing = session.exec(
-        select(NextSessionManifest)
-        .where(NextSessionManifest.as_of == current_run.asof_date)
-        .order_by(NextSessionManifest.version.desc())
-    ).first()
+    existing = latest_manifest_for_date(session, current_run.asof_date)
     if existing is not None:
         return existing
 
