@@ -456,3 +456,55 @@ browser test was silently skipped.
 **Reversible:** yes — a scoring-interpretation call with no mutation. If the owner rules that every target
 journey needs a browser row regardless of a walkthrough waiver, J-09 drops to `unknown` and the next
 browser iteration adds a UT case; none of this iteration's measurement evidence would need redoing.
+
+## iter-26 — goal-decomposer (J-05 step 1 / J-06 steps 1-3's literal "remove the last two trading
+days on /data" drill is NOT executed against the canonical database; routed to fixtures + safe
+additive-only live actions instead)
+
+**Ambiguity:** `docs/goal.md` J-05 step 1 literally instructs "On `/data`, remove the last two trading
+days of snapshots (seed-safe) and backfill the same range," and J-06 steps 1-3 build on that same
+live drill (a further backfill elsewhere, then a remove-data pass covering the frozen manifest's
+as-of, then a restore). The goal text does not name which two calendar dates "the last two trading
+days" are, and does not flag that — as of this iteration — those two dates are STILL 2026-08-11 and
+2026-08-12: the exact pair whose removal via this same class of drill (iter-5) caused the session's
+core incident (`docs/goal.md`'s own "Destructive-drill isolation" constraint: "the drill removed
+2026-08-11/2026-08-12; the seed window ends 2026-07-01, so nothing local could put them back"). I
+independently confirmed the frontier is unchanged (`daily_prices`/`scanner_runs` both still max at
+2026-08-12) and that `remove_data()` structurally can only ever target non-seed (post-2026-07-01)
+dates — so "the last two trading days" today has no other reading. Re-running literally the same
+drill class against literally the same two dates, whose AG-9 recovery exception is now EXHAUSTED (no
+further live fetch of these dates is authorized without a new dated amendment), is both a
+safety repeat of the session's worst incident and very plausibly AG-9-blocked if the backfill needed
+a live fetch to restore what removal deleted.
+
+**We chose:** do NOT call `remove_data()` / `clear_snapshot_dates()` / any backfill against the
+canonical `apps/backend/data/trendora.db` this iteration. Instead: (a) route J-05 step 1's flagship
+`mode=at_ingest`/`prospective_eligible=true` freeze proof, and J-06 steps 1-3's remove/restore/basis
+proofs, to the EXISTING isolated-engine fixture suite (`test_ingest_finalize_compass.py`,
+`test_manifest_invariants.py` — never the canonical DB), extending it only where a genuine gap exists
+(API-level, not just unit-level, coverage of "removed source run -> `GET /api/compass` never 404s,
+basis reads unavailable"); (b) use ONLY safe, additive, already-shipped LIVE actions against the
+canonical DB for real browser-qa evidence — a read-only manifest-strip render of an existing clean
+retrospective manifest (`as_of=2025-04-15`, zero incident-window contact) and its confirm-gated
+`POST /api/compass/regenerate` (pure INSERT, AG-12-safe, never deletes/mutates version 1) to observe
+a live version-2 mint. Reasoning: (a) this directly mirrors the iter-5 decomposer's own precedent of
+routing the at_ingest "burned slot" proof to fixtures instead of a live drill, now extended for a
+stronger reason (safety, not just slot exhaustion); (b) `docs/goal.md`'s "Destructive-drill isolation"
+constraint says drill isolation infrastructure is NOT this cycle's build, but it does not say the
+literal drill must be repeated live regardless of risk — building nothing new and simply not
+re-running the incident-causing action is the more conservative reading; (c) owner ruling item 5
+authorizes "ordinary non-destructive product iterations" — a live remove+backfill of the exact
+incident dates is not ordinary or non-destructive by any reading available to me. What I explicitly
+did NOT do: skip J-05/J-06 verification entirely, or treat the fixture suite as a substitute for ALL
+live evidence (the manifest-strip render and regenerate-to-v2 are real, live, canonical-DB browser-qa
+evidence for the parts that are safe).
+
+**Reversible:** yes for the scoping choice itself — nothing this iteration touches is undone by a
+future change of mind; if the owner rules the literal live remove+backfill drill on 2026-08-11/08-12
+(or a different, freshly-chosen non-incident date pair beyond the seed window) should run for real,
+a future iteration can do so with its own explicit authorization, and none of this iteration's fixture
+or regenerate evidence would need to be redone — it stands on its own as valid coverage of the parts
+it was scoped to prove. The one NOT reversible piece is narrow and intentional: the live
+`POST /api/compass/regenerate?as_of=2025-04-15` call mints a permanent version-2 row (by AG-12 design,
+regenerate rows are never deleted) — this is the accepted cost of getting real live evidence for J-06
+step 4 without touching removal/backfill at all.

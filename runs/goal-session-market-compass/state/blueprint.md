@@ -172,3 +172,16 @@ addendum in `reports/perf-budgets.md`, an internal ops report outside the Inform
 Data Contract. The `replay_lane_spec_journeys` parser fix is Goal-mode harness automation
 (`scripts/automation/lib/replay-lane.sh`), not Trendora product surface. Nothing in this iteration
 changes any row above.
+
+**iter-26 note (2026-08-28 — informational, no IA change, no Data Contract row change):** the J-05/J-06
+make-up work exercises the already-registered "Next-session manifest" CONTENT + FREEZE/INTEGRITY rows
+via their already-registered single producer (`app.engine.compass.build_manifest_payload` /
+`basis_disclosure`) and single endpoints (`GET /api/compass`, `POST /api/compass/regenerate`) — no new
+page, nav entry, computing module, serving endpoint, or displayed field. This iteration deliberately
+does NOT run the literal live remove+backfill drill J-05/J-06's own goal.md steps describe (see
+`docs/phases/goal-market-compass-iter-26.md` BACKGROUND and the `iter-26 — goal-decomposer` assumption
+ledger entry): that drill's only unambiguous target today is 2026-08-11/2026-08-12, the exact dates
+whose removal caused the iter-5 incident, so the destructive portions are proven against the existing
+isolated-engine fixture suite instead, and the only live canonical-database write this iteration makes
+is one additive, AG-12-safe `POST /api/compass/regenerate` call on a clean, non-incident historical
+date (`as_of=2025-04-15`). Nothing in this iteration changes any row above.
