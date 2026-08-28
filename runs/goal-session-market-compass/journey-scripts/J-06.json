@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "journey": "J-06",
+  "name": "A frozen manifest never changes — later data, rebuilds, and regeneration are safe",
+  "default_timeout_ms": 8000,
+  "steps": [
+    {"n": 1, "journey": "J-06", "action": {"type": "goto", "url": "/?asof=2025-04-15"}, "expect": {"text": "MCD"}},
+    {"n": 2, "journey": "J-06", "action": {"type": "goto", "url": "/?asof=2025-04-15"}, "expect": {"text": "2026-08-20T11:41:00.381102+00:00"}}
+  ]
+}

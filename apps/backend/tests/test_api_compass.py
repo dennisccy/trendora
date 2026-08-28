@@ -14,7 +14,8 @@ from datetime import date, datetime, timezone
 
 import pytest
 from fastapi import HTTPException
-from sqlmodel import Session
+from sqlalchemy import delete as sa_delete
+from sqlmodel import Session, select
 
 from app.config import load_config
 from app.db import create_db_and_tables, make_engine
@@ -244,3 +245,77 @@ def test_regenerate_route_mints_version_2_leaves_version_1_untouched(compass_eng
     assert versions[0].manifest_hash == v1["manifest_hash"]
     assert versions[0].content_hash == v1["content_hash"]
     assert versions[0].prospective_eligible is False  # historical as_of was never eligible either
+
+
+# --- TC-8 / TC-9 (route-level basis disclosure, iter-26) ------------------------------------------
+#
+# test_manifest_invariants.py already covers `basis_disclosure()` directly at the UNIT level (calling it
+# with a hand-built row + session where the current run has been deleted / recreated) --
+# `test_basis_disclosure_reads_unavailable_when_the_source_run_is_gone` and
+# `test_basis_disclosure_reads_rebuilt_when_the_source_run_is_recreated`. What was NOT previously proven
+# is what `GET /api/compass` ITSELF observes end-to-end when the underlying run is actually removed --
+# the route calls `resolved_run()` (snapshot_serving -> scanner.resolve_run -> scanner.run_scan) BEFORE
+# `get_or_create_manifest`/`basis_disclosure` ever run, and `run_scan` SELF-HEALS: if the requested as_of
+# still resolves to a valid date (any earlier bar exists), a missing `ScannerRun` is silently
+# RECREATED right there, so by the time `basis_disclosure` looks up "the current run for this as_of" it
+# is never actually absent. The test below proves this empirically (RE-VERIFIED, iter-26 -- iter-3's own
+# audit flagged this exact mechanism as finding B2 and it was never fixed): the live route can reach
+# "available" or "rebuilt", but "unavailable" is structurally UNREACHABLE through this endpoint as
+# currently wired -- it is real, correct, unit-tested code that a request can never actually observe.
+# This is a genuine, pre-existing finding (not a regression introduced this iteration, and fixing the
+# self-heal ordering is a deliberate change outside this iteration's IN SCOPE list) -- recorded here and
+# in the dev handoff for reviewer/auditor visibility. What IS safety-critical and IS proven here: the
+# route never 404s, never crashes, and the frozen manifest's payload/version/manifest_hash stay
+# BYTE-IDENTICAL across the self-heal (AG-12) -- only the read-time basis disclosure differs.
+
+
+def test_compass_route_never_404s_and_manifest_bytes_survive_a_removed_historical_run(compass_engine, cfg, monkeypatch, tmp_path):
+    from app.api.compass import compass as compass_route
+
+    monkeypatch.setenv("TRENDORA_COMPASS_EXPORT_DIR", str(tmp_path))
+
+    # freeze 2024-06-08's manifest while it is still the frontier (mirrors the ingest-finalize freeze)
+    _freeze_frontier(compass_engine, cfg)
+    with Session(compass_engine) as session:
+        before = compass_route("2024-06-08", session)
+    assert before["mode"] == "at_ingest"
+    before_hash = before["manifest_hash"]
+    before_version = before["version"]
+
+    # push the frontier forward with a THIRD, LATER run -- 2024-06-08 becomes a historical as_of, and
+    # 2024-06-01's earlier bar stays in place so as-of resolution for 2024-06-08 still succeeds after its
+    # own bar is removed below (has_bar_on_or_before)
+    with Session(compass_engine) as session:
+        session.add(DailyPrice(symbol="SPY", date=date(2024, 6, 15), open=1.0, high=1.0, low=1.0, close=1.0, volume=1.0))
+        session.commit()
+        session.add(ScannerRun(
+            asof_date=date(2024, 6, 15), created_at=datetime.now(timezone.utc), provider="seed", benchmark="SPY",
+            regime_score=61.0, regime_label="Expansion", regime_components_json="[]",
+            breadth_above_50dma=55.0, breadth_above_200dma=60.0, new_high_low_json="{}", candidate_counts_json="{}",
+        ))
+        session.commit()
+
+    # remove 2024-06-08's ScannerRun (+ children) + its own DailyPrice bar -- mirrors remove_data's cascade
+    with Session(compass_engine) as session:
+        removed_run = session.exec(select(ScannerRun).where(ScannerRun.asof_date == date(2024, 6, 8))).first()
+        session.execute(sa_delete(ScannerResult).where(ScannerResult.run_id == removed_run.id))
+        session.execute(sa_delete(ScannerRun).where(ScannerRun.id == removed_run.id))
+        session.execute(sa_delete(DailyPrice).where(DailyPrice.date == date(2024, 6, 8)))
+        session.commit()
+
+    with Session(compass_engine) as session:
+        gone = session.exec(select(ScannerRun).where(ScannerRun.asof_date == date(2024, 6, 8))).first()
+    assert gone is None  # confirmed removed immediately before the route call below
+
+    with Session(compass_engine) as session:
+        after = compass_route("2024-06-08", session)  # must NEVER 404, NEVER raise
+
+    assert after["manifest_hash"] == before_hash  # AG-12: the frozen manifest payload is byte-unchanged
+    assert after["version"] == before_version
+    # the re-verified finding: self-heal recreates the run before basis_disclosure runs, so the live
+    # route observes "rebuilt", never "unavailable" -- see the block docstring above.
+    assert after["basis"]["status"] == "rebuilt"
+
+    with Session(compass_engine) as session:
+        healed = session.exec(select(ScannerRun).where(ScannerRun.asof_date == date(2024, 6, 8))).first()
+    assert healed is not None  # confirms the self-heal actually fired (not merely absent-run tolerance)

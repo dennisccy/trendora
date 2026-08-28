@@ -4,10 +4,10 @@
       "id": "J-01",
       "name": "Sector labels are honest and nearly complete on new runs",
       "status": "passing",
-      "last_verified_iter": "goal-market-compass-iter-26",
-      "last_passing_iter": "goal-market-compass-iter-26",
+      "last_verified_iter": "goal-market-compass-iter-25",
+      "last_passing_iter": "goal-market-compass-iter-25",
       "first_seen_iter": "goal-market-compass-iter-0",
-      "last_evidence_path": "reports/qa/goal-market-compass-iter-26-evidence/J-01-verify.png",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-25-evidence/J-01-verify.png (deterministic replay UT-J-01 PASS, merged into reports/phase-goal-market-compass-iter-25-ui-test-results.md; screenshot opened by the evaluator: GRMN carries stored sector 'Consumer Discretionary', 1/539, regime 73.18, scores badged 'Not yet proven')",
       "spec_hash": "5217f3fe85d2a05c2f436d3ec6d140f2b7539b8798c161925a2e9e76ddab61f9",
       "gap": "Re-verified PASS via the replay lane this iteration -- the lane genuinely ran (it was silently skipped at iter-24 by the parser defect this iteration fixed). Prior iter-23 contract-deviation note is CLEARED: the launcher fix landed at iter-24 and owner ruling item 5 (2026-08-27) resumed normal product work, so this iteration's canonical-database boot was sanctioned. Carried, non-blocking (auditor T2): J-01's golden script asserts only 'Stock Leaderboard' renders and one ticker's sector -- it tests neither 'honest' nor 'near-complete', so the replay is a thin proxy for the journey's own claim; strengthen it the next time a slice legitimately touches J-01."
     },
@@ -37,10 +37,10 @@
       "id": "J-04",
       "name": "Each next-session candidate explains why and why-not",
       "status": "passing",
-      "last_verified_iter": "goal-market-compass-iter-26",
-      "last_passing_iter": "goal-market-compass-iter-26",
+      "last_verified_iter": "goal-market-compass-iter-25",
+      "last_passing_iter": "goal-market-compass-iter-25",
       "first_seen_iter": "goal-market-compass-iter-0",
-      "last_evidence_path": "reports/qa/goal-market-compass-iter-26-evidence/J-04-verify.png",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-25-evidence/J-04-verify.png (deterministic replay UT-J-04 PASS, merged into reports/phase-goal-market-compass-iter-25-ui-test-results.md; the journey is proven by the golden's exact-value expects -- auditor confirms J-04 pins 'Strong leader (81.2)' / 'Not priority (20)' -> TRV, real AG-3-grade assertions)",
       "spec_hash": "d1521389ca8fcf3fd1b7ac60e53bdb9608112247219ccbbea2ae66e99bff8ad0",
       "gap": "capture-defect (7th consecutive iteration): the screenshot is again the final-step viewport at 2026-03-30 and stops above the candidate card -- evaluator opened it and confirmed it shows the Dashboard summary and 'What changed' block but no why/why-not reason text. Product behaviour is confirmed by the golden's exact-value assertions; only the capture framing is wrong. Re-capture rides the next browser iteration as a passenger task, never as an iteration goal.",
       "evidence_makeup": true
@@ -48,27 +48,24 @@
     "J-05": {
       "id": "J-05",
       "name": "Each close freezes one next-session manifest, exported byte-consistently",
-      "status": "passing",
-      "last_verified_iter": "goal-market-compass-iter-26",
-      "last_passing_iter": "goal-market-compass-iter-26",
+      "status": "partial",
+      "last_verified_iter": "goal-market-compass-iter-3",
+      "last_passing_iter": null,
       "first_seen_iter": "goal-market-compass-iter-0",
-      "last_evidence_path": "reports/qa/goal-market-compass-iter-26-evidence/UT-J-05-result.png",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-3-evidence/UT-02-manifest-historical-badges.png",
       "spec_hash": "de33a9d149ebefe4f8cf0ffb9fe86243e3f9fa9d83850c890848f268e5c54c4f",
-      "gap": "Not targeted this iteration. Carried unchanged: product surface byte-unchanged. Next in the goal file's own build order (freeze/integrity pair with J-06).",
-      "evidence_makeup": true,
-      "notes": "Promoted on iter-26 evidence. LIVE on the canonical DB (three limbs re-derived by the evaluator read-only): step 3 export byte-equality — data/exports/next_session_manifests/2026-08-12_v6.json is 355,711 bytes byte-identical to compass._canonical_dumps(manifest_row_payload(v6)) and verify_manifest_hash() reproduces 9bc08cfba0... on both sides; step 4 strip stamps/counts — members 531 / candidates 10 / cohort 521 / shadow 28 at 2025-04-15 and 539/0/539/26 at the frontier, disposition tallies partition the cohort exactly (513 below_selection_floor + 8 excluded_by_cap = 521); step 5 engine_identity stamping — 45 stamped ScannerRuns vs 3,083 pre-stamping NULL rows. FIXTURE-ONLY limb, permanently unprovable live: step 2's mode=at_ingest/version=1/prospective_eligible=true flagship state (the frontier's v1 is a legacy pre-freeze row and v2-v6 were regenerated during the incident, AG-17-correct at false; no new trading day can arrive under AG-9). Route-level fixture proof: test_api_compass.py::test_compass_route_serves_every_new_field_directly. Walkthrough recording still owed -> evidence_makeup."
+      "gap": "Not targeted this iteration. Carried unchanged: product surface byte-unchanged. Next in the goal file's own build order (freeze/integrity pair with J-06)."
     },
     "J-06": {
       "id": "J-06",
       "name": "A frozen manifest never changes",
       "status": "partial",
-      "last_verified_iter": "goal-market-compass-iter-26",
+      "last_verified_iter": "goal-market-compass-iter-3",
       "last_passing_iter": null,
       "first_seen_iter": "goal-market-compass-iter-0",
-      "last_evidence_path": "reports/qa/goal-market-compass-iter-26-evidence/UT-J-06-result.png",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-3-evidence/UT-02-manifest-historical-badges.png",
       "spec_hash": "4934b178e966fdb05cfb68537e861e0f34f961f630a57e4098f9fb69be2cdda8",
-      "gap": "Not targeted this iteration. Carried unchanged: product surface byte-unchanged. Next in the goal file's own build order (freeze/integrity pair with J-05).",
-      "notes": "Step 4 PROVEN LIVE on the canonical DB: the confirm-gated regenerate minted as_of=2025-04-15 v2 (row id 25, created 2026-08-28T12:45:04.938308+00:00); v1 (row id 17) is untouched — its stored manifest_hash still verifies over its own payload and its created_at is unchanged; content_hash is equal across v1/v2 while manifest_hash differs (hash-scope separation, observed live); both rows read prospective_eligible=false; the UI lists both versions with their own stamps. REMAINING GAP (blocks promotion): step 2's acceptance — the route must serve the frozen manifest with a basis disclosure reading 'unavailable', 'never a recompute' — is NOT met by the product. app/api/compass.py:59 calls resolved_run() before basis_disclosure(), and run_scan's self-heal recreates a missing ScannerRun first, so a live request can only ever observe 'available' or 'rebuilt' (iter-3 audit finding B2, re-verified empirically this iteration). Walkthrough recording also owed."
+      "gap": "Not targeted this iteration. Carried unchanged: product surface byte-unchanged. Next in the goal file's own build order (freeze/integrity pair with J-05)."
     },
     "J-07": {
       "id": "J-07",
@@ -107,10 +104,10 @@
       "id": "J-10",
       "name": "Bounded recovery of the two trading days the iter-5 drill deleted",
       "status": "passing",
-      "last_verified_iter": "goal-market-compass-iter-26",
-      "last_passing_iter": "goal-market-compass-iter-26",
+      "last_verified_iter": "goal-market-compass-iter-25",
+      "last_passing_iter": "goal-market-compass-iter-25",
       "first_seen_iter": "goal-market-compass-iter-6",
-      "last_evidence_path": "reports/qa/goal-market-compass-iter-26-evidence/J-10-verify.png",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-25-evidence/J-10-verify.png (deterministic replay UT-J-10 PASS, merged into reports/phase-goal-market-compass-iter-25-ui-test-results.md; screenshot opened by the evaluator: AVB detail at as-of 2026-08-11 renders 'Invalid below the 50-DMA at $187.94' -- the exact value the golden asserts)",
       "spec_hash": "42ad18079fd7b367ce272c1a13960375b428c36ba9b21f0f709a09b3465384c2",
       "gap": "Re-verified PASS via the replay lane this iteration. Evaluator additionally re-derived the recovery read-only against the canonical database: daily_prices holds 585 rows on each of 2026-08-11 and 2026-08-12 and the price frontier is still 2026-08-12 (no dataset advancement; AG-9's spent exception not re-entered)."
     },
@@ -118,13 +115,12 @@
       "id": "J-11",
       "name": "Incident-bounded clean regeneration of derived state",
       "status": "passing",
-      "last_verified_iter": "goal-market-compass-iter-26",
-      "last_passing_iter": "goal-market-compass-iter-26",
+      "last_verified_iter": "goal-market-compass-iter-24",
+      "last_passing_iter": "goal-market-compass-iter-23",
       "first_seen_iter": "goal-market-compass-iter-8",
-      "last_evidence_path": "reports/qa/goal-market-compass-iter-26-evidence/J-11-verify.png",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-23-evidence/J-11-today-frontier-result.png + reports/qa/goal-market-compass-iter-23-evidence/J-11-incident-2026-08-11-result.png (iter-23 LLM browser-qa UT-J-11 PASS, clone-backed boot). iter-24 re-verification against the CURRENT goal text is DOCUMENTARY + STATE-INTEGRITY, not a fresh browser pass: the docs/goal.md delta is purely additive (one hunk at :2194, +46/-0) and declares \"J-11 STATUS: PASSING — CLOSED\" while forbidding re-verification (ruling item 1); this evaluator confirmed apps/backend/data/trendora.db (8365871104 / mtime 1787822829), -wal (2599752 / 1787862368) and -shm (32768 / 1787863696) are all byte-identical to their iter-23 post-verification values, so nothing could have invalidated the iter-23 pass, and ruling items 2/3/4 are satisfied.",
       "spec_hash": "012568db747b3063b51b4c5e65e53353ae6e780e779d12a06d511b60fc07e8f3",
-      "gap": "CLOSED per owner ruling 'J-11 CLOSED' item 1 (2026-08-27); not reopened, re-tested or re-planned this iteration. Evaluator spot-checked its certified state read-only against the canonical database and it HOLDS: next_session_manifests still 24 rows, prospective_eligible true on ZERO of them (AG-17), newest available_at_utc still 2026-08-20 14:55:02 (no new briefing minted -- the hazard the iter-22 evaluator warned a page request could trigger), scanner_runs max id still 3158 / newest created_at 2026-08-26 (no twelfth day-record minted), version distribution 16/3/2/1/1/1 unchanged. last_verified_iter deliberately left at iter-24: this was a state-integrity spot check, not a fresh journey verification.",
-      "notes": "replayed PASS this iteration via a 2-step golden ('Basis: rebuilt' on 2026-08-12 and 2026-08-11); the substantive serving verification remains iter-23's clone-backed run. Owner ruling 2026-08-27 item 1: J-11 CLOSED."
+      "gap": "CLOSED per owner ruling 'J-11 CLOSED' item 1 (2026-08-27); not reopened, re-tested or re-planned this iteration. Evaluator spot-checked its certified state read-only against the canonical database and it HOLDS: next_session_manifests still 24 rows, prospective_eligible true on ZERO of them (AG-17), newest available_at_utc still 2026-08-20 14:55:02 (no new briefing minted -- the hazard the iter-22 evaluator warned a page request could trigger), scanner_runs max id still 3158 / newest created_at 2026-08-26 (no twelfth day-record minted), version distribution 16/3/2/1/1/1 unchanged. last_verified_iter deliberately left at iter-24: this was a state-integrity spot check, not a fresh journey verification."
     }
   },
   "anti_goal_violations": [
@@ -189,5 +185,5 @@
       "resolution": "RESOLVED in iter-24 on two independent grounds, both verified by this evaluator. (1) OWNER DISPOSITION: docs/goal.md \"OWNER RULING — J-11 CLOSED\" (2026-08-27) item 2 accepts the 10 derived-cache rows in place and forbids cleanup writes; item 3 authorizes exactly the launcher fix. (2) REMEDY LANDED AND VERIFIED: goal_iter_lock_backend_launch_context + the ensure_services_running drift guard (lib/common.sh) and goal-iter-lean.sh reading the locked value; reviewer PASS; this evaluator independently ran tests/automation/test-backend-launch-context.sh (18 passed, 0 failed) and observed the fail-closed refusal fire. No further harm occurred: canonical .db/-wal/-shm are byte-identical to their iter-23 values. RESIDUAL (recorded, not a violation): the guard enforces launch-context CONSISTENCY with whatever was locked at iteration start, not canonical-DB PROTECTION — an iteration needing clone isolation must still supply CHAIN_START_BACKEND_CMD/TRENDORA_CONFIG in the engine's environment BEFORE goal-iter-lean.sh starts."
     }
   ],
-  "updated_at": "2026-08-28T13:22:48.848329+00:00"
+  "updated_at": "2026-08-28T12:02:09.443571+00:00"
 }

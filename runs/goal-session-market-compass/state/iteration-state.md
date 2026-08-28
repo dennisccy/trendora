@@ -1,40 +1,40 @@
 # Iteration State — market-compass
 
-**After iteration:** 25 · **Date:** 2026-08-28 · **Verdict:** CONTINUE
+**After iteration:** 26 · **Date:** 2026-08-28 · **Verdict:** ESCALATE
 
 ## Journeys
 
-4 passing (J-01 J-04 J-10 J-11) · 5 partial (J-02 J-03 J-05 J-06 J-09) · 2 failing (J-07 J-08) — 11 total
+5 passing (J-01 J-04 J-05 J-10 J-11) · 4 partial (J-02 J-03 J-06 J-09) · 2 failing (J-07 J-08) — 11 total
 
 ## Active blockers
 
-- none blocking. One OPEN OWNER QUESTION, non-blocking (ruling item 6): is ~2.99 GB acceptable for J-09?
-  Measured 3,064,772 kB vs the 2,621,440 kB target — an honest miss, and the figure is UNCORROBORATED (no
-  raw sample survives; 3 neighbouring claims disproved in-audit). Addendum 41 + its correction block.
-- Depth risk (owner-owned): 5 times this session a `Depth: full` plan was auto-demoted to lean on cost.
-  Only the owner may add `Depth enforcement: required` — planner and evaluator may not self-grant it.
-  `CHAIN_REQUIRE_FULL_DEPTH` / `CHAIN_MAINTENANCE_ISOLATION` stay OFF.
+- **J-06 last unmet limb (dev-owned, next target):** the live route can never disclose that a frozen
+  manifest's source run is gone. `apps/backend/app/api/compass.py:59` calls `resolved_run()` before
+  `basis_disclosure()`, and `run_scan`'s self-heal recreates the missing `ScannerRun` first — so a request
+  only ever sees `available`/`rebuilt` and has recomputed, which J-06 step 2 forbids; the same machinery
+  can mint permanent rows from a plain page view. (iter-3 audit B2, re-verified iter-26.)
+- **Depth demotion (human-owned):** spec asked `Depth: full`, engine dispatched `lean` — 6th time this
+  session. Only the owner may add `Depth enforcement: required`; `CHAIN_REQUIRE_FULL_DEPTH` /
+  `CHAIN_MAINTENANCE_ISOLATION` stay OFF.
+- Non-blocking owner questions: J-09 2.99 GB · J-06 wording · J-01 test steps · empty focus · MNST.
 
 ## Last 2 verdicts
 
-- iter 25: CONTINUE — full depth ran as specified; the replay lane genuinely re-tested J-01/J-04/J-10
-  (3/3 PASS, screenshots opened); J-09 re-measured and honestly missed; the auditor fixed a mirror-image
-  parser defect 4 lanes passed over; the sanctioned canonical boot moved no manifest/day-record/price.
-- iter 24: ESCALATE — the launcher fix landed and was verified, but the iteration's own regression
-  re-test silently never ran and no lane reported it.
+- iter 26: ESCALATE — J-05 promoted to passing on live+route-fixture evidence; J-06's remaining gap sits in
+  the shared serving path (`resolved_run`) and needs the auditor that the lean demotion removed.
+- iter 25: CONTINUE — replay lane repaired and ran 3/3; J-09 re-measured as an honest, uncorroborated miss.
 
 ## Do not redo
 
-- **J-11 is CLOSED** (owner ruling item 1). Do not reopen its recovery or serving verification.
-- **The launcher-context fix is landed and verified** (iter-24; `test-backend-launch-context.sh` 18/18,
-  green again this iteration with the clone absent). Owner ruling item 3 is spent.
-- **The replay-lane parser defect is fixed AND audit-hardened** — `lib/replay-lane.sh:86-112` treats the
-  label's own bullet as authoritative. Verified independently: iter-25/iter-24 specs parse to
-  `J-01 J-04 J-10`, iter-7's "none" bullet parses to empty; `test-replay-lane.sh` 84/84. Do not re-patch.
-- **The iter-23 disposable clone is deleted** (~7.8 GB freed, owner ruling item 4). **J-09's one
-  authorized config edit landed at iter-4** (`cache_size -65536`) — never touch
-  `pool_size`/`max_overflow`/`memory_cap_mb`/host-guard values, and never widen the 2.5 GB target.
-- **Normal product work is authorized** (owner ruling item 5) — a read-only canonical boot needs no
-  further permission and item 6 forbids stalling for recomputable cache residue. Next: J-05 + J-06
-  (freeze/integrity pair), then J-07/J-08. Passengers only: J-04's candidate-card re-capture; J-01's
-  weak golden script.
+- **J-11 is CLOSED** (owner ruling 2026-08-27 item 1). Never reopen recovery or serving verification.
+- **Do NOT run the live remove+backfill drill** for J-05 step 1 / J-06 steps 1-3: "the last two trading
+  days" still resolves to 2026-08-11/12, the incident pair, AG-9 exception exhausted. Fixtures cover it.
+- **J-05 is done** — export byte-equality, strip figures, disposition partition and `engine_identity`
+  stamping re-derived live at iter-26; step 2's flagship state is fixture-only and permanently unprovable
+  here (assumptions.md). Only the walkthrough is owed.
+- **Launcher fix landed and verified** (iter-24). The canonical DB boot is sanctioned ordinary work
+  (owner item 5); do not re-arm maintenance isolation.
+- **TC-15 AST scanner fixed** (`test_manifest_invariants.py`); the four orphaned export files were
+  investigated and must NOT be deleted (TC-10 finding: leftover test-fixture artifacts).
+- Passenger tasks only, never an iteration goal: J-04's screenshot re-take (8th owed), J-05/J-06
+  walkthrough recordings.

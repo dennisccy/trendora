@@ -508,3 +508,62 @@ it was scoped to prove. The one NOT reversible piece is narrow and intentional: 
 `POST /api/compass/regenerate?as_of=2025-04-15` call mints a permanent version-2 row (by AG-12 design,
 regenerate rows are never deleted) — this is the accepted cost of getting real live evidence for J-06
 step 4 without touching removal/backfill at all.
+
+## iter-26 — goal-evaluator (J-05 promoted to `passing` although step 2's flagship state is fixture-only)
+
+**Ambiguity:** J-05 step 2 requires `GET /api/compass` for the frontier date to serve `mode: at_ingest`,
+`version: 1`, `frozen: true`, `prospective_eligible: true`, `generation.producer: ingest_finalize`. That
+state cannot be observed on the canonical database and never can be again: `2026-08-12`'s version 1 (row
+id 1) is a legacy pre-freeze row with NULL `mode`, versions 2–6 were minted by `producer=regenerate`
+during the incident-recovery window and are `prospective_eligible=false` by AG-17's own requirement, the
+create-once rule means version 1 can never be re-minted, and AG-9 forbids fetching a newer trading day.
+The goal text does not say whether a step whose live premise has been destroyed by a prior incident may be
+satisfied by fixture evidence.
+
+**We chose:** promote J-05 to `passing`, scoring step 2 from route-level fixture evidence
+(`apps/backend/tests/test_api_compass.py::test_compass_route_serves_every_new_field_directly`, which
+asserts all six field values plus `verify_manifest_hash` at the response layer, not at unit level), while
+scoring steps 3, 4 and 5 from live canonical-database evidence I re-derived myself read-only (export byte
+equality 355,711/355,711 with hash `9bc08cfba0…` reproduced; strip figures 531/10/521/28 and 539/0/539/26
+matching the stored payload; disposition tallies 513+8=521; 45 `engine_identity`-stamped ScannerRuns vs
+3,083 NULL). Reasoning: (a) no live observation CONTRADICTS the fixture — the live frontier's ineligible
+state is what AG-17 mandates, so the product is behaving correctly, not failing; (b) the limb is
+permanently unprovable live, so holding the journey open is an unsatisfiable criterion looping forever —
+the framework's own #1 anti-pattern; (c) the fixture proof is at the serving-route layer, which is the
+strongest substitute available short of new market data. What I explicitly did NOT do: treat the fixture
+as covering the limbs I could check live (I checked those myself), and I recorded `evidence_makeup: true`
+so the still-missing walkthrough is not silently forgiven.
+
+**Reversible:** yes — a scoring-interpretation call with no mutation. One owner line settles it: if he
+rules that J-05 step 2 needs a live observation regardless, J-05 returns to `partial` and stays there
+until a goal.md amendment authorizes a new trading day's data; none of this iteration's live evidence
+would need redoing.
+
+## iter-26 — goal-evaluator (the permanent version-2 mint read as authorized ordinary work, not an owner-gated act)
+
+**Ambiguity:** The owner's ruling of 2026-08-27 item 5 says "Normal Market Compass product work resumes
+immediately... No further owner authorization is needed for ordinary non-destructive product iterations",
+while item 6 still REQUIRES owner approval for "immutable-manifest mutation... or another genuinely
+irreversible product-contract decision". This iteration triggered the confirm-gated regenerate action
+against the canonical database, minting `next_session_manifests` row id 25 (`as_of=2025-04-15, version 2`)
+— a row that is permanent by design (regenerate rows are never deleted). The decomposer's own ledger entry
+flags it as "the one NOT reversible piece". It is not obvious whether a permanent additive row counts as
+"ordinary non-destructive work" or as a "genuinely irreversible" act needing approval.
+
+**We chose:** read it as authorized, and opened no anti-goal ledger entry. Grounds, each checked: (a)
+nothing was mutated or deleted — I verified read-only that version 1 (row id 17) still verifies its own
+`manifest_hash` over its own payload, keeps `created_at 2026-08-20 11:41:00.381102`, and that ids 1–25 are
+complete so no row was removed; (b) AG-12 names new version rows as the SANCTIONED correction mechanism,
+and AG-18's prohibition is textually scoped to the J-11 schema migration ("by it or around it"), which did
+not run; (c) J-06 step 4 — written by the owner — explicitly instructs "Trigger the explicit regenerate
+action for that as-of (confirm-gated)", so performing it is executing the goal, not exceeding it; (d) the
+action was taken through its own shipped confirm gate on a clean 2025 date with zero incident-window
+contact, and I confirmed the rest of the database was untouched (`daily_prices` 3,310,374, `scanner_runs`
+3,128 with max id 3158 and newest `created_at` 2026-08-26, unchanged even after the later replay and
+browser lanes ran).
+
+**Reversible:** no for the row itself — it is permanent by design, and that is stated plainly in the
+evaluation's owner-facing lines. Reversible for the POLICY: if the owner rules that any permanent write to
+the canonical database needs his sign-off regardless of how additive it is, future iterations simply stop
+triggering regenerate live and J-06 step 4 falls back to fixture proof; the existing row stays, correctly
+marked not usable as forward-looking evidence, exactly like every other row.

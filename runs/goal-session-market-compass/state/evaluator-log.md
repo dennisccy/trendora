@@ -2129,3 +2129,110 @@ is acceptable; and whether MNST joins the recovery list. ONE MECHANICAL ITEM: th
 plan, both handoffs, all reports and the evidence folder — is still untracked at scoring time; confirm it
 lands. ONE STANDING FRAMEWORK NOTE: `goal_gate.py`'s duplicate-journey-heading defect is still unfixed and
 must be closed before any GOAL_ACHIEVED certification.
+
+## Iteration 26 — goal-market-compass-iter-26
+
+**Date:** 2026-08-28T14:30:00Z
+**Verdict:** ESCALATE
+**Depth dispatched:** lean — **NOT** what the spec asked for, for the sixth time this session (iters 2,
+6, 8, 23, 24, 26). `docs/phases/goal-market-compass-iter-26.md` declares `Depth: full` with a written
+Trigger-1 justification ("the first LIVE write to the canonical `next_session_manifests` table this
+session outside J-11's already-closed recovery work"); `iter-26/depth-dispatched` reads `lean`. My own
+iter-25 binding `full` recommendation was overridden. No QA agent and no independent auditor ran on the
+one iteration this session that wrote permanently to the protected database.
+
+**Owner-facing lines:** `J-05 CLOSED — passing, three limbs re-derived live by me` · `ONE AUTHORIZED
+PERMANENT ROW ADDED (2025-04-15 v2); NOTHING ELSE IN THE DATABASE MOVED` · `J-06 HELD — the app can never
+tell a user the run behind a frozen briefing is missing` · `ANTI-GOAL LEDGER: 8 total, 0 unresolved`.
+
+**Journey deltas:**
+- **Newly passing: J-05** "Each close freezes one next-session manifest, exported byte-consistently" —
+  `partial` since iter-3, promoted on evidence I re-derived myself read-only: the on-disk export
+  `2026-08-12_v6.json` is byte-identical (355,711 both sides) to the served payload with
+  `verify_manifest_hash` True on both and hash `9bc08cfba0…` reproduced; every strip figure matches the
+  stored record (531/10/521/28 at 2025-04-15, 539/0/539/26 at the frontier) with dispositions
+  partitioning exactly (513+8=521); and the run-stamping split step 5 asks for exists live (45 stamped
+  ScannerRuns vs 3,083 pre-stamping NULL). ONE LIMB IS FIXTURE-ONLY AND PERMANENTLY SO: step 2's
+  at_ingest/version-1/eligible-true flagship state cannot be produced on this database again (the
+  frontier's v1 is a legacy pre-freeze row, v2–v6 were regenerated in the incident window and are
+  AG-17-correctly ineligible, and AG-9 bars any new trading day). Proof is route-level
+  (`test_compass_route_serves_every_new_field_directly`), nothing live contradicts it, and the call is in
+  the assumption ledger. `evidence_makeup: true` (walkthrough owed).
+- **J-06 "A frozen manifest never changes" — NOT promoted, stays `partial`, re-stamped to iter-26.**
+  Step 4 is now proven LIVE: the confirm-gated regenerate minted v2 for 2025-04-15; v1 (row id 17) is
+  untouched — its `manifest_hash` still verifies over its own payload and its `created_at` is unchanged;
+  `content_hash` equal across v1/v2 while `manifest_hash` differs (hash-scope separation, observed live,
+  eight days apart, with a changed dataset stamp); the UI lists both versions. THE BLOCKER IS REAL AND
+  PRODUCT-LEVEL: step 2 requires the route to serve a frozen manifest with a basis reading "unavailable",
+  "never a recompute". `app/api/compass.py:59` calls `resolved_run()` before `basis_disclosure()`, and
+  `run_scan`'s self-heal recreates the missing run first — so a live request can only ever see
+  "available" or "rebuilt", and it silently recomputes. I read the code path myself. Found at iter-3
+  (audit B2), re-verified empirically this iteration, still open.
+- Re-verified, unchanged: J-01, J-04, J-10, J-11 — deterministic replay lane ran for real, 4/4 PASS, all
+  re-stamped to iter-26. Two spot-checks opened (J-11's 2026-08-11 page renders real numbers with the
+  honest retrospective disclosure; J-04's is again the 2026-03-30 final-step viewport stopping above the
+  candidate card — `evidence_makeup: true` KEPT for the eighth iteration running). J-11's golden is thin
+  (two "Basis: rebuilt" assertions); its substantive pass remains iter-23's clone-backed verification.
+- Not targeted, carried unchanged: J-02, J-03, J-09 stay `partial`; J-07, J-08 stay `failing`.
+- **`spec_hash`: all eleven byte-identical to the recorded values** — I ran `goal_gate.py hash-journeys`
+  and compared every one. No `journeys-changed.md`, no `browser-infra.json`, no `DEFERRED-BUDGET` rows,
+  NOT maintenance isolation.
+- Anti-goal violations: **NONE new** among AG-1..AG-18 — I answered all eighteen explicitly and
+  re-derived the four at real risk (AG-3, AG-9, AG-12, AG-17) live and read-only. Ledger unchanged at
+  **8 total, 0 unresolved**.
+- Coherence: COHERENCE-PASS. Deterministic scan: CLEAN. Review: PASS_WITH_NOTES (one MINOR, one NOTE, both
+  accurate). No QA report, no audit handoff — those lanes never ran (see depth note above).
+
+**Reasoning:** The work asked for was done, and I did not take the important parts from anyone's write-up.
+I re-derived the load-bearing facts myself, read-only: the saved file on disk is byte-for-byte what the
+page serves, its security code recomputes, every number on both screenshots matches the stored record, the
+group counts add up exactly, and the older frozen briefing was not altered — its own security code still
+checks out and its timestamp is unchanged. I also proved the whole database stayed still: twenty-five
+briefings with the ids running unbroken from one to twenty-five, so nothing was removed; exactly one row
+created today, the one the plan authorised; and the price and run tables unchanged to the row, including
+after the later browsing and replay lanes ran. That last point matters, because in an earlier round a
+routine re-test quietly wrote to this database and nobody noticed for a full iteration. It did not happen
+this time. So J-05 closes. The one part of J-05 I cannot see live is the state of a freshly closed trading
+day, and it can never be shown again on this data — the newest day's first version is an old record and
+the later ones were rebuilt during the incident, correctly marked unusable. Refusing to close a journey
+for a state the data can never produce would be an endless loop, so I closed it and wrote my reasoning
+into the ledger for the owner to overrule. J-06 I did NOT close, and this is the honest finding of the
+round: the app cannot tell a user that the run behind a frozen briefing has gone missing. Opening the page
+quietly rebuilds that run first, so the honest "no longer stored" message — real code, tested — can never
+reach a screen, and the page has quietly recomputed something the journey says it must never recompute. I
+confirmed this by reading the code path, not by trusting the report. Why ESCALATE rather than CONTINUE?
+Because that quiet rebuild sits in the one function every page uses, and it is the same machinery that can
+mint permanent records just from someone viewing an old date — changing it needs the independent auditor
+present. This round was planned as full and demoted on cost for the sixth time this session, and a plain
+recommendation demonstrably does not stick: I recommended full at iteration 25 and this round still ran
+light. An escalation verdict outranks the cost rule, and last time it did exactly that — iteration 25 ran
+full and its auditor found real defects every other lane had signed off. Why not REGRESSION? Nothing that
+worked stopped working, no journey fell back, no listed rule was broken, and the permanent row added today
+is the sanctioned "corrections are new versions" mechanism that J-06's own text tells us to exercise. Why
+not STALLED? Nothing waits on the owner — the fix is ordinary product work his ruling item 5 already
+authorises. One process fact: this is the seventeenth iteration running where a later lane found what the
+earlier ones missed.
+
+**Next-step recommendation:** CLOSE J-06 "A frozen manifest never changes" — make the page notice, BEFORE
+it quietly rebuilds anything, whether the run behind a frozen briefing still exists, and say so honestly
+on screen. That is the journey's last unmet requirement and it is small and well understood. RUN IT AT
+FULL DEPTH: the change sits in the code path every page uses, and the same quiet rebuild is what can
+create permanent records from a plain page view. Only the owner can add the `Depth enforcement: required`
+line that outranks the cost rule; standing guidance keeps `CHAIN_REQUIRE_FULL_DEPTH` and
+`CHAIN_MAINTENANCE_ISOLATION` off. AFTER J-06, the goal file's own order gives J-07 "The Today page
+answers the ten-second read" then J-08 "Market page moves over intact" — the last two pieces. FIVE
+SMALLER ITEMS, none blocking: (1) the reviewer's MINOR is real — the automated check that proves nothing
+can overwrite a frozen briefing only recognises the literal name `update`
+(`apps/backend/tests/test_manifest_invariants.py:155`) and only scans `app/engine/`; I checked the rest of
+the backend by hand today and found nothing, but the check should cover it; (2) J-04's screenshot still
+needs re-taking to include the candidate card (eighth round owed, passenger task); (3) J-05 and J-06 both
+still owe a recorded walkthrough (passenger task, never an iteration goal); (4) the four leftover export
+files from old test runs are correctly left in place — a follow-up should stop tests writing to the real
+export folder; (5) cache-table baseline recorded for the next round's comparison: `market_phase_cache` 6,
+`event_study_cache` 7, `availability_cache` 1, `index_series_cache` 1, `membership_timeline_cache` 1.
+ONE MECHANICAL ITEM: the whole iteration — plan, handoff, reports, evidence folder, the new J-06 golden
+script — is still untracked at scoring time; confirm it lands. FIVE OLDER OWNER QUESTIONS remain open and
+non-blocking: J-09's ~2.99 GB acceptability; J-06's "underlying run unavailable" wording; J-01's first two
+test steps; whether an empty "next-session focus" is acceptable; and whether MNST joins the recovery list.
+ONE STANDING FRAMEWORK NOTE: `goal_gate.py`'s duplicate-journey-heading defect is still unfixed and must
+be closed before any GOAL_ACHIEVED certification.

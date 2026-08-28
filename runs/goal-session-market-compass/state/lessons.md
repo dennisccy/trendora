@@ -384,3 +384,30 @@ story ("no second engine shared the host") written purely from the client-side h
 answer the new guard structurally cannot see); and any iteration writing a `reports/perf-budgets.md`
 addendum (cross-check every causal and load claim against the server log and host-guard event stream, and
 retain the raw sampler output with UTC start/end times).
+
+## iter-26 — 2026-08-28T14:30:00Z
+
+**Verdict:** ESCALATE
+**Lesson:** A documented, unit-tested state can be structurally UNREACHABLE through the live route and
+still look like coverage: `basis.status == "unavailable"` in `app/engine/compass.py` has passing unit
+tests, but `app/api/compass.py:59` calls `resolved_run()` first and `run_scan`'s self-heal recreates the
+missing `ScannerRun`, so no request can ever observe it — and the self-heal is itself the "recompute"
+that J-06 step 2 forbids. Test the state through the ACTUAL serving entry point before crediting it; a
+green unit test on a branch no request can reach is an honesty gap, not coverage. (Found at iter-3 as
+audit finding B2, still open at iter-26.)
+**Applies to:** any journey whose acceptance names a specific served status/disclosure value; any change
+to `resolved_run` / `snapshot_serving` / `run_scan` self-heal ordering; any future "the code handles X"
+claim backed only by a unit test.
+
+## iter-26 — 2026-08-28T14:31:00Z
+
+**Verdict:** ESCALATE
+**Lesson:** An earlier incident can make a journey's literal acceptance step permanently unprovable on
+the live database. J-05 step 2 wants a frontier manifest reading `at_ingest / version 1 /
+prospective_eligible true`; 2026-08-12's v1 is a legacy pre-freeze row, v2–v6 were regenerated during the
+incident window and are AG-17-correctly ineligible forever, and AG-9 forbids fetching a new trading day —
+so that state can never exist again here. The correct resolution is route-level fixture proof plus an
+explicit assumption-ledger entry, NOT holding the journey open forever (that is the framework's #1
+anti-pattern, an unsatisfiable acceptance criterion looping).
+**Applies to:** any journey step whose premise depends on the frontier/newest date; any evaluator deciding
+whether fixture evidence may substitute for a live observation.
