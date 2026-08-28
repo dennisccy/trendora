@@ -479,3 +479,34 @@ J-10 — they were genuinely not re-verified and keep `last_verified_iter: iter-
 settles it either way: if he rules that any goal-text edit inside a journey block demands fresh browser
 evidence regardless of the edit's content, J-11 drops to `unknown` and the next browser iteration re-runs
 the same clone-backed serving check, with the iter-23 clone evidence still standing as the method proof.
+
+## iter-25 — goal-decomposer (re-measure J-09 now, rather than treating its iter-4 honest miss as fully
+discharged / owner-blocked)
+
+**Ambiguity:** J-09's own five steps (config edit, standing-warm measurement, addendum, concurrent-load
+check, byte-identity spot check) all ran to completion at iter-4, producing a recorded HONEST MISS
+(3,439,100 kB vs a ≤ 2,621,440 kB target) and stopping for owner review exactly as its acceptance text
+instructs ("record the honest measured figure... never widen the target to pass"). The
+iteration-state digest separately lists "whether 3.44 GB is acceptable for J-09" among five open,
+non-blocking owner questions. It is not stated whether that closes J-09's actionable work until the
+owner rules on the figure, or whether a stale measurement (taken before J-10's raw recovery and J-11's
+full derived-state regeneration materially changed the database's content and likely its cache
+footprint) is itself grounds for a fresh, current re-measurement without waiting on that ruling.
+
+**We chose:** treat this as fresh re-verification work, not owner-blocked work — re-run J-09's
+steps 2-5 (measurement, addendum, concurrent-load check, byte-identity spot check) against the CURRENT
+live database with NO config edit (the one authorized config change already stands), and append a new
+dated addendum rather than waiting on the open 3.44 GB acceptability question. Reasoning: (a) the
+measured system materially changed since iter-4 (two large recovery/regeneration passes touched the
+canonical database), so the iter-4 figure's currency is itself in question independent of whether 3.44
+GB was ever going to be accepted; (b) re-measuring requires no new owner authorization — it is read-only
+against already-authorized, already-landed config, exactly "ordinary non-destructive product work" per
+owner ruling item 5; (c) it does not attempt to resolve the open acceptability question itself — a
+repeat or different miss is recorded honestly and left exactly as open as before, per J-09's own
+acceptance text; (d) both the iter-24 evaluator's next-step recommendation and the iteration-state
+digest's "Do not redo" list independently name J-09 (not "wait for owner") as the next target.
+
+**Reversible:** yes — pure measurement, zero config/code/data mutation. If the owner rules J-09's
+iter-4 result was already sufficient to close the loop on it, this iteration's fresh figure is simply
+additional corroborating (or updated) evidence beside it, not rework; nothing recorded here needs to be
+undone either way.

@@ -164,3 +164,11 @@ canonical database, never the canonical database itself. No new page, nav entry,
 endpoint, or displayed field is introduced. This note exists only to record that the long browser-QA/replay
 isolation window (iters 9-22) ends this iteration for verification purposes, scoped to the disposable
 clone.
+
+**iter-25 note (2026-08-28 — informational, no IA change, no Data Contract row change):** J-09's re-run
+(standing-warm VmPeak re-measurement, concurrent-load check, byte-identity spot check) touches no page,
+nav entry, computing module, serving endpoint, or displayed field — its only artifact is a new dated
+addendum in `reports/perf-budgets.md`, an internal ops report outside the Information Architecture and
+Data Contract. The `replay_lane_spec_journeys` parser fix is Goal-mode harness automation
+(`scripts/automation/lib/replay-lane.sh`), not Trendora product surface. Nothing in this iteration
+changes any row above.

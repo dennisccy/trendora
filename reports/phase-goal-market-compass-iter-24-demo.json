@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-market-compass-iter-24",
+  "base_url": "http://localhost:3255",
+  "iteration": 24,
+  "default_timeout_ms": 8000,
+  "note": "Iteration 24 is an owner-authorized Goal Mode automation fix (goal-iter-lean.sh backend-launch config-context propagation) with no user-visible product surface changes. No new journeys were targeted, and no browser tests were run. Regression coverage for required-still-passing journeys (J-01, J-04, J-10) is provided by deterministic replay only.",
+  "steps": []
+}
