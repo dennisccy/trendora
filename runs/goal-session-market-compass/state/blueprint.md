@@ -185,3 +185,13 @@ whose removal caused the iter-5 incident, so the destructive portions are proven
 isolated-engine fixture suite instead, and the only live canonical-database write this iteration makes
 is one additive, AG-12-safe `POST /api/compass/regenerate` call on a clean, non-incident historical
 date (`as_of=2025-04-15`). Nothing in this iteration changes any row above.
+
+**iter-27 note (2026-08-28 — informational, no IA change, no Data Contract row change):** J-06's last
+unmet limb is fixed by reordering `GET /api/compass`'s internal read-time control flow only: the route now
+checks for an already-frozen manifest at the resolved as-of BEFORE calling the shared
+`snapshot_serving.resolved_run`/`scanner.run_scan` self-heal path, instead of after. This makes the
+already-registered `basis.status: "unavailable"` literal (registered since the iter-11 note above)
+reachable through the live route for the first time; no new computing module, serving endpoint, displayed
+field, page, or nav entry is introduced, and `snapshot_serving.resolved_run`/`scanner.run_scan` themselves
+are unmodified, so every OTHER page's self-heal behavior (`/`, `/stocks`, `/sectors`, `/themes`, dashboard,
+market-phase) is unaffected. Nothing in this iteration changes any row above.
