@@ -2024,3 +2024,108 @@ remain open and non-blocking: whether 3.44 GB is acceptable for J-09; J-06's "un
 wording; the rewording of J-01's first two test steps; whether an empty "next-session focus" is
 acceptable; and whether MNST joins the recovery list. ONE STANDING FRAMEWORK NOTE: `goal_gate.py`'s
 duplicate-journey-heading defect is still unfixed and must be closed before any GOAL_ACHIEVED certification.
+
+## Iteration 25 — goal-market-compass-iter-25
+
+**Date:** 2026-08-28T13:10:00Z
+**Verdict:** CONTINUE
+**Depth dispatched:** full — **as specified**, for the first time in three iterations. `iter-25/depth-dispatched`
+reads `full` and every lane ran: reviewer, QA, ui-impact, ux-regression, closure, coherence, and an
+independent auditor. The full→lean demotion that hit iters 2, 6, 8, 23 and 24 did NOT recur; my own iter-24
+ESCALATE is what bought it (rubric Trigger 3).
+
+**Owner-facing lines:** `J-09 RE-MEASURED: 3,064,772 kB vs 2,621,440 kB target — HONEST MISS (+16.9%),
+figure UNCORROBORATED` · `REGRESSION RE-TEST LANE: RAN FOR REAL, 3/3 PASS` · `CANONICAL DATABASE: BOOTED,
+SANCTIONED, NO PROTECTED VALUE MOVED` · `ANTI-GOAL LEDGER: 8 total, 0 unresolved`.
+
+**Journey deltas:**
+- Newly passing: none. Newly failing: none. **Regressed: none.**
+- **Re-verified for real: J-01, J-04, J-10** — all three re-stamped `passing` at iter-25 via the
+  deterministic replay lane, which genuinely executed this round (it was silently empty at iter-24). I
+  opened all three screenshots. J-01: GRMN, stored sector "Consumer Discretionary", 1/539, regime 73.18,
+  scores badged "Not yet proven". J-10: AVB at as-of 2026-08-11 renders `$187.94` — the exact value its
+  golden asserts. J-04: the capture is again the final-step viewport at 2026-03-30 and stops above the
+  candidate card, so `evidence_makeup: true` is KEPT for the seventh iteration running; the journey stands
+  on the golden's exact-value expects, which the auditor confirms pin real numbers.
+- **J-09 re-measured, stays `partial`, re-stamped to iter-25.** Standing-warm VmPeak 3,064,772 kB against
+  the ≤2,621,440 kB acceptance target — over by 16.9%. The other acceptance limbs hold. NOT promoted, and
+  the headline number is UNCORROBORATED (see Reasoning). `last_passing_iter` stays null.
+- Not targeted, carried unchanged (product surface byte-unchanged — `git diff --stat HEAD -- config.yaml
+  apps/ project-extensions/` is EMPTY, my own run): J-02, J-03, J-05, J-06 stay `partial`; J-07, J-08 stay
+  `failing`; J-11 stays `passing` at iter-24. No `browser-infra.json`, no DEFERRED-BUDGET rows, NOT
+  maintenance isolation.
+- Spot-checks beyond the replay set: J-11's certified state, re-derived by me read-only against the live
+  8.4 GB database — 24 manifests, `prospective_eligible` true on ZERO of them, newest `available_at_utc`
+  still 2026-08-20, `scanner_runs` max id still 3158 / newest created 2026-08-26, price frontier still
+  2026-08-12 with 585 rows on each recovered day. All consistent; `last_verified_iter` deliberately NOT
+  re-stamped — a state-integrity check is not a journey verification.
+- **`spec_hash`: all eleven byte-identical to the recorded values.** I ran `goal_gate.py hash-journeys`
+  myself and compared every one. `docs/goal.md` has not moved since iter-24; no `journeys-changed.md` fired.
+- Anti-goal violations: **NONE new** among AG-1..AG-18 — I answered all eighteen explicitly and re-derived
+  the four at real risk (AG-9, AG-10, AG-12, AG-17) against the live database and the config file. Ledger
+  unchanged at **8 total, 0 unresolved**.
+- Coherence: COHERENCE-PASS. Deterministic scan: CLEAN. Review: PASS. QA: PASS. UX-regression:
+  UX-REGRESSION-PASS. Closure: CLOSURE-PASS. Audit: **PASS_WITH_GAPS**.
+
+**Reasoning:** Two jobs were asked for and both were really done. I did not take that from anyone's
+write-up. The re-check lane is the one that matters most: last round it silently tested nothing because the
+engine read the wrong line of the plan, and nobody noticed. I ran the repaired reader myself over three
+real plan documents and it now gives the right answer on all three — including the document that broke it
+last time. Then the lane actually ran, and I opened all three pictures: real pages, real numbers, and in
+one case the exact price the automated check demands. So the safety net is genuinely back. The memory
+measurement is the honest miss the goal file itself anticipates: about 2.99 GB where 2.5 GB is asked for.
+It was not smoothed over and the target was not moved. But I am recording the number as UNCORROBORATED and
+I want the owner to read it that way, because the independent auditor disproved three neighbouring claims
+from the very same page and I re-checked two of them myself. The stated reason for the improvement — that
+no other work was sharing the machine — is simply false: I found the other project's engine in the machine
+log, started at 10:20:13 and running a full-depth job through 10:38:05, straight across the 10:24-10:31
+measurement window. And the stated request load is wrong in the other direction: I counted 2,614 requests
+in the server's own log where the report claims 2,130, so the memory peak was taken under roughly twice
+the load the method describes. The peak figure itself has no surviving raw record anywhere — I searched,
+and it exists only inside six documents that quote each other. It is a miss either way, so nothing about
+the journey's status turns on it, but the owner should not treat it as settled. The third thing I checked
+is the one nobody asked me to. The real database was switched on again this round and served about 2,614
+requests — the first ordinary boot since the accident two rounds ago. So I looked at what it left behind.
+Four new rows in two recomputable cache tables, and that is all: no new saved briefing (the exact hazard
+the earlier note warned a single page request could cause), no new day-record, no manifest touched, none
+of the twenty-four marked usable as forward-looking evidence, and the price data unchanged to the row.
+That boot was allowed — the owner's own written rule resumed normal work once the launcher fix landed, and
+it did land last round — and nothing needing his approval was touched. Why CONTINUE rather than STALLED?
+Because for the first time in four rounds the next step is a task, not a decision: the freeze/integrity
+pair is ordinary product work the owner has already authorised, and the one open owner question is
+explicitly marked non-blocking by his own continuation rule. Why not REGRESSION? Nothing that worked
+stopped working, all three re-checked journeys passed, no listed rule was broken, and the ledger gained
+nothing. Why not ESCALATE again? This round already ran at full depth and the deeper lane did its job — it
+found two real defects and fixed them. Escalating a second time to force depth I did not earn would be the
+same self-granting move the planner correctly refused to make in its own document, so I recommend full
+depth instead and leave the hard switch to the owner. One process fact: this is the sixteenth iteration
+running where a later lane found what the earlier ones missed — but the first in three where the lane that
+catches it, the independent auditor, was actually present. It caught a defect in the engine's own safety
+code that the developer, reviewer, QA and coherence lanes all signed off on.
+
+**Next-step recommendation:** BUILD J-05 "Each close freezes one next-session manifest, exported
+byte-consistently" AND J-06 "A frozen manifest never changes" — the goal file's own next pair, ordinary
+authorised work, and the last two items before the page-building journeys J-07 and J-08. RUN IT AT FULL
+DEPTH: J-05/J-06 are about frozen records never changing, which is the most dangerous area in this goal
+(three separate critical rules govern it), and this round is direct proof the auditor lane is load-bearing.
+ONE WARNING ABOUT THAT: five times this session a plan asking for full depth was automatically downgraded
+on cost grounds, and my own binding recommendation was overridden that way at iteration 24. The only
+in-document switch that outranks the cost rule is `Depth enforcement: required`, and it is the OWNER's line
+to add — neither the planner nor I may self-grant it (standing guidance keeps `CHAIN_REQUIRE_FULL_DEPTH`
+and `CHAIN_MAINTENANCE_ISOLATION` OFF). ONE OWNER QUESTION, now sharper and still non-blocking: is roughly
+2.99 GB acceptable for J-09? It beats iteration 4's 3.44 GB but still misses the 2.5 GB goal, the reason
+for the improvement is genuinely unknown, and the number has no surviving raw record. Please read it as
+caveated, not concluded. FOUR SMALLER ITEMS, none blocking: (1) any future memory measurement must record
+its start and end times in UTC and keep the sampler output — the byte-for-byte check in this same round did
+exactly that and is the model to copy; (2) J-04's picture still needs re-taking so it includes the
+candidate card (seventh round owed, rides the next browser iteration as a passenger); (3) J-01's automated
+re-check script asserts far less than the journey claims — it checks that one page renders and one ticker
+shows one sector, and tests neither "honest" nor "near-complete"; strengthen it the next time work
+legitimately touches J-01; (4) the new empty-parse warning is advisory only and changes no verdict, which
+matches the plan exactly, but the owner may later want a declared-but-empty journey set to BLOCK the lane
+rather than warn. FOUR OLDER OWNER QUESTIONS remain open and non-blocking: J-06's "underlying run
+unavailable" wording; the rewording of J-01's first two test steps; whether an empty "next-session focus"
+is acceptable; and whether MNST joins the recovery list. ONE MECHANICAL ITEM: the whole iteration —
+plan, both handoffs, all reports and the evidence folder — is still untracked at scoring time; confirm it
+lands. ONE STANDING FRAMEWORK NOTE: `goal_gate.py`'s duplicate-journey-heading defect is still unfixed and
+must be closed before any GOAL_ACHIEVED certification.

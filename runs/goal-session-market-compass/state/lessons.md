@@ -207,20 +207,7 @@ touching `warmup.py`, `forward_testing.py`, `scanner.py`, `snapshot_serving.py` 
 different readiness badge and the 2026-07-23 "latest" are EXPECTED, not a regression); any change to
 `warmup.py`/`main.py` boot sequencing or `readiness.py`.
 
-## iter-19 — 2026-08-26T15:40:00Z
-
-**Verdict:** CONTINUE
-**Lesson:** A successful destructive rebuild can make the system MORE dangerous to boot, not less, and
-the danger moves rather than disappears. Before Stage D the risk was "an `?as_of=` request mints a run on
-an empty quarantined date"; after Stage D those 11 dates are populated (so that specific accident is now
-impossible), but three NEW exposures opened that no lane reported: `as_of=None` now resolves to the
-rebuilt 2026-08-12 (zero `forward_returns`, stale caches) instead of the complete 2026-07-23; the 7
-manifest-less incident dates are now HISTORICAL, so `compass.get_or_create_manifest`
-(`compass.py:1040-1053`) would create-once-mint a forbidden manifest on any ordinary
-`GET /api/compass?as_of=<date>`; and a 12th run minted on any of the 16 runless-but-barred dates would
-carry the identical `engine_identity`, silently breaking the final stage's membership check. After any
-live rebuild, re-derive what an ordinary request would now DO — do not carry forward the previous
-iteration's exposure analysis.
+## iter-19 — 2026-08-26T15:40:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration executing J-11 Stage E/F/G, and any future live rebuild that changes which
 date is `max(ScannerRun.asof_date)` or populates a previously-empty date.
 
@@ -377,3 +364,23 @@ test is the proof, the live boot is only a confound-free demonstration of the ou
 **Applies to:** any iteration needing an isolated/disposable database; any claim that the canonical DB
 "can no longer be booted"; any future extension of the guard to the five sibling scripts
 (`browser-qa-phase.sh`, `qa-phase.sh`, `run-phase.sh`, `demo-phase.sh`, `run-benchmark.sh`).
+
+## iter-25 — 2026-08-28T13:10:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** A fix for a silent-wrong-parse can introduce its exact mirror, and the guard shipped
+alongside it can be blind to the mirror by construction. `replay_lane_spec_journeys` was changed from
+"first label-matching line" to "first label-matching line containing a J-NN token" — which also skips a
+legitimate `**Required-still-passing journeys:** None this iteration` bullet and lets an incidental prose
+mention later in the document supply the set (real, demonstrated on the committed
+`docs/phases/goal-market-compass-iter-7.md`, which returned `J-10` for a spec that declares none). The new
+`replay_lane_warn_if_zero_parse` could never catch it because it only fires on EMPTY parses. Reviewer, QA,
+coherence and ux-regression all passed it; the independent auditor caught it, and I reproduced both the
+bug and the fix myself. Second, smaller lesson from the same iteration: a perf addendum asserted a causal
+story ("no second engine shared the host") written purely from the client-side harness's own output while
+`host-guard/events.jsonl` and `logs/backend.log` — which flatly contradict it — sat on disk untouched.
+**Applies to:** any iteration that patches a parser/guard in `incredible_auto_dev/scripts/automation/`
+(always run the old-vs-new differential across ALL of `docs/phases/*.md`, and ask what shape of wrong
+answer the new guard structurally cannot see); and any iteration writing a `reports/perf-budgets.md`
+addendum (cross-check every causal and load claim against the server log and host-guard event stream, and
+retain the raw sampler output with UTC start/end times).

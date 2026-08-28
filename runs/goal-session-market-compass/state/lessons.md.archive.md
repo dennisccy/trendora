@@ -557,3 +557,23 @@ new blocking guard: what ELSE keys off the value this guard now suppresses?
 different readiness badge and the 2026-07-23 "latest" are EXPECTED, not a regression); any change to
 `warmup.py`/`main.py` boot sequencing or `readiness.py`.
 
+
+<!-- condense.sh 2026-08-28T09:15:20Z: moved 1 entries (keep-iters=5) -->
+
+## iter-19 — 2026-08-26T15:40:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** A successful destructive rebuild can make the system MORE dangerous to boot, not less, and
+the danger moves rather than disappears. Before Stage D the risk was "an `?as_of=` request mints a run on
+an empty quarantined date"; after Stage D those 11 dates are populated (so that specific accident is now
+impossible), but three NEW exposures opened that no lane reported: `as_of=None` now resolves to the
+rebuilt 2026-08-12 (zero `forward_returns`, stale caches) instead of the complete 2026-07-23; the 7
+manifest-less incident dates are now HISTORICAL, so `compass.get_or_create_manifest`
+(`compass.py:1040-1053`) would create-once-mint a forbidden manifest on any ordinary
+`GET /api/compass?as_of=<date>`; and a 12th run minted on any of the 16 runless-but-barred dates would
+carry the identical `engine_identity`, silently breaking the final stage's membership check. After any
+live rebuild, re-derive what an ordinary request would now DO — do not carry forward the previous
+iteration's exposure analysis.
+**Applies to:** any iteration executing J-11 Stage E/F/G, and any future live rebuild that changes which
+date is `max(ScannerRun.asof_date)` or populates a previously-empty date.
+

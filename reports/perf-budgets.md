@@ -12233,3 +12233,181 @@ zero external network calls. AG-10 — the backend was launched only via `script
 `pool_size`/`max_overflow`/every host-guard value is byte-unchanged (`git diff` shows only the one
 `cache_size` line in `config.yaml`) — the miss above is recorded, not compensated for by touching any of
 these owner-only values.
+
+## Addendum 41 (2026-08-28, market-compass iter-25 developer pass) — J-09 re-measurement against the CURRENT canonical database (post J-10/J-11); still an HONEST MISS vs the 2.5 GB target, but IMPROVED vs the iter-4 figure; zero QueuePool TimeoutError; byte-identity spot check clean
+
+### Why this round
+
+Addendum 40 (iter-4) measured the `cache_size` reduction's effect against the database as it stood on
+2026-08-20. Since then the canonical database went through J-10's raw-bar recovery and J-11's full Stage
+D→G derived-state regeneration — materially different content, and potentially a different derived-cache
+footprint. This iteration (`docs/goal.md` J-09's own re-verification framing, no new config edit) re-runs
+Addendum 40's own steps 2–5 against the CURRENT live canonical backend + database, `cache_size` unchanged
+at `-65536`, `pool_size` (24) and `max_overflow` (44) byte-unchanged. Per J-09's own acceptance text ("if
+the target is missed, record the honest measured figure and stop for owner review — never widen the
+target"), whichever way the number lands it is recorded here honestly.
+
+### Canonical-targeting confirmation (this iteration's own environment-flag requirement)
+
+The dispatched execution plan flagged a risk that a stale `TRENDORA_CONFIG`/`CHAIN_START_BACKEND_CMD`
+export (leftover from J-11's now-closed verification clone) could silently redirect this measurement at
+`runs/goal-market-compass-iter-23/verify-clone/` instead of canonical. Checked and cleared before boot:
+`env | grep -E 'TRENDORA_CONFIG|CHAIN_START_BACKEND_CMD|TRENDORA_COMPASS_EXPORT_DIR'` returned nothing in
+the developer's actual execution shell — no override was present, nothing needed unsetting. The backend
+was then started via the plain `bash scripts/start-backend.sh` (uvicorn pid confirmed via `ps aux`), and
+`/proc/<pid>/fd` was read directly (`readlink -f` on every fd) to positively confirm the open database
+file: `/home/dennis-chan/Git/trendora/apps/backend/data/trendora.db` (8,365,871,104 bytes — the real
+canonical file, not a path under `runs/goal-market-compass-iter-23/verify-clone/`, which was independently
+confirmed absent from `lsof -p <pid>` output). Canonical targeting is proven, not assumed.
+
+### Method: the SAME lighter concurrent-burst path Addendum 40 used (no `backfill`/`rebuild` job, no throwaway DB copy)
+
+Backend started via `bash scripts/start-backend.sh` (HOST-GUARD block intact, confirmed by reading the
+script before use), polled until `GET /api/health`'s `readiness` field reached `"ready"` (10 polls, ~30s —
+`warmup 89/89` history load). Baseline `/proc/<pid>/status` VmPeak at that ready state was already
+**3,064,772 kB** — i.e. the readiness warmup itself, not the burst, was already at this iteration's
+plateau (see "Engineering note" below).
+
+1. **Original-methodology replica** — the SAME 5 workers / 6-endpoint mix
+   (`/api/backtest`, `/api/watchlist`, `/api/sectors`, `/api/themes`, `/api/stocks`,
+   `/api/data/availability`) / 1.0–2.0s jittered pacing / ~150s sustained burst Addendum 40 used.
+   VmPeak was sampled every 20s throughout (9 samples) and stayed **exactly flat at 3,064,772 kB** for
+   the entire burst — the plateau was already reached before the burst began. 451 requests, **zero
+   errors, zero non-200s**. Host safety: `MemAvailable` never dropped below 18.8 GB, swap held flat
+   (~2.7 GB used, unchanged from pre-burst) throughout — no abort-rule condition approached.
+   **Result: 3,064,772 kB (2,993.0 MB) — this iteration's primary figure, same convention as Addendum 40.**
+2. **Stress variant** — the SAME 24 workers / 10-endpoint mix (adds `/api/dashboard`, `/api/market-phase`,
+   `/api/compass`, `/api/health`) / 0.1–0.4s pacing / ~90s Addendum 40 used. VmPeak climbed from
+   3,064,772 → 4,894,548 kB by t+90s and held flat through t+105s. 1,679 requests, 39 client-side read
+   timeouts (15s client timeout exceeded on `/api/market-phase` under 24-way concurrency — confirmed via
+   `logs/backend.log` to be a harness pacing artifact, NOT a server-side failure: zero non-200 responses
+   and zero `QueuePool` lines logged anywhere in the burst's time window), **zero non-200s**.
+   **Result: 4,894,548 kB (4,779.8 MB).**
+
+Neither burst copied or opened-for-write `apps/backend/data/trendora.db`; both read the real committed dev
+DB in place through the app's own normal connection pool.
+
+### Result vs the ≤2.5 GB target and vs the iter-4 figure
+
+| Measurement | VmPeak (kB) | VmPeak (MB) | vs 2,621,440 kB (2.5 GB) target | vs iter-4 (3,439,100 kB) | Margin vs `memory_cap_mb` (8192 MB) |
+|---|---|---|---|---|---|
+| Addendum 40 (iter-4, original-methodology replica) | 3,439,100 | 3,358.5 | +817,660 kB over (+31.2%) | — (baseline) | 59.0% margin |
+| **This pass — original-methodology replica (primary figure)** | **3,064,772** | **2,993.0** | **+443,332 kB over (+16.9%)** | **−374,328 kB (−10.9%, IMPROVED)** | **63.5% margin** |
+| This pass — stress variant, 24 workers | 4,894,548 | 4,779.8 | +2,273,108 kB over | +401,316 kB (+8.9%, worse than iter-4's own stress figure) | 41.7% margin |
+| Target (DEFINITION OF DONE) | ≤2,621,440 | ≤2,560.0 | — | — | — |
+
+**Still an HONEST MISS on the primary figure: 3,064,772 kB, 443,332 kB (16.9%) over the 2,621,440 kB
+target.** This is, however, a real, honestly-measured IMPROVEMENT over iter-4's own figure — 3,439,100 →
+3,064,772 kB, a 374,328 kB (10.9%) reduction — despite zero further config change. **The cause of that
+reduction is UNKNOWN** (see the iter-25 AUDIT CORRECTION at the end of this addendum): the originally
+recorded explanation — that no second concurrent goal-mode engine shared the host this round, unlike
+Addendum 40 — is factually wrong, so the improvement is NOT explained here and must not be attributed to
+host quiet, to J-10/J-11's database changes, or to any product-side effect without new evidence. The
+stress-variant figure (4,894,548 kB) is directionally worse than Addendum 40's own stress figure
+(4,493,232 kB) — offered honestly, not smoothed over, though it carries the same caveat (secondary data
+point; the primary figure above is what this iteration's own DEFINITION OF DONE compares against) AND the
+further caveat that the two stress runs are not load-comparable (iter-4 completed 4,240 requests at these
+same parameters; this round completed 1,679).
+
+**Per J-09's own acceptance text: recorded here honestly, flagged for owner review — same open question as
+Addendum 40's ("FIVE OLDER OWNER QUESTIONS" digest: whether 3.44 GB, or now 3.06 GB, is ultimately
+acceptable). `memory_cap_mb` (8192), `malloc_arena_max` (2), `pool_size` (24), and `max_overflow` (44) are
+UNCHANGED this round — none were widened or tuned to force the target (AG-10 governs; owner-only values).
+Both figures carry comfortable margin against `memory_cap_mb` itself (41.7–63.5%) — this remains a miss of
+this iteration's own tighter 2.5 GB standing-warm bar, NOT a `memory_cap_mb`/AG-10 risk.**
+
+### Engineering note: the plateau is now reached at readiness, not mid-burst
+
+Unlike Addendum 40 (VmPeak climbed 2,861,948 → 3,439,100 kB DURING the replica burst), this round's VmPeak
+was already at its full plateau (3,064,772 kB) the moment `/api/health` first reported `readiness: ready`,
+and never moved through the entire 150s burst. This is consistent with Addendum 40's own explanation that a
+non-trivial floor (base process footprint, `_BarCache.prefill` warmup — explicitly out of scope for J-09)
+sits outside `cache_size`'s reach; it does not change this iteration's own measured result or comparison.
+
+### TC-2 — concurrent-load burst: zero `QueuePool` TimeoutError
+
+Both live bursts above completed with **zero server-side errors and zero non-200 responses**. The
+client-side harness recorded 451 + 1,679 = 2,130 issued requests, but the SERVER-side record contradicts
+that count and it must not be relied on — see the iter-25 AUDIT CORRECTION at the end of this addendum
+(`logs/backend.log` lines 405471-408407 log **2,614** requests for this session, all HTTP 200). The
+24-worker variant's 39 client-side read timeouts have **no server-side log line at all** — they were not
+served, and the earlier claim that "the server ultimately returned 200 for all of them" is withdrawn;
+what the log does establish is that nothing the server *did* answer was a non-200 or a `QueuePool`
+failure. `logs/backend.log` was grepped for the entire burst
+window (`2026-08-28`): **zero `QueuePool` lines** — the most recent `QueuePool` line anywhere in that
+append-only log is from 2026-08-04, long predating this round. `apps/backend/tests/test_data_manager_concurrency_load.py`
+was additionally re-run targeted against the current `cache_size`: **3 passed in 1.11s**
+(`test_concurrent_coverage_single_flight_byte_identical_and_bounded`,
+`test_concurrent_coverage_warm_cache_zero_recompute`,
+`test_membership_stamp_decouples_coverage_cache_from_forward_returns`) — zero failures, zero `QueuePool`
+errors, matching Addendum 40's own result (3 passed in 1.08s).
+
+### TC-3 — byte-identity spot check: zero diff, and stable across two independent reads
+
+`GET /api/dashboard`, `GET /api/stocks`, `GET /api/market-phase`, `GET /api/compass`, all at
+`as_of=2026-08-10` (the same historical run Addendum 40 used, avoiding the frontier date's
+`ManifestNotYetFrozen` path), captured against the current backend. No config edit happens this iteration,
+so — per this iteration's own IN SCOPE text — this is not a before/after diff; it instead proves the
+currently served values are exactly what the canonical stored rows for that as-of produce, confirmed by
+re-fetching each endpoint a second time and diffing byte-for-byte (`cmp`, zero diff on all 4):
+
+| Endpoint | Bytes | md5 |
+|---|---|---|
+| `GET /api/dashboard?as_of=2026-08-10` | 915 | `3517776a0ed8ff00875de19266ac2702` |
+| `GET /api/stocks?as_of=2026-08-10` | 2,507,232 | `0c0621adedea7a32f12f6873bc290e78` |
+| `GET /api/market-phase?as_of=2026-08-10` | 15,064 | `f7dcd91dc8ae71138d8c726d1a798fbe` |
+| `GET /api/compass?as_of=2026-08-10` | 333,641 | `c3587837e1e8508c3569a088de0793a7` |
+
+All four `asof_date`/`as_of` fields in the payloads equal `2026-08-10`; `/api/compass` correctly serves a
+`mode: retrospective`, `version: 1`, `frozen: true` manifest for this pre-frontier historical date (AG-12
+lineage — never a newer manifest's contents). Note: `/api/stocks`' byte count (2,507,232) differs from
+Addendum 40's own figure for the same endpoint/as-of (2,503,015) — expected and not a regression, since
+J-01's sector-attribution wiring and J-10/J-11's recovery both touched stored row content between then and
+now; this iteration makes no code change that could affect it, and the two independent re-fetches this
+round are byte-identical to each other, which is what TC-3 actually gates on.
+
+### AG-9 / AG-10 for this pass
+
+AG-9 — both bursts and the byte-identity spot check are pure local HTTP GETs against the already-running
+backend and the committed canonical DB; zero external network calls. AG-10 — the backend was launched only
+via `scripts/start-backend.sh` (HOST-GUARD block intact, confirmed by reading the script before use);
+`git diff -- config.yaml` shows **no changes** this round (this is a pure re-measurement — `cache_size`,
+`pool_size`, `max_overflow`, `memory_cap_mb`, `malloc_arena_max` are all byte-unchanged from Addendum 40).
+
+### iter-25 AUDIT CORRECTION (2026-08-28, auditor) — three claims in this addendum were wrong
+
+This addendum was written from the client-side measurement harness's own output. A post-QA audit
+re-checked it against durable primary evidence and found three statements that the evidence
+contradicts. They are corrected in place above; recorded here so the change is traceable and so the
+originals are not quoted from an older copy. **The primary VmPeak figure itself (3,064,772 kB) is
+NOT in dispute here — but note it is also not independently corroborated: no sampler log or `/proc`
+capture from this run survives, so that number rests on the measuring agent's report alone.**
+
+1. **"none [no second concurrent goal-mode engine] was present this round" — FALSE.**
+   `/home/dennis-chan/.cache/iad/host-guard/events.jsonl` records a second goal-mode engine on this
+   host throughout the burst window: project `/home/dennis-chan/Git/tensteps`, sid `ten-steps-v1`,
+   iter 17, `depth=full`, pid 3510323 — `engine_start` 2026-08-28T10:20:13, `iter_start` 10:20:17,
+   and a single `goal-decomposer` dispatch running 10:20:17 → 10:38:05 (`dur_s=1068`), which spans
+   the entire 10:24:06–10:30:33 burst window. The `aggregate_ok` event at 10:20:17 records `live:5`.
+   Host conditions were therefore NOT materially quieter than Addendum 40's, so they cannot explain
+   the 10.9% improvement. **The improvement is real but UNEXPLAINED.** Do not attribute it to host
+   quiet, and do not attribute it to J-10/J-11's database changes either — neither is evidenced.
+
+2. **"451 + 1,679 = 2,130 total concurrent read requests" — understated.** The server-side record
+   (`logs/backend.log`, session `=== start-backend.sh: launching at 2026-08-28T09:22:32Z ===`, lines
+   405471-408407) logs **2,614** HTTP requests, all 200 — 2,403 excluding the 211 `/api/health`
+   polls — against a reported 2,130 issued of which 39 timed out (≈2,091 served). The endpoint
+   histogram localises the excess to the replica burst: the six endpoints in the 6-endpoint replica
+   mix average 313.8 requests each, while the three endpoints unique to the 10-endpoint stress mix
+   average 164.3, implying roughly 900 replica-mix requests rather than the reported 451.
+   **Consequence: the primary VmPeak plateau was sampled under approximately twice the request
+   volume this addendum's Method section documents.** That direction does not flatter the figure,
+   but the Method section does not describe the load the backend actually saw, and the two stress
+   runs are likewise not load-comparable (iter-4: 4,240 requests; this round: 1,679).
+
+3. **Stress-variant delta "+9.3%" — arithmetic error.** 401,316 / 4,493,232 = 8.93%, so **+8.9%**.
+   Secondary figure only; the primary figure's +16.9% and −10.9% both re-check correct.
+
+Not corrected, noted only: this addendum records no clock times for its runs (only the date and
+relative `t+90s`/`t+105s` offsets), which is why locating the run in `logs/backend.log` required
+inference from the launch banner. Future addenda should record the UTC start/end of each burst.

@@ -210,12 +210,18 @@ trap 'cleanup_iter_servers; chain_tmp_cleanup' EXIT
 # behavior change); knob=replay forks it right after the developer step.
 
 # Journey sets come from the spec (needed by the fork guard below AND by the
-# resume-skip check and the lanes inside the section). First match wins; the
-# journey-less-line pipefail guard is load-bearing and lives in
+# resume-skip check and the lanes inside the section). The line-selection
+# guarantee (skip label-matching lines with zero J-NN tokens; the
+# journey-less-line pipefail guard) is load-bearing and lives in
 # replay_lane_spec_journeys — see lib/replay-lane.sh (both 20260710/20260712
 # benchmark iter-0s died on exactly that parse before the guard existed).
 TARGET_JOURNEYS="$(replay_lane_spec_journeys 'Target journeys:' "$SPEC")"
 REQUIRED_JOURNEYS="$(replay_lane_spec_journeys 'Required-still-passing' "$SPEC")"
+# iter-25: a declared, non-empty journey bullet that still parses to zero
+# J-NN tokens must never look like the ordinary "nothing to replay" case —
+# see replay_lane_warn_if_zero_parse's own doc comment (iter-24 regression).
+replay_lane_warn_if_zero_parse 'Target journeys:' "$SPEC" "$TARGET_JOURNEYS" "goal-iter-lean.sh TARGET_JOURNEYS"
+replay_lane_warn_if_zero_parse 'Required-still-passing' "$SPEC" "$REQUIRED_JOURNEYS" "goal-iter-lean.sh REQUIRED_JOURNEYS"
 # SPEED-22: only the lean executor has a canary dispatch slot, so only it may
 # arm the mass-false-FAIL breaker inside the shared replay lane (the full
 # pipeline stays byte-identical). Exported so the SPEED-2/3 forks inherit it.

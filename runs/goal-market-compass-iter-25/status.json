@@ -1,0 +1,24 @@
+{
+  "phase": "goal-market-compass-iter-25",
+  "status": "complete",
+  "current_step": "closure_passed",
+  "updated_at": "2026-08-28T10:16:50.948325Z",
+  "started_at": "2026-08-28T00:23:32.434971Z",
+  "cli": "claude",
+  "blockers": [],
+  "changed_files": [
+    "reports/perf-budgets.md",
+    "incredible_auto_dev/scripts/automation/lib/replay-lane.sh",
+    "incredible_auto_dev/scripts/automation/goal-iter-lean.sh",
+    "incredible_auto_dev/scripts/automation/browser-qa-phase.sh",
+    "incredible_auto_dev/tests/automation/test-replay-lane.sh",
+    "docs/handoffs/goal-market-compass-iter-25-dev.md",
+    "reports/phase-goal-market-compass-iter-25-implementation-summary.md",
+    "reports/phase-goal-market-compass-iter-25-regression-replay-results.md",
+    "runs/goal-market-compass-iter-23/verify-clone/ (deleted, ~7.8 GB freed)"
+  ],
+  "tests_run": true,
+  "browser_checks_run": false,
+  "qa_verdict": "PASS",
+  "next_action": "none"
+}

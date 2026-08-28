@@ -265,6 +265,113 @@ out="$( (set -euo pipefail; source "$LIB"; replay_lane_spec_journeys 'Required-s
 [[ "$rc" -eq 0 && "$out" == *SURVIVED* ]] && assert "spec_journeys: journey-less line survives set -e + pipefail" pass \
   || assert "spec_journeys: journey-less line survives set -e + pipefail (rc=$rc)" fail
 
+# ── 1b. iter-24 regression (TC-4/TC-5): a prose sentence mentioning the label
+#       phrase sits ONE LINE BEFORE the real bullet — reproduces
+#       docs/phases/goal-market-compass-iter-24.md:18-23 verbatim in shape. The
+#       old `head -1`-then-extract implementation took the prose line
+#       unconditionally and found zero J-NN tokens in it, silently returning
+#       empty (TC-4, exercised here via an inline copy of that OLD logic —
+#       documentation of the bug shape, not a live code path). The FIXED
+#       lib function (TC-5) must skip the token-less prose line and source the
+#       real bullet instead. ───────────────────────────────────────────────
+SPEC_ITER24="$SBX/docs/phases/iter24-repro.md"
+cat > "$SPEC_ITER24" <<'EOF'
+- **Target journeys:** none — this iteration is an owner-authorized fix
+  with zero journey-visible product change. Regression coverage substitutes
+  for a target-journey browser-qa pass; see Required-still-passing and TESTING
+  REQUIREMENTS below.
+- **Required-still-passing journeys:** J-01, J-04, J-10 (the entire currently-passing set)
+EOF
+
+# TC-4: pre-fix logic (copied inline — the sourced lib is already fixed; this
+# proves the bug shape the fix addresses, not a live regression surface).
+_pre_fix_spec_journeys() {
+  grep -iE "$1" "$2" 2>/dev/null | head -1 | grep -oE 'J-[0-9]+' | sort -u | tr '\n' ' ' || true
+}
+out="$(_pre_fix_spec_journeys 'Required-still-passing' "$SPEC_ITER24")"
+[[ -z "${out// /}" ]] && assert "spec_journeys (TC-4, pre-fix repro): prose-before-bullet returns EMPTY" pass \
+  || assert "spec_journeys (TC-4, pre-fix repro): prose-before-bullet returns EMPTY (got '<$out>')" fail
+
+# TC-5: the FIXED lib function on the identical fixture must find the real bullet.
+out="$( (set -euo pipefail; source "$LIB"; replay_lane_spec_journeys 'Required-still-passing' "$SPEC_ITER24") )"
+[[ "$out" == "J-01 J-04 J-10 " ]] && assert "spec_journeys (TC-5, fixed): skips token-less prose, sources real bullet" pass \
+  || assert "spec_journeys (TC-5, fixed): skips token-less prose, sources real bullet (got '<$out>')" fail
+
+# ── 1b-audit. iter-25 AUDIT regression: the MIRROR IMAGE of TC-4/TC-5 — an
+#       explicit "none" bullet followed LATER in the document by prose that
+#       mentions the label phrase AND happens to contain a J-NN token. The
+#       token-skipping scan alone walked past the authoritative "none" bullet
+#       and returned the prose line's token, silently producing a WRONG
+#       NON-EMPTY required set that the zero-parse warning can never catch.
+#       Reproduces docs/phases/goal-market-compass-iter-7.md:16 vs :108
+#       verbatim in shape. Must return EMPTY. ──────────────────────────────
+SPEC_NONE_THEN_PROSE="$SBX/docs/phases/none-then-prose-repro.md"
+cat > "$SPEC_NONE_THEN_PROSE" <<'EOF'
+- **Target journeys:** J-10
+- **Required-still-passing journeys:** None this iteration — deliberately. See BACKGROUND for why
+  J-01/J-02/J-03/J-04 re-verification (browser-QA or deterministic replay) is explicitly deferred
+  to iteration 8, regardless of whether this iteration's recovery succeeds.
+
+## NOTES
+
+- this iteration's own design gives the browser-QA/replay pipeline **nothing to run**: J-10 itself
+  has no UI (walkthrough waived) and Required-still-passing is explicitly empty, so even if a
+  parallel-QA mechanism fired it has no in-scope journey to test.
+EOF
+out="$( (set -euo pipefail; source "$LIB"; replay_lane_spec_journeys 'Required-still-passing' "$SPEC_NONE_THEN_PROSE") )"
+[[ -z "${out// /}" ]] && assert "spec_journeys (audit): explicit 'none' bullet is authoritative over LATER prose" pass \
+  || assert "spec_journeys (audit): explicit 'none' bullet is authoritative over LATER prose (got '<$out>')" fail
+
+# The same fixture's Target-journeys bullet must still parse normally.
+out="$( (set -euo pipefail; source "$LIB"; replay_lane_spec_journeys 'Target journeys:' "$SPEC_NONE_THEN_PROSE") )"
+[[ "$out" == "J-10 " ]] && assert "spec_journeys (audit): sibling bullet on the same spec still parses" pass \
+  || assert "spec_journeys (audit): sibling bullet on the same spec still parses (got '<$out>')" fail
+
+# ...and the 'none' result must NOT trip the zero-parse warning (it is legitimate).
+warn_out="$( (set -euo pipefail; source "$LIB"
+  parsed="$(replay_lane_spec_journeys 'Required-still-passing' "$SPEC_NONE_THEN_PROSE")"
+  replay_lane_warn_if_zero_parse 'Required-still-passing' "$SPEC_NONE_THEN_PROSE" "$parsed" "test") 2>&1 )"
+[[ -z "$warn_out" ]] && assert "warn_if_zero_parse (audit): authoritative 'none' bullet does NOT warn" pass \
+  || { assert "warn_if_zero_parse (audit): authoritative 'none' bullet does NOT warn" fail; echo "    got: $warn_out"; }
+
+# ── 1c. TC-6: a declared, non-"none" bullet that parses to ZERO J-NN tokens
+#       (malformed IDs) must emit an explicit WARNING via
+#       replay_lane_warn_if_zero_parse — visibly distinct from the ordinary
+#       "replay: no" no-work summary a caller logs afterward. ──────────────
+SPEC_MALFORMED="$SBX/docs/phases/malformed-repro.md"
+cat > "$SPEC_MALFORMED" <<'EOF'
+- **Required-still-passing journeys:** JX-01, JX-04 (malformed ids, not real J-NN tokens)
+EOF
+out="$( (set -euo pipefail; source "$LIB"; replay_lane_spec_journeys 'Required-still-passing' "$SPEC_MALFORMED") )"
+[[ -z "${out// /}" ]] && assert "spec_journeys: malformed-id bullet still parses to EMPTY (TC-6 precondition)" pass \
+  || assert "spec_journeys: malformed-id bullet still parses to EMPTY (TC-6 precondition) (got '<$out>')" fail
+
+warn_out="$( (set -euo pipefail; source "$LIB"
+  parsed="$(replay_lane_spec_journeys 'Required-still-passing' "$SPEC_MALFORMED")"
+  replay_lane_warn_if_zero_parse 'Required-still-passing' "$SPEC_MALFORMED" "$parsed" "test") 2>&1 )"
+echo "$warn_out" | grep -qi "WARNING" && echo "$warn_out" | grep -q "JX-01" \
+  && assert "warn_if_zero_parse (TC-6): non-empty malformed bullet emits explicit WARNING" pass \
+  || { assert "warn_if_zero_parse (TC-6): non-empty malformed bullet emits explicit WARNING" fail; echo "    got: $warn_out"; }
+
+# ── 1d. The zero-parse warning must NOT false-positive on the two legitimate
+#       empty cases: an explicit "none" bullet, and a label with no bullet at
+#       all in the spec. ────────────────────────────────────────────────────
+warn_out="$( (set -euo pipefail; source "$LIB"
+  parsed="$(replay_lane_spec_journeys 'Target journeys:' "$SPEC_ITER24")"
+  replay_lane_warn_if_zero_parse 'Target journeys:' "$SPEC_ITER24" "$parsed" "test") 2>&1 )"
+[[ -z "$warn_out" ]] && assert "warn_if_zero_parse: explicit 'none' bullet does NOT warn" pass \
+  || { assert "warn_if_zero_parse: explicit 'none' bullet does NOT warn" fail; echo "    got: $warn_out"; }
+
+SPEC_NOBULLET="$SBX/docs/phases/nobullet-repro.md"
+cat > "$SPEC_NOBULLET" <<'EOF'
+- **Required-still-passing journeys:** J-02, J-04
+EOF
+warn_out="$( (set -euo pipefail; source "$LIB"
+  parsed="$(replay_lane_spec_journeys 'Target journeys:' "$SPEC_NOBULLET")"
+  replay_lane_warn_if_zero_parse 'Target journeys:' "$SPEC_NOBULLET" "$parsed" "test") 2>&1 )"
+[[ -z "$warn_out" ]] && assert "warn_if_zero_parse: label absent entirely does NOT warn" pass \
+  || { assert "warn_if_zero_parse: label absent entirely does NOT warn" fail; echo "    got: $warn_out"; }
+
 # ── 2. Lane paths ────────────────────────────────────────────────────────────
 out="$( (
   set -euo pipefail

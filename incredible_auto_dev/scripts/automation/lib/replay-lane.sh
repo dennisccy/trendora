@@ -65,15 +65,93 @@ _replay_lane_log()  { echo "[${REPLAY_LANE_TAG:-replay-lane}] $*"; }
 _replay_lane_warn() { echo "[${REPLAY_LANE_TAG:-replay-lane}] $*" >&2; }
 
 # Journey IDs from a spec line, e.g. `replay_lane_spec_journeys 'Target journeys:' "$SPEC"`
-# → "J-01 J-03 ". First matching line wins. The `|| true` is load-bearing: a
-# journey-less line ("Required-still-passing journeys: none — ...", every
-# iteration-0 baseline spec) makes the inner grep exit 1, and every caller runs
-# under set -e PLUS pipefail (inherited from sourcing lib/telemetry.sh) —
-# without the guard the bare assignment kills the calling script SILENTLY
-# (both 20260710/20260712 benchmark iter-0s died exactly there). Empty is a
-# legitimate parse result; it must never be an exit.
+# → "J-01 J-03 ". Selects the first label-matching line that ACTUALLY CONTAINS
+# one or more J-NN tokens — NOT merely the first label-matching line (iter-24
+# regression: a prose sentence mentioning the label phrase, e.g. "...see
+# Required-still-passing and TESTING REQUIREMENTS below", sat one line before
+# the real "**Required-still-passing journeys:** J-01, J-04, J-10" bullet;
+# `head -1` on the old implementation took the prose line, found zero J-NN
+# tokens in it, and silently returned empty — J-01/J-04/J-10 went unverified
+# for an entire iteration with only a benign "replay: no" logged, no error).
+# Lines with zero J-NN tokens are skipped in favor of the next matching line.
+# Journey-less matches ("Required-still-passing journeys: none — ...", every
+# iteration-0 baseline spec) are a legitimate, common empty result — it must
+# never be an exit. The loop body only ever runs `grep -oE` after a `grep -q`
+# on the SAME line has already proven a match exists, so that extraction can
+# never itself fail; the trailing `return 0` keeps the function's own exit
+# status 0 even when no line qualifies, preserving the old `|| true` guarantee
+# under callers' `set -e` + `pipefail` (inherited from sourcing lib/telemetry.sh
+# — both 20260710/20260712 benchmark iter-0s died when this guarantee was
+# missing).
+# iter-25 AUDIT: the label's OWN bullet, when the spec has one, is AUTHORITATIVE
+# and is parsed alone. Skipping token-less lines (the iter-24 fix above) is only
+# safe *within* prose; applied blindly it also skips an explicit
+# "**Required-still-passing journeys:** None this iteration" bullet and lets an
+# incidental prose mention of the label phrase LATER in the document supply the
+# set instead — the exact mirror image of the iter-24 defect, silently returning
+# a WRONG NON-EMPTY set that replay_lane_warn_if_zero_parse can never flag
+# (it only fires on empty parses). Demonstrated on a real committed spec:
+# docs/phases/goal-market-compass-iter-7.md declares "Required-still-passing
+# journeys: None this iteration — deliberately" at line 16, and line 108's prose
+# ("...J-10 itself has no UI ... and Required-still-passing is explicitly
+# empty") made the token-skipping scan return "J-10" for it. Bullet-first keeps
+# the iter-24 fix (a real bullet still wins over earlier prose) while restoring
+# the old behavior's one correct property (an explicit "none" bullet stays
+# empty). Specs that declare journeys in a non-bullet form fall through to the
+# scan unchanged.
 replay_lane_spec_journeys() {
-  grep -iE "$1" "$2" 2>/dev/null | head -1 | grep -oE 'J-[0-9]+' | sort -u | tr '\n' ' ' || true
+  local _rl_line _rl_bullet
+  _rl_bullet="$(replay_lane_bullet_line "$1" "$2")"
+  if [[ -n "$_rl_bullet" ]]; then
+    if grep -qE 'J-[0-9]+' <<<"$_rl_bullet"; then
+      grep -oE 'J-[0-9]+' <<<"$_rl_bullet" | sort -u | tr '\n' ' '
+    fi
+    return 0
+  fi
+  while IFS= read -r _rl_line; do
+    if grep -qE 'J-[0-9]+' <<<"$_rl_line"; then
+      grep -oE 'J-[0-9]+' <<<"$_rl_line" | sort -u | tr '\n' ' '
+      return 0
+    fi
+  done < <(grep -iE "$1" "$2" 2>/dev/null)
+  return 0
+}
+
+# replay_lane_bullet_line — the FIRST line that looks like this label's OWN
+# markdown bullet (`- **<label ...>:**...`), as opposed to an incidental prose
+# mention of the label phrase elsewhere in the spec. Used by the zero-parse
+# warning below AND (iter-25 audit) by replay_lane_spec_journeys above as its
+# authoritative first choice — defined after its caller, which is fine because
+# the whole file is sourced before any call. Keep both in this file.
+# The `|| true` is load-bearing exactly like replay_lane_spec_journeys's own
+# (see its doc comment): a label with no bullet at all in the spec (this
+# function's own legitimate "nothing to warn about" case) makes grep exit 1,
+# and this is assigned via command substitution at its call site — without the
+# guard, that bare assignment would kill the caller SILENTLY under set -e +
+# pipefail.
+replay_lane_bullet_line() {
+  grep -iE '^[[:space:]]*-[[:space:]]*\*\*[^*]*'"$1" "$2" 2>/dev/null | head -1 || true
+}
+
+# replay_lane_warn_if_zero_parse — call right after replay_lane_spec_journeys
+# with its result, to distinguish a legitimate empty parse (no bullet for this
+# label, or an explicit "none"/"n/a" bullet) from a real defect: a declared,
+# non-empty bullet that still yielded zero J-NN tokens (malformed IDs, or a
+# label whose real bullet the line-selection above still could not find).
+# Emits one WARNING line via _replay_lane_warn — visibly distinct from the
+# ordinary "replay: no" no-work summary a caller may log afterward — and never
+# affects control flow or exit status. $1=label $2=spec $3=parsed result
+# $4=optional context string (which caller/variable, for the log line).
+replay_lane_warn_if_zero_parse() {
+  local _label="$1" _spec="$2" _parsed="$3" _context="${4:-}" _bullet
+  [[ -n "${_parsed// /}" ]] && return 0
+  _bullet="$(replay_lane_bullet_line "$_label" "$_spec")"
+  [[ -z "$_bullet" ]] && return 0
+  if grep -qiE '\*\*[[:space:]]*(none|n/a)\b' <<<"$_bullet"; then
+    return 0
+  fi
+  _replay_lane_warn "WARNING: spec declares a non-empty '$_label' journey bullet but it parsed to ZERO J-NN tokens${_context:+ ($_context)} — line: $_bullet"
+  return 0
 }
 
 # Lane path derivations for iteration/phase name $1 (goal-<sid>-iter-<N>).

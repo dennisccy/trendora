@@ -305,6 +305,14 @@ if [[ "$PHASE" =~ ^goal-(.+)-iter-[0-9]+$ ]]; then
   # shellcheck disable=SC2034
   REQUIRED_JOURNEYS="$(replay_lane_spec_journeys 'Required-still-passing' "$SPEC")"
   _bqa_targets="$(replay_lane_spec_journeys 'Target journeys:' "$SPEC")"
+  # iter-25: a declared, non-empty journey bullet that still parses to zero
+  # J-NN tokens must never look like the ordinary "nothing to replay" case —
+  # see replay_lane_warn_if_zero_parse's own doc comment (iter-24 regression).
+  # (The identical 'Target journeys:' re-parse at this file's ~line 400 reuses
+  # $_bqa_targets rather than re-invoking the parser, so it is covered by this
+  # same check — no separate warn call needed there.)
+  replay_lane_warn_if_zero_parse 'Required-still-passing' "$SPEC" "$REQUIRED_JOURNEYS" "browser-qa-phase.sh REQUIRED_JOURNEYS"
+  replay_lane_warn_if_zero_parse 'Target journeys:' "$SPEC" "$_bqa_targets" "browser-qa-phase.sh _bqa_targets"
   # ops-hardening iter-42: mirror into the shared TARGET_JOURNEYS global name goal-iter-lean.sh
   # already uses -- replay_lane_merge_results (lib/replay-lane.sh) reads this ONE name from both
   # callers to thread `--target` into the merger, mirroring REQUIRED_JOURNEYS -> --required exactly.
@@ -397,7 +405,11 @@ bqa_browser_confine
 _bqa_infra_blocked="no"
 _bqa_tok_set=""
 if [[ "$GOAL_REPLAY_ACTIVE" == "yes" ]]; then
-  _bqa_tok_set="$(replay_lane_spec_journeys 'Target journeys:' "$SPEC") ${_llm_regr_set:-}"
+  # iter-25: reuse the identical 'Target journeys:' parse already computed (and
+  # zero-parse-checked) above as $_bqa_targets — GOAL_REPLAY_ACTIVE=="yes" here
+  # only when that assignment already ran, so this is never re-invoking the
+  # parser against a different SPEC state.
+  _bqa_tok_set="$_bqa_targets ${_llm_regr_set:-}"
   _bqa_tok_set="$(echo "$_bqa_tok_set" | tr ' ' '\n' | grep -E '^J-[0-9]+$' | sort -u | tr '\n' ' ' || true)"
   _bqa_tok_set="${_bqa_tok_set% }"
 fi
