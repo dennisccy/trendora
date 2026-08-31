@@ -215,3 +215,13 @@ route + sidebar rename/addition) — no IA change, since both rows and their can
 declared at baseline. See `docs/phases/goal-market-compass-iter-28.md` for full detail. The `[TARGET]` tag
 on `state_band` and on the Today/Market IA rows flips to `[LIVE]` only once the goal-evaluator confirms
 J-07/J-08 passing with evidence — this note records the iter-28 PLAN, not a delivered/verified state.
+
+**iter-29 note (2026-08-31 — informational, no IA change, no Data Contract row change):** J-07's
+`state_band` row (registered iter-28) is exercised through its already-registered single producer
+(`app.engine.compass.build_manifest_payload` / `build_state_band`) and single endpoint
+(`GET /api/compass`) via exactly one authorized create-once-on-GET call at `as_of=2026-08-03` — a
+date chosen because it had zero prior manifest rows, letting the already-shipped `state_band` field
+be observed with real words for the first time on live data. No new page, nav entry, computing
+module, serving endpoint, or displayed field is introduced; `build_state_band` itself is unchanged
+(binding "Do not redo"). The `[TARGET]` → `[LIVE]` flip on the `state_band` row remains the
+goal-evaluator's call, pending its confirmation that J-07 passes with this iteration's evidence.

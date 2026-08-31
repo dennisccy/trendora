@@ -1,0 +1,152 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-market-compass-iter-28",
+  "base_url": "http://localhost:3255",
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Navigate to the Today page",
+      "narration": "We start at the home page, now called Today. This is the main decision surface—a ten-second read of the entire market state, from served values.",
+      "point_out": "The page shows six sections in order: market state band (top), summary, what changed, leadership rotation, next-session focus, and manifest strip. The readiness badge and preflight strip remain above everything.",
+      "journey": "J-07",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "goto",
+        "url": "/"
+      },
+      "expect": {
+        "text": "Risk-on"
+      }
+    },
+    {
+      "n": 2,
+      "title": "Review the state-band tiles",
+      "narration": "The state band shows regime and market phase at a glance. Regime reads Risk-on at 73.18 out of 100. The phase shows Expansion with a severity of 25.85.",
+      "point_out": "Each tile has a breakdown disclosure—click 'Why this X' to see component scores. The regime is built from Index MA, Breadth above moving averages, Net new highs, and a VIX gate. The phase comes from breadth, drawdown, regime risk, time underwater, and another VIX gate.",
+      "journey": "J-07",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "click",
+        "target": {
+          "css": "[data-testid='compass-state-band-card']"
+        }
+      },
+      "expect": {
+        "text": "Expansion"
+      }
+    },
+    {
+      "n": 3,
+      "title": "See what changed since the last session",
+      "narration": "Below the state band, the What Changed section lists leadership rotations—sectors, themes, and stocks that moved in or out of our focus list. This comes straight from the engine's session-over-session analysis.",
+      "point_out": "The Leadership Rotation section now has its own row, showing just sector, theme, and stock movements. All numbers are honest—empty changes are shown as such.",
+      "journey": "J-07",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "click",
+        "target": {
+          "css": "[data-testid='compass-whatchanged-card']"
+        }
+      },
+      "expect": {
+        "text": "What changed"
+      }
+    },
+    {
+      "n": 4,
+      "title": "Check the next-session focus",
+      "narration": "The focus card lists actionable candidates for the next session. Each candidate shows why the system thinks it's worth monitoring, why not (if any), and what threshold changes would shift the call.",
+      "point_out": "No fabricated scores here—just the three core buckets and honest explanations. Candidate presentation never invents return promises or buy-sell advice.",
+      "journey": "J-07",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "click",
+        "target": {
+          "css": "[data-testid='compass-focus-section']"
+        }
+      },
+      "expect": {
+        "text": "Actionable"
+      }
+    },
+    {
+      "n": 5,
+      "title": "Navigate to the Market page",
+      "narration": "The state band includes a link to the Market page, where the full former dashboard lives. Let's click that link-out to see the complete regime × phase cross-view chart and deeper analysis.",
+      "point_out": "The cross-view chart is now absent from the Today page—by design. It lives on the Market page, one click away, keeping Today focused on the ten-second read.",
+      "journey": "J-08",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "click",
+        "target": {
+          "css": "[data-testid='compass-state-band-market-link']"
+        }
+      },
+      "expect": {
+        "text": "phase-cross-view"
+      }
+    },
+    {
+      "n": 6,
+      "title": "Explore the Market page",
+      "narration": "Here is the Market page, showing everything the old dashboard carried: the regime and phase glance cards, the full cross-view chart with a show/hide toggle, and the More Detail section with breadth cards, top sectors, candidate counts, and the complete market phase timeline.",
+      "point_out": "Nothing is lost in the move. The chart's hide-show state is remembered in your browser storage. Sectors and themes endpoints are now fetched only on this page, not on Today.",
+      "journey": "J-08",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "goto",
+        "url": "/market"
+      },
+      "expect": {
+        "text": "phase-cross-view-chart"
+      }
+    },
+    {
+      "n": 7,
+      "title": "Check a historical date",
+      "narration": "The as-of switcher at the top works on both pages. Let's look at April 15, 2025—a historical date where the system had a very different view.",
+      "point_out": "At that historical date, the regime was Risk-off at 14.01, and the phase was Recovery with high severity. The manifest strip shows a retrospective label, confirming this is a past snapshot reconstructed from the stored run.",
+      "journey": "J-08",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "goto",
+        "url": "/?asof=2025-04-15"
+      },
+      "expect": {
+        "text": "retrospective"
+      }
+    },
+    {
+      "n": 8,
+      "title": "Return to the latest view",
+      "narration": "Clearing the date selector brings us back to Latest, the current frontier. The manifest strip shows the current session's frozen state, already locked in at ingest time.",
+      "point_out": "The parameter vanishes from the URL, and the tiles refresh to show today's live values. History is immutable—each date's manifest never changes, even as later data arrives.",
+      "journey": "J-08",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "goto",
+        "url": "/"
+      },
+      "expect": {
+        "text": "Latest"
+      }
+    }
+  ]
+}

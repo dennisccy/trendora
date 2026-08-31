@@ -511,3 +511,27 @@ require the table rewrite AG-18 exists to prevent). Reversible for the POLICY: i
 any schema change to `next_session_manifests` needs his sign-off regardless of how additive it is, future
 iterations stop adding columns there and put new content blocks elsewhere; the existing column stays,
 null on every historical row, harming nothing.
+
+## iter-29 — goal-decomposer (chose `as_of=2026-08-03` as the one authorized live-mint date to make J-07's `state_band` words observable)
+
+**Ambiguity:** The iter-28 evaluator's next-step recommends "ONE authorized live request for a date
+that has no saved briefing yet" to close J-07 step 3, but does not name which date. `docs/goal.md`
+does not specify which historical date should be used for this demonstration.
+
+**We chose:** `2026-08-03`. Grounds, each checked by me read-only against the live database: (a) it
+has a stored `ScannerRun` (id 3154, 539 scored results) and a real prior stored run (`2026-07-27`, id
+3153) so the delta/state-band comparison has genuine inputs, not the no-prior-run empty state; (b) it
+carries zero `next_session_manifests` rows today (queried all 26 existing rows' `as_of` values
+directly — 17 distinct dates covered, `2026-08-03` is not among them); (c) it sits outside the
+iter-5 incident window (2026-08-11/2026-08-12) and outside the AG-9 dated-exception #2 AVB-diagnostic
+six-date list (2026-08-05/06/07/10/11/12), so it cannot be confused with either dated exception's
+scope; (d) it is well before the data frontier (2026-08-12), so `resolve_as_of_date` resolves
+normally and the action does not interact with the open B3 residual (frontier-dated manifests only);
+(e) minting here is ordinary create-once-on-GET behavior already exercised at iter-26 (an explicit
+`regenerate` call) and iter-27 (an out-of-plan `GET` that minted row 26 unintentionally) — it involves
+no external network call, so it is not a new AG-9 exception and needs no dated amendment.
+
+**Reversible:** yes for the choice of date itself — a scoping decision with no schema impact, made
+before any request was issued. Not reversible for the row once minted (create-once + AG-12, same as
+every other manifest row this session) — if the owner later prefers a different date, that new row
+stays and a different date can still be used for any future demonstration need.
