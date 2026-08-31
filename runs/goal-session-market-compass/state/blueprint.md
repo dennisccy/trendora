@@ -225,3 +225,16 @@ be observed with real words for the first time on live data. No new page, nav en
 module, serving endpoint, or displayed field is introduced; `build_state_band` itself is unchanged
 (binding "Do not redo"). The `[TARGET]` → `[LIVE]` flip on the `state_band` row remains the
 goal-evaluator's call, pending its confirmation that J-07 passes with this iteration's evidence.
+
+**iter-30 note (2026-09-01 — informational, no IA change, no Data Contract row change):** J-07's
+`state_band` row (registered iter-28) is exercised at the DEFAULT landing view (`/`, no `asof` param
+— the frontier, 2026-08-12) for the first time: exactly one authorized
+`POST /api/compass/regenerate?as_of=2026-08-12&confirm=true` mints version 7 of the frontier manifest
+through the already-registered single producer (`app.engine.compass.build_manifest_payload` /
+`build_state_band`) and single action endpoint (`POST /api/compass/regenerate`, registered iter-3) —
+versions 1-6 stay byte-identical (AG-12), version 7 is `prospective_eligible: false` (AG-17, since
+`generation.producer == "regenerate"`, never `"ingest_finalize"`). No new page, nav entry, computing
+module, serving endpoint, or displayed field is introduced; `build_state_band` itself is unchanged
+(binding "Do not redo"). The `[TARGET]` → `[LIVE]` flip on the `state_band` row remains the
+goal-evaluator's call, pending its confirmation that J-07 passes with this iteration's evidence at
+the default `/` view.
