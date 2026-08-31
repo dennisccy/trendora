@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "journey": "J-08",
+  "name": "The market surface relocates intact and history never lies",
+  "default_timeout_ms": 8000,
+  "steps": [
+    {"n": 1, "journey": "J-08", "action": {"type": "goto", "url": "/market"}, "expect": {"text": "Top Sectors"}},
+    {"n": 2, "journey": "J-08", "action": {"type": "goto", "url": "/market"}, "expect": {"text": "Top Themes"}},
+    {"n": 3, "journey": "J-08", "action": {"type": "goto", "url": "/?asof=2025-04-15"}, "expect": {"text": "retrospective"}},
+    {"n": 4, "journey": "J-08", "action": {"type": "goto", "url": "/?asof=2025-04-15"}, "expect": {"text": "vs 2025-04-14 (1 day ago)"}},
+    {"n": 5, "journey": "J-08", "action": {"type": "goto", "url": "/?asof=2026-08-12"}, "expect": {"text": "at ingest"}},
+    {"n": 6, "journey": "J-08", "action": {"type": "goto", "url": "/"}, "expect": {"text": "Risk-on"}}
+  ]
+}

@@ -784,13 +784,13 @@ class NextSessionManifest(SQLModel, table=True):
     never duplicate, never overwrite). `next_session_manifests` joins NEITHER `clear_snapshot_set` NOR
     the remove-data cascade — no code path deletes a row here.
 
-    The three CONTENT blocks (`session_delta`, `narrative`, `selection` — the `selection` block now also
-    carries `comparison_cohort` / `near_threshold_shadow`, iter-3) are stored as their OWN JSON columns
-    rather than one combined blob so a future column-projected read never has to deserialize a block it
-    does not need (AG-8 posture). `content_hash` is the sha256 hex digest of the sorted-key JSON of
-    exactly these three blocks (see `app.engine.compass.build_manifest_payload`) — NOT of this row's
-    other columns; it stays invariant across legitimate generation-metadata-only differences (e.g. a
-    regenerate with unchanged inputs).
+    The CONTENT blocks (`session_delta`, `narrative`, `selection` — the `selection` block now also
+    carries `comparison_cohort` / `near_threshold_shadow`, iter-3; `state_band`, iter-28, J-07) are
+    stored as their OWN JSON columns rather than one combined blob so a future column-projected read
+    never has to deserialize a block it does not need (AG-8 posture). `content_hash` is the sha256 hex
+    digest of the sorted-key JSON of exactly these content blocks (see
+    `app.engine.compass.build_manifest_payload`) — NOT of this row's other columns; it stays invariant
+    across legitimate generation-metadata-only differences (e.g. a regenerate with unchanged inputs).
 
     The FREEZE/INTEGRITY columns below are all ADDITIVE and nullable/defaulted (`db._ADDITIVE_COLUMNS`)
     so an existing pre-iter-3 row backfills `version=1`, `frozen=False`, `mode`/every hash/JSON-block
@@ -895,6 +895,13 @@ class NextSessionManifest(SQLModel, table=True):
     comparison_cohort_json: Optional[str] = Field(default=None)  # list of frozen non-candidate rows
     near_threshold_shadow_json: Optional[str] = Field(default=None)  # subset of the above, near the floor
     caveats_json: Optional[str] = Field(default=None)  # {evidence, survivorship, sector_basis, cohort_semantics}
+    # goal-market-compass iter-28 (J-07): the state_band CONTENT block (three direction words -- regime,
+    # stress, breadth -- each with a signed delta), additive/nullable like every other iter-3+ column here.
+    # A pre-iter-28 row (every row minted before this iteration) reads NULL forever -- an honest
+    # "pre-state_band era" marker (AG-12: never backfilled/regenerated to add it retroactively). Stored as
+    # its OWN JSON column (not folded into selection_json) for the same AG-8 column-projection reasoning as
+    # the other content/freeze blocks above.
+    state_band_json: Optional[str] = Field(default=None)
     # fail-closed, write-once: true iff mode=at_ingest, producer=ingest_finalize, version=1, frozen=True,
     # a well-formed available_at_utc, and complete provenance — derived ONCE at write, NEVER at read.
     prospective_eligible: bool = Field(default=False, index=True)

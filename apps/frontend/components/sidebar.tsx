@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   BookOpen,
+  Compass,
   Database,
   FlaskConical,
   Grid2x2,
@@ -28,8 +29,12 @@ interface NavItem {
 
 // The approved Information Architecture (blueprint). Stock Detail and Run Detail are
 // intentionally NOT here — they are reached from a leaderboard / run row.
+// goal-market-compass iter-28 (J-07/J-08): `/` renamed "Dashboard" -> "Today" (the new ten-second
+// compass read); "Market" is a NEW entry immediately after it, carrying the former dashboard body
+// (relocated verbatim to `/market`). Every other entry keeps its route/order/label unchanged.
 const NAV: NavItem[] = [
-  { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/", label: "Today", icon: Compass },
+  { href: "/market", label: "Market", icon: LayoutDashboard },
   { href: "/stocks", label: "Stocks", icon: TrendingUp },
   { href: "/themes", label: "Themes", icon: Layers },
   { href: "/sectors", label: "Sectors", icon: Grid2x2 },

@@ -1,0 +1,4 @@
+LOCKED_AT=2026-08-31T21:32:38Z
+BACKEND_START_CMD=bash\ /home/dennis-chan/Git/trendora/scripts/start-backend.sh
+FRONTEND_START_CMD=bash\ /home/dennis-chan/Git/trendora/scripts/start-frontend.sh
+OVERRIDE_ACTIVE=no

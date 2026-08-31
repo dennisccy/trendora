@@ -12411,3 +12411,73 @@ capture from this run survives, so that number rests on the measuring agent's re
 Not corrected, noted only: this addendum records no clock times for its runs (only the date and
 relative `t+90s`/`t+105s` offsets), which is why locating the run in `logs/backend.log` required
 inference from the launch banner. Future addenda should record the UTC start/end of each burst.
+
+## Addendum 42 (2026-08-31T21:41Z, market-compass iter-28 browser-qa pass) — J-07 step 7 / TC-14: `/`'s real browser time-to-interactive and on-load API latencies, captured live via Chrome DevTools `Performance` API; the developer's Known Issue #2 gap is closed
+
+### Context
+
+iter-28 built the new Today page (`/`, reordered market-state band → summary → what-changed →
+leadership rotation → next-session focus → manifest strip) and the relocated `/market`. The
+developer's own dev handoff (`docs/handoffs/goal-market-compass-iter-28-dev.md`, Known Issue #2)
+explicitly declined to fabricate a TTI/API-latency number for this file, since the developer role has
+no browser tooling, and flagged this DoD item as owed to a browser-qa pass. This iteration's
+browser-qa lane ran with a live Chrome MCP session against `http://localhost:3255/`
+(backend `:8255`), so this addendum records that measurement rather than leaving TC-14 unmet.
+
+### Method
+
+Navigated to `/` (Latest, no `?asof` — SAFE per this iteration's binding live-database safety
+constraint) in a fresh Chrome MCP tab, then read `performance.getEntriesByType('navigation')` (real
+`PerformanceNavigationTiming`, not a synthetic estimate) and `performance.getEntriesByType('resource')`
+filtered to `/api/` calls, both via the browser's own `eval` action — no server-side instrumentation,
+no proxy timing.
+
+### Results — TTI (generic <= 3 s page budget, matching this file's existing convention)
+
+| Metric | Measured | Budget | Holds? |
+|---|---|---|---|
+| `domInteractive` | 29.4 ms | <= 3 s | yes |
+| `domContentLoadedEventEnd` | 29.4 ms | <= 3 s | yes |
+| `loadEventEnd` (full TTI proxy) | 44.7 ms | <= 3 s | yes |
+| `responseEnd` (first byte of the HTML document) | 10.8 ms | <= 3 s | yes |
+
+### Results — on-load API latencies (generic <= 1.5 s API budget)
+
+| Endpoint | Wall time | Budget | Holds? |
+|---|---|---|---|
+| `GET /api/health` (readiness poll) | 11 ms | <= 1.5 s | yes |
+| `GET /api/dashboard` | 10 ms | <= 1.5 s | yes |
+| `GET /api/methodology` | 9 ms | <= 1.5 s | yes |
+| `GET /api/runs` (as-of switcher's selectable-dates list — not one of the excluded endpoints below) | 197 ms | <= 1.5 s | yes |
+| `GET /api/market-phase` | 54 ms | <= 1.5 s | yes |
+| `GET /api/compass` | 66 ms | <= 1.5 s | yes |
+
+All six on-load calls complete well inside the generic 1.5 s budget; the slowest (`/api/runs`, 197 ms)
+is still a ~7.6x margin. `/api/health` additionally recurs on its own background poll interval
+(observed again at +30 s / +60 s after load — expected readiness-badge behavior, not part of the
+initial page load).
+
+### TC-13 (J-07 step 7) — `/` no longer fetches `/api/sectors`, `/api/themes`, or any full-history series on load
+
+Confirmed by the SAME captured resource-timing list above: the complete set of `/api/` calls this page
+issues on load is `{health, dashboard, methodology, runs, market-phase, compass}` — no
+`/api/sectors`, no `/api/themes`, no `?full=true` series call. This is the frontend half of TC-13 the
+dev handoff's Known Issue #3 flagged as unverified by an actual browser network trace (it had only
+grep/import-inspection evidence); that gap is now closed by a real capture. The backend half — warm
+`GET /api/compass` performs zero producer calls — remains proven at the pytest level by the
+pre-existing, unmodified `test_compass_route_computes_once_serves_from_storage_after`
+(call-count instrumentation via monkeypatch, per the dev handoff), which this browser-qa pass did not
+re-instrument (no producer call-count hook is exposed live); the two lines of evidence (frontend fetch
+set + backend call-count test) together satisfy TC-13 as specified.
+
+### AG-9 / TC-22 (safety) for this pass
+
+Every live call this addendum's measurement depended on was issued during the browser-qa lane's normal
+navigation of `/` at Latest (no `?asof` param) — no additional live call was made solely to produce
+this addendum, and no `as_of` outside `{no param, "2026-08-12", "2025-04-15"}` was used anywhere in the
+lane. `next_session_manifests` row count re-derived after the full lane finished: unchanged at 26 (see
+the browser-qa test-results report for the full before/after citation).
+
+**No committed budget number above is loosened, widened, or removed by this addendum** — it adds one
+new dated measurement against the existing generic <= 3 s page / <= 1.5 s API budgets; TC-14's DoD item
+is now met.

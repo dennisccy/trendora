@@ -923,6 +923,25 @@ export interface Narrative {
   sentences: NarrativeSentence[];
 }
 
+// --- state_band (goal-market-compass iter-28, J-07) ------------------------------------------
+/** One `state_band.<band>` entry — a direction word (one of `compass.vocabulary.direction_words`'
+ *  three values) plus its signed delta. BOTH are `null` together when no comparison is possible for
+ *  that band (no prior stored run, or a missing per-band input) — never a fabricated word. */
+export interface CompassStateBandEntry {
+  direction_word: string | null;
+  delta: number | null;
+}
+
+/** The `state_band` CONTENT block (J-07) — three direction words (regime/stress/breadth), computed
+ *  ONCE at ingest inside `build_manifest_payload` and served verbatim; the frontend evaluates no
+ *  threshold and selects no word. `null` (the WHOLE block, not per-band) on any manifest row minted
+ *  before this field existed ("pre-state_band era" — honestly rendered, never fabricated). */
+export interface CompassStateBand {
+  regime: CompassStateBandEntry;
+  stress: CompassStateBandEntry;
+  breadth: CompassStateBandEntry;
+}
+
 /** The fixed eligibility-checklist verdict vocabulary (J-04). */
 export type ChecklistVerdict = "Pass" | "Miss" | "Supportive" | "Neutral" | "Unknown" | "NA";
 
@@ -1093,6 +1112,9 @@ export interface CompassResponse {
   frozen: boolean;
   session_delta: SessionDelta;
   narrative: Narrative;
+  // goal-market-compass iter-28 (J-07) — additive, `null` on any manifest minted before this field
+  // existed (see `CompassStateBand`'s own doc comment).
+  state_band: CompassStateBand | null;
   selection: CompassSelection;
   comparison_cohort: CompassComparisonCohortRow[];
   near_threshold_shadow: CompassCohortRow[];

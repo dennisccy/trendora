@@ -1,7 +1,8 @@
 """app.engine.compass — the deterministic narrative + candidate-selection trace + manifest assembly
-(goal-market-compass iter-2, J-03/J-04, CONTENT block; iter-3, J-05/J-06, the freeze/integrity block).
+(goal-market-compass iter-2, J-03/J-04, CONTENT block; iter-3, J-05/J-06, the freeze/integrity block;
+iter-28, J-07, the `state_band` CONTENT block).
 
-Three CONTENT producers, one assembler (iter-2, unchanged this iteration):
+Four CONTENT producers, one assembler:
 
   - `build_narrative(...)` — deterministic template sentences (state / direction / breadth /
     focus-count, plus a no-comparison / NA-velocity / retrospective-stamp variant where it applies),
@@ -18,9 +19,16 @@ Three CONTENT producers, one assembler (iter-2, unchanged this iteration):
     partitions the disposition tally already computed. No new blended/composite score is introduced
     anywhere (AG-11) — every value shown is one of the three existing per-stock scores/buckets, a
     config word map, or a structural context field already computed by `scoring.score_stocks`.
-  - `build_manifest_payload(...)` — assembles `session_delta` + `narrative` + `selection` into one
-    content document and computes `content_hash` (sha256 over the sorted-key JSON of the content block
-    only — unchanged scope/contract from iter-2, including the cohorts now nested inside `selection`).
+  - `build_state_band(...)` — iter-28 (J-07): three direction words (regime, stress, breadth), each
+    with a signed delta, comparing the current stored run against the immediately preceding one. Reuses
+    the SAME `compass.vocabulary.direction_words` map as `build_narrative`'s own direction sentence
+    (never a second word map) and the SAME `_flat_band_word` classifier `_direction_word` already used.
+    No-prior-run or a missing per-word input renders that word's explicit null/no-comparison state —
+    never a fabricated word (mirrors `session_delta`'s and `narrative`'s own no-prior-run handling).
+  - `build_manifest_payload(...)` — assembles `session_delta` + `narrative` + `selection` +
+    `state_band` into one content document and computes `content_hash` (sha256 over the sorted-key
+    JSON of the content block only — unchanged scope/contract from iter-2, including the cohorts
+    nested inside `selection` and, since iter-28, `state_band` alongside them).
 
 The freeze/integrity block (iter-3, J-05/J-06) — `_freeze_manifest` is the ONE writer behind all three
 producer paths:
@@ -123,11 +131,21 @@ def _state_sentence(dashboard: dict, phase_payload: dict, cfg: Config) -> dict:
     return {"template_id": "state", "text": text, "facts": facts}
 
 
+def _flat_band_word(delta: float, flat_band: float, cfg: Config) -> str:
+    """Generic up/down/flat classification of a SIGNED delta against a flat-band threshold, via the ONE
+    shared `compass.vocabulary.direction_words` map (goal.md, iter-28/J-07: "reuses the SAME ...  map,
+    never a second word map"). The caller is responsible for the delta's SIGN meaning "higher is
+    healthier" (positive -> "up"/improving) — see `build_state_band`'s stress-band sign note for the one
+    band where that requires a deliberate transform before calling this."""
+    vocab = cfg.compass.vocabulary.direction_words
+    if abs(delta) < flat_band:
+        return vocab["flat"]
+    return vocab["up" if delta > 0 else "down"]
+
+
 def _direction_word(current_run: ScannerRun, previous_run: ScannerRun, cfg: Config) -> tuple[str, float]:
     delta = current_run.regime_score - previous_run.regime_score
-    if abs(delta) < cfg.compass.delta.velocity_flat_band:
-        return cfg.compass.vocabulary.direction_words["flat"], delta
-    return cfg.compass.vocabulary.direction_words["up" if delta > 0 else "down"], delta
+    return _flat_band_word(delta, cfg.compass.delta.velocity_flat_band, cfg), delta
 
 
 def _direction_sentence(
@@ -245,6 +263,86 @@ def build_narrative(
 
     _assert_no_banned_language(sentences, cfg)
     return {"sentences": sentences}
+
+
+# --- state_band (iter-28, J-07) -----------------------------------------------------------------
+
+_STATE_BAND_NO_COMPARISON: dict = {"direction_word": None, "delta": None}
+
+
+def _severity_at(session: Session, as_of: date, cfg: Config) -> Optional[float]:
+    """One date's stored/cached severity, via the SAME `market_phase_cached` read `build_narrative`
+    already uses for the current run (a warm cache hit for any date that was itself once the frontier —
+    never a fresh full-history recompute here). Honest `None` (never fabricated) when phase data is
+    unavailable for that date (insufficient trailing history)."""
+    payload = market_phase.market_phase_cached(session, as_of, cfg)
+    if not payload.get("available"):
+        return None
+    return payload.get("severity")
+
+
+def build_state_band(
+    session: Session,
+    current_run: ScannerRun,
+    previous_run: Optional[ScannerRun],
+    config: Optional[Config] = None,
+) -> dict:
+    """The `state_band` CONTENT block (goal-market-compass iter-28, J-07) — three direction words
+    (`regime`, `stress`, `breadth`), each with a signed delta, computed ONCE here inside
+    `build_manifest_payload` (same producer/scope as `session_delta`/`narrative`), never recomputed at
+    read. No-prior-run, OR a missing per-word input, independently renders THAT word's explicit
+    null/no-comparison state — never a fabricated word (mirrors `session_delta`'s and `narrative`'s own
+    no-prior-run handling).
+
+      - `regime`: reuses `_direction_word` verbatim (current vs previous `regime_score`,
+        `compass.delta.velocity_flat_band` — goal.md: "unchanged").
+      - `breadth`: current vs previous `breadth_above_50dma`, banded via `compass.delta.
+        breadth_min_change_pts` (goal.md's NOTES authorize reusing this existing edge). Higher breadth
+        shares regime's polarity (more names above their 50-DMA is more constructive), so the raw delta
+        classifies directly — no sign transform.
+      - `stress`: current vs previous market-phase `severity` (the "severity velocity" goal.md names),
+        banded via the NEW `compass.delta.stress_velocity_flat_band`. `state_band.stress.delta` is the
+        LITERAL `current_severity - previous_severity` (unflipped — positive means severity ROSE).
+        Severity's polarity is the OPPOSITE of regime_score/breadth: a rising severity is DETERIORATING,
+        not improving (the engine's own existing convention: `market_phase._severity_velocity_at`'s
+        docstring states "positive = severity worsening"). So the WORD is classified off this delta's
+        NEGATION — a falling severity (stress easing) reads "up"/improving, a rising severity reads
+        "down"/deteriorating — so the shared direction_words map's plain-English meaning ("improving" /
+        "deteriorating") stays truthful for this band too. This sign choice is a deliberate design
+        decision (documented in the dev handoff), not a literal-only reading of the delta equation."""
+    cfg = config or get_config()
+    if previous_run is None:
+        return {
+            "regime": dict(_STATE_BAND_NO_COMPARISON),
+            "stress": dict(_STATE_BAND_NO_COMPARISON),
+            "breadth": dict(_STATE_BAND_NO_COMPARISON),
+        }
+
+    regime_word, regime_delta = _direction_word(current_run, previous_run, cfg)
+
+    current_severity = _severity_at(session, current_run.asof_date, cfg)
+    previous_severity = _severity_at(session, previous_run.asof_date, cfg)
+    if current_severity is not None and previous_severity is not None:
+        stress_delta = current_severity - previous_severity
+        stress_word = _flat_band_word(-stress_delta, cfg.compass.delta.stress_velocity_flat_band, cfg)
+    else:
+        stress_delta = None
+        stress_word = None
+
+    b_cur = current_run.breadth_above_50dma
+    b_prev = previous_run.breadth_above_50dma
+    if b_cur is not None and b_prev is not None:
+        breadth_delta = b_cur - b_prev
+        breadth_word = _flat_band_word(breadth_delta, cfg.compass.delta.breadth_min_change_pts, cfg)
+    else:
+        breadth_delta = None
+        breadth_word = None
+
+    return {
+        "regime": {"direction_word": regime_word, "delta": regime_delta},
+        "stress": {"direction_word": stress_word, "delta": stress_delta},
+        "breadth": {"direction_word": breadth_word, "delta": breadth_delta},
+    }
 
 
 # --- selection (J-04; iter-3 J-05/J-06 adds comparison_cohort + near_threshold_shadow) --------
@@ -614,15 +712,17 @@ def build_manifest_payload(
     previous_run: Optional[ScannerRun],
     config: Optional[Config] = None,
 ) -> dict:
-    """Assemble the three CONTENT blocks + `content_hash` (sha256 hex over the sorted-key JSON of the
-    content block only — never re-derived at serve time; see `manifest_row_payload`). UNCHANGED scope
-    from iter-2: `selection` now carries `comparison_cohort` / `near_threshold_shadow` (iter-3), which
-    flow through into `content_hash`'s scope automatically — no code change needed here for that."""
+    """Assemble the CONTENT blocks + `content_hash` (sha256 hex over the sorted-key JSON of the content
+    block only — never re-derived at serve time; see `manifest_row_payload`). `selection` carries
+    `comparison_cohort` / `near_threshold_shadow` (iter-3); `state_band` (iter-28, J-07) is a new
+    top-level content block alongside `session_delta`/`narrative`/`selection` — additive to
+    `content_hash`'s scope, no other code change needed for that."""
     cfg = config or get_config()
     delta = compute_delta(session, current_run, previous_run, cfg)
     selection = evaluate_selection(session, current_run, cfg)
     narrative = build_narrative(session, current_run, previous_run, selection, cfg)
-    content = {"session_delta": delta, "narrative": narrative, "selection": selection}
+    state_band = build_state_band(session, current_run, previous_run, cfg)
+    content = {"session_delta": delta, "narrative": narrative, "selection": selection, "state_band": state_band}
     canonical = json.dumps(content, sort_keys=True, default=str)
     content_hash = hashlib.sha256(canonical.encode()).hexdigest()
     return {**content, "content_hash": content_hash}
@@ -902,6 +1002,7 @@ def _freeze_manifest(
     comparison_cohort = selection.pop("comparison_cohort")
     near_threshold_shadow = selection.pop("near_threshold_shadow")
     member_count = selection.pop("member_count")  # folded into universe.member_count -- one source, not two
+    state_band = content_payload["state_band"]  # iter-28 (J-07) -- its own top-level document key + column
 
     generated_at = datetime.now(timezone.utc)
     available_at_utc = generated_at + timedelta(seconds=cfg.compass.manifest.availability_margin_seconds)
@@ -958,6 +1059,7 @@ def _freeze_manifest(
         "session_delta": content_payload["session_delta"],
         "narrative": content_payload["narrative"],
         "selection": selection,
+        "state_band": state_band,
         "comparison_cohort": comparison_cohort,
         "near_threshold_shadow": near_threshold_shadow,
         "content_hash": content_payload["content_hash"],
@@ -988,6 +1090,7 @@ def _freeze_manifest(
         session_delta_json=json.dumps(content_payload["session_delta"]),
         narrative_json=json.dumps(content_payload["narrative"]),
         selection_json=json.dumps(selection),
+        state_band_json=json.dumps(state_band),
         content_hash=content_payload["content_hash"],
         created_at=generated_at,
         mode=mode,
@@ -1204,6 +1307,9 @@ def manifest_row_payload(row: NextSessionManifest) -> dict:
         "session_delta": json.loads(row.session_delta_json),
         "narrative": json.loads(row.narrative_json),
         "selection": json.loads(row.selection_json),
+        # iter-28 (J-07): NULL for every row minted before this iteration ("pre-state_band era" — never
+        # backfilled, AG-12) — an honest None, mirrors every other iter-3+ additive block's None default.
+        "state_band": json.loads(row.state_band_json) if row.state_band_json else None,
         "comparison_cohort": json.loads(row.comparison_cohort_json) if row.comparison_cohort_json else [],
         "near_threshold_shadow": json.loads(row.near_threshold_shadow_json) if row.near_threshold_shadow_json else [],
         "content_hash": row.content_hash,

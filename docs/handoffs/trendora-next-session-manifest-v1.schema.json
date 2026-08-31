@@ -33,6 +33,7 @@
     "frozen": { "type": "boolean" },
     "session_delta": { "type": "object" },
     "narrative": { "type": "object" },
+    "state_band": { "type": ["object", "null"] },
     "selection": {
       "type": "object",
       "required": ["candidates", "why_not", "disposition_tally", "candidates_empty_reason"],

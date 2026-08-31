@@ -1408,6 +1408,7 @@ compass:
     top_k: 5                         # max sector-kind and max theme-kind change entries shown (most-moved first; mirrors the existing Top-Sectors/Top-Themes "top 5" convention)
     max_stock_items: 10              # max stock-kind change entries evaluated/shown (bounds both compute and display — AG-8)
     velocity_flat_band: 2.0          # |regime-score delta| below this reads as "little changed" in the narrative's direction sentence
+    stress_velocity_flat_band: 5.0   # goal-market-compass iter-28 (J-07): |severity delta| below this reads as "little changed" for state_band.stress (a dedicated key -- severity is a different 0-100 scale than the regime score, not a reuse of velocity_flat_band above). state_band.breadth reuses breadth_min_change_pts below unchanged.
     pbear_bands:                     # filtered P(bear) -> narrative state word (ascending min, like market_phase.phase_edges)
       - { min: 0.0, label: "calm" }
       - { min: 0.20, label: "cautious" }

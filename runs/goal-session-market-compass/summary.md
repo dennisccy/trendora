@@ -1,11 +1,11 @@
 # Goal Session Summary — market-compass
 
 **Final verdict:** AWAITING_PUMP
-**Total iterations:** 27
-**Wall time (seconds):** 15807
+**Total iterations:** 28
+**Wall time (seconds):** 7664
 **Quota pauses:** 0
 **Started:** 2026-08-19T21:31:52.886915Z
-**Finished:** 2026-08-28T16:16:47.701694Z
+**Finished:** 2026-08-28T21:21:59.372395Z
 
 ## Branch
 
@@ -19,17 +19,17 @@ This session pushed iteration commits to `goal/market-compass`. Open a PR with:
 
 | Journey | Status | Last passing iter |
 |---|---|---|
-| J-01 | passing | goal-market-compass-iter-26 |
+| J-01 | passing | goal-market-compass-iter-27 |
 | J-02 | partial | goal-market-compass-iter-4 |
 | J-03 | partial | goal-market-compass-iter-4 |
-| J-04 | passing | goal-market-compass-iter-26 |
-| J-05 | passing | goal-market-compass-iter-26 |
-| J-06 | partial | - |
+| J-04 | passing | goal-market-compass-iter-27 |
+| J-05 | passing | goal-market-compass-iter-27 |
+| J-06 | passing | goal-market-compass-iter-27 |
 | J-07 | failing | - |
 | J-08 | failing | - |
 | J-09 | partial | - |
-| J-10 | passing | goal-market-compass-iter-26 |
-| J-11 | passing | goal-market-compass-iter-26 |
+| J-10 | passing | goal-market-compass-iter-27 |
+| J-11 | passing | goal-market-compass-iter-27 |
 
 ## Anti-goal violations
 
@@ -41,6 +41,7 @@ This session pushed iteration commits to `goal/market-compass`. Open a PR with:
 - [critical] AG-17 — Repair never rewrites provenance (owner, 2026-08-20): "The incident record itself is evidence: the iter-5 drill result, its handoff, the reviewer/QA evidence already produced, and the explicit statement that the committed seed could not restore these dates MUST NOT be deleted, rewritten, or silently superseded." (read together with J-11 ruling C5, "do not rewrite ... incident evidence") (iter goal-market-compass-iter-14)
 - [minor] AG-8 - Resilience to data-shape and data-scale change: ... unbounded whole-table ORM loads are forbidden (the delta engine reads column-projected selects, never full record_json sweeps). (critical) (iter goal-market-compass-iter-16)
 - [critical] OWNER RULING (docs/goal.md, 2026-08-27, binding) item 3 + its Post-Stage-G launch-condition clarification: 'The canonical database remains OFF and must not be mutated by this verification. Backend/frontend/browser verification runs against the disposable verification DB only.' / 'Do not interpret removal of those D->G launch conditions as permission to boot or mutate the canonical database.' Also the iter-23 spec's OUT OF SCOPE: 'Booting or mutating the canonical apps/backend/data/trendora.db for any purpose.' (iter goal-market-compass-iter-23)
+- [minor] Iteration spec binding live constraint (docs/phases/goal-market-compass-iter-27.md, BACKGROUND 'Row-count safety'): keep 'every live/canonical-DB action strictly read-only and additive-free (regression checks only, on manifests that already exist and whose runs are already intact)'; TESTING REQUIREMENTS authorized only 2025-04-15 (TC-6) and 2026-08-12 (TC-7) as live requests. (iter goal-market-compass-iter-27)
 
 ## Telemetry
 
@@ -575,23 +576,50 @@ See `runs/goal-session-market-compass/telemetry.jsonl` for the structured event 
       (resume-skipped: ui-test-design)
       pump-wait                117.3m
       OVER BUDGET at coherence-auditor: 3660s > 3600s (mode=trim)
-  session: 26 completed iteration(s), mean wall 133.7m
-      total reviewer                  1578.4m
-      total developer                 1490.4m
-      total goal-decomposer            499.7m
+  goal-market-compass-iter-27  depth=full  verdict=CONTINUE  wall=15.2m
+      goal-evaluator              13.1m  calls=1
+      coherence-auditor            2.1m  calls=1
+      [engine] showcase-join       0.0m  (contains agent time above)
+      [engine] full-pipeline       0.0m  (contains agent time above)
+      (resume-skipped: goal-decomposer)
+      pump-wait                  0.1m
+      unattributed (glue)        0.0m  (wall − agents(active) − quota)
+  goal-market-compass-iter-28  depth=lean  verdict=?  wall=?  (incomplete/interrupted attempt)
+      reviewer                   120.0m  calls=1  failures=1
+      developer                   25.4m  calls=1
+      goal-decomposer             14.0m  calls=1
+      readme-maintainer           10.7m  calls=1
+      iteration-summarizer         4.5m  calls=1
+      browser-qa-replay            1.1m  calls=1
+      [engine] lean-pipeline     145.4m  (contains agent time above)
+      [engine] showcase-join       1.2m  (contains agent time above)
+      pump-wait                 74.0m
+  goal-market-compass-iter-28  depth=lean  verdict=?  wall=?  (incomplete/interrupted attempt)
+      coherence-auditor          120.0m  calls=1  failures=1
+      browser-qa-agent           120.0m  calls=1  failures=1
+      reviewer                     7.5m  calls=1
+      browser-qa-replay            1.1m  calls=1
+      [engine] lean-pipeline     127.6m  (contains agent time above)
+      [engine] showcase-join       0.0m  (contains agent time above)
+      (resume-skipped: goal-decomposer, developer)
+      pump-wait                220.0m
+  session: 27 completed iteration(s), mean wall 129.3m
+      total reviewer                  1706.0m
+      total developer                 1515.8m
+      total coherence-auditor          544.6m
+      total goal-decomposer            513.7m
       total orchestrator               494.6m
-      total goal-evaluator             423.7m
-      total coherence-auditor          422.5m
+      total goal-evaluator             436.8m
       total auditor                    376.2m
-      total browser-qa-agent           194.0m
-      total iteration-summarizer       189.4m
+      total browser-qa-agent           314.0m
+      total iteration-summarizer       193.9m
       total qa                         169.3m
       total ui-test-designer           146.9m
       total ui-impact-analyst           45.4m
       total demo-narrator               33.0m
-      total readme-maintainer           14.1m
+      total readme-maintainer           24.7m
       total ux-regression-reviewer      12.4m
-      total browser-qa-replay            9.8m
-      total AWAITING_PUMP paused gaps: 921.6m
-      halts: AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, STALLED, REGRESSION_HALT, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, AWAITING_PUMP, STALLED, STALLED, STALLED, STALLED, STALLED, AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP
+      total browser-qa-replay           12.0m
+      total AWAITING_PUMP paused gaps: 923.0m
+      halts: AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, STALLED, REGRESSION_HALT, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, AWAITING_PUMP, STALLED, STALLED, STALLED, STALLED, STALLED, AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP
 ```

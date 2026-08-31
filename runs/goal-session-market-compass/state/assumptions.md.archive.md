@@ -2049,3 +2049,171 @@ from `daily_prices`/`scanner_results` through their existing canonical producers
 AG-10 more strictly, the remedy is a warm-ordering requirement in the Stage G spec, which is already
 the recommendation either way.
 
+
+<!-- condense.sh 2026-08-28T19:14:14Z: moved 5 entries (keep-iters=5) -->
+
+## iter-22 — goal-decomposer (Stage G write-path scoping: foreclose only the freshly-found
+`data_manager.coverage_from_storage` self-heal write; leave `scanner.resolve_run` and
+`compass.get_or_create_manifest` explicitly deferred)
+
+**Ambiguity:** `docs/goal.md` ruling item 5 explicitly names and defers exactly two request-path guard
+gaps — `scanner.resolve_run()` and "ordinary Data Manager persistence paths capable of calling
+`run_scan()` or `persist_run_payload()`" — to "post-J-11 maintenance-boundary hardening work after
+Stage G," and explicitly forbids "expand[ing]... into a generalized `ScannerRun` writer redesign" or
+introducing "a new generic persistence architecture merely to satisfy this ruling." Iteration 21's
+evaluator then found a THIRD, different unguarded write path — `data_manager.coverage_from_storage`'s
+self-heal branch, which calls `_upsert_coverage_snapshot`, never `run_scan`/`persist_run_payload`, so it
+is not literally covered by ruling item 5's enumerated list — and this iteration's coordinator note
+relayed it as "the single most important new finding," stating "Stage G must therefore either assert
+cache cleanliness AFTER the app is permitted to boot, or foreclose that write first," while also noting
+this is "the third unguarded write path found (after scanner.resolve_run and
+compass.get_or_create_manifest)" without explicitly directing Stage G to fix all three. Neither
+`docs/goal.md` nor the coordinator note states whether closing the newly-found gap should also extend to
+the other two now that a fix is being made at all.
+
+**We chose:** wire the existing, already-tested `j11_preboot_guard.evaluate_boundary_for_date_fail_closed`
+— the identical idiom already used at `warmup.py:361` and `forward_testing.py:551` — into
+`data_manager.coverage_from_storage`'s self-heal branch ONLY. `scanner.py::resolve_run` and
+`compass.py::get_or_create_manifest` are left untouched and explicitly re-recorded as open, deferred
+gaps. Reasoning: (a) the coordinator note's "must therefore either... or foreclose" sentence's own
+grammatical subject is "that write" — the data_manager.py self-heal call just described in the
+immediately preceding sentences — not the other two, which are only mentioned for context/pattern-
+recognition ("this keeps happening"); (b) ruling item 5 explicitly, by name, defers
+`scanner.resolve_run()` and forbids broadening the fix into a "generalized... redesign" — fixing it now,
+absent an explicit fresh instruction to do so, risks exactly the scope-creep item 5 warns against, and
+the risk of under-fixing (leaving an already-explicitly-deferred, already-isolated-by-maintenance-mode
+gap open one more iteration) is far smaller and more easily corrected than the risk of over-fixing
+(overriding an explicit "do not expand" instruction from the same ruling block that authorizes Stage G's
+own existence); (c) `compass.get_or_create_manifest` was already known as of iteration 19 and was not
+newly escalated by this iteration's coordinator note the way the data_manager.py path was — nothing
+about THIS iteration's fresh instruction set demands closing it now; (d) resource-constraint guidance in
+this iteration's coordinator note explicitly says "do not broaden scope."
+
+**Reversible:** yes — this is a code-scope decision, not a live-database mutation. A future iteration
+(the "post-J-11 maintenance-boundary hardening" pass ruling item 5 itself anticipates) can extend the
+identical guard idiom to the other two call sites at any time; nothing about fixing only one now
+forecloses fixing the rest later, and the dev handoff explicitly records both as still-open so no future
+lane has to rediscover them from scratch.
+
+## iter-22 — goal-decomposer (membership_timeline_cache B2 closure: required read-only per-date
+recompute-and-compare, not an optional "consider")
+
+**Ambiguity:** Iteration 21's auditor raised gap B2 — the preserved `membership_timeline_cache` row holds
+pre-incident `points` for several incident dates never touched by an append-only incremental refresh —
+and this iteration's coordinator note relayed it with soft framing ("Consider whether Stage G should
+assert against this"), not as an explicit mandate. `docs/goal.md`'s own Stage G acceptance list, however,
+independently requires "no stale derived state remains for the incident set" as a binding, named
+requirement, and Stage F's own recorded proof for this table only established that the CHEAP repair
+branch would run on the next MISS (a performance/branch-selection proof), never that the row's own
+ALREADY-CACHED content for those dates is still correct post-repair (a content-correctness proof) — the
+goal text does not say which kind of proof this specific binding requirement demands for a table Stage F
+chose to preserve rather than delete.
+
+**We chose:** treat the per-date content-correctness proof as REQUIRED this iteration, not optional —
+recompute each already-cached incident date's `size`/`entries`/`exits`/`excluded` values read-only via
+`_membership_timeline` (the pure, non-cache-writing compute `membership_timeline_cached` wraps) against
+current post-Stage-D storage, and compare field-by-field against the row's stored point; any mismatch
+deletes the row (the exact fallback Stage F's own design already anticipated for this table), any full
+match records the explicit proof and confirms the preserve decision. Reasoning: (a) "no stale derived
+state remains for the incident set" is `docs/goal.md`'s own binding acceptance wording, not a
+discretionary hardening nicety Stage G could reasonably skip; (b) the two kinds of proof (branch-
+selection safety vs. content correctness) are logically independent — Stage F's own recorded evidence
+answers only the first, so treating the question as already settled would be exactly the kind of
+un-re-derived assumption this session's own lessons (iter-14b, iter-18) warn against; (c) the check is
+cheap (read-only, in-memory, bounded to the handful of already-cached incident dates) and has a
+pre-approved, already-safe fallback (deletion) if it fails, so requiring it adds negligible resource risk
+for a real correctness gap in the session's terminal gate.
+
+**Reversible:** yes — the check is purely read-only unless it finds a mismatch, in which case its only
+action is deleting one already-superseded cache row (recomputable from canonical storage through the
+existing producer at the next real request); nothing about requiring this proof forecloses a future
+iteration from revisiting the methodology if live evidence contradicts this reasoning.
+
+## iter-22 — goal-evaluator (the B3 circularity: Stage G's DB-level gate is complete; the serving/replay
+half is still owed, so J-11 stays `partial` rather than `passing`)
+
+**Ambiguity:** `docs/goal.md:1408` defines the stage sequence with "G (final serving/replay verification)",
+and `:1978-1985` places on Stage G the assertions that rebuilt `ScannerRun`s serve the current complete raw
+basis, that J-01/J-02/J-03 replay clean, and that Market Compass historical serving is internally
+consistent. The SAME goal file's owner ruling item 4 (`:1793-1800`) forbids browser QA, replay, ordinary API
+requests and any backend boot "throughout the D → G attempt", and forbids deactivating the boundary before
+Stage G passes. Stage G therefore cannot perform the verification one line of the goal assigns to it. Owner
+ruling item 9 — the latest instruction, 2026-08-26 — enumerates Stage G's minimum acceptance requirements
+and every one of them is database-level; serving/replay is absent from that list. The goal text does not say
+which reading governs, and the coherence auditor explicitly declined the question and left it to me.
+
+**We chose:** score the recovery ATTEMPT as having honestly reached its owner-defined SUCCESS terminal state
+(`J-11 STAGE G VERIFIED: YES` / `FULLY REPAIRED`, ruling item 14's SUCCESS block, boundary deactivated per
+item 11) — because ruling item 9's enumerated acceptance list is the operative, latest, and only
+satisfiable definition of the gate, and I independently re-derived every item on it live and read-only. But
+score the JOURNEY J-11 as `partial`, not `passing`, with the gap recorded verbatim as the unperformed
+serving/replay verification. Reasoning: (a) the two instruments are different — ruling item 14 governs how
+the ATTEMPT is reported and this iteration reported it exactly as required, while journey status feeds the
+achievement gate and must reflect what was actually verified; (b) my own methodology's maintenance-isolation
+rail forbids promoting any journey TO `passing` on an iteration that produced no serving evidence, and this
+iteration produced none by contract; (c) the missing check is now POSSIBLE for the first time (the boundary
+is inactive), so recording it as owed costs nothing and preserves a check the goal file asks for; (d) the
+independent auditor reached the same reading unprompted (B3: read `FULLY REPAIRED` as "the database-level
+incident state is proven clean", not "the product has been observed serving correctly"). What I explicitly
+did NOT do: describe the attempt as partially repaired, or invent ruling item 14's forbidden third state —
+the terminal lines stand exactly as emitted.
+
+**Reversible:** yes — one owner line settles it, in either direction, and nothing is mutated by this
+reading. If the owner rules that Stage G was the database gate and serving verification is ordinary product
+work, J-11 flips to `passing` on the next iteration's evidence with no work redone; if the owner rules the
+serving check belongs to Stage G, the next iteration performs it under a supervised boot and closes the gap
+by name. No row was written, withheld, or deleted on the strength of this interpretation.
+
+## iter-23 — goal-decomposer (verification launch mechanism: `TRENDORA_CONFIG` override, not a
+`config.yaml` edit; Depth kept at `full` despite the ruling saying full depth is "not required")
+
+**Ambiguity:** The 2026-08-27 owner ruling ("OWNER RULING — J-11 database recovery accepted; one final
+serving verification remains" + its "Post-Stage-G launch-condition clarification") requires booting the
+real app against "a disposable, byte-faithful SQLite snapshot/clone" while the canonical database AND its
+committed `config.yaml` stay untouched, but names no specific technical mechanism for pointing the app at
+the clone. Separately, it states `CHAIN_REQUIRE_FULL_DEPTH=true` is "NOT required" for this task without
+saying whether full depth remains permitted or should default to lean; the dispatch's own engine-computed
+depth recommendation for this iteration is independently `full`.
+
+**We chose:** (1) direct the developer to the already-existing, already-tested `TRENDORA_CONFIG` env-var
+config-file override (`apps/backend/app/config.py:3147-3157`, "used by tests" per its own docstring) to
+load a disposable verification-only YAML whose only delta from the committed `config.yaml` is
+`database.url`, rather than editing the committed `config.yaml` in place or inventing a new override
+mechanism — the smallest, already-proven lever, needing no new code. (2) keep `Depth: full` for this
+iteration rather than downshifting to lean, because the dispatch's binding engine recommendation is `full`
+and the task independently meets full-depth Trigger 1 (cross-cutting): real backend + frontend + browser +
+replay execution exercising the interaction of ≥5 distinct engine modules (scanner, data_manager, compass,
+forward_testing, the seven cache tables), none of which is covered end-to-end by any single existing
+journey's own test suite. The owner's "not required" wording removes an obligation; it does not forbid
+using full depth when independently justified by the dispatch recommendation and the trigger rubric.
+
+**Reversible:** yes — both are execution-mechanism/process choices, not data mutations. A future iteration
+could pick a different override mechanism or a different depth with no rework of already-completed
+verification evidence, since neither choice touches the canonical database or any already-frozen J-11
+Stage D-G evidence.
+
+## iter-23 — goal-evaluator (the `/market` 404: "Today / Market Compass serving path works" read as
+satisfied by `/`, not blocked by a route that does not exist yet)
+
+**Ambiguity:** Owner ruling item 4 requires the verification to establish that "the Today / Market Compass
+serving path works". The iter-23 spec's TC-4 turned that into a literal check that `/market` renders
+HTTP 200 with every card from the former dashboard inventory. `/market` does not exist —
+`apps/frontend/app/market/` is absent and J-08 (the journey that would build it) has never shipped, so the
+route returns 404. The goal text does not say whether "Market Compass serving path" names the `/market`
+ROUTE or the Market Compass FEATURE (the compass content), which today lives on `/`.
+
+**We chose:** read it as the feature, and score TC-4 as inapplicable rather than failed. Reasoning:
+(a) the Compass content — summary, what-changed, next-session focus, manifest strip with basis disclosure
+— demonstrably renders on `/` in both J-11 screenshots, so the serving path the ruling cares about was
+genuinely exercised; (b) `/market` is a `[TARGET]`-tagged, not-yet-built row in `blueprint.md`, and the
+coherence auditor independently reached the same reading; (c) the alternative would make this iteration
+fail on a J-08 product gap that ruling item 9 explicitly defers ("Advancing J-08... resumes in a LATER
+iteration"), i.e. it would block J-11 closure on work the owner forbade this iteration from doing; (d) the
+developer flagged it honestly instead of silently building the route, which is the correct call under the
+spec's own scope boundary. What I explicitly did NOT do: treat `/market` as working, or drop it — it is
+recorded as a live-re-confirmed J-08 gap for the next decomposer.
+
+**Reversible:** yes — one owner line settles it. If he rules that `/market` itself had to render, the
+remedy is to re-run the same clone-backed verification after J-08 ships the route; nothing about J-11's
+already-captured clone evidence would need redoing.
+

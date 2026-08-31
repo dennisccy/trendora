@@ -2567,6 +2567,13 @@ class CompassDeltaCfg(BaseModel):
     top_k: int
     max_stock_items: int
     velocity_flat_band: float
+    # goal-market-compass iter-28 (J-07) — the `state_band.stress` flat-band edge (severity-points
+    # between two stored runs' market-phase severity). NEW key (the developer's config-naming choice
+    # per goal.md's NOTES: "reuse an existing edge ... or add a new compass.delta.* key" — a dedicated
+    # key was chosen over reusing `velocity_flat_band` because severity is a DIFFERENT 0-100 scale than
+    # the regime score, not because the reading was unsound). `state_band.breadth` reuses
+    # `breadth_min_change_pts` above unchanged (no new key needed there).
+    stress_velocity_flat_band: float
     pbear_bands: list[LabelEdge] = Field(min_length=1)
 
     @model_validator(mode="after")
@@ -2576,6 +2583,7 @@ class CompassDeltaCfg(BaseModel):
             ("breadth_min_change_pts", self.breadth_min_change_pts),
             ("stock_score_min_change", self.stock_score_min_change),
             ("velocity_flat_band", self.velocity_flat_band),
+            ("stress_velocity_flat_band", self.stress_velocity_flat_band),
         ):
             if value < 0:
                 raise ValueError(f"compass.delta.{name} must be >= 0, got {value}")
@@ -2731,6 +2739,7 @@ def _default_compass() -> "CompassCfg":
             top_k=5,
             max_stock_items=10,
             velocity_flat_band=2.0,
+            stress_velocity_flat_band=5.0,
             pbear_bands=[
                 LabelEdge(min=0.0, label="calm"),
                 LabelEdge(min=0.20, label="cautious"),

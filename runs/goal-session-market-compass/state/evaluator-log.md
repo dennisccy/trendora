@@ -2330,3 +2330,130 @@ lands. FIVE OLDER OWNER QUESTIONS remain open and non-blocking: J-09's ~2.99 GB 
 acceptable; and whether MNST joins the recovery list. ONE STANDING FRAMEWORK NOTE: `goal_gate.py`'s
 duplicate-journey-heading defect is still unfixed and must be closed before any GOAL_ACHIEVED certification —
 this iteration's own goal slice lists J-10 twice, which is that defect visible in the wild.
+
+## Iteration 28 — goal-market-compass-iter-28
+
+**Date:** 2026-08-31T23:05:00Z
+**Verdict:** ESCALATE
+**Depth dispatched:** lean — **NOT** what the spec asked for, for the **seventh** time this session
+(iters 2, 6, 8, 23, 24, 26, 28). `docs/phases/goal-market-compass-iter-28.md` declares `Depth: full`
+with a written Trigger-4 justification ("brand-new full-stack journey ... requiring BOTH new backend
+engine work AND new frontend work"), and it matched my own binding iter-27 `full` recommendation;
+`iter-28/depth-dispatched` reads `lean`. No QA agent and no independent auditor ran on the iteration
+that permanently added a column to the protected canonical `next_session_manifests` table.
+
+**Owner-facing lines:** `J-08 CLOSED — passing; the whole old dashboard moved to /market with nothing
+dropped` · `J-07 NOT CLOSED — the three new direction words read "NA" on every servable date; ZERO of
+26 stored briefings carry them` · `ONE PERMANENT SCHEMA CHANGE TO THE PROTECTED TABLE (ADD COLUMN
+state_band_json); no row added, removed or altered — 26 before, 26 after` · `ANTI-GOAL LEDGER: 9 total,
+0 unresolved`.
+
+**Journey deltas:**
+- **Newly passing: J-08** "Market page moves over intact and history stays honest" — `failing` since
+  iter-1, promoted on evidence I opened myself. `UT-J-08-market-page.png` shows `/market` carrying the
+  complete former inventory (both glance cards, the cross-view card with its hide toggle still keyed to
+  `trendora.dashboard.phaseCrossView`, three breadth cards, Top Sectors, Candidate Counts, Top Themes,
+  the full Market Phase & Severity detail with its 60-row timeline and 29 causal episodes) and the
+  sidebar reading Today then Market with correct active-highlighting on each route.
+  `UT-J-08-historical-retrospective.png` shows `?asof=2025-04-15` serving that date's own values
+  (Risk-off 14.01, Recovery 71.47, P(bear) 1.00, breadth 15.6%), What-changed anchored on 2025-04-14,
+  and the retrospective sentence. ONE DISCLOSED CAVEAT: step 4's literal "version-1 stamps" is
+  unshowable on this data (2026-08-12's v1 was never frozen; v2-v6 were minted in the incident window),
+  so the strip correctly serves v6 — substantive acceptance holds; assumption ledger entry written.
+  `evidence_makeup: true` (walkthrough owed).
+- **J-07 "The Today page answers the ten-second read" — NOT promoted; moved `failing` -> `partial`,
+  stamped iter-28.** Steps 1, 2, 4, 5, 6 and 7 are verified LIVE and clean from
+  `UT-J-07-today-page.png`: exact six-section body order with readiness chrome above; Risk-on 73.18 and
+  Expansion 25.85 / P(bear) 0.00 matching `/api/dashboard` and `/api/market-phase`; both component
+  breakdowns expanded and matching the served arrays row for row; AG-13 separation clean both
+  directions; no cross-view chart on `/` and a working link-out to `/market`; perf Addendum 42 appended
+  with real `PerformanceNavigationTiming` figures; no `/api/sectors`/`/api/themes` on load.
+  **STEP 3 IS NOT VERIFIED LIVE AND THE GAP IS USER-VISIBLE.** All three direction badges render "NA".
+  I re-derived the cause myself read-only:
+  `select count(*) from next_session_manifests where state_band_json is not null` = **0 of 26**. Every
+  stored briefing predates the field and briefings are never rewritten, so the words are absent
+  everywhere. On the SAME page the Summary one card below reads "Conditions are little changed since
+  the prior session (-0.2 regime-score points)" — the inputs exist and are displayed; only the stored
+  field is missing. The words are proven ONLY by fixture/route tests, which I re-ran myself
+  (**11 passed**), including the route-level test through the real `app.api.compass.compass` function
+  and the deliberate stress-polarity flip. `evidence_makeup: true` (walkthrough owed).
+- Re-verified, unchanged: **J-01, J-04, J-05, J-06, J-10, J-11** — deterministic replay 8/8 PASS, all
+  re-stamped to iter-28. Two spot-checks opened: J-05's 2025-04-15 strip (retrospective / version 2 /
+  frozen / not prospective-eligible, Members 531, cohort 521 + shadow 28, v1 still stamped
+  2026-08-20T11:41:00.381102 — byte-consistent with iter-26/27's record) and J-04's capture, which is
+  AGAIN the top-of-page viewport at 2026-03-30 stopping above the candidate card, so
+  `evidence_makeup: true` is KEPT for the **tenth** iteration running.
+- **J-02 and J-03**: their replay goldens PASSED (no regression), but the limbs that hold them `partial`
+  were not re-examined, so `last_verified_iter` is deliberately left at iter-6 — a golden pass is not a
+  journey verification. J-09 carried unchanged at iter-25. J-07/J-08 goldens were written this round.
+- **`spec_hash`: all eleven byte-identical to the recorded values** — I ran `goal_gate.py
+  hash-journeys` and compared every one. No `journeys-changed.md`, no `browser-infra.json`, no
+  `DEFERRED-BUDGET` rows, NOT maintenance isolation.
+- Anti-goal violations: **NONE new** among AG-1..AG-18 — I answered all eighteen explicitly and
+  re-derived the five at real risk (AG-9, AG-12, AG-17, AG-18, AG-10) myself read-only against the live
+  8.4 GB database and the working tree. Ledger unchanged at **9 total, 0 unresolved**.
+- Coherence: COHERENCE-PASS (its advisory "no browser-qa ran" note is stale — it was written 22:35, the
+  J-07/J-08 captures landed 22:38-22:40). Deterministic scan: CLEAN. Review: PASS_WITH_NOTES (three
+  issues; two were closed by the later browser lane — perf Addendum 42 and the network trace — and the
+  third is exactly my J-07 finding). No QA report, no audit handoff — those lanes never ran.
+
+**Reasoning:** The two pages were built and they genuinely work, and I did not take that from anyone's
+write-up. I opened the pictures and read the numbers against the stored values myself: the Today page
+lists its six parts in the right order with the system-status words kept strictly above them, the two
+tiles and both of their detailed breakdowns match the figures the server sends, the old chart is gone
+from the front page and its link really does reach the new Market page, and the Market page carries
+every card the old dashboard had, down to the remembered show/hide switch. Stepping back to an old
+date shows that date's own numbers with an honest "reconstructed" note. So the relocation journey
+closes. The front-page journey does not, and this is the honest finding of the round. Its one new
+idea — three small words telling the reader whether things are improving — shows "NA" on every date the
+product can serve. That is not a bug in the words; it is where they are kept. They are written into the
+saved daily briefing at the moment it is frozen, and every one of the twenty-six saved briefings was
+frozen before this code existed. Briefings are never rewritten, by a rule the owner set. I checked the
+database myself: zero of twenty-six carry the new words. The result is visible on screen — the band
+says "NA" while the sentence directly underneath reports the very change it could not name. Someone
+reading this page for ten seconds learns nothing about direction, which is the whole point of the
+journey. I did NOT close it on the test evidence alone, even though I ran those tests myself and they
+pass, because closing a journey whose headline feature cannot be seen on any real data would be
+exactly the rubber-stamp this role exists to prevent. And unlike the two earlier journeys I did close
+on test evidence, this gap is not permanent — one allowed request on a date that has no briefing yet
+would create one containing the words. That is a task, not a dead end. Why ESCALATE rather than
+CONTINUE? Because a plain recommendation demonstrably does not stick: I recommended full at iteration
+27 and this round still ran light, the seventh demotion this session, and the light round permanently
+changed the shape of the protected briefings table with no independent checker present. It also leaves
+the finishing step needing a permanent write to that same protected table — the exact action that
+broke the plan's own rule at iteration 27. An escalation verdict outranks the cost rule, and it worked
+last time: my iteration-26 escalation bought a full iteration 27 whose auditor found real defects
+every other lane had signed off. Why not REGRESSION? Nothing that worked stopped working, no journey
+fell back, no listed rule was broken, no briefing was added, removed or altered — I confirmed
+twenty-six rows before and after, with the numbering unbroken. Why not STALLED? Nothing waits on the
+owner; the next step is ordinary product work his own ruling already authorises. One process fact:
+this is the nineteenth iteration running where a later lane found what the earlier ones missed — this
+time the reviewer, and the finding is the one I am acting on.
+
+**Next-step recommendation:** FINISH J-07 "The Today page answers the ten-second read" — make the three
+direction words actually appear. The page and its numbers are already correct; only the words are
+missing, because every saved briefing predates them. The next iteration should make ONE allowed live
+request for a date that has no saved briefing yet, so a fresh briefing is written with the words
+inside, then photograph the page showing real words instead of "NA". That request permanently adds one
+new row to the protected briefings table — the same kind of addition the owner accepted at iteration
+26 — so the plan must name the exact date in advance and permit no other. RUN IT AT FULL DEPTH; only
+the owner may add `Depth enforcement: required`, and standing guidance keeps
+`CHAIN_REQUIRE_FULL_DEPTH` and `CHAIN_MAINTENANCE_ISOLATION` OFF. ONE THING FOR THE OWNER TO LOOK AT,
+small but real: on the Today page the "What changed" list and the "Leadership rotation" list below it
+show the identical sixteen rows on this date, because every change happens to be a sector, theme or
+stock; both are honest and read the same served field, but a reader sees the same list twice — keep,
+merge or narrow. SIX SMALLER ITEMS, none blocking: (1) J-04's picture still needs re-taking to include
+the candidate card (tenth round owed, passenger task); (2) J-05, J-06, J-07 and J-08 all still owe a
+recorded walkthrough (passenger task, never an iteration goal); (3) the next plan must account for the
+automatic re-test lane replaying its own stored dates — it used 2026-03-30 this round, outside the
+plan's declared safe set, though it minted nothing; (4) the new words are inside the briefing's content
+fingerprint, so a future re-issue of an old date will no longer reproduce its earlier versions'
+fingerprint — expected, but record it before someone reads it as damage; (5) the `/market` picture has
+the cross-view chart collapsed, so the chart itself is not visible in the image; (6) J-01's automated
+re-check still asserts far less than the journey claims. FIVE OLDER OWNER QUESTIONS remain open and
+non-blocking: J-09's ~2.99 GB acceptability; J-06's "underlying run unavailable" wording; J-01's first
+two test steps; whether an empty "next-session focus" is acceptable; whether MNST joins the recovery
+list. ONE MECHANICAL ITEM: the whole iteration — plan, handoff, reports, evidence folder and the three
+new frontend files — is untracked at scoring time; confirm it lands. ONE STANDING FRAMEWORK NOTE:
+`goal_gate.py`'s duplicate-journey-heading defect is still unfixed and must be closed before any
+GOAL_ACHIEVED certification.

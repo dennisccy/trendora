@@ -161,6 +161,12 @@ _ADDITIVE_COLUMNS: tuple[tuple[str, str, str], ...] = (
     ("next_session_manifests", "available_at_utc", "ALTER TABLE next_session_manifests ADD COLUMN available_at_utc DATETIME"),
     ("next_session_manifests", "manifest_hash", "ALTER TABLE next_session_manifests ADD COLUMN manifest_hash VARCHAR"),
     ("next_session_manifests", "export_path", "ALTER TABLE next_session_manifests ADD COLUMN export_path VARCHAR"),
+    # goal-market-compass iter-28 (J-07): the state_band CONTENT block (regime/stress/breadth direction
+    # words + deltas). NULLABLE VARCHAR (matches `state_band_json: Optional[str] = Field(default=None)`)
+    # — every row minted before this iteration reads NULL forever ("pre-state_band era", AG-12: never
+    # backfilled). A fresh DB gets the column from the model directly (create_all); an existing live DB
+    # gains it in place.
+    ("next_session_manifests", "state_band_json", "ALTER TABLE next_session_manifests ADD COLUMN state_band_json VARCHAR"),
 )
 
 

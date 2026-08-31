@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "journey": "J-07",
+  "name": "The Today page answers the ten-second read from served values only",
+  "default_timeout_ms": 8000,
+  "steps": [
+    {"n": 1, "journey": "J-07", "action": {"type": "goto", "url": "/"}, "expect": {"text": "Risk-on"}},
+    {"n": 2, "journey": "J-07", "action": {"type": "goto", "url": "/"}, "expect": {"text": "Universe breadth: 59.8% of the universe above its 50-day average"}},
+    {"n": 3, "journey": "J-07", "action": {"type": "click", "target": {"testid": "compass-state-band-market-link"}}, "expect": {"text": "severity-velocity line"}}
+  ]
+}

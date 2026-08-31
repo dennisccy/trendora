@@ -199,6 +199,52 @@ def test_compass_route_historical_asof_serves_that_dates_own_manifest(compass_en
     assert result["session_delta"]["prior_as_of"] is None  # earliest stored run -- explicit no-prior-run state
 
 
+# --- state_band (goal-market-compass iter-28, J-07) -----------------------------------------------
+
+
+def test_compass_route_serves_state_band_directly(compass_engine, cfg):
+    """iter-28 (J-07): `state_band` is present at the response layer, additive alongside
+    `session_delta`/`narrative`/`selection`. `compass_engine` seeds no `MarketPhaseCache` row, so
+    `stress` honestly reads the no-comparison NA state (never fabricated); `regime` (50.0 -> 58.0) and
+    `breadth` (55.0 -> 55.0, unchanged) compute directly from the two stored runs."""
+    from app.api.compass import compass as compass_route
+
+    _freeze_frontier(compass_engine, cfg)
+    with Session(compass_engine) as session:
+        result = compass_route(None, session)
+
+    assert "state_band" in result
+    state_band = result["state_band"]
+    for band in ("regime", "stress", "breadth"):
+        assert band in state_band
+        assert set(state_band[band]) == {"direction_word", "delta"}
+    assert state_band["regime"]["delta"] == pytest.approx(8.0)  # 58.0 - 50.0
+    assert state_band["regime"]["direction_word"] == cfg.compass.vocabulary.direction_words["up"]
+    assert state_band["breadth"]["delta"] == pytest.approx(0.0)
+    assert state_band["breadth"]["direction_word"] == cfg.compass.vocabulary.direction_words["flat"]
+    assert state_band["stress"] == {"direction_word": None, "delta": None}  # no MarketPhaseCache seeded
+
+
+def test_compass_route_state_band_null_on_pre_iter28_row(compass_engine, cfg):
+    """A manifest row minted before `state_band_json` existed (simulated by clearing the column, which
+    is exactly the shape every one of the 26+ live pre-iter-28 rows has -- AG-12: never backfilled)
+    serves `state_band: None` honestly -- never fabricated, never crashes the route."""
+    from app.api.compass import compass as compass_route
+
+    _freeze_frontier(compass_engine, cfg)
+    with Session(compass_engine) as session:
+        row = session.exec(
+            select(NextSessionManifest).where(NextSessionManifest.as_of == date(2024, 6, 8))
+        ).first()
+        row.state_band_json = None
+        session.add(row)
+        session.commit()
+
+    with Session(compass_engine) as session:
+        result = compass_route(None, session)
+    assert result["state_band"] is None
+
+
 # --- POST /api/compass/regenerate (iter-3, J-05/J-06) --------------------------------------------
 
 

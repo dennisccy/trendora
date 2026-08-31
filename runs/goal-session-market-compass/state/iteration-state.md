@@ -1,40 +1,40 @@
 # Iteration State — market-compass
 
-**After iteration:** 27 · **Date:** 2026-08-28 · **Verdict:** CONTINUE
+**After iteration:** 28 · **Date:** 2026-08-31 · **Verdict:** ESCALATE
 
 ## Journeys
 
-6 passing (J-01 J-04 J-05 J-06 J-10 J-11) · 3 partial (J-02 J-03 J-09) · 2 failing (J-07 J-08) — 11 total
+7 passing (J-01 J-04 J-05 J-06 J-08 J-10 J-11) · 4 partial (J-02 J-03 J-07 J-09) · 0 failing — 11 total
 
 ## Active blockers
 
-- **None dev-blocking.** J-06 closed; J-07 "The Today page answers the ten-second read" is next, then
-  J-08 — ordinary work authorised by owner ruling item 5.
-- **Process (put it in the next plan):** the browser-QA lane exceeded this iteration's "read-only and
-  additive-free" live constraint and permanently minted `next_session_manifests` row id 26
-  (`as_of=2019-03-01`). Benign, but the plan must list the ONLY dates that lane may visit live, and
-  row-count claims must be re-derived after it finishes. **True count is 26, not 25.**
-- **J-06 residuals, not blocking:** "unavailable" is proven at route level on a fixture DB, never through a
-  real `remove_data()`; removing a FRONTIER manifest's price range makes it unreadable (400 `future`, B3).
-- Non-blocking owner questions: J-09 2.99 GB · J-06 wording · J-01 test steps · empty focus · MNST.
+- J-07 step 3 (dev): the three `state_band` direction words render "NA" on every servable date —
+  `state_band_json` is non-null on 0 of 26 rows in `apps/backend/data/trendora.db`. Words exist and are
+  proven by 11 fixture/route tests; all 26 rows were frozen before
+  `apps/backend/app/engine/compass.py::build_state_band` existed and manifests are never backfilled.
+  Closes with ONE authorized live `GET /api/compass?as_of=<date with no manifest row>` (mints one
+  permanent additive row — the plan must name that date and permit no other).
+- Depth demotion (human): spec `Depth: full` ran `lean` for the 7th time this session; only the owner
+  may add `Depth enforcement: required`. Keep `CHAIN_REQUIRE_FULL_DEPTH`/`CHAIN_MAINTENANCE_ISOLATION` OFF.
 
 ## Last 2 verdicts
 
-- iter 27: CONTINUE — J-06 promoted; route now serves an existing manifest before any self-heal, so
-  "Basis: unavailable" is honestly reachable (97 tests pass; HEAD-vs-worktree flip confirmed by evaluator).
-- iter 26: ESCALATE — J-05 promoted; J-06's remaining gap sat in the shared serving path and needed the
-  independent auditor that the lean demotion had removed.
+- iter 28: ESCALATE — J-08 closed on live evidence; J-07 held `partial` (its one new feature is
+  invisible on all real data), and a 7th lean demotion shipped a permanent schema change to the
+  protected manifests table with no auditor present.
+- iter 27: CONTINUE — J-06 closed; the browser lane broke its own date constraint and minted row 26.
 
 ## Do not redo
 
-- **J-06 is done** — route reorder (`app/api/compass.py` fast path + `latest_manifest_for_date`), flipped
-  route-level test, restore/warm-path tests, and the auditor's TC-5/TC-9 tests all landed; 97 pass.
-- **J-11 is CLOSED** (owner ruling item 1) and **J-05 is done** (iter-26 live evidence; step 2 fixture-only,
-  permanently unprovable here — assumptions.md). Only walkthroughs are owed.
-- **Do NOT run the live remove+backfill drill** for J-05 step 1 / J-06 steps 1-3: "the last two trading
-  days" still resolves to 2026-08-11/12, the incident pair; AG-9 exception exhausted. Fixtures cover it.
-- **Do NOT delete manifest row id 26** (2019-03-01) or any manifest row — AG-12 forbids it; the record was
-  corrected in the dev handoff instead.
-- **Launcher fix verified** (iter-24); canonical DB boot is sanctioned work; the iter-23 clone
-  (`runs/goal-market-compass-iter-23/verify-clone/`, 7.8 GB) may now be deleted.
-- Passenger tasks only, never an iteration goal: J-04's screenshot re-take (9th owed), J-05/J-06 walkthroughs.
+- `/market` relocation and the sidebar Today/Market rename — DONE and live-verified
+  (`apps/frontend/app/market/page.tsx`, `components/sidebar.tsx`); J-08 is closed.
+- `/`'s six-section reorder, both state-band tiles, breakdown disclosures, AG-13 separation, chart
+  removal + link-out, and the no-sectors/themes fetch — all live-verified this iteration
+  (`apps/frontend/app/page.tsx`, `components/compass-state-band-card.tsx`). Only step 3's words remain.
+- `build_state_band` itself (engine, config key `compass.delta.stress_velocity_flat_band`, additive
+  `state_band_json` column, schema entry) — implemented, reviewed, 11 tests re-run green. Do not
+  re-implement; only make it observable.
+- TC-14 perf addendum — DONE (`reports/perf-budgets.md` Addendum 42) and the on-load network trace.
+- The live remove+backfill drill for J-05 step 1 / J-06 steps 1-3 — binding "do not redo" (iter-26).
+- Evidence-only work is never an iteration goal: J-04's retake + the J-05/J-06/J-07/J-08 walkthroughs
+  ride as passenger tasks.

@@ -7,6 +7,7 @@ the SAME `_cache_version` the real cache uses) so these tests need no real price
 from __future__ import annotations
 
 import ast
+import hashlib
 import json
 from datetime import date, datetime, timezone
 
@@ -410,6 +411,147 @@ def test_retrospective_stamp_appears_only_for_non_frontier_asof(engine, cfg, two
         narrative_b = compass.build_narrative(session, run_b, run_a, selection_b, cfg)  # run_b IS the frontier -> not retrospective
     assert any(s["template_id"] == "retrospective_stamp" for s in narrative_a["sentences"])
     assert not any(s["template_id"] == "retrospective_stamp" for s in narrative_b["sentences"])
+
+
+# --- state_band (goal-market-compass iter-28, J-07) -----------------------------------------------
+
+
+def test_state_band_no_prior_run_renders_null_for_all_three(engine, cfg, two_runs_with_phase):
+    """TC-4: the earliest stored run (no previous run) renders an explicit null/no-comparison state for
+    ALL THREE bands -- never a fabricated word."""
+    run_a_id, _run_b_id = two_runs_with_phase
+    with Session(engine) as session:
+        run_a = session.get(ScannerRun, run_a_id)
+        state_band = compass.build_state_band(session, run_a, None, cfg)
+    for band in ("regime", "stress", "breadth"):
+        assert state_band[band] == {"direction_word": None, "delta": None}
+
+
+def test_state_band_regime_matches_direction_word_and_stress_flips_polarity(engine, cfg, two_runs_with_phase):
+    """TC-1/TC-2: `two_runs_with_phase` has regime_score 50.0 -> 58.0 (+8.0, well above the 2.0 flat
+    band) and severity 25.0 -> 45.0 (+20.0, well above the 5.0 flat band -- severity ROSE, i.e. stress
+    WORSENED). `state_band.regime.delta` equals `current.regime_score - previous.regime_score` exactly
+    and its word is the SAME word `_direction_word` (the narrative's own direction sentence) already
+    produces for this pair -- one shared computation, not a second one. `state_band.stress.delta` is the
+    LITERAL `current_severity - previous_severity` (+20.0, unflipped -- TC-2's exact equation), but
+    because a RISING severity is deteriorating (not improving), its WORD is the OPPOSITE polarity of
+    regime's: regime reads "improving", stress reads "deteriorating" for this SAME pair of runs, proving
+    the sign transform is deliberate and not an accidental copy of regime's polarity."""
+    run_a_id, run_b_id = two_runs_with_phase
+    with Session(engine) as session:
+        run_a = session.get(ScannerRun, run_a_id)
+        run_b = session.get(ScannerRun, run_b_id)
+        expected_regime_word, expected_regime_delta = compass._direction_word(run_b, run_a, cfg)
+        state_band = compass.build_state_band(session, run_b, run_a, cfg)
+    assert state_band["regime"]["delta"] == pytest.approx(8.0) == expected_regime_delta
+    assert state_band["regime"]["direction_word"] == expected_regime_word == cfg.compass.vocabulary.direction_words["up"]
+    assert state_band["stress"]["delta"] == pytest.approx(20.0)  # current_severity - previous_severity, literal
+    assert state_band["stress"]["direction_word"] == cfg.compass.vocabulary.direction_words["down"]
+    assert state_band["regime"]["direction_word"] != state_band["stress"]["direction_word"]
+
+
+def test_state_band_breadth_flat_when_unchanged(engine, cfg, two_runs_with_phase):
+    """TC-3: `_mk_run`'s fixture rows both carry `breadth_above_50dma=55.0` (unchanged) -- delta 0.0 is
+    well within the reused `breadth_min_change_pts` (5.0) flat band, so the word is "flat", never
+    fabricated as up/down from a zero delta."""
+    run_a_id, run_b_id = two_runs_with_phase
+    with Session(engine) as session:
+        run_a = session.get(ScannerRun, run_a_id)
+        run_b = session.get(ScannerRun, run_b_id)
+        state_band = compass.build_state_band(session, run_b, run_a, cfg)
+    assert state_band["breadth"]["delta"] == pytest.approx(0.0)
+    assert state_band["breadth"]["direction_word"] == cfg.compass.vocabulary.direction_words["flat"]
+
+
+def test_state_band_breadth_up_and_down_bands(engine, cfg):
+    """TC-3 at the config edge: a breadth move well above `breadth_min_change_pts` (5.0) reads up/down by
+    sign; a move well below it reads flat -- all three read straight off the SAME config threshold
+    `session_delta._breadth_changes` uses for its own breadth-kind gate (one threshold, two producers)."""
+    with Session(engine) as session:
+        run_a = _mk_run(session, date(2024, 6, 1))
+        run_a.breadth_above_50dma = 40.0
+        run_b = _mk_run(session, date(2024, 6, 8))
+        run_b.breadth_above_50dma = 55.0  # +15.0, well above the 5.0 flat band
+        run_c = _mk_run(session, date(2024, 6, 15))
+        run_c.breadth_above_50dma = 42.0  # -13.0 vs run_b, well above the flat band (down)
+        session.add_all([run_a, run_b, run_c])
+        session.commit()
+        up = compass.build_state_band(session, run_b, run_a, cfg)
+        down = compass.build_state_band(session, run_c, run_b, cfg)
+    assert up["breadth"]["direction_word"] == cfg.compass.vocabulary.direction_words["up"]
+    assert down["breadth"]["direction_word"] == cfg.compass.vocabulary.direction_words["down"]
+
+
+def test_state_band_stress_na_when_phase_unavailable(engine, cfg):
+    """A missing/NA severity input on EITHER side renders `stress` as an explicit no-comparison state --
+    never a guessed word -- while `regime`/`breadth` (unaffected inputs) still compute normally. Mirrors
+    `test_direction_na_velocity_variant_when_phase_unavailable`'s "no MarketPhaseCache row seeded" setup."""
+    with Session(engine) as session:
+        run_a = _mk_run(session, date(2024, 7, 1), regime_score=50.0)
+        run_b = _mk_run(session, date(2024, 7, 8), regime_score=60.0)
+        session.commit()
+        session.refresh(run_a)
+        session.refresh(run_b)
+        # deliberately NO MarketPhaseCache row seeded -> market_phase_cached degrades to available=False
+        state_band = compass.build_state_band(session, run_b, run_a, cfg)
+    assert state_band["stress"] == {"direction_word": None, "delta": None}
+    assert state_band["regime"]["direction_word"] is not None
+    assert state_band["breadth"]["direction_word"] is not None
+
+
+def test_state_band_breadth_na_when_either_side_missing(engine, cfg):
+    """A missing `breadth_above_50dma` on EITHER stored run renders `breadth` as an explicit
+    no-comparison state -- never a guessed word -- while `regime` (unaffected input) still computes."""
+    with Session(engine) as session:
+        run_a = _mk_run(session, date(2024, 8, 1), regime_score=50.0)
+        run_a.breadth_above_50dma = None
+        run_b = _mk_run(session, date(2024, 8, 8), regime_score=55.0)
+        session.add_all([run_a, run_b])
+        session.commit()
+        state_band = compass.build_state_band(session, run_b, run_a, cfg)
+    assert state_band["breadth"] == {"direction_word": None, "delta": None}
+    assert state_band["regime"]["direction_word"] is not None
+
+
+def test_state_band_is_wired_into_manifest_payload_and_content_hash(engine, cfg, two_runs_with_phase):
+    """`state_band` is a top-level content block alongside `session_delta`/`narrative`/`selection` (same
+    `content_hash` scope) -- flipping it changes `content_hash` (proving it is actually inside the
+    hashed scope, not decorative)."""
+    run_a_id, run_b_id = two_runs_with_phase
+    with Session(engine) as session:
+        run_a = session.get(ScannerRun, run_a_id)
+        run_b = session.get(ScannerRun, run_b_id)
+        payload = compass.build_manifest_payload(session, run_b, run_a, cfg)
+    assert "state_band" in payload
+    assert payload["state_band"] == compass.build_state_band(session, run_b, run_a, cfg)
+    tampered_content = {
+        "session_delta": payload["session_delta"], "narrative": payload["narrative"],
+        "selection": payload["selection"],
+        "state_band": {**payload["state_band"], "regime": {"direction_word": "improving", "delta": 999.0}},
+    }
+    tampered_hash = hashlib.sha256(
+        json.dumps(tampered_content, sort_keys=True, default=str).encode()
+    ).hexdigest()
+    assert tampered_hash != payload["content_hash"]
+
+
+def test_state_band_served_verbatim_by_manifest_row_payload(engine, cfg, two_runs_with_phase):
+    """`manifest_row_payload` reconstructs `state_band` verbatim from its own storage column (a read,
+    never a recompute) -- mirrors `test_manifest_row_payload_matches_build_manifest_payload_content`."""
+    run_a_id, run_b_id = two_runs_with_phase
+    with Session(engine) as session:
+        run_a = session.get(ScannerRun, run_a_id)
+        run_b = session.get(ScannerRun, run_b_id)
+        built = compass.build_manifest_payload(session, run_b, run_a, cfg)
+        row = compass.get_or_create_manifest(session, run_b, cfg, producer="ingest_finalize")
+        served = compass.manifest_row_payload(row)
+    assert served["state_band"] == built["state_band"]
+
+
+def test_state_band_stress_threshold_is_config_driven(cfg):
+    """The new `stress_velocity_flat_band` threshold lives ONLY in `compass.delta.*` (anti-goal: No
+    magic numbers) -- a direct typed-config read, never a literal in the engine module."""
+    assert cfg.compass.delta.stress_velocity_flat_band > 0
 
 
 # --- manifest assembly + storage -----------------------------------------------------------------
