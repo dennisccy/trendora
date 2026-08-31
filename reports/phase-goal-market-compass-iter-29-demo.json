@@ -1,0 +1,137 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-market-compass-iter-29",
+  "base_url": "http://localhost:3255",
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Open the Today page",
+      "narration": "We're looking at the Today page, which gives a ten-second read of market conditions after the close. Let's start by opening it.",
+      "point_out": "The page shows the heading 'Today', the subtitle 'The ten-second read after the close', and a date badge in the top right.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "goto",
+        "url": "/"
+      },
+      "expect": {
+        "text": "The ten-second read after the close"
+      }
+    },
+    {
+      "n": 2,
+      "title": "Open the date picker",
+      "narration": "The top bar has a date selector button showing 'Latest'. Let's click it to see available snapshot dates.",
+      "point_out": "A calendar popover opens, showing August 2026 with clickable day cells.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "click",
+        "target": {
+          "data-testid": "asof-trigger"
+        }
+      },
+      "expect": {
+        "text": "August 2026"
+      }
+    },
+    {
+      "n": 3,
+      "title": "Jump to August 3rd",
+      "narration": "August 3rd, 2026 is a date we've prepared with real market data. Clicking it will load the Today page for that date.",
+      "point_out": "The URL changes to include 'asof=2026-08-03', and the top-bar badge turns amber showing 'Viewing as-of 2026-08-03 (historical)'.",
+      "journey": "J-07",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "click",
+        "target": {
+          "data-testid": "asof-cal-day",
+          "aria-label": "View as-of 2026-08-03"
+        }
+      },
+      "expect": {
+        "text": "Viewing as-of 2026-08-03 (historical)"
+      }
+    },
+    {
+      "n": 4,
+      "title": "Read the market state badges",
+      "narration": "The 'Market state' card shows three key indicators. For the first time on this page, instead of placeholder text, they now display real market conditions in plain English.",
+      "point_out": "Three small badges appear: 'improving' next to Regime, 'improving' next to Market phase, and 'little changed' next to Breadth. None of them says 'NA'.",
+      "journey": "J-07",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "click",
+        "target": {
+          "data-testid": "compass-state-band-card"
+        }
+      },
+      "expect": {
+        "role": "text",
+        "name": "improving"
+      }
+    },
+    {
+      "n": 5,
+      "title": "Check the summary for consistency",
+      "narration": "Let's scroll down to the Summary card and read its opening sentence. It should agree with the Regime badge we just saw.",
+      "point_out": "The Summary card's first sentence reads 'Conditions are improving since the prior session (+4.7 regime-score points).' The word 'improving' matches the Regime badge.",
+      "journey": "J-07",
+      "new": true,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "click",
+        "target": {
+          "data-testid": "compass-sentence-direction"
+        }
+      },
+      "expect": {
+        "text": "Conditions are improving since the prior session (+4.7 regime-score points)."
+      }
+    },
+    {
+      "n": 6,
+      "title": "Refresh to verify the data is permanent",
+      "narration": "Let's refresh the page to make sure this data is permanently stored, not just a one-time display.",
+      "point_out": "After the refresh, the URL is still '?asof=2026-08-03' and all three badges show the exact same words as before.",
+      "journey": "J-07",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "goto",
+        "url": "/?asof=2026-08-03"
+      },
+      "expect": {
+        "text": "Conditions are improving since the prior session (+4.7 regime-score points)."
+      }
+    },
+    {
+      "n": 7,
+      "title": "Return to Latest to confirm the feature is scoped",
+      "narration": "Let's go back to the Latest date to confirm that this new real-word rendering is scoped only to August 3rd. Other dates should still show placeholders.",
+      "point_out": "The three badges in the Market state card revert to 'NA', and the date badge shows 'Data as-of 2026-08-12' (the current frontier).",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "goto",
+        "url": "/"
+      },
+      "expect": {
+        "text": "Data as-of 2026-08-12"
+      }
+    }
+  ]
+}

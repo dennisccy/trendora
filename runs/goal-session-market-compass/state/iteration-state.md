@@ -1,40 +1,40 @@
 # Iteration State — market-compass
 
-**After iteration:** 28 · **Date:** 2026-08-31 · **Verdict:** ESCALATE
+**After iteration:** 29 · **Date:** 2026-09-01 · **Verdict:** ESCALATE
 
 ## Journeys
 
-7 passing (J-01 J-04 J-05 J-06 J-08 J-10 J-11) · 4 partial (J-02 J-03 J-07 J-09) · 0 failing — 11 total
+7 passing (J-01 J-04 J-05 J-06 J-08 J-10 J-11) · 4 partial (J-02 J-03 J-07 J-09) · 0 failing · 0 unknown — 11 total
 
 ## Active blockers
 
-- J-07 step 3 (dev): the three `state_band` direction words render "NA" on every servable date —
-  `state_band_json` is non-null on 0 of 26 rows in `apps/backend/data/trendora.db`. Words exist and are
-  proven by 11 fixture/route tests; all 26 rows were frozen before
-  `apps/backend/app/engine/compass.py::build_state_band` existed and manifests are never backfilled.
-  Closes with ONE authorized live `GET /api/compass?as_of=<date with no manifest row>` (mints one
-  permanent additive row — the plan must name that date and permit no other).
-- Depth demotion (human): spec `Depth: full` ran `lean` for the 7th time this session; only the owner
-  may add `Depth enforcement: required`. Keep `CHAIN_REQUIRE_FULL_DEPTH`/`CHAIN_MAINTENANCE_ISOLATION` OFF.
+- **J-07 (dev, one bounded action):** direction badges show real words ONLY at `/?asof=2026-08-03`
+  (`state_band_json` non-null on 1 of 27 rows); on `/` at the frontier 2026-08-12 all three read "NA"
+  beside a Summary card stating a real comparison (`.../iter-29-evidence/UT-04-result.png`, auditor F1),
+  yet goal.md requires direction "From `/` alone". Fix: mint a NEW VERSION of the 2026-08-12 manifest via
+  the confirm-gated regenerate path iter-26 proved on 2025-04-15 — v1..v6 untouched (AG-12), new version
+  `prospective_eligible=0` (AG-17); name that one date, permit no other, re-check the table after every lane.
+- **J-07 guard missing (dev, small):** `journey-scripts/J-07.json` step 4 asserts a narrative sentence that
+  predated `state_band` and landed AFTER the replay ran (23:50:41 vs 23:47:10); the three `compass-state-band-*-direction` testids appear in no golden. Point it at the badges.
+- **Owner question that would close J-07 today:** is one real date enough, with "NA" accepted on the
+  frontier landing view? See `state/assumptions.md` (iter-29 goal-evaluator).
+- **Pre-existing red test (dev or waiver):** `test_no_magic_numbers.py::test_engine_calc_code_has_no_magic_numbers` — literals in `indicators.py`/`forward_testing.py`/`research.py`, untouched since `0c445647`.
 
 ## Last 2 verdicts
 
-- iter 28: ESCALATE — J-08 closed on live evidence; J-07 held `partial` (its one new feature is
-  invisible on all real data), and a 7th lean demotion shipped a permanent schema change to the
-  protected manifests table with no auditor present.
-- iter 27: CONTINUE — J-06 closed; the browser lane broke its own date constraint and minted row 26.
+- iter 29: ESCALATE — J-07's words are real on one date but the landing view still says "NA"; the next step
+  writes permanently to the protected manifest table on the frontier date, so full depth is mandatory (a plain recommendation was demoted to lean at iters 2, 6, 8, 23, 24, 26, 28).
+- iter 28: ESCALATE — J-07 built but invisible (`state_band` null on all 26 manifests); a `Depth: full`
+  spec ran lean for the 7th time while permanently altering the protected table.
 
 ## Do not redo
 
-- `/market` relocation and the sidebar Today/Market rename — DONE and live-verified
-  (`apps/frontend/app/market/page.tsx`, `components/sidebar.tsx`); J-08 is closed.
-- `/`'s six-section reorder, both state-band tiles, breakdown disclosures, AG-13 separation, chart
-  removal + link-out, and the no-sectors/themes fetch — all live-verified this iteration
-  (`apps/frontend/app/page.tsx`, `components/compass-state-band-card.tsx`). Only step 3's words remain.
-- `build_state_band` itself (engine, config key `compass.delta.stress_velocity_flat_band`, additive
-  `state_band_json` column, schema entry) — implemented, reviewed, 11 tests re-run green. Do not
-  re-implement; only make it observable.
-- TC-14 perf addendum — DONE (`reports/perf-budgets.md` Addendum 42) and the on-load network trace.
-- The live remove+backfill drill for J-05 step 1 / J-06 steps 1-3 — binding "do not redo" (iter-26).
-- Evidence-only work is never an iteration goal: J-04's retake + the J-05/J-06/J-07/J-08 walkthroughs
-  ride as passenger tasks.
+- `build_state_band`, `_severity_at`, `compass.vocabulary.direction_words` — shipped, reviewed, green
+  (11 tests), correct to the decimal, verified live at `/?asof=2026-08-03`.
+- The 2026-08-03 mint — done (`next_session_manifests` id 27, v1, retrospective, eligible=0); do not
+  re-mint it or mint further historical dates.
+- AG-12/AG-9/AG-18 proof for iter-29 — re-derived after every lane: 27 rows, 26 byte-identical
+  (`sha256 c070dcf1…`), exports untouched, no provider run since 2026-08-23, 29 columns.
+- J-08 (`/market` relocation) and J-06 (frozen-manifest honesty) are CLOSED — do not rebuild.
+- Passenger tasks, never an iteration goal: J-04 screenshot retake (11th owed); J-05/J-06/J-07/J-08
+  walkthrough recordings (iter-29's J-07 recording is defective — clicks failed, frames show "NA").

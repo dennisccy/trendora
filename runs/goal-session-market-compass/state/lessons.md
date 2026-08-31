@@ -406,3 +406,22 @@ false by the time anyone read it. Cross-lane claims about whether another lane r
 against artifact mtimes, not accepted as fact.
 **Applies to:** any iteration where `coherence.md` comments on the state of the QA/browser lanes; check
 `ls -la` timestamps on `reports/qa/<iter>-evidence/` before repeating such a claim.
+
+## iter-29 — 2026-09-01T00:35:00Z
+
+**Verdict:** ESCALATE
+**Lesson:** Making a manifest-frozen field observable on ONE hand-picked date does not make it
+observable where the journey is actually read. `state_band` now renders real words at
+`/?asof=2026-08-03` (the one row that carries it, 1 of 27) while `/` at the frontier still shows
+"NA" beside a Summary sentence reporting the same comparison — the iter-28 contradiction survived
+on the landing view. When a feature lives inside an immutable record, the demonstration date must
+be the DEFAULT view's date, or the closing action must be a new version of the frontier record;
+picking a convenient manifest-less historical date proves the producer and leaves the journey open.
+Second, smaller trap found the same round: a regression golden written AFTER the replay lane ran is
+not coverage — `journey-scripts/J-07.json` gained its new step at 23:50:41, three minutes after
+`J-07-verify.png` (23:47:10), and the step asserts a narrative sentence that predated the feature
+rather than the three `compass-state-band-*-direction` testids. Compare golden mtimes against the
+replay evidence before crediting a `PASS` row as a guard.
+**Applies to:** any iteration closing a journey whose value is frozen into `next_session_manifests`
+(or any create-once immutable record), and any iteration that adds/edits a golden in
+`runs/goal-session-<sid>/journey-scripts/` in the same round it claims replay coverage.

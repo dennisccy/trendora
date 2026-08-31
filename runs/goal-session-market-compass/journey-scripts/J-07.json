@@ -6,6 +6,7 @@
   "steps": [
     {"n": 1, "journey": "J-07", "action": {"type": "goto", "url": "/"}, "expect": {"text": "Risk-on"}},
     {"n": 2, "journey": "J-07", "action": {"type": "goto", "url": "/"}, "expect": {"text": "Universe breadth: 59.8% of the universe above its 50-day average"}},
-    {"n": 3, "journey": "J-07", "action": {"type": "click", "target": {"testid": "compass-state-band-market-link"}}, "expect": {"text": "severity-velocity line"}}
+    {"n": 3, "journey": "J-07", "action": {"type": "click", "target": {"testid": "compass-state-band-market-link"}}, "expect": {"text": "severity-velocity line"}},
+    {"n": 4, "journey": "J-07", "action": {"type": "goto", "url": "/?asof=2026-08-03"}, "expect": {"text": "Conditions are improving since the prior session (+4.7 regime-score points)."}}
   ]
 }

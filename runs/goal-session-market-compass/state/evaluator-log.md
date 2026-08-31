@@ -2457,3 +2457,123 @@ list. ONE MECHANICAL ITEM: the whole iteration — plan, handoff, reports, evide
 new frontend files — is untracked at scoring time; confirm it lands. ONE STANDING FRAMEWORK NOTE:
 `goal_gate.py`'s duplicate-journey-heading defect is still unfixed and must be closed before any
 GOAL_ACHIEVED certification.
+
+## Iteration 29 — goal-market-compass-iter-29
+
+**Date:** 2026-09-01T00:35:00Z
+**Verdict:** ESCALATE
+**Depth dispatched:** full — **as the spec required**, and the full->lean demotion that hit iters 2, 6,
+8, 23, 24, 26 and 28 did NOT recur. `iter-29/depth-dispatched` reads `full`; reviewer, QA, coherence,
+closure and the independent auditor all ran (ux-regression alone was shed by the wall-clock trim).
+My predecessor's iter-28 ESCALATE bought it — the second time in this session that an escalation
+verdict, and only an escalation verdict, held the depth.
+
+**Owner-facing lines:** `J-07 NOT CLOSED — the three direction words are REAL on 2026-08-03 and still
+read "NA" on the page a user lands on` · `ONE PERMANENT ROW ADDED, EXACTLY AS AUTHORIZED (id 27,
+as_of 2026-08-03, version 1, retrospective, prospective_eligible=0); 26 before, 26 untouched, 27 now`
+· `ANTI-GOAL LEDGER: 9 total, 0 unresolved` · `the new automatic re-test for this feature guards the
+wrong sentence and never ran`.
+
+**Journey deltas:**
+- Newly passing: **none.**
+- Newly failing: **none.** Regressed: **none.**
+- **J-07 "The Today page answers the ten-second read" — NOT promoted; stays `partial`, re-stamped to
+  iter-29.** The iteration did exactly what iter-28's next-step asked and it worked: one authorized
+  `GET /api/compass?as_of=2026-08-03` minted `next_session_manifests` id 27 with a non-null
+  `state_band_json`, and at `/?asof=2026-08-03` the badges read improving / improving / little changed
+  with the Summary sentence one card below agreeing ("Conditions are improving since the prior session
+  (+4.7 regime-score points)."). I opened `UT-02-result.png` and `UT-03-result.png` and re-derived all
+  three words myself, read-only, from stored values plus `config.yaml`: regime 66.07−61.41 = +4.66 vs
+  `velocity_flat_band` 2.0 -> improving; severity 29.35−35.52 = −6.17 vs `stress_velocity_flat_band`
+  5.0 with polarity flipped -> improving; breadth 45.08−45.90 = −0.82 vs `breadth_min_change_pts` 5.0
+  -> little changed. **WHY IT IS STILL NOT `passing`:** the DEFAULT landing view fails the journey.
+  `UT-04-result.png` shows `/` at Latest (2026-08-12) with all three badges reading "NA" while the
+  Summary card directly below states "Conditions are little changed since the prior session (-0.2
+  regime-score points)" — the exact iter-28 contradiction, surviving on the page a user arrives at
+  (also at 2025-04-15 in `UT-05-result.png` and at 2026-03-30 in `J-04-verify.png`). `docs/goal.md`'s
+  own Success Criteria require "From `/` alone, without navigating" the reader can identify stress
+  direction and breadth direction. I re-derived read-only that `state_band_json` is non-null on **1 of
+  27** rows. This is NOT a moving goalpost and NOT an unsatisfiable criterion: the fix is one bounded
+  action of the same class this round just performed successfully — mint a NEW VERSION of the frontier
+  date's manifest through the confirm-gated regenerate path that iter-26 already proved (it minted v2
+  for 2025-04-15), leaving v1..v6 untouched per AG-12 and the new version prospective-ineligible per
+  AG-17. Assumption-ledger entry written so one owner line can overrule me and close J-07 today.
+  `evidence_makeup: true` (walkthrough owed and defective — see below).
+- Re-verified, unchanged: **J-01, J-04, J-05, J-06, J-08, J-10, J-11** — deterministic replay 8/8 PASS
+  (J-07's golden included), all re-stamped to iter-29. Two spot-checks opened: J-10's AVB at 2026-08-11
+  renders real figures and "Invalid below the 50-DMA at $187.94" (the golden's exact value), and J-04's
+  capture is AGAIN the 2026-03-30 top-of-page viewport stopping above the candidate card, so
+  `evidence_makeup: true` is KEPT for the **eleventh** iteration running.
+- Not targeted, carried unchanged: J-02, J-03 stay `partial` at iter-6; J-09 stays `partial` at iter-25.
+- **`spec_hash`: all eleven byte-identical to the recorded values** — I ran `goal_gate.py
+  hash-journeys` and compared every one. No `journeys-changed.md`, no `browser-infra.json`, no
+  `DEFERRED-BUDGET` rows, NOT maintenance isolation.
+- Anti-goal violations: **NONE new** among AG-1..AG-18 — I answered all eighteen explicitly and
+  re-derived the six at real risk (AG-3, AG-5, AG-9, AG-12, AG-17, AG-18) myself, read-only, against the
+  live 8.4 GB database. Ledger unchanged at **9 total, 0 unresolved**. Considered and rejected as a
+  ledger entry: the replay lane requested three dates outside the declared safe list (2026-03-30,
+  2026-07-23, 2026-08-11; auditor B1) — unlike the comparable iter-27 event nothing permanent resulted,
+  because each already had a stored row, and I confirmed afterwards that the table holds exactly 27 rows
+  with the other 26 byte-identical.
+- Coherence: COHERENCE-PASS. Deterministic scan: CLEAN (product diff is one file, `README.md` —
+  documentation only; zero source-code change). Review: PASS_WITH_NOTES (one MINOR, a pre-existing red
+  test). QA: PASS / UI-PASS. Closure: CLOSURE-PASS. Audit: **PASS_WITH_GAPS** (B1, B3, F1, T1, T4).
+  UX-regression: SKIPPED by the wall-clock trim (non-blocking lane).
+
+**Reasoning:** The one job asked for was done and it genuinely works, and I did not take that from
+anyone's write-up. On 3 August 2026 the page now says in plain words whether things are improving or
+getting worse, and the sentence just below it says the same thing. I worked the three words out myself
+from the stored numbers and the rule file and they are right to the decimal. I also proved the round
+was clean: exactly one new saved briefing, the numbering unbroken from one to twenty-seven, the other
+twenty-six identical to the byte after every lane had finished, the exported files untouched since
+August, and no outside data fetched. So the round is honest work. But the journey is not finished, and
+this is the finding the owner should read. On the page a person actually lands on, the three words
+still say "NA" — while the sentence one line below reports a real change on the same screen. That is
+the very contradiction the last round was written to remove, still there. The goal file says the reader
+must get direction from the front page alone, so I cannot call this done. I checked the database
+myself: one saved briefing out of twenty-seven carries the words. Why not close it anyway, given the
+round did what it was asked? Because the last two journeys I closed on limited evidence were closed
+because their missing state could NEVER be produced again; this one can, by one ordinary action of the
+same kind that just succeeded. That makes it a task, not a dead end, and closing it would be the
+rubber-stamp this role exists to prevent — the independent checker said so in writing before I looked.
+Why ESCALATE rather than CONTINUE? Two reasons, both evidenced. First, the front page has now failed
+the same way in two consecutive rounds that both targeted it. Second, the next step is a permanent
+write to the protected briefings table on the newest date — the most sensitive write attempted in this
+project — and a plain recommendation demonstrably does not hold the depth: iteration 27's evaluator
+recommended full and iteration 28 ran light anyway, and that light round permanently changed the shape
+of the protected table with no independent checker present. Escalation has held the depth twice out of
+two. And it earned its cost again this round: the independent checker alone found that the safe-date
+rule was enforced for one lane only, that the front page still contradicts itself, that the new
+automatic re-test guards a sentence which already worked before this feature existed and never actually
+ran, and that a completion checkbox was overstated. That is twenty iterations running where a later
+lane found what the earlier ones missed. Why not REGRESSION? Nothing that worked stopped working, no
+journey fell back, and no listed rule was broken — the added row is the sanctioned additive kind.
+Why not STALLED? Nothing waits on the owner; the next step is ordinary product work already authorised.
+
+**Next-step recommendation:** FINISH J-07 "The Today page answers the ten-second read" — make the three
+direction words appear on the page a person lands on. The proven way is to create a NEW VERSION of the
+saved briefing for the newest date, 12 August 2026, exactly as the product already did successfully at
+iteration 26 for a different date; the older versions must stay untouched and the new one must stay
+marked as not usable as forward-looking evidence. The plan must name that one date and permit no other,
+and must re-check the briefing table after every lane finishes, as this round correctly did. RUN IT AT
+FULL DEPTH; only the owner may add `Depth enforcement: required`, and standing guidance keeps
+`CHAIN_REQUIRE_FULL_DEPTH` and `CHAIN_MAINTENANCE_ISOLATION` OFF. ONE QUESTION THAT COULD END THIS
+IMMEDIATELY: if the owner decides that showing the words correctly on one real date is enough, and that
+"NA" on the front page is acceptable because the data set has no newer trading day, then J-07 is
+finished today — the choice is written into the assumption ledger. TWO REPAIR ITEMS THAT SHOULD RIDE
+ALONG: (1) the automatic re-test for the Today page checks a sentence that already worked before this
+feature existed and never ran this round, so the three new words have no automatic guard — point it at
+the three badges; (2) the recorded walkthrough shows "NA" in the three frames that claim to demonstrate
+the new words, because the clicks did not work — re-record as a passenger task, never an iteration goal.
+SEVEN CARRIED ITEMS, none blocking: J-04's picture still needs re-taking to include the candidate card
+(eleventh round owed); J-05, J-06, J-07 and J-08 all still owe a recorded walkthrough; one test in the
+named set is red on three files untouched since an old commit (`indicators.py`, `forward_testing.py`,
+`research.py`) and should be fixed or formally waived; the "What changed" / "Leadership rotation"
+duplicate-list question is still the owner's call; the iteration-23 throw-away copy (7.8 GB) may still
+be deleted; future plans should keep saying that the safe-date rule binds new writes only, since the
+re-test lane replays its own stored dates; and J-01's automatic re-check still asserts far less than the
+journey claims. FIVE OLDER OWNER QUESTIONS remain open and non-blocking: J-09's ~2.99 GB acceptability;
+J-06's "underlying run unavailable" wording; J-01's first two test steps; whether an empty
+"next-session focus" is acceptable; whether MNST joins the recovery list. ONE STANDING FRAMEWORK NOTE:
+`goal_gate.py`'s duplicate-journey-heading defect is still unfixed (this round's goal slice again lists
+J-10 twice) and must be closed before any GOAL_ACHIEVED certification.

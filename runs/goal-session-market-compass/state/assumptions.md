@@ -535,3 +535,39 @@ no external network call, so it is not a new AG-9 exception and needs no dated a
 before any request was issued. Not reversible for the row once minted (create-once + AG-12, same as
 every other manifest row this session) — if the owner later prefers a different date, that new row
 stays and a different date can still be used for any future demonstration need.
+
+## iter-29 — goal-evaluator (J-07 held at `partial` because the DEFAULT `/` view still reads "NA", even though the iteration closed the exact gap iter-28 named)
+
+**Ambiguity:** iter-28's evaluator held J-07 open because the three direction badges read "NA" on
+every servable date, and recommended one authorized live mint on a manifest-less date. iter-29 did
+precisely that and it worked: at `/?asof=2026-08-03` the badges read improving / improving / little
+changed, consistent with the served fields and with the config rule (I re-derived all three from
+stored values myself). But `/` with no `asof` — the page a user lands on, at the frontier
+2026-08-12 — still shows "NA" on all three badges while the Summary card directly below reports
+"Conditions are little changed since the prior session (-0.2 regime-score points)". `docs/goal.md`
+J-07 step 1 says only "Load `/`" and its acceptance allows "NA inputs render their NA words"; the
+journey text never says on WHICH as-of date step 3 must be demonstrated, so a literal reading
+supports closing it now.
+
+**We chose:** hold J-07 at `partial`, not `passing`. Grounds, each checked by me: (a) `docs/goal.md`'s
+own Success Criteria say "**From `/` alone, without navigating**, a reader ... can identify ... market
+phase, severity, and **stress direction**; breadth level and **direction**" — on the landing view
+those two directions read "NA", so the goal file's own criterion is unmet where it is stated to apply;
+(b) I re-derived read-only that `state_band_json` is non-null on **1 of 27** rows, so the gap is
+near-total, not marginal; (c) unlike the J-05 version-1 limb (iter-26) and the J-08 version-1 limb
+(iter-28), which I/my predecessors closed because their missing state can NEVER be reproduced on this
+data, this limb IS producible by one bounded, already-proven action — a new version of the frontier
+manifest through the confirm-gated regenerate path iter-26 exercised for 2025-04-15 — so holding it
+open is a task, not the unsatisfiable-criterion loop the framework warns against; (d) the independent
+auditor reached the same conclusion in writing before I looked (finding F1: "still reads 'NA'
+everywhere a user arrives by default ... worth saying plainly rather than letting 'J-07's NA gap is
+closed' stand unqualified") and explicitly warned that an evaluator might promote J-07 on an
+overstated DoD checkbox (T4). What I did NOT do: score the iteration's own work down — the mint,
+the words, the numbers and the AG-12 proof are all correct and I verified them myself, and steps 1,
+2, 4, 5, 6 and 7 carry from iter-28's live capture under evidence durability (zero source-code change
+since).
+
+**Reversible:** yes — a scoring-interpretation call with no mutation. One owner line settles it: if he
+rules that demonstrating the direction words correctly on one real date is sufficient, and that "NA"
+on the frontier landing view is acceptable because the data set contains no newer trading day, then
+J-07 becomes `passing` immediately and none of this iteration's evidence needs redoing.
