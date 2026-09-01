@@ -1,40 +1,26 @@
 # Iteration State — market-compass
 
-**After iteration:** 33 · **Date:** 2026-09-01 · **Verdict:** ESCALATE
+**After iteration:** 34 · **Date:** 2026-09-01 · **Verdict:** GOAL_ACHIEVED
 
 ## Journeys
 
-11 passing (J-01..J-11) · 0 failing · 0 partial · 0 unknown — 11 total. **J-09 closed this round**
-(VmPeak 2,467,888 kB vs the 2,621,440 kB bar: 5.86% under, -18.78% vs iter-32). Nothing left to build.
+11 passing (J-01..J-11) · 0 failing · 0 unknown — 11 total. All re-verified at iter-34; `spec_hash` current for all eleven, drift `changed: []`.
 
 ## Active blockers
 
-- **Depth requirement UNMET (engine/dev).** Spec says `Depth: full` (Trigger 1) and `session.json`
-  `next_depth: full`, but `iter-33/depth-dispatched` reads `lean`; `.steps/` holds only decomposer/
-  developer/review-1/coherence — no auditor, QA, closure, ux-regression — and nobody disclosed it
-  (`docs/goal.md:2423-2436` requires it). The session's closing number had one reviewer.
-- **Results-file artifact (dev).** `phase-...-iter-33-ui-test-results.md` headline is `BLOCKED` with
-  UT-J-09 under "Missing Target Journeys"; `goal_gate.py results` on it exits 1 (I ran it), so
-  GOAL_ACHIEVED stays mechanically blocked until the merge records J-09's memory measurement as its
-  evidence row — a lane/record mismatch, not a product defect.
-- **Window too short (dev).** The 180s capture ended t+179.65; iter-32's release came at t+181, so the
-  settled footprint is unknown — re-measure over >= 6 minutes on a quiet host. Nothing here is
-  owner-owned; one non-blocking owner option: accept 2,467,888 kB as-is and the goal closes.
+- none. All deterministic gates pass (results exit 0, journeys 11/11, regressions exit 0, coherence PASS). One OWNER CONFIRMATION pending, non-blocking: accept J-09's memory figure (~2,253 MB vs the 2,560 MB limit, measured twice from separate boots, agreeing to 0.06%).
+- Non-blocking, outside this goal (build tooling): the walkthrough-waived evidence exemption in `incredible_auto_dev/scripts/automation/lib/merge_ui_test_results.py` works but nothing invokes it — wire `replay-lane.sh`'s merge to pass a per-iteration evidence fragment, or a future round can silently return to BLOCKED.
 
 ## Last 2 verdicts
 
-- iter 33: ESCALATE — J-09 met on evidence I re-derived myself, but the closing round ran `lean`
-  against a `full` spec with no auditor, and the results gate already rejects its record.
-- iter 32: CONTINUE — J-09 re-measured and still missed (3,038,684 kB); unread CSV columns showed the
-  peak was a warm-up transient, making Constraints (c) the remaining dev lever.
+- iter 34: GOAL_ACHIEVED — J-09 measured twice from two separate boots (2,307,092 and 2,305,668 kB, ~12% under the 2,621,440 kB bar, agreeing to 0.062%); `apps/` diff EMPTY; 11/11 executed PASS; `goal_gate.py results` exit 0; depth genuinely full (audit + QA + closure artifacts all exist, which iter-33 lacked entirely).
+- iter 33: ESCALATE — J-09's number was right but the round that closed the session ran lean against a `Depth: full` spec with no disclosure, and the deterministic gate exited 1 on a BLOCKED headline. Both defects are now discharged.
 
 ## Do not redo
 
-- **J-09 is CLOSED on the numbers — do NOT re-open it as a build.** The bound shipped
-  (`startup.warmup_bar_cache_bounded`, `warmup.py:351`), byte-identical 16/16 plus two new
-  `test_warmup.py` tests. The next round CONFIRMS; it does not rebuild.
-- Repair items 1-3 DONE: replay ran with `--results` (10/10, TC-7), rows merged (TC-8), Addendum 43
-  correction appended, `perf-budgets.md` +193/-0. Goldens CLEAN 2 rounds — never edit one post-replay.
-- `goal_gate.py`'s "duplicate journey heading" worry is RETIRED — `docs/goal.md` has exactly 11
-  headings; the doubled J-10 line is a trimmed-slice artifact affecting no gate.
-- Never widen the 2.5 GB target or touch `memory_cap_mb`/`pool_size`/`host-guard.env` — owner-only.
+- **J-09 is CLOSED and now independently corroborated** — do NOT re-open it as a build and do NOT touch `apps/backend/app/engine/warmup.py` or `prices.py`. The mechanism shipped at iter-33; iter-34 only re-measured it. Evidence: `runs/goal-market-compass-iter-34/j09-vmpeak-samples-{dev,auditor}.csv`, `reports/perf-budgets.md` Addendum 45.
+- **The harness fix's correctness is PROVEN — do not re-litigate it.** Executed, not read: waived set = exactly `{J-09, J-10, J-11}` from goal.md's literal marker; the placeholder-plus-prose cell returns `False`; iter-33's REAL inputs through the patched merge still return `BLOCKED`/exit 1. Only the WIRING (blocker above) is outstanding.
+- **Constraints (a), (b), (c) all landed** — (a)/(b) at iter-5, (c) at iter-33. The "boolean switch vs literal configured budget" wording gap is recorded in the assumption ledger and deliberately NOT reopened.
+- **Evidence make-up rides as a passenger, never as an iteration goal** — J-04's crop (16th round) and the six owed journey-attributed walkthroughs (J-02/J-03/J-05/J-06/J-07/J-08) are `Depth: evidence` tasks on already-working features. Never score them blocking.
+- **`.steps/*.done` is NOT a depth signal** — those markers are written only by the lean lane, so their absence means full. Verify depth from `iter-<N>/depth-dispatched`, the `Depth arbiter:` line in `engine.log`, and whether the audit/QA/closure artifacts exist.
+- **Carried, non-blocking, repeatedly re-confirmed:** two pre-existing red unit tests on untouched files (fix or formally waive); `browser_checks_run: false` despite 18 captures; `apps/frontend/.next-verify/` tracked in git; the iteration-23 throwaway clone (7.8 GB); five older owner questions (J-06 wording, J-01's first two test steps, empty "next-session focus", MNST, the 12 Aug "rebuilt" note).

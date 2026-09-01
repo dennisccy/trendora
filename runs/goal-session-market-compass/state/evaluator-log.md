@@ -3169,3 +3169,159 @@ which is cosmetic and affects no gate. **FIVE OLDER OWNER QUESTIONS** remain ope
 "underlying run unavailable" wording; J-01's first two test steps; whether an empty "next-session focus" is
 acceptable; whether MNST joins the recovery list; and whether 12 August should keep showing its "rebuilt" note.
 **ONE MECHANICAL ITEM:** the whole iteration is uncommitted at scoring time; confirm it lands.
+
+## Iteration 34 — goal-market-compass-iter-34
+
+**Date:** 2026-09-01T09:15:00Z
+**Verdict:** GOAL_ACHIEVED
+**Depth dispatched:** full — **genuinely full, and I verified it by artifact rather than by marker.**
+`iter-34/depth-dispatched` reads `full`, `session.json` `next_depth` is `"full"`, and — the check that
+actually settles it — the auditor, QA and closure lanes all left files on disk
+(`docs/handoffs/...-34-audit.md`, `reports/qa/...-34-qa.md`, `reports/...-34-closure-verdict.md`)
+which **iter-33 did not have at all**. iter-33's ESCALATE worked. NOTE on my predecessor's method:
+`.steps/*.done` is NOT a depth signal — the auditor found (B5) those markers are written only by the
+LEAN lane's `checkpoint.sh`; `run-phase.sh` never writes them. iter-34's `.steps/` holds only
+`decomposer.done`/`coherence.done` *because* it ran full, and iter-32's held only `decomposer.done`
+for the same reason. I confirmed that pattern across iters 32/33/34 before relying on it.
+One lane shed: **Step 8 (ux-regression)**, by the deterministic wall-clock trim (5162s vs 3600s) —
+disclosed in the stub file, in the audit, and here. This iteration changed zero UI code, so it had
+nothing to review.
+
+**Owner-facing lines:** `J-09 IS MET TWICE OVER, FROM TWO SEPARATE BOOTS BY TWO DIFFERENT AGENTS —
+2,307,092 kB (dev, 366 rows) and 2,305,668 kB (auditor, 370 rows), 11.99% and 12.05% UNDER the
+2,621,440 kB bar, agreeing to 0.062%; I computed both maxima myself over every row` · `A THIRD
+INCIDENTAL READING ON YET ANOTHER BOOT: 2,285,012 kB — three processes inside a 22 MB band` ·
+`16/16 byte-identical under my own cmp; perf-budgets.md +244/-0 strictly append-only` · `THE
+DETERMINISTIC GATE NOW PASSES — I ran goal_gate.py results myself: exit 0, where iter-33 exited 1` ·
+`THE WHOLE apps/ FOLDER HAS AN EMPTY DIFF — nothing in the product could have broken` · `ZERO WRITES
+TO THE MAIN DATABASE — .db mtime 00:32:31 UTC predates the 07:17 iteration start; mode=ro control
+refused CREATE TABLE` · `ANTI-GOAL LEDGER: 9 total, 0 unresolved` · `GOLDEN-SCRIPT HYGIENE CLEAN FOR
+THE THIRD ROUND RUNNING` · `I RESOLVED THE ONE THING THE AUDITOR LEFT UNEXPLAINED (the 379 KB WAL)`.
+
+**Journey deltas:**
+- Newly passing: **none.** Newly failing: **none.** Regressed: **none.** Zero status changes — all
+  eleven were already `passing`. `goal_gate.py regressions pre→post` exits 0.
+- **Re-verified, all eleven, re-stamped to iter-34.** Merged `ui-test-results.md` is 11/11 executed
+  PASS, 0 skipped, 0 FAIL cells, 0 `DEFERRED-BUDGET`. Deterministic replay 10/10 PASS with a fresh
+  screenshot each; J-09 carries an EXECUTED PASS row (iter-33 had a SKIP row under a BLOCKED
+  headline). **NOT maintenance isolation, no `browser-infra.json`, no `journeys-changed.md`.**
+- **J-09 — the last open certification blocker, now CLOSED with independent corroboration.** Both of
+  iter-33's stated blockers are discharged (depth genuinely full; gate exits 0). Every acceptance limb
+  re-derived by me from raw artifacts: max `VmPeak_kB` computed over ALL rows of BOTH CSVs (366 rows /
+  pid 2633998 / 369.43s → 2,307,092; 370 rows / pid 2885192 / 374.16s → 2,305,668), `VmPeak` verified
+  non-decreasing in both; plateau pairs (2,307,092/1,734,924 at t+20.99 and 2,305,668/1,731,264 at
+  t+27.30) recorded distinct from end-of-window (1,854,812/1,286,692 and 1,841,680/1,270,596);
+  `git diff --numstat reports/perf-budgets.md` = **244/0**; my own `cmp` over all 16 captures = **16
+  compared, 0 differing, 0 missing counterparts**; `config.yaml` and `apps/` byte-unchanged.
+  **iter-33's own window-length finding is now closed** — both windows exceed 360s and run well past
+  iter-32's observed t+181 release point, so the settled footprint is no longer unknown.
+- **The step-4 concurrent-load limb was NOT re-run, and I say so rather than implying it was.** It
+  rests on iter-33's 320/320 HTTP 200 under methodology A.6 (evidence durability). I verified the
+  durability precondition instead of assuming it: `warmup.py`/`config.yaml`/`config.py` all have mtime
+  2026-09-01 06:26:40 — inside iter-33, BEFORE its burst — and nothing has touched them since;
+  corroborated by zero `QueuePool` lines and zero tracebacks in this iteration's backend.log window
+  (all 19 historical QueuePool lines sit ~239k lines earlier).
+- **FOUR SPOT-CHECKS OPENED (two more than required, because this round certifies the session).**
+  `J-07-verify.png` at 2026-08-03 reads 66.07 improving / 29.35 improving / 45.1% little changed with
+  the Summary agreeing (+4.7 regime-score points) — identical **to the decimal** to iters 29/31/32/33.
+  `J-01-verify.png` at the frontier shows MARKET REGIME 73.18, GRMN's honest "Consumer Discretionary"
+  label and three "Not yet proven" badges. `J-04-verify.png` is AGAIN the 2026-03-30 top-of-page
+  viewport stopping above the candidate card — **16th consecutive round**; a fresh capture landed and
+  reproduces the identical fault, so `evidence_makeup: true` is deliberately KEPT. Before scoring J-04
+  I read its golden's own `expect` blocks rather than assuming: exact strings `"Strong leader (81.2)"`
+  (why), click `"Not priority (20)"` → `"TRV"` (why-not), and `"REGIME_RISK_OFF"` — all three limbs
+  asserted in the DOM; only the viewport is mis-cropped (A.7).
+- **A FINDING NO LANE MADE, from the fourth screenshot.** The showcase walkthrough's step-07 soft note
+  reads like a defect — "expected `Unassigned` did not appear". I opened `step-07.png`: it shows the
+  full **539/539** board with a real sector on every visible row and MARKET REGIME **73.18**, matching
+  `J-01-verify.png` to the decimal **on a different boot**. So the missing word is J-01's success
+  criterion WORKING (sector attribution near-complete leaves the honest "Unassigned" placeholder with
+  no members in view), not a failure — and it is independent cross-boot corroboration for J-01.
+- **I RESOLVED THE AUDITOR'S ONE OPEN ITEM.** The audit flagged the 379,072-byte `trendora.db-wal`
+  (mtime 07:42:52 UTC) as an unexplained write it could not attribute. It is **one row appended to
+  `market_phase_cache`** (id 12, `asof_key` 2026-08-05, `created_at` 2026-09-01 07:42:52.209806 UTC —
+  **13 ms** from the WAL mtime), a derived memoization cache the backend fills on the normal read path,
+  carrying the same `dataset_version` (`r3158-f6814320|s2`) as all 11 pre-existing rows (earliest
+  2026-08-27). It landed during the showcase walkthrough lane, BETWEEN and outside both measured boots
+  — so TC-6's zero-write claim holds for both boots exactly as reported.
+- **`spec_hash`: all eleven byte-identical to the recorded values** — `goal_gate.py hash-journeys
+  --history` returns `changed: []`. All eleven re-stamped, since all eleven were verified this round.
+- Anti-goal violations: **NONE new** among AG-1..AG-18 — I answered all eighteen explicitly with
+  citations. The product diff is ONE harness file (`merge_ui_test_results.py`) plus `perf-budgets.md`
+  (+244/-0); **`git diff --stat` on `apps/` is EMPTY**. AG-10 intact: all three HOST-GUARD blocks
+  present, `host-guard.env` untouched (mtime 2026-08-19), `memory_cap_mb` 8192 / `malloc_arena_max` 2 /
+  `pool_size` 24 / `max_overflow` 44 unchanged, and all three boots logged the caps — **the 2.5 GB bar
+  was never moved; the number cleared it honestly.** AG-12/AG-17: read-only census identical to
+  iters 31/32/33 (28 manifests / 18 distinct `as_of` / max id 28 / max `created_at` 00:12:07;
+  `prospective_eligible=1` on 0 rows; `scanner_runs` 3128; `data_provider_runs` 549;
+  `MAX(daily_prices.date)` 2026-08-12). AG-9: every URL in the added lines is localhost. Ledger
+  unchanged at **9 total, 0 unresolved**.
+- **I EXECUTED THE HARNESS FIX'S THREE KEY CLAIMS RATHER THAN READING THEM.** (1) The waived set is
+  parsed from `docs/goal.md`'s literal marker and returns exactly `{J-09, J-10, J-11}` (3 marker
+  occurrences) — not a journey-ID pattern. (2) The audit's B1 fix is live: the placeholder-plus-prose
+  Evidence cell this iteration's own browser-QA lane wrote returns **False**, so an uncited row would
+  still block. (3) Non-generalization on REAL iter-33 artifacts through the patched merge: still
+  **BLOCKED**, gate exit 1; an unwaived missing target journey also still blocks.
+- **BUT THE FIX IS ARMED AND UNWIRED (audit B2), and I reproduced that myself:** merging only the
+  replay file + the browser-QA file regenerates the authoritative results file **byte-for-byte**, so
+  the developer's `j09-evidence-fragment.md` is not an input to it. This round's PASS headline is
+  carried by a genuine executed browser-QA row, **not** by the new exemption. Recorded honestly: the
+  certification does not depend on it, but a future round whose browser-QA lane emits SKIP would block
+  again.
+- Deterministic gates, all run by me: `results` **exit 0** (iter-33: exit 1) · `journeys` **exit 0**,
+  `{"total":11,"passing":11,"blocking":[]}` · `regressions` **exit 0** · `coherence
+  --for-achievement` **exit 0** · drift `changed: []` · 0 FAIL cells, 0 DEFERRED-BUDGET.
+  Review: PASS_WITH_NOTES. QA: PASS. Audit: **PASS_WITH_GAPS** (B1 fixed; B2, B3, B4, B5, T1-T4).
+  Closure: CLOSURE-PASS. Coherence: **COHERENCE-PASS**. Demo: RECORDED_WITH_NOTES (8 steps).
+
+**Reasoning:** The goal is finished, and every part of that claim rests on something I checked myself
+rather than on someone else's report. The last open job was measured twice this round, from two
+separate program starts, by two different people. I opened both raw reading files and worked out the
+highest value myself: about 2,253 MB and 2,251 MB against a 2,560 MB limit — roughly 12% under, and
+agreeing with each other to within 0.06%. A third, incidental reading on yet another start came in at
+2,231 MB, so three separate measurements sit inside a 22 MB band. I also compared all sixteen
+before-and-after copies of the two main data feeds byte for byte and every one matched, which is
+direct proof that no number a user sees has moved. Nobody moved the goal line to make this pass; I
+read the settings file and the machine-protection file myself and both are untouched. The two
+objections that stopped last round are both answered. Last round the full team did not run and nobody
+said so; this round it did, and I proved that by the presence of three reports last round did not have
+at all, rather than by trusting a marker file — which the independent checker showed is not even a
+valid depth signal. Last round the project's own automatic gate refused; this round I ran it myself
+and it passed. Why not keep going? There is nothing left to build: the whole application folder has an
+empty change list, so nothing could have broken, and all ten other jobs were re-run with fresh
+pictures and all ten passed. Why not halt on a problem? Nothing that worked stopped working, no stored
+record moved, no rule was broken, and the database was never written to — its timestamp is older than
+the round itself. Why not escalate again? Escalation exists to force a fuller check; that check has now
+happened and came back clean, so asking again would be asking for something I already have. I am also
+saying plainly what this verdict does NOT rest on: the new tooling rule that was supposed to let a
+screen-free job record its evidence is not actually wired into anything, and today's clean result was
+carried by an ordinary passing row instead. That is a tooling weakness worth fixing, not a reason to
+doubt the measurement. This is the first of two keys — the loop re-checks it with its own gates and a
+second fresh reviewer.
+
+**Next-step recommendation:** HALT — the goal is achieved. Hand the result to the owner. **ONE OWNER
+CONFIRMATION, which is the only thing being asked of you:** accept the memory figure — the honest
+worst-moment reading is about 2,253 MB against your 2,560 MB limit, taken twice from two separate
+program starts that agree to within 0.06%. **IF ANY LATER WORK IS WANTED, all of it is optional and
+none of it changes the product:** (1) re-take J-04's picture so the candidate card is inside the frame
+(16th round owed — this round's fresh picture repeats the identical fault); (2) record proper
+step-by-step walkthroughs for J-02, J-03, J-05, J-06, J-07 and J-08 — an 8-step walkthrough did land
+this round, but with no job labels on any step, so none of the six is closed. Both are picture-taking
+tasks on features that already work, which is why the depth line reads `evidence`; neither may ever be
+an iteration goal. **ONE BUILD-TOOLING ITEM, outside this goal:** the new rule letting a screen-free job
+record its evidence works and provably does not over-reach, but nothing calls it automatically, so a
+future round could quietly go back to being blocked — teach the replay lane's merge step to include a
+per-round evidence fragment for waived jobs. **THREE HONESTY ITEMS FOR THE RECORD:** the quality report
+described a file state that was never on disk (it said "SKIP row"; the file has a PASS row) — the
+twenty-fourth round running where a later lane found what an earlier one missed, and this time the
+independent checker caught it and I confirmed his catch; the test-case wording asks for citations in
+the Evidence column while they actually sit in the Actual column; and the ux-regression lane was shed
+by the time budget (it had nothing to review — zero UI code changed). **CARRIED, none blocking:** two
+pre-existing red unit tests on files this round did not touch, which should be fixed or formally
+waived; `browser_checks_run: false` is still recorded although 18 pictures were taken; the
+iteration-23 throwaway copy (7.8 GB) may still be deleted; `apps/frontend/.next-verify/` is still
+tracked in git; J-01's automatic re-check still asserts far less than the job claims. **FIVE OLDER
+OWNER QUESTIONS** remain open and non-blocking: J-06's "underlying run unavailable" wording; J-01's
+first two test steps; whether an empty "next-session focus" is acceptable; whether MNST joins the
+recovery list; and whether 12 August should keep showing its "rebuilt" note. **ONE MECHANICAL ITEM:**
+the whole iteration is uncommitted at scoring time; confirm it lands.

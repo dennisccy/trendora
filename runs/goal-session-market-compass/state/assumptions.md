@@ -878,3 +878,93 @@ the new regression test and merge-script change can be reverted without redoing 
 memory-measurement evidence; if the owner rules J-09 should never appear on a `Target journeys:` line
 again once closed, this iteration's re-measurement evidence still stands on its own as a
 Required-still-passing-style confirmation.
+
+## iter-34 — goal-evaluator (J-09's concurrent-load acceptance limb scored from iter-33's evidence, because this iteration never re-ran it)
+
+**Ambiguity:** `docs/goal.md` J-09's Acceptance lists under **Correctness** three conjuncts:
+"measured backend VmPeak at standing warm ≤ 2.5 GB ... **the concurrent-load check passes**; the
+byte-identity spot-check holds." This iteration re-ran the first and third but NOT the second — the
+iter-34 spec's IN SCOPE and its TC-1..TC-11 never ask for a request burst, and the dev handoff
+contains no burst, no `limit_concurrency` run, and no `QueuePool` count. The goal text does not say
+whether an acceptance limb must be re-demonstrated every time the journey is re-verified, or whether
+a prior demonstration on unchanged code still counts.
+
+**We chose:** score the limb satisfied on iter-33's 320/320 HTTP-200 burst, under methodology A.6
+(evidence expires with CHANGE, not with time), and say so explicitly rather than letting the
+`passing` status imply a fresh run. Grounds, each checked by me: (a) I verified the durability
+PRECONDITION instead of assuming it — `apps/backend/app/engine/warmup.py`, `config.yaml` and
+`apps/backend/app/config.py` all carry mtime `2026-09-01 06:26:40`, which is inside iter-33 and
+BEFORE its own burst, and `git diff --stat 9150ee4b -- apps/ config.yaml` is EMPTY, so the code and
+pool arithmetic under test are byte-identical to what passed; (b) the limb's stated purpose is that
+"the pool arithmetic is untouched; only the per-connection cache shrank" — and untouchedness is
+exactly what I proved, so a re-run could only re-confirm a property already established by
+inspection; (c) corroborating live evidence exists anyway — zero `QueuePool` lines and zero
+tracebacks across all three of this iteration's backend boots (all 19 historical QueuePool lines sit
+~239k log lines earlier); (d) demanding a re-run of every limb on every re-verification round, on
+provably unchanged code, is the "vague acceptance criteria → infinite loop" anti-pattern the
+framework names as its #1 failure mode. What I did NOT do: hide it — it is in J-09's `gap` field, the
+evaluator log, and stated in the eval as "NOT re-run this round".
+
+**Reversible:** yes — no mutation, and a cheap remedy. If the owner rules every Correctness conjunct
+must be freshly demonstrated in the certifying round, one bounded burst against the unchanged backend
+settles it; none of this iteration's measurement, byte-identity or replay evidence would need redoing.
+
+## iter-34 — goal-evaluator (certified GOAL_ACHIEVED although the harness fix this iteration shipped is unwired and the J-09 results row cites nothing in its Evidence cell)
+
+**Ambiguity:** this iteration's second deliverable was a merge/gate fix so a walkthrough-waived
+journey's non-UI evidence could be RECORDED. It works and provably does not over-reach, but the
+auditor found (B2) — and I reproduced byte-for-byte — that nothing invokes it: merging only the
+replay file plus the browser-QA file regenerates the authoritative results file exactly, so the
+developer's `j09-evidence-fragment.md` is not an input. The clean `goal_gate.py results` exit 0 is
+therefore carried by the browser-QA lane happening to emit `PASS` rather than `SKIP` for J-09, and
+that PASS row's Evidence cell reads `none (…prose…)` — which the audit's own B1 fix now correctly
+classifies as citing nothing. It is unstated whether a journey's status may rest on a row whose
+provenance is that weak.
+
+**We chose:** certify. Score J-09 from the substance the goal itself names as the walkthrough's
+replacement, and record the row's provenance weakness as a tooling gap rather than a journey gap.
+Grounds, each checked by me: (a) I did not rely on that row — I re-derived every acceptance limb from
+raw artifacts myself (max `VmPeak_kB` over all 366 and all 370 CSV rows from two separately-booted
+pids; `cmp` over all 16 byte-identity captures, 0 differing; `git diff --numstat` on
+`reports/perf-budgets.md` = 244/0; a read-only census plus a `mode=ro` control that refused
+`CREATE TABLE`); (b) `docs/goal.md:585` waives J-09's walkthrough in terms and names the dated VmPeak
+measurement as its replacement, so no screenshot is owed and the A.3 no-screenshot rail cannot bind a
+journey that asserts no UI behaviour; (c) the row is EXECUTED and `PASS`, not `SKIP` — materially
+stronger than iter-33's record, whose SKIP-under-BLOCKED headline I refused to certify on; (d) the
+deliverable's own protective claims are real and I executed them rather than reading them (waived set
+= exactly `{J-09, J-10, J-11}` from the literal goal.md marker; the placeholder-plus-prose cell
+returns `False`; iter-33's REAL inputs through the patched merge still return `BLOCKED`/exit 1).
+What I did NOT do: let it pass silently — it is finding 1 of the eval's non-blocking list, an
+owner-facing line in the log, and the one build-tooling item in my recommendation, with the explicit
+warning that a future round whose browser-QA lane emits `SKIP` would block again.
+
+**Reversible:** yes — a scoring call with no mutation. If the owner or the framework rules that a
+target journey's row must carry a real citation in its Evidence cell, the remedy is to wire the
+replay lane's merge to include a per-iteration evidence fragment for waived journeys and re-merge;
+J-09's measurement evidence stands untouched either way.
+
+## iter-34 — goal-evaluator (GOAL_ACHIEVED certified while six journeys still owe the `[NEW]`-flagged walkthrough their own Acceptance names)
+
+**Ambiguity:** J-01..J-08 each carry an Acceptance limb of the form "**Walkthrough:** a `[NEW]`-flagged
+walkthrough of ..." (`docs/goal.md:234,268,298,348,423,475,513,545`). An 8-step walkthrough DID land
+this round (`reports/phase-goal-market-compass-iter-34-demo-results.md`, RECORDED_WITH_NOTES), but its
+Journey column is EMPTY for every step, so no step is attributed to a journey; J-02, J-03, J-05, J-06
+and J-08 have no attributed recording at all and J-07's remains thin. Read strictly, an acceptance
+limb is unmet on six must-have journeys at the moment of certification.
+
+**We chose:** keep all six `passing`, keep `evidence_makeup: true` on them, and certify. Grounds:
+(a) methodology A.7 is explicit that a missing or mis-cropped walkthrough is a CAPTURE defect scored
+from the code/replay/screenshot evidence that does exist, that the flag "never downgrades" the
+status, and that the make-up ride is "NEVER a new iteration's goal"; (b) my agent contract repeats
+this as a hard rule — never score as blocking an iteration whose only content is evidence capture;
+(c) the asserted BEHAVIOUR is met for all six, which is A.7's rail — each has an executed replay row
+with exact-string DOM assertions plus a fresh screenshot this round, and I opened four of them;
+(d) this is settled precedent, scored the same way by every evaluator since iter-27, not a fresh
+relaxation invented to close the session. What I did NOT do: quietly drop it — the six flags are
+retained in `journey-history.json`, the gap text records that an unattributed walkthrough landed, and
+re-recording them is the second optional item in my next-step recommendation.
+
+**Reversible:** yes — no mutation, and cheap to satisfy. If the owner rules the `[NEW]`-flagged
+walkthrough is a hard acceptance condition rather than a capture task, one `Depth: evidence` round
+records the six; no journey's status or product evidence would need redoing, and the product itself
+is unaffected either way.

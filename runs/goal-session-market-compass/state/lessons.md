@@ -552,3 +552,32 @@ VmPeak 2,125,140 kB (mid-boot), iter-33's showed 1,098,724 kB (at boot), so the 
 different fractions of the process lifetime.
 **Applies to:** any iter that re-measures J-09 / appends to `reports/perf-budgets.md`, or that
 compares two `/proc` sampler CSVs.
+
+## iter-34 — 2026-09-01T09:15:00Z
+
+**Verdict:** GOAL_ACHIEVED
+**Lesson:** `runs/goal-session-<sid>/iter-<N>/.steps/*.done` markers are NOT a depth signal and must
+never be used as one — `lib/checkpoint.sh` writes them and is sourced ONLY by the lean lane
+(`goal-iter-lean.sh`), so `run-phase.sh` (the FULL lane) never writes any. Their ABSENCE therefore
+means full, the opposite of what it looks like: iter-32 and iter-34 both ran full with a near-empty
+`.steps/`, while iter-33's `.steps/` was the fullest-looking of the three precisely because it ran
+lean. The reliable evidence is whether the lane's own artifacts exist on disk —
+`docs/handoffs/<iter>-audit.md`, `reports/qa/<iter>-qa.md`, `reports/phase-<iter>-closure-verdict.md`
+(iter-33 had none of the three; iter-34 has all three) — plus `iter-<N>/depth-dispatched` and the
+`Depth arbiter:` line in `engine.log`.
+**Applies to:** any evaluator or spec (e.g. iter-34's own TC-10) asserting dispatched depth; retire
+the `.steps/` cross-check from future depth-verification test cases.
+
+## iter-34 — 2026-09-01T09:15:00Z
+
+**Verdict:** GOAL_ACHIEVED
+**Lesson:** A non-zero `trendora.db-wal` alongside an UNCHANGED main `.db` mtime is normal read-path
+behaviour, not evidence of a mutation — and it is cheap to attribute rather than leave "unexplained"
+(as this round's audit did): enumerate every table's `MAX(created_at)` read-only and match it against
+the WAL's mtime. Here it resolved in one query to a single `market_phase_cache` row written 13 ms from
+the WAL mtime, a derived memoization cache with the same `dataset_version` as its 11 predecessors.
+Relatedly, a walkthrough "soft note" saying an expected string did not appear can be the success
+criterion WORKING — step-07's missing `Unassigned` is exactly what J-01's ≥95% sector coverage
+produces — so open the screenshot before recording it as a defect.
+**Applies to:** any iteration asserting "zero database writes" (J-09/J-10/J-11 measurement rounds), and
+any lane reading demo soft notes as failures.

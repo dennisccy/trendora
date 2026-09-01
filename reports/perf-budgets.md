@@ -12818,3 +12818,247 @@ warmup_bar_cache_bounded` key added — no owner-gated value (`memory_cap_mb`, `
 
 See the dev handoff for this iteration's depth disposition — per `docs/goal.md`'s binding loop-
 mechanics rule, this addendum does not itself make that call.
+
+## Addendum 45 (2026-09-01T06:50:54Z-06:57:03Z UTC developer run, market-compass iter-34) — J-09 closing re-measurement: extended (>=360s) window, developer pass; independent auditor re-derivation to follow as its own subsection
+
+Per iter-33's ESCALATE and this iteration's spec: J-09's shipped mechanism
+(`startup.warmup_bar_cache_bounded`, `apps/backend/app/engine/warmup.py`) is CLOSED and was NOT
+touched this iteration (binding "Do not redo" — confirmed by `git diff --stat` on `config.yaml`,
+`apps/backend/app/engine/warmup.py`, and `apps/backend/app/engine/prices.py` all showing zero
+lines changed). This addendum re-measures ONLY, over a longer window (>=360s, vs Addendum 44's
+180s) and with a second, independent re-derivation planned by the auditor -- the exact "closing
+measurement" iter-33's ESCALATE named as the remaining path to `GOAL_ACHIEVED`.
+
+### Method -- developer run
+
+One fresh backend boot via `bash scripts/start-backend.sh` (HOST-GUARD block intact, confirmed by
+reading the script before use; port 8255, pid 2633998). `/proc/<pid>/status` sampled every **1
+second** from process start via `runs/goal-market-compass-iter-34/vmpeak_sampler.py` (the SAME
+tooling Addendum 43/44 used, unmodified, just run for a longer `duration_s`), alongside `GET
+/api/health`'s `readiness` field on every sample -- **capture window
+`2026-09-01T06:50:54.42Z` -> `2026-09-01T06:57:03.84Z` UTC, 369.43s elapsed, 366 rows, raw CSV at
+`runs/goal-market-compass-iter-34/j09-vmpeak-samples-dev.csv`** (every sample, not just the peak;
+satisfies TC-1's >=360s / >=360-row bar with margin).
+
+### Honest host-quiet disclosure (same discipline as Addendum 43/44)
+
+Checked immediately around this measurement: the sibling goal-mode session
+(`/home/dennis-chan/Git/tensteps`, sid `ten-steps-v1`) had its pump-heartbeat running continuously
+since `01:13:21` local and its `run-phase.sh goal-ten-steps-v1-iter-23 --no-finalize` step started
+`07:00:01` local (`06:00:01` UTC) -- i.e. **active throughout this entire capture window**
+(`06:50:54`-`06:57:03` UTC), the same class of disclosed, not-materially-controlling contention
+Addendum 43/44 recorded. `free -h` immediately before this boot: `MemAvailable` ~21 GB, swap 8 KiB
+used, load average 0.14/0.45/0.82 on this 16-thread/26.7 GB host -- comfortable headroom despite
+the sibling activity. No sibling process was stopped or otherwise touched (not this developer's
+call to make unilaterally, per the same reasoning Addendum 43/44 recorded). This figure is
+presented as honestly and thoroughly instrumented, not as guaranteed-clean.
+
+### Result vs the <=2.5 GB target and vs every prior figure
+
+| Measurement | VmPeak (kB) | VmPeak (MB) | vs 2,621,440 kB (2.5 GB) target | vs Addendum 44 (2,467,888 kB) | Margin vs `memory_cap_mb` (8192 MB = 8,388,608 kB) |
+|---|---|---|---|---|---|
+| Addendum 44 (iter-33, bounded, 180s window) | 2,467,888 | 2,410.0 | -153,552 kB under (-5.86%, PASS) | -- (baseline) | 69.9% margin |
+| **Addendum 45 (this pass, developer, 369.43s window)** | **2,307,092** | **2,253.0** | **-314,348 kB under (-11.99%, PASS)** | **-160,796 kB (-6.52%)** | **72.50% margin** |
+| Target (DEFINITION OF DONE) | <=2,621,440 | <=2,560.0 | -- | -- | -- |
+
+**MET again this pass, with more margin than Addendum 44 on a longer observation window:**
+measured max `VmPeak_kB` = **2,307,092 kB**, 314,348 kB (11.99%) UNDER the 2,621,440 kB target.
+`memory_cap_mb` (8192), `malloc_arena_max` (2), `pool_size` (24), and `max_overflow` (44) are
+UNCHANGED (AG-10; owner-only values) -- this result did not touch any owner-gated value. The
+figure is lower than Addendum 44's; no code path changed between the two measurements (confirmed
+above), so this is presented as an honestly-observed run-to-run variance (host allocator/cache
+warmth, sibling-process memory pressure shape, ASLR) rather than attributed to any cause this pass
+verified -- both figures independently clear the target with wide margin, which is the acceptance
+criterion, not exact reproduction of Addendum 44's specific number.
+
+### Checkpoints (VmPeak / VmSize / VmRSS, kB; the CSV carries every one of the 366 samples)
+
+| Moment | elapsed_s | VmPeak_kB | VmSize_kB | VmRSS_kB | readiness |
+|---|---|---|---|---|---|
+| First sample (process start) | 0.00 | 1,328,480 | 1,321,308 | 774,332 | initializing |
+| **Plateau (row where VmPeak_kB LAST increased, TC-4)** | **20.99** | **2,307,092** | **2,307,092** | **1,734,924** | initializing |
+| Readiness first flips to `ready` | 22.71 | 2,307,092 | 1,859,584 | 1,290,672 | ready |
+| End of 369.43s observation window | 369.43 | 2,307,092 | 1,854,812 | 1,286,692 | ready |
+
+VmPeak (a high-water mark by definition) plateaued at 2,307,092 kB from t+20.99s and never moved
+for the remaining ~348s of observation -- matching the same "plateau reached at/shortly before
+readiness, never during background continuation" signature Addendum 41/43/44 established. TC-4's
+"settled `VmRSS_kB`/`VmSize_kB` pair read at the row where `VmPeak_kB` last increased" is the
+Plateau row above (1,734,924 / 2,307,092), reported distinct from the end-of-window steady-state
+pair (1,286,692 / 1,854,812) -- `VmSize` drops after the plateau (the process releases address
+space back below its own former peak, matching Addendum 44's `VmSize` behavior) while `VmPeak`
+itself never regresses, by definition.
+
+### TC-5 -- byte-identity spot check: zero diff across all 7 authorized as-of values, 2 endpoints, 16 total captures
+
+`GET /api/compass` and `GET /api/dashboard`, for the same authorized 7-value as-of set iter-33
+established (`{no param (frontier), "2026-08-12", "1996-02-01", "2025-04-15", "2026-03-30",
+"2026-07-23", "2026-08-03", "2026-08-11"}`), captured against this pass's live backend (during the
+same sampling window, negligible added memory pressure) and compared byte-for-byte against
+Addendum 44's own "after" capture (`runs/goal-market-compass-iter-33/byte-identity-after/`) -- the
+last known-good capture of this exact, unmodified shipped code. **16 compared, 0 differing**
+(`cmp -s` clean on every one of the 16 files). Raw files at
+`runs/goal-market-compass-iter-34/byte-identity-now/`. No served value moved.
+
+### TC-6 -- zero database writes across this boot
+
+A control connection opened `sqlite3.connect("file:apps/backend/data/trendora.db?mode=ro",
+uri=True)` refused a `CREATE TABLE` both immediately before this boot started and again
+immediately after this boot's backend process was stopped (both attempts raised
+`sqlite3.OperationalError: attempt to write a readonly database`). The `.db` file's mtime
+(`1788222751`) and size (`8365871104` bytes) were IDENTICAL before vs after this boot, and its WAL
+sidecar file (`trendora.db-wal`) stayed at 0 bytes throughout. Zero writes this boot.
+
+### Deterministic replay lane (required-still-passing regression widening, TC-9)
+
+Invoked WITH `--results reports/phase-goal-market-compass-iter-34-regression-replay-results.md`
+against this SAME boot's backend + a freshly-started frontend (`bash scripts/start-frontend.sh`,
+port 3255): **rc=0, 10/10 Required-still-passing journeys (J-01 through J-08, J-10, J-11) PASS, 0
+skipped.** Every `journey-scripts/*.json` golden's mtime predates this run (third clean
+golden-hygiene round -- confirmed unchanged by this replay invocation too). See the dev handoff
+for the merged `ui-test-results.md` (including the new J-09 evidence row) and the goal-mode
+harness fix that lets it register non-BLOCKED.
+
+### AG-9 / AG-10 for this pass
+
+AG-9 -- every live call this pass (the standing-warm sampling, the byte-identity captures, the
+replay lane's navigation) is a local HTTP GET/browser interaction against an already-running
+backend/frontend and the committed canonical DB; zero external network calls; zero writes (TC-6
+above). AG-10 -- the backend instance was launched only via `scripts/start-backend.sh` (HOST-GUARD
+block intact, confirmed by reading the script before use); `git diff -- config.yaml
+apps/backend/app/engine/warmup.py apps/backend/app/engine/prices.py` shows zero lines changed --
+no owner-gated value (`memory_cap_mb`, `malloc_arena_max`, `pool_size`, `max_overflow`) touched,
+and the mechanism under measurement was not rebuilt.
+
+### Auditor run (independent re-derivation) -- pending
+
+This developer pass intentionally performs only ONE boot and ONE measurement. Per this iteration's
+spec, a genuinely independent second re-derivation -- a FRESH backend boot, sampled from scratch,
+never copying this pass's CSV or numbers -- is the auditor stage's own job later in this
+iteration's full-depth pipeline, directly answering the prior evaluator's "have the independent
+checker take the measurement again from scratch" request. That figure, and the combined
+before/after comparison of both runs' zero-write proofs, is appended below this line as its own
+dated subsection by the auditor -- never edited into the developer section above (this addendum
+stays append-only end to end).
+
+### Depth note
+
+See the dev handoff for this iteration's depth disposition — per `docs/goal.md`'s binding loop-
+mechanics rule, this addendum does not itself make that call.
+
+### Auditor run (independent re-derivation) — 2026-09-01T07:46:22Z-07:52:36Z UTC, market-compass iter-34
+
+Appended by the iter-34 auditor as its own dated subsection; the developer section above is left
+byte-for-byte untouched (this addendum remains append-only end to end). This measurement was taken
+from scratch — a FRESH backend boot with its own pid and its own CSV — and NOT derived, copied or
+scaled from the developer's numbers. The developer's CSV was opened only AFTER this run finished,
+to compare the two independently-computed figures.
+
+#### Method — auditor run (TC-2)
+
+One fresh boot via `bash scripts/start-backend.sh` (read before use; the `==== HOST-GUARD ====`
+block, the `ulimit -v` from `config.yaml` `server.memory_cap_mb`, and the `MALLOC_ARENA_MAX` export
+are all present and unmodified — `git diff` on `scripts/start-backend.sh`,
+`project-extensions/host-guard/host-guard.env` and `config.yaml` is empty). Port 8255, pid
+**2885192** (a different pid and a different process from the developer's 2633998), boot logged at
+`logs/backend.log` `=== start-backend.sh: launching at 2026-09-01T07:46:20Z ===` with
+`port=8255 memory_cap_mb=8192 malloc_arena_max=2` and `host-guard: cpu_list=0-15 blas_threads=8`.
+`/proc/2885192/status` sampled every **1 second** by the same unmodified
+`runs/goal-market-compass-iter-34/vmpeak_sampler.py` (`diff` against
+`runs/goal-market-compass-iter-33/vmpeak_sampler.py` reports no differences) — capture window
+**`2026-09-01T07:46:22.78Z` -> `2026-09-01T07:52:36.94Z` UTC, 374.16s elapsed, 370 rows**, one and
+only one pid across the whole file. Raw CSV:
+`runs/goal-market-compass-iter-34/j09-vmpeak-samples-auditor.csv`; boot provenance:
+`runs/goal-market-compass-iter-34/auditor-sampler-start.txt`; full run log (host state, boot,
+zero-write control, shutdown): `runs/goal-market-compass-iter-34/auditor-measure.log`.
+
+#### Honest host-quiet disclosure — auditor run
+
+Same discipline, same honest answer as the developer run: host quietness could NOT be guaranteed.
+Recorded at `2026-09-01T07:46:20Z`, immediately before this boot: the sibling goal-mode session
+(`/home/dennis-chan/Git/tensteps`, sid `ten-steps-v1`) was live (its `run-goal.sh` supervisor plus
+its own backend on port 8063 and a `next-server`), and this session's own
+`run-phase.sh goal-market-compass-iter-34 --no-finalize` was live by construction (it is the
+pipeline running this audit step). Headroom was comfortable: `MemAvailable` 20,950 MB of 27,319 MB,
+`0 MB` swap used, load average 0.19/0.37/0.55 on this 16-thread host. No sibling process was
+stopped. Presented as instrumented, not as guaranteed-clean.
+
+#### Result — both runs against the target and against every prior figure (TC-3)
+
+| Measurement | max VmPeak (kB) | vs 2,621,440 kB (2.5 GB) target | vs Addendum 44 (2,467,888 kB) | vs the other iter-34 run |
+|---|---|---|---|---|
+| Addendum 44 (iter-33, 180s window) | 2,467,888 | -153,552 kB (-5.86%, PASS) | — (baseline) | — |
+| Addendum 45 developer run (369.43s, 366 rows, pid 2633998) | 2,307,092 | -314,348 kB (-11.99%, PASS) | -160,796 kB (-6.52%) | +1,424 kB vs auditor |
+| **Addendum 45 auditor run (374.16s, 370 rows, pid 2885192)** | **2,305,668** | **-315,772 kB (-12.05%, PASS)** | **-162,220 kB (-6.57%)** | **-1,424 kB vs developer** |
+
+**J-09's bar is MET on an independent, from-scratch re-derivation.** The two iter-34 runs agree to
+**0.062%** (1,424 kB apart on a ~2.25 GB figure). No owner-gated value was touched to obtain this:
+`memory_cap_mb` (8192), `malloc_arena_max` (2), `pool_size` (24), `max_overflow` (44) and
+`host-guard.env` all show an empty `git diff` (AG-10); `apps/backend/app/engine/warmup.py` and
+`apps/backend/app/engine/prices.py` likewise (binding "Do not redo" — the mechanism was measured,
+not rebuilt). Margin against the 8,388,608 kB (`memory_cap_mb` 8192 MB) ceiling: **72.51%**.
+
+**One honest correction to the developer section's framing.** Addendum 45's developer subsection
+attributes the ~160 MB gap between Addendum 44 (2,467,888 kB) and this round's figure to
+"run-to-run variance." Two independent iter-34 boots, on different processes minutes apart, landing
+within 0.062% of each other does not support "variance" as the explanation — the spread WITHIN
+iter-34 is ~100x smaller than the gap TO Addendum 44, which points at a systematic difference in
+conditions between the iter-33 and iter-34 measurements rather than noise. This is recorded as an
+unexplained-but-benign observation, not a defect: both figures clear the bar with wide margin, and
+the acceptance criterion is the bar, not reproduction of Addendum 44's exact number. Nothing was
+re-engineered to chase it (binding "Do not redo").
+
+#### Checkpoints — auditor run (VmPeak / VmSize / VmRSS, kB; the CSV carries all 370 samples) (TC-4)
+
+| Moment | elapsed_s | VmPeak_kB | VmSize_kB | VmRSS_kB | readiness |
+|---|---|---|---|---|---|
+| First sample (process start) | 0.00 | 773,092 | 773,092 | 246,696 | initializing |
+| **Plateau (row where VmPeak_kB LAST increased, TC-4)** | **27.30** | **2,305,668** | **2,305,668** | **1,731,264** | initializing |
+| Readiness first flips to `ready` | 33.44 | 2,305,668 | 1,847,920 | 1,276,764 | ready |
+| End of 374.16s observation window | 374.16 | 2,305,668 | 1,841,680 | 1,270,596 | ready |
+
+`VmPeak_kB` is non-decreasing across all 370 rows (verified programmatically over the whole file,
+not spot-checked), plateaus at t+27.30s and never moves again for the remaining ~347s. The settled
+`VmRSS_kB`/`VmSize_kB` pair AT the plateau (1,731,264 / 2,305,668) is reported here as a figure
+distinct from the end-of-window steady-state pair (1,270,596 / 1,841,680) — `VmSize` falls ~464 MB
+below the process's own former peak after readiness while `VmPeak`, a high-water mark, cannot. This
+reproduces the developer run's signature (plateau 1,734,924 / 2,307,092 at t+20.99s; end-of-window
+1,286,692 / 1,854,812) to within 0.2% on both columns.
+
+#### TC-5 — byte-identity spot check, independently re-run by the auditor
+
+The auditor did not re-capture the 16 responses (that would measure a different backend instance),
+but DID independently re-run the comparison itself: `cmp -s` over all 16 files in
+`runs/goal-market-compass-iter-34/byte-identity-now/` against their counterparts in
+`runs/goal-market-compass-iter-33/byte-identity-after/` — **16 compared, 0 differing, 0 missing
+counterparts**, reproducing the developer's recorded "16 compared, 0 differing" exactly. (Note for
+the record: the set is 8 as-of keys — 7 dated values plus the no-param frontier — x 2 endpoints =
+16 captures; the phase spec's "7 values ... = 16 captures" arithmetic is off by the frontier key,
+the capture count is right.) No served value moved (AG-3).
+
+#### TC-6 — zero database writes, auditor boot
+
+Measured across this boot, from `runs/goal-market-compass-iter-34/auditor-measure.log`:
+
+| File | Before boot (07:46:20Z) | After shutdown (07:52:41Z) | Verdict |
+|---|---|---|---|
+| `trendora.db` | mtime 1788222751, size 8,365,871,104 | mtime 1788222751, size 8,365,871,104 | unchanged |
+| `trendora.db-wal` | mtime 1788248572, size 379,072 | mtime 1788248572, size 379,072 | unchanged (mtime too) |
+| `trendora.db-shm` | mtime 1788248572 | mtime 1788248781 | mtime only (read-mapping) |
+
+A control connection opened `sqlite3.connect("file:...trendora.db?mode=ro", uri=True)` refused a
+`CREATE TABLE`: `OperationalError: attempt to write a readonly database` (iter-27b method). Zero
+writes this boot. Additionally, read-only queries against the two immutability-critical append-only
+tables show nothing was appended during iteration 34: `next_session_manifests` max(id)=28,
+max(created_at)=`2026-09-01 00:12:07.835199` (before this iteration began at 07:32 local);
+`scanner_runs` max(id)=3158, max(created_at)=`2026-08-26 10:53:02.010362` — AG-12 held.
+
+Recorded honestly: the `-wal` sidecar was **379,072 bytes, not 0**, both before and after the
+auditor boot. The developer subsection above records it as "0 bytes throughout" its own earlier
+boot; that earlier state cannot be re-derived now, and the 379,072-byte WAL carries mtime
+`2026-09-01 08:42:52 local`, i.e. it was written between the developer's boot and this one, during
+this iteration's own browser-QA/QA fanout window — by which process is not established by any
+artifact in this iteration. It does not affect either boot's zero-write conclusion (the main `.db`
+has not been written since `2026-09-01 01:32:31`, before this iteration started, and the WAL size
+did not move by one byte across the auditor boot), and no row was added to either append-only
+table. Surfaced rather than smoothed over.
