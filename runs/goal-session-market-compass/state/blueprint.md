@@ -250,3 +250,18 @@ either. No new page, nav entry, computing module, serving endpoint, or displayed
 Live `/api/compass` calls this iteration are confined to three already-manifested `as_of` values
 (frontier `2026-08-12`, `2025-04-15`, `1996-02-01` — the true earliest stored run) so zero new
 `next_session_manifests` rows are expected; see `state/assumptions.md` (`iter-31 — goal-decomposer`).
+
+**iter-32 note (2026-09-01 — informational, no IA change, no Data Contract row change):** J-09's
+re-measurement (standing-warm VmPeak clean re-capture with durable raw evidence, concurrent-load
+check, byte-identity spot check) touches no page, nav entry, computing module, serving endpoint, or
+displayed field — its only artifacts are a new dated addendum in `reports/perf-budgets.md` and a
+raw sample file under `runs/goal-market-compass-iter-32/` (internal ops evidence, outside the
+Information Architecture and Data Contract). `config.yaml`'s `database.pragmas.cache_size` is
+confirmed unchanged at `-65536` (set iter-4); no code path in `app.engine.compass` or any other
+producer is touched. Required-still-passing journeys this iteration exercise only already-registered
+Data Contract rows (Next-session manifest CONTENT + FREEZE/INTEGRITY blocks, engine identity, stock
+sector label, regime/phase/breadth, sector/theme scores, evidence ledger status) through their
+already-registered single producers and endpoints — this iteration reads them, it does not move or
+duplicate any. Live `/api/compass` calls stay confined to the same three already-manifested `as_of`
+values used at iter-31 (frontier `2026-08-12`, `2025-04-15`, `1996-02-01`), so zero new
+`next_session_manifests` rows are expected.
