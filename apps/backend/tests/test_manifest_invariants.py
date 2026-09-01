@@ -790,6 +790,38 @@ def test_tc23_why_not_and_qualifier_changes_move_only_manifest_config_hash(cfg):
     assert compass._manifest_config_subset(base) != compass._manifest_config_subset(changed)
 
 
+def test_tc23_why_not_cap_change_moves_only_display_length_not_totals_or_served_reasons(engine, cfg):
+    """goal-market-compass iter-38 (J-14): extends TC-23 to the new `why_not` keys -- a `why_not_cap`-only
+    config change (`manifest_config_hash`'s scope alone, per the test above) may change HOW MANY why-not
+    entries are DISPLAYED, but must never move the UNCAPPED `why_not_totals` (computed before the cap
+    truncation) nor any already-shown entry's `reason`/`cap_rank`/`cap`/`failed_conditions`."""
+    narrow_selection = cfg.compass.selection.model_copy(update={"why_not_cap": 1, "max_candidates": 1})
+    wide_selection = cfg.compass.selection.model_copy(update={"why_not_cap": 2, "max_candidates": 1})
+    narrow_cfg = cfg.model_copy(update={"compass": cfg.compass.model_copy(update={"selection": narrow_selection})})
+    wide_cfg = cfg.model_copy(update={"compass": cfg.compass.model_copy(update={"selection": wide_selection})})
+
+    with Session(engine) as session:
+        run = _mk_run(session, date(2024, 9, 1))
+        _mk_result(session, run.id, "AAA", l_score=95.0)  # candidate, rank 1
+        _mk_result(session, run.id, "BBB", l_score=85.0)  # excluded_by_cap, rank 2
+        _mk_result(session, run.id, "CCC", l_score=82.0)  # excluded_by_cap, rank 3
+        session.commit()
+        session.refresh(run)
+        narrow_result = compass.evaluate_selection(session, run, narrow_cfg)
+        wide_result = compass.evaluate_selection(session, run, wide_cfg)
+
+    expected_totals = {"excluded_by_cap_uncapped": 2, "below_floor_in_band_uncapped": 0}
+    assert narrow_result["why_not_totals"] == expected_totals
+    assert wide_result["why_not_totals"] == expected_totals  # totals unmoved by the display cap change
+    assert len(narrow_result["why_not"]) == 1
+    assert len(wide_result["why_not"]) == 2
+    # BBB (higher leadership, so ranked first among cap-excluded) is shown under BOTH caps -- its served
+    # fields are byte-identical; only the LIST LENGTH moved when why_not_cap changed.
+    assert narrow_result["why_not"][0] == wide_result["why_not"][0] == {
+        "ticker": "BBB", "failed_conditions": [], "reason": "excluded_by_cap", "cap_rank": 2, "cap": 1,
+    }
+
+
 def test_tc23_shadow_min_score_moves_only_cohort_rule_hash(cfg):
     base = cfg
     changed_shadow = base.compass.selection.shadow.model_copy(update={"min_score": base.compass.selection.shadow.min_score + 1})

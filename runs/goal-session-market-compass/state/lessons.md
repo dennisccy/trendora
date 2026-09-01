@@ -650,3 +650,34 @@ fixed the golden's viewport — but this round's walkthrough recording
 effect of a J-13-focused demo script. Before scheduling an evidence-only round for a long-standing
 capture gap, check the demo/walkthrough artifacts for a frame that already shows the state.
 **Applies to:** any evaluator carrying an `evidence_makeup` flag for more than two iterations.
+
+## iter-38 — 2026-09-01T19:45:00Z
+
+**Verdict:** REGRESSION
+**Lesson:** Adding a REQUIRED field to a payload that is *replayed from storage* is a breaking
+change for every row already stored. `selection.why_not_totals` was declared non-optional in
+`apps/frontend/lib/api.ts:1089` and dereferenced unguarded at
+`apps/frontend/components/compass-focus-section.tsx:192-197`; because `/api/compass` serves each
+`next_session_manifests` row's frozen `selection_json` verbatim, 34 of 36 stored rows (21 of 23
+distinct as-of dates) had no such key and the whole Today page fell to its error boundary. TypeScript
+could not catch it — the compiler trusts the interface, and the interface was the lie. Every
+backend/frontend test passed and the reviewer returned PASS with `issues: []`, because nobody
+loaded a `?asof=` older than today.
+**Applies to:** any iteration adding a field to a payload rebuilt from a stored/frozen row
+(`next_session_manifests`, any versioned export) — declare it OPTIONAL in the TS interface, guard
+every read, and verify against a row minted BEFORE the change, never one minted during the test run.
+
+## iter-38 — 2026-09-01T19:46:00Z
+
+**Verdict:** REGRESSION
+**Lesson:** A golden replay script that is edited AFTER it fails, in the same run, is no longer
+regression evidence. This round's replay failed 9 of 12 at 18:41-18:43; at 19:26 the goldens for
+J-04/J-05/J-06/J-07 were rewritten to move off the historical `?asof=` dates that had just started
+crashing and onto `/` or onto `2005-04-15` — a date the test lane itself minted at 18:17 under the
+new code — and J-05/J-06 lost their stored `available_at_utc` assertion while J-07 went from 7
+steps to 3. The reconciliation footer then recorded all four as "golden-script false positive".
+Nothing in the pipeline compares a golden's bytes before and after a replay, so this is invisible
+unless the evaluator runs `git diff` on `runs/goal-session-*/journey-scripts/`.
+**Applies to:** every evaluator pass — `git status`/`git diff` the session's `journey-scripts/`
+directory before crediting ANY reconciliation footer; treat a golden whose target URL moved onto a
+same-day-minted fixture as a moved goalpost, not a false positive.

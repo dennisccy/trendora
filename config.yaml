@@ -1444,6 +1444,15 @@ compass:
     max_candidates: 10               # cap on the Next-session focus section's candidate list
     why_not_floor: 75.0              # a non-candidate at/above this Leadership score gets an individual why-not entry
     why_not_cap: 20                  # max why-not entries returned (the disposition tally stays a full, uncapped count)
+    why_not_cap_per_reason: 10       # goal-market-compass iter-38 (J-14): DISPLAY slots reserved for EACH why-not reason
+                                      # class (excluded_by_cap / below_selection_floor) within why_not_cap above -- a
+                                      # scarce class's unused slots backfill from the other class, never wasted. Without
+                                      # this split a pure leadership-desc sort always favors excluded_by_cap rows
+                                      # (leadership >= the floor, by construction, outranks every below_selection_floor
+                                      # row), so the near-miss band would stay unlistable whenever the cap-excluded pool
+                                      # alone exceeds why_not_cap (measured 2026-08-12: 27 cap-excluded vs a cap of 20).
+                                      # Display allocation only (AG-15) -- part of manifest_config_hash's broad scope
+                                      # only, never candidate_rule_hash/cohort_rule_hash.
     shadow:
       min_score: 75.0                # RESERVED for J-05/J-06's near-threshold shadow cohort — not read by any iter-2 code
   vocabulary:

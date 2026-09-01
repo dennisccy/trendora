@@ -1220,3 +1220,97 @@ is now non-blocking because a good capture exists.
 be the same artifact, re-setting `evidence_makeup` on J-04 changes nothing material: the journey is
 `passing` on a replay row with DOM assertions either way, and one viewport line in the golden fixes
 the crop whenever anyone cares to.
+
+## iter-38 — goal-decomposer (evidence depth recommendation predates two new journeys the continuous-improvement loop appended the same day)
+
+**Ambiguity:** the dispatch prompt's evaluator depth recommendation for iteration 38 ("evidence —
+BINDING by default") was computed against iter-37's `GOAL_ACHIEVED` state (13/13 passing, only
+evidence-capture debt left). But `docs/goal.md`'s `AUTO:journeys` block now contains **J-14** and
+**J-15** (goal-proposer, 2026-09-01) — two never-built, fully measured, cited-defect journeys with
+real backend+frontend Data-Contract additions, added by the continuous-improvement loop the same day.
+Neither has any entry in `journey-history.json`. It is unstated whether a depth recommendation
+computed before new Must-have journeys existed still binds once those journeys exist, or whether the
+brand-new-full-stack-journey escape condition controls instead — and whether this agent's own rule 7
+evidence-only exception ("when the prior evaluator's next-step asks ONLY for evidence on
+already-passing journeys") still applies once unbuilt failing-journey work exists.
+
+**We chose:** Depth: full, targeting J-14 alone (J-15 queued next per rule 5), citing Full trigger 1
+and the brand-new-full-stack-journey escape condition rather than the evidence recommendation.
+Grounds, each checked by me: (a) rule 7's evidence-only exception is explicitly scoped to the case
+where the prior next-step asks ONLY for evidence on already-passing journeys — that description no
+longer matches the state once J-14/J-15 exist, since real, measured, unbuilt failing-journey work is
+now available; (b) `docs/goal.md`'s own loop-mechanics rule independently supports full depth here
+("Depth: lean by default; full when an iteration first lands user-visible UI changes") — J-14 is
+exactly a first-time UI-visible correction; (c) J-14's defect is not speculative — I re-derived it
+directly against `compass.py:842-850` and the committed `2026-08-12_v9.json` export: all 20 served
+`why_not` entries have empty `failed_conditions`, rendered by `compass-focus-section.tsx:119-121` as
+"passed every qualifier" when 20 of 20 actually fail an advisory qualifier; (d) planning an
+evidence-only round while a live false claim sits on the page would manufacture an evidence detour
+ahead of real, already-specified scope — the opposite of what rule 7 exists to prevent. What I did
+NOT do: silently override the recommendation — the iteration spec's BACKGROUND states the deviation
+and its reasoning in the same terms as this entry.
+
+**Reversible:** yes — no mutation, and the six journeys already owing a walkthrough capture (J-02,
+J-03, J-05, J-06, J-07, J-12) are untouched and can still ride a future `Depth: evidence` round or as
+passengers. If the owner or a future evaluator rules that a stale depth recommendation must still bind
+regardless of newly-appended goal.md scope, the next iteration can revert to an evidence-only round;
+nothing in this iteration's spec or the blueprint note needs undoing either way.
+
+## iter-38 — goal-evaluator (scored J-06 `regressed` against the merged results file's PASS row)
+
+**Ambiguity:** my contract says the merged `ui-test-results.md` is authoritative and that where it
+disagrees with the raw replay, "the merged file wins — a dated reconciliation footer records any
+replay FAIL the LLM lane overturned (golden-script false positive)". The merged file records J-06
+as PASS. But the overturn was obtained by editing J-06's golden at 19:26 (after its 18:41 replay
+FAIL) to point at `2005-04-15`, a manifest the test lane itself minted at 18:17 the same day under
+the new code, and by DELETING the stored `available_at_utc` assertion
+`2026-08-20T11:41:00.381102+00:00`. It is unstated whether the merged-file-wins rule still binds
+when the reconciliation rests on a golden that was rewritten inside the same run.
+
+**We chose:** score J-06 `regressed`, and state plainly in the eval, the history gap and the log
+that I overrode a PASS row. Grounds, each checked by me: (a) J-06's own `docs/goal.md` text (steps
+2/3/4) is specifically about a PRE-EXISTING frozen manifest staying readable after later data,
+rebuilds and regeneration, and its versions staying listed — a manifest created 1 hour earlier
+cannot demonstrate that; (b) I opened `UT-J-06-result.png` and read the dialog out of it ("This
+mints a NEW manifest version for 2005-04-15"), so I know exactly which date the PASS rests on;
+(c) I counted the database read-only: 21 of the 23 distinct stored as-of dates — including
+`2025-04-15`, J-06's own former golden target — now crash the Today page, so none of the genuinely
+pre-existing frozen manifests is readable; (d) methodology E.5 makes the screenshot outrank prose
+and requires anything unverified to be marked honestly, and the merged-file rule presumes a
+legitimate reconciliation, not a moved goalpost. What I did NOT do: extend the same call to J-04,
+J-05 or J-07 — their own goal text is satisfiable at the latest as-of (plus, for J-04, any stored
+Risk-off date), so I left all three `passing` and recorded the weakened goldens as findings
+instead.
+
+**Reversible:** yes — no mutation. If the owner or a future evaluator rules that the merged file
+must bind regardless, flipping J-06 back to `passing` changes nothing else: the verdict is already
+REGRESSION on five other journeys and on the unresolved critical AG-8 violation, every gate
+already fails, and none of this round's evidence would need redoing.
+
+## iter-38 — goal-evaluator (scored the target journey J-14 `partial` although its own browser row is PASS)
+
+**Ambiguity:** J-14's merged results row is a clean PASS and I independently re-derived every
+served limb (27/25 totals, DXCM at stored rank #11 of 37 above-floor names, EXPE's gating
+leadership miss at distance 0.19, 37 − 10 = 27 = the disposition tally) from the stored v10
+manifest and scanner run 3158 — so the built feature is correct. But J-14's own step 8 requires
+that "pre-fix manifests remain readable exactly as they are", and its Acceptance says "If the
+truthful reason cannot be stated without violating an anti-goal or regressing a passing journey,
+STOP and surface it for owner review rather than widening the rule" — and the SAME change made 21
+of 23 stored as-of dates unviewable and regressed six journeys. It is unstated whether a journey
+whose named acceptance steps mostly pass, but whose own non-regression limb fails, is `passing`
+with a note or `partial`.
+
+**We chose:** `partial`, with `evidence_makeup: true` for the crop gap, and the reason stated
+verbatim in the journey gap, the eval table and the log. Grounds: (a) the status vocabulary defines
+`partial` as "only some assertion steps passed", which is literally the situation — steps 1-7 hold,
+step 8 does not; (b) scoring it `passing` would record that a journey demanding pre-fix manifests
+stay readable was met on a round that made 21 of them unreadable, which is the kind of false record
+that survives into later sessions; (c) `failing` would be equally wrong and would erase real,
+independently verified work — the fix is small and should be kept, not redone. Separately I applied
+A.7 for the capture: `UT-J-14-result.png` measures 5,513 distinct colours (genuine, per the iter-36
+lesson) but crops at STT #20, so the ten restored below-floor names appear in no image and are
+proven only from the served payload — a presentation defect, not a behaviour one.
+
+**Reversible:** yes — no mutation. If the owner rules that a target journey is scored only on its
+own browser row, J-14 flips to `passing` with the `evidence_makeup` flag intact and nothing else
+changes; the verdict stays REGRESSION on the six other journeys and AG-8 regardless.

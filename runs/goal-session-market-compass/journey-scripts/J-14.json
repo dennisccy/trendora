@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "journey": "J-14",
+  "name": "\"Not priority\" names its real reason — the why-not block stops claiming a qualifier pass it never checked, and the actually-near-miss names come back",
+  "default_timeout_ms": 8000,
+  "steps": [
+    {"n": 1, "journey": "J-14", "action": {"type": "goto", "url": "/"}, "expect": {"text": "Not priority (20 shown of 52 held back — 27 cap-excluded, 25 below-floor near-miss)"}},
+    {"n": 2, "journey": "J-14", "action": {"type": "click", "target": {"text": "Not priority (20 shown of 52 held back — 27 cap-excluded, 25 below-floor near-miss)"}}, "expect": {"text": "DXCM — ranked #11 of the above-floor names, cap 10"}},
+    {"n": 3, "journey": "J-14", "action": {"type": "goto", "url": "/"}, "expect": {"text": "entry_min_score: 26.5 vs 70.0 (distance 43.5) — advisory"}}
+  ]
+}

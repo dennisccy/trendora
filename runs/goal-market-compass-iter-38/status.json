@@ -1,0 +1,21 @@
+{
+  "phase": "goal-market-compass-iter-38",
+  "status": "in_progress",
+  "current_step": "dev_complete",
+  "updated_at": "2026-09-01T18:40:00Z",
+  "started_at": "2026-09-01T18:00:00Z",
+  "cli": "claude",
+  "blockers": [],
+  "changed_files": [
+    "apps/backend/app/engine/compass.py",
+    "apps/backend/app/config.py",
+    "config.yaml",
+    "apps/backend/tests/test_compass.py",
+    "apps/backend/tests/test_manifest_invariants.py",
+    "apps/frontend/lib/api.ts",
+    "apps/frontend/components/compass-focus-section.tsx"
+  ],
+  "tests_run": true,
+  "browser_checks_run": false,
+  "next_action": "review"
+}

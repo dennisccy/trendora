@@ -2428,6 +2428,200 @@ manifest artifact (it must be self-describing and self-caveating).
       side, a losing side, one empty side with its honest state, and the direction words — viewable via
       `demo.sh market-compass --session-live`.
 
+- **J-14: "Not priority" names its real reason — the why-not block stops claiming a qualifier pass it
+  never checked, and the actually-near-miss names come back (goal-proposer, 2026-09-01)**
+  - Why: this goal file's Vision promises the next-session names come "with the reasons, the cautions,
+    and the **why-nots stated**", and its Success Criteria promise a reader can identify "the
+    **most-nearly-eligible** why-not names". Measured on the committed frontier export
+    `apps/backend/data/exports/next_session_manifests/2026-08-12_v9.json` (the default `/` view;
+    `rule_version` v2, i.e. the CORRECTED post-J-12 rule — identical in v8, the first manifests minted
+    after iter-35), all three claims are currently false:
+    **(a) No why-not is stated.** All 20 `selection.why_not` entries are
+    `{"ticker": X, "failed_conditions": []}` — the block names no condition and no distance for any
+    name, so J-04 step 6 ("the 'Not priority' entries each name their failed condition(s) with
+    distances") holds for 0 of 20 rows. In the pre-J-12 `v7` export, 0 of 20 were empty.
+    **(b) The UI turns that silence into a false positive claim.**
+    `apps/frontend/components/compass-focus-section.tsx:119-121` renders an empty list as
+    "— passed every qualifier, cut only by the focus-list cap." Checked against the SAME manifest's
+    `comparison_cohort` rows, **20 of 20 of those names fail an advisory qualifier**: every one fails
+    `entry_min_score` (Entry Quality 18.87 QLYS … 58.35 TPR vs the 70.0 qualifier) and four also fail
+    `risk_max_score` (QLYS 70.85, ZBRA 68.34, GPN 60.67, SWK 60.18 vs the 60.0 ceiling).
+    `apps/frontend/lib/api.ts:1048-1050` documents the same now-false invariant.
+    **(c) The near-miss names cannot appear at all.** `why_not_floor` is 75.0 and `why_not_cap` is 20,
+    but 27 non-candidates clear the 80.0 leadership floor, so the leadership-sorted why-not pool is
+    made up ENTIRELY of `excluded_by_cap` names (ranks 11–30, leadership 81.29–84.98) and not one of
+    the 25 non-candidates in the [75.0, 80.0) band — the names that actually just missed the only gate
+    — can ever be listed on this data.
+    Cause (`apps/backend/app/engine/compass.py`): `why_not_pool.extend((row, []) for row, _checks in
+    excluded_by_cap_pairs)  # passed everything, cut by cap`. Under `rule_version` v1 that comment was
+    TRUE (a qualifier failure removed the row from `qualifying` before the cap applied); the J-12
+    correction made `entry_min_score`/`risk_max_score` advisory but left this line, its comment, the
+    frontend sentence and the `api.ts` doc-comment exactly as they were — and it discards `_checks`, so
+    the advisory result is not even carried in the payload. The suite cannot see it:
+    `apps/backend/tests/test_compass.py`'s `test_excluded_by_cap_get_empty_failed_conditions` cuts only
+    AAA (E=85, R=45) and BBB (E=78, R=45), which genuinely pass every qualifier, while the fixture's one
+    above-floor qualifier-failing row (HPE, L=92.7 / E=21.5 / R=58.9) is always INSIDE the cap — so no
+    test ever produces a cap-excluded row that misses a qualifier.
+  - Steps:
+    1. Before changing anything, reproduce and record the violation from the committed artifact: the
+       count of `selection.why_not` entries with an empty `failed_conditions` (expected 20 of 20), the
+       count of those names whose stored `entry_quality_score` / `risk_score` miss the advisory
+       qualifiers (expected 20 of 20 on entry, 4 also on risk — name them), the number of non-candidates
+       at or above the leadership floor (27) versus `why_not_cap` (20), and the number of non-candidates
+       in [`why_not_floor`, `leadership_min_score`) that are consequently unlistable (25). Record that
+       pre-fix baseline in the dev handoff. Do NOT mutate, relabel, re-hash, re-export or delete that
+       file or any stored manifest row (AG-12/AG-17) — the artifact is the evidence
+    2. Make each why-not entry state its OWN true reason: a cap-excluded entry names the candidate cap
+       (its leadership rank among above-floor members versus `max_candidates`) as the reason it was not
+       selected; a below-floor entry names `leadership_min_score` with its stored actual and distance, as
+       it does today. The gating-versus-advisory distinction reuses the existing `gating` flag that
+       `_qualifier_checks` already produces — no new vocabulary, no new number
+    3. Stop discarding the advisory evaluation for cap-excluded rows: each entry carries the advisory
+       qualifiers it misses with threshold, stored actual and distance, explicitly marked advisory, so no
+       row can be served or rendered as having "passed every qualifier" unless every qualifier actually
+       passed. Replace the false sentence in `compass-focus-section.tsx` and the false invariant
+       documented at `lib/api.ts:1048-1050`; the frontend selects no wording, applies no threshold and
+       computes no distance
+    4. Bring the near-miss names back: whenever both non-selection reasons exist, the why-not list
+       represents BOTH — cap-excluded and below-floor — with the split governed by config-only keys under
+       the existing `compass.selection` namespace (`compass.py` is already a
+       `test_no_magic_numbers.CALC_FILES` entry, so no literal may appear), and the block discloses the
+       full UNCAPPED count per reason so the reader sees how many were held back (today 27 and 25).
+       Ordering inside each reason class stays deterministic (leadership desc, ticker asc)
+    5. Keep the shadow cohort out of the focus section exactly as J-04 step 6 requires: a restored
+       near-miss why-not entry is a selection-trace row (ticker plus condition evaluation) only — never a
+       shadow row, never a frozen matching-context field, never a research-only cohort rendering, and
+       never an ordering input for the candidate list (AG-16)
+    6. Prove the scientific identities and every membership are unmoved: `candidate_rule_hash` and
+       `cohort_rule_hash` are byte-identical before and after, and the candidate list,
+       `disposition_tally`, `comparison_cohort` membership and `near_threshold_shadow` are all identical
+       — only `manifest_config_hash` and the why-not-bearing `content_hash` differ on NEWLY minted
+       manifests, matching this goal file's own scope rule ("why-not display keys live ONLY in the broad
+       `manifest_config_hash`"). Extend `test_manifest_invariants.py`'s
+       `test_tc23_why_not_and_qualifier_changes_move_only_manifest_config_hash` to cover the new keys
+    7. Add the fixture the suite lacks — an above-floor, qualifier-failing, cap-excluded row (the real
+       DXCM shape: L≈84.98 / E≈26.53 / R≈57.63) alongside a below-floor near-miss — and assert that no
+       entry is served or rendered as passing a qualifier its stored row fails, and that both reason
+       classes appear when both exist
+    8. Prove nothing frozen moved: stored `next_session_manifests` rows and their export files are
+       byte-identical before and after (AG-12), this journey mints no new version by itself, and pre-fix
+       manifests remain readable exactly as they are with their eligibility unchanged (AG-17). Cite in
+       the dev handoff that `provenance.config_keys` includes `compass.selection` and
+       `provenance.engine_files` hashes `compass.py`, so newly minted manifests legitimately carry a
+       moved `manifest_config_hash` and engine identity — an expected, disclosed change, never a
+       backfill or re-stamp
+  - Acceptance:
+    - **Consistency (single source):** the why-not entries, their reasons and the disclosed counts remain
+      slices of the ONE `compass.evaluate_selection` trace computed inside `build_manifest_payload` and
+      served only by `GET /api/compass` — no new producer, no new route, no new Data Contract value, and
+      no client-side rule; the new composition keys are config-only under `compass.selection`;
+      `state/blueprint.md` records a dated note on the existing "Next-session manifest — CONTENT block"
+      row's `selection.why_not` field; every produced manifest still validates against the committed
+      schema at `docs/handoffs/trendora-next-session-manifest-v1.schema.json` with NO `schema_version`
+      bump and no new versioned schema file (`selection.why_not` is an unconstrained array there, so this
+      is additive).
+    - **Correctness:** ZERO served or rendered why-not entries claim a qualifier pass that the stored row
+      contradicts (was 20 of 20); every entry names at least one true reason, carrying threshold, stored
+      actual and distance wherever a threshold applies, each value equal to the `GET /api/stocks` row for
+      the same ticker and as-of; both reason classes appear whenever both exist; the disclosed per-reason
+      counts equal the uncapped totals; and `candidate_rule_hash`, `cohort_rule_hash`, candidate
+      membership, `disposition_tally` and both cohorts are provably unmoved by this journey.
+    - **Honest status & anti-goals:** no threshold VALUE is tuned and nothing is chosen from realized
+      returns (AG-15); no new composite, blended or "near-miss" number appears (AG-11); the
+      near-threshold shadow cohort is still never rendered in the focus section and never an ordering
+      input (AG-16); candidacy is NOT re-gated on the advisory qualifiers (J-12 stands); frozen rows and
+      export bytes are untouched and no manifest is regenerated, rebound or re-hashed (AG-12/AG-17);
+      framing stays "worth monitoring next session" — no imperative verbs, no forecast wording, no
+      proven-language, and the evidence chips keep reading their true ledger status (AG-1/AG-2). If the
+      truthful reason cannot be stated without violating an anti-goal or regressing a passing journey,
+      STOP and surface it for owner review rather than widening the rule.
+    - **Walkthrough:** a `[NEW]`-flagged walkthrough of the corrected "Not priority" list — a cap-excluded
+      name naming the cap and its advisory misses, a below-floor near-miss naming the floor with its
+      distance, and the disclosed per-reason counts — viewable via
+      `demo.sh market-compass --session-live`.
+
+- **J-15: "What changed" accounts for every stock-level crossing it already evaluated — nothing above
+  the threshold vanishes and "Suppressed moves" tells the truth (goal-proposer, 2026-09-01)**
+  - Why: the Vision promises `/` answers "what materially changed since the previous session", and the
+    What-changed card's "Suppressed moves (N)" disclosure claims to say what was held back. Measured on
+    the frontier pair (stored runs 2026-08-11 → 2026-08-12, the default `/` view) and reconciled against
+    the committed export `2026-08-12_v9.json`: **539 members on both sides, 0 new-to-universe, 57
+    leadership-bucket crossings, of which 14 move at or above `compass.delta.stock_score_min_change`
+    (8.0) — yet the manifest carries exactly 10 stock-kind changes (= `compass.delta.max_stock_items`)
+    and ZERO stock-kind suppressed rows.** So **4 above-threshold movers appear in neither list — TRV
+    (B→C, 8.66), SJM (D→C, 8.48), ALL (C→D, 8.33), TTWO (C→D, 8.14)** — and the 43 below-threshold
+    crossings are never classified at all, so "Suppressed moves (36)" (sector 24 + theme 9 + breadth 2 +
+    market 1) omits every one of the 57 stock crossings the producer evaluated: 47 of 57 are invisible
+    and uncounted. Cause (`apps/backend/app/engine/session_delta.py`, `_stock_changes`):
+    `bounded_crossings = crossing_pairs[: max(max_items - len(bounded_new), 0)]` is applied BEFORE
+    `_classify(bounded_crossings, threshold)`, so only the top-10-by-magnitude are ever classified and
+    everything past the bound enters neither `changes` nor `suppressed`. J-13 (iter-36) closed exactly
+    this hole for the sector and theme kinds with per-kind `shown_count` / `suppressed_count` /
+    `residual_count` that close against the configured total, and deliberately left the stock kind out;
+    the stock kind still has no accounting at all. The `max_stock_items` bound exists so the producer
+    never ranks or displays the full 500+ universe in one pass (AG-8) and it stays — `_stock_changes`
+    already iterates every member and already materializes the (small) crossing list, so counting what it
+    has computed adds no query and no unbounded structure.
+  - Steps:
+    1. Before changing anything, reproduce and record the baseline from the stored runs and the committed
+       export: total bucket crossings evaluated (57), how many meet `stock_score_min_change` (14), how
+       many are shown (10 = `max_stock_items`), the named above-threshold movers present in neither list
+       (TRV / SJM / ALL / TTWO), and the count of stock-kind rows among the 36 suppressed (0). Record it
+       in the dev handoff; mutate and re-export nothing (AG-12)
+    2. Classify BEFORE bounding: every crossing the producer evaluates is either shown, counted as
+       suppressed (it moved less than `stock_score_min_change`), or counted in a residual ("further
+       movers not shown" — it met the threshold but fell beyond the display cap). Nothing is dropped
+       uncounted. `max_stock_items` stays the DISPLAY cap and keeps its current value (AG-15 — no
+       threshold VALUE is tuned here)
+    3. Serve the stock-kind accounting the way J-13 serves the group kinds: an evaluated total plus
+       `shown_count`, `suppressed_count` and `residual_count` that sum to it exactly, computed engine-side
+       inside the existing `compute_delta`; the frontend applies no threshold, computes no count and
+       drops nothing of its own
+    4. Make the card's disclosure true: the suppressed COUNT is complete (it now includes the stock kind
+       — today 43 more), an above-threshold mover held back by the display cap is disclosed as a residual
+       and is visibly distinct from a suppressed one (the reader can tell "did not move enough" from
+       "moved enough but is not shown"), and any list that remains bounded for display discloses its own
+       bound rather than truncating silently
+    5. Uphold AG-8 explicitly: no new query, no full-universe materialization and no per-name row for the
+       residual/suppressed counts — cite in the dev handoff the manifest-build query count before and
+       after (unchanged) and keep `session_delta.py` in `test_no_magic_numbers.CALC_FILES`, with any new
+       key config-only under the existing `compass.delta` namespace
+    6. Spot-check two named rows against stored values served by `GET /api/stocks` at both as-of dates —
+       one shown crossing and one residual crossing (e.g. the 8.66 mover): the from/to buckets and the
+       leadership-score move equal the stored rows
+    7. Assert nothing else moved: the 10 displayed stock entries and their order, the sector/theme change
+       entries, J-13's `session_delta.rotation` block and its per-kind accounting, `candidate_rule_hash`
+       and `cohort_rule_hash` are all unchanged, so every J-02 and J-13 assertion still holds
+    8. Cite in the dev handoff the fixtures: (a) more above-threshold crossings than `max_stock_items` —
+       the overflow lands in `residual_count` and nowhere else; (b) new-to-universe members present —
+       they keep their existing unconditional priority and are counted in the same accounting; (c) zero
+       crossings — explicit zeros with an honest empty state, never a blank
+  - Acceptance:
+    - **Consistency (single source):** the stock-kind counters are computed ONCE by the existing
+      `app.engine.session_delta.compute_delta` inside `app.engine.compass.build_manifest_payload` and
+      served only by the existing `GET /api/compass` — no new producer and no new route; they are
+      registered as added fields of the existing "Next-session manifest — CONTENT block" Data Contract row
+      in `state/blueprint.md` with a dated note, exactly as iter-36 registered `session_delta.rotation`;
+      any new key is config-only under `compass.delta`; every produced manifest still validates against
+      the committed schema at `docs/handoffs/trendora-next-session-manifest-v1.schema.json` with NO
+      `schema_version` bump and no new versioned schema file (`session_delta` is an open object there, so
+      this extension is additive).
+    - **Correctness:** for the stock kind, shown + suppressed + residual equals the number of crossings
+      the producer evaluated — on today's frontier pair 10 + 43 + 4 = 57 (record the measured partition if
+      the data has moved) — and the same identity holds in fixtures; zero above-threshold crossings are
+      missing from all three counts; every displayed row still meets `stock_score_min_change`; the
+      spot-checked from/to buckets and score moves equal the stored rows; and J-13's sector/theme
+      accounting plus the rotation block are unchanged.
+    - **Honest status & anti-goals:** no unbounded whole-table load, no full-universe ranking and no
+      per-name residual listing is introduced (AG-8) — the display cap keeps its value and its purpose;
+      no new composite or blended change score (AG-11); no `compass.delta` threshold VALUE is retuned and
+      nothing is chosen from realized returns (AG-15); frozen manifests and export bytes stay untouched
+      and no manifest is regenerated or re-hashed by this journey (AG-12); zero and empty states are
+      explicit and dated, never blank; no imperative, forecast or proven-language (AG-1/AG-2).
+    - **Walkthrough:** a `[NEW]`-flagged walkthrough of the complete What-changed accounting — the shown
+      crossings, the now-true suppressed count, and a named above-threshold mover disclosed in the
+      residual instead of vanishing — viewable via `demo.sh market-compass --session-live`.
+
 <!-- /AUTO:journeys -->
 
 ## Anti-goals

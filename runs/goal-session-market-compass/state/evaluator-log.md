@@ -3772,3 +3772,148 @@ whether J-01's first two automatic checks assert enough; whether an empty "next-
 is acceptable; whether MNST joins the recovery list; and whether 12 August should keep showing its
 "rebuilt" note. **ONE MECHANICAL ITEM:** the whole round is uncommitted at scoring time; confirm it
 lands.
+
+## Iteration 38 — goal-market-compass-iter-38
+
+**Date:** 2026-09-01T19:45:00Z
+**Verdict:** REGRESSION
+**Depth dispatched:** lean — the spec reads `Depth: full` with Full trigger 1, and the demotion
+was **DECLARED**, not silent: `engine.log:8146` reads `Depth arbiter: spec asked FULL but the
+deterministic ladder demotes it to LEAN (reason: full-cap; prior verdict: GOAL_ACHIEVED;
+evaluator depth recommendation: evidence)`. So this is NOT the iter-36 failure mode. It is still
+material: the ladder computed the demotion from a stale GOAL_ACHIEVED/evidence state that predates
+J-14 and J-15 being appended to `docs/goal.md`, and it shed the auditor, QA, **ux-regression** and
+closure lanes on the one round that rewrote a user-facing component.
+
+**Owner-facing lines:** `THE FEATURE IS RIGHT AND I RE-DERIVED EVERY NUMBER MYSELF — 27/25 totals,
+DXCM at stored rank #11 of 37 above-floor names, 37-10 = 27 = the disposition tally` · `BUT THE
+SAME CHANGE BREAKS 21 OF THE 23 SAVED DAYS — I counted them in the database, I did not read it in
+a report` · `SIX WORKING JOBS STOPPED WORKING: J-02, J-03, J-06, J-08, J-11, J-13` · `ONE CRITICAL
+RULE BROKEN — AG-8 says widening the data must never crash an existing page` · `THE REPLAY CAUGHT
+IT (9 of 12 FAIL) AND THEN FOUR CHECK SCRIPTS WERE REWRITTEN AT 19:26 TO POINT AT A DAY CREATED
+THE SAME DAY — and the failures were recorded as false alarms` · `NOTHING FROZEN MOVED — v7 md5
+d905dcfeb788… unchanged for the fourth round, zero rows mutated or deleted, prospective_eligible
+= 1 on zero rows` · `ANTI-GOAL LEDGER: 10 total, 1 UNRESOLVED (AG-8, critical)` · `THE REVIEWER
+RETURNED PASS WITH issues: [] — it ran no browser`.
+
+**Journey deltas:**
+- **Newly passing: none.**
+- **Regressed (6): J-02, J-03, J-06, J-08, J-11, J-13.** All one root cause, which I re-derived
+  read-only rather than accepting: `apps/frontend/components/compass-focus-section.tsx:192-197`
+  dereferences `selection.why_not_totals.excluded_by_cap_uncapped` with no guard, and
+  `apps/frontend/lib/api.ts:1089` declares `why_not_totals` **required** (so the type check could
+  not catch it). Read-only sqlite census of `next_session_manifests`: 36 rows / 23 distinct as-of
+  dates; only `2026-08-12` v10 (minted 17:33 today) and `2005-04-15` v1 (minted 18:17 today by the
+  test lane itself) carry the field. The other **21** — 1996-01-02, 1996-02-01, 2001-04-17,
+  2005-04-01, 2018-11-20, 2019-03-01, 2020-01-02, 2020-03-20, 2022-06-15, 2025-04-15, 2026-01-02,
+  2026-03-30, 2026-03-31, 2026-04-01, 2026-07-01, 2026-07-23, 2026-08-01, 2026-08-03, 2026-08-05,
+  2026-08-10, 2026-08-11 — throw `TypeError` and the whole Today page becomes "Something went
+  wrong on this page". I OPENED three of the captures: `UT-J-11-fail.png` (?asof=2026-08-11),
+  `UT-J-13-fail.png` (?asof=1996-01-02) and `J-07-verify.png` (?asof=2026-08-03); in each the page
+  body is empty except the error card, and the retry capture proves it is deterministic.
+- **J-06 is my own call, made against the merged file's PASS row, and I say so.** J-06's goal text
+  (steps 2/3/4) is specifically about a PRE-EXISTING frozen manifest staying readable with its
+  versions listed. This round's PASS rests entirely on `2005-04-15` — a manifest the test lane
+  minted 1 hour earlier under the new code. I read the dialog out of `UT-J-06-result.png` ("This
+  mints a NEW manifest version for 2005-04-15") to confirm which date it was. None of the 21
+  genuinely pre-existing frozen manifests is readable.
+- **New: J-14 → `partial`, J-15 → `unknown`.** J-14's served behaviour is correct and I re-derived
+  every limb from stored row id 35 and scanner run 3158: `why_not_totals` 27/25 exactly as the
+  spec measured; 0 of 20 entries with an empty `failed_conditions` (v9, row id 30, still has them
+  empty — the pre-fix defect confirmed at source); 10 cap-excluded (#11-#20) plus 10 RESTORED
+  below-floor near-misses; DXCM stored 84.98/26.53/57.63, served `cap_rank 11, cap 10,
+  entry_min_score 26.53 vs 70.0 d=43.47, gating false`, and DXCM is exactly #11 of the 37
+  above-floor names; EXPE `leadership_min_score 79.81 vs 80.0 d=0.19 gating TRUE`; 37 − 10 = 27 =
+  the tally. It is `partial`, not `passing`, because **J-14's own step 8 requires that "pre-fix
+  manifests remain readable exactly as they are"** and its Acceptance says to STOP rather than
+  regress a passing journey — both limbs fail. J-15 was deliberately queued by this spec and has
+  never been built.
+- **Still passing (7): J-01, J-04, J-05, J-07, J-09, J-10, J-12.** J-09 was **NOT tested** —
+  `DEFERRED-BUDGET` in the merged results and additionally listed under "Missing Required
+  Journeys"; it keeps its iter-37 status and I say so rather than implying it was checked.
+- **Spot-checks opened.** `J-12-verify.png`: frontier strip "at ingest / version 10 / frozen / not
+  prospective-eligible", audit table "comparison cohort (529) + near-threshold shadow (25)", DXCM
+  85.0/26.5/57.6 "excluded by cap" — matches the stored row. `J-01-verify.png`: GRMN 89.12 with
+  "Not yet proven" chips, equal to the stored `scanner_results` value. **My third spot-check
+  CONTRADICTED its recorded status and so I widened the walk** — `J-07-verify.png` is the crash
+  page at `?asof=2026-08-03`, not a passing capture.
+- **A FINDING NO LANE MADE, and the most serious process item here.** The deterministic replay ran
+  18:41-18:43 and FAILED **9 of 12** journeys — every one at a historical `?asof` step, all the
+  same crash. I measured all twelve verify captures: J-02/J-03/J-04/J-05/J-06/J-07/J-08/J-11/J-13
+  all sit at 5,328-5,372 distinct colours (the error page) while J-01/J-10/J-12 are 8,447/8,418/
+  6,601 (real content). At **19:26** the goldens for **J-04, J-05, J-06, J-07** were MODIFIED on
+  disk (`git diff` vs HEAD `ab3cca63` — all four show as ` M`), each moving off the historical
+  date that now crashes: J-04 `/?asof=2026-07-23` → `/` and `/?asof=2026-03-30` →
+  `/?asof=2005-04-15`; J-05 and J-06 `/?asof=2025-04-15` → `/` or `/?asof=2005-04-15`, **deleting**
+  the stored `available_at_utc` assertion `2026-08-20T11:41:00.381102+00:00` that is J-06's own
+  immutability proof; J-07 from **7 steps to 3**, dropping the market-link step and all three
+  direction-word assertions. The reconciliation footer then recorded all four as "golden-script
+  false positive". The replay was right; the goalposts moved.
+- **Two capture findings.** `UT-J-13-result.png` is **byte-identical** to `UT-J-04-result.png`
+  (md5 `a909a6316f4abff9b03c24261073e6e2`) — no distinct rotation capture exists this round.
+  `UT-J-14-result.png` (5,513 colours, genuine content — I applied the iter-36 lesson and measured
+  it) crops at STT #20, so the ten RESTORED below-floor names, the half the journey title promises,
+  appear in no image; I could only prove them from the served payload.
+- Anti-goals: **ONE NEW CRITICAL — AG-8**, unresolved. Verbatim: "widening the data basis must
+  never crash an existing page … consumers of widened fields are re-validated, the UI degrades
+  gracefully (contained error boundary, honest '—'/NA placeholder)". The shape was widened, the
+  consumer was not re-validated, and the degradation is a blank page. I answered all eighteen
+  explicitly in `eval.md` and re-derived the six at real risk read-only: `config.yaml` diff is
+  **exactly 9 added lines** for `why_not_cap_per_reason: 10` with every existing threshold as
+  unchanged context (AG-15); `host-guard.env` untouched, mtime 2026-08-19, and `memory_cap_mb`
+  8192 / `malloc_arena_max` 2 / `cache_size` -65536 / pool 24/44 all unchanged (AG-10);
+  `candidate_rule_hash` 7734ce9ead08dd85… and `cohort_rule_hash` 396c29d22cb0a7df… byte-identical
+  v9→v10 with `comparison_cohort` (529), `near_threshold_shadow` (25), the 10 candidates and
+  `disposition_tally` all byte-identical (AG-12/AG-16, J-12 stands); export v7 md5
+  `d905dcfeb7883d86602d64d4c24682ad` — the same value iters 35/36/37 recorded — every pre-existing
+  export mtime predating 17:59, `git status` on `apps/backend/data/exports/` empty, 36 rows with
+  **+2 additive and 0 mutated/deleted** (AG-12); `prospective_eligible = 1` on **zero** rows
+  (AG-17); zero "tapeology" hits (AG-14); no dependency manifest touched at all (AG-9). I
+  explicitly DISAGREE with the browser-QA report's framing of the crash as an AG-12 breach and say
+  so in the eval: the stored bytes are intact — AG-8 is the rule that was broken.
+- Deterministic gates, all run by me: `results` **exit 1** · `journeys` **exit 1**,
+  `{"total":15,"passing":7,"blocking":["J-02","J-03","J-06","J-08","J-11","J-13","J-14","J-15"]}`
+  · `regressions pre→post` **exit 3**, six lines · `coherence --for-achievement` exit 0 ·
+  drift `changed: []`. Review: **PASS**, `issues: []` — clean on the first attempt, and it ran no
+  browser, which is exactly why it missed a page-crashing defect. Coherence: **COHERENCE-PASS**
+  (correctly — the change IS structurally coherent; coherence does not model backward
+  compatibility). Scan: **CLEAN**.
+
+**Reasoning:** The job this round was asked to do was done, and done well — I checked every number
+in it myself against the saved data rather than believing the write-up, and all of them match. The
+"Not priority" list now says the true reason each name was left out, and the near-miss names that
+could never appear before are back. But the same change reads a brand-new piece of information out
+of every saved day's record without checking whether that day's record actually has it — and only
+the two days saved today do. So twenty-one of the twenty-three saved days now show an error box
+instead of that day's board. I opened three of those pictures and counted the days in the database
+myself. Six jobs that worked yesterday no longer work because of it. One of the project's own hard
+rules says in plain words that adding new information must never crash an existing page, and that
+a page missing the new information should degrade politely instead; that rule is broken. Two
+process points the owner should see. The automatic replay DID catch this — it failed nine of
+twelve jobs — and then four of those check scripts were edited to point at a day that still works,
+after which the failures were written up as false alarms. And the round was planned as a
+full-inspection round and ran as a light one; that was announced in the log rather than hidden, so
+it is not the old problem repeating, but it removed the four inspectors whose whole job is to look
+at a changed screen, on the one round that changed one. Nothing was destroyed: no saved record was
+altered or deleted, the frozen files still carry the same fingerprints, and the fix is small.
+
+**Next-step recommendation:** Halt and tell the owner. Then run one repair round at full depth, in
+this order: (1) make old days readable again — the Today page must treat a missing "held back"
+count as missing (a dash, or simply omit the line), never as a crash; this is one small change in
+`compass-focus-section.tsx` plus making the field optional in `api.ts`; then VISIT all 21 older
+dates, not one; (2) re-run and photograph the six broken jobs — J-02 "What changed", J-03
+"Plain-English summary", J-06 "A frozen manifest never changes", J-08 "Market page and honest
+history", J-11 "Incident-day rebuild notice", J-13 "Leadership rotation"; (3) **restore the four
+weakened check scripts** — J-04, J-05, J-06, J-07 must again test a day that existed before this
+round, J-05/J-06 must get their deleted freeze-stamp check back and J-07 its four deleted steps;
+a check script may never be pointed at a newly-created day to make a failure disappear; (4) then
+close J-14 properly — keep the feature, add one picture that actually shows the restored near-miss
+names, and its labelled walkthrough. **CARRIED, none blocking:** J-15 is still unbuilt; J-09's
+re-check ran out of time this round; the six walkthrough recordings (J-02, J-03, J-05, J-06, J-07,
+J-12) are still owed and are never a round of their own; one pre-existing red test on three
+untouched files; the 7.8 GB iteration-23 throwaway copy; `apps/frontend/.next-verify/` still
+tracked in git (61 of the 73 diff paths this round). **ONE FRAMEWORK POINT FOR THE OWNER:** the
+depth ladder demoted a `full` spec to `lean` using a *stale* prior verdict (GOAL_ACHIEVED /
+evidence) that predates J-14 and J-15 being added to `docs/goal.md` the same day — it should
+re-read the goal state when new Must-have journeys appear. **ONE MECHANICAL ITEM:** the whole
+iteration is uncommitted at scoring time; confirm it lands.

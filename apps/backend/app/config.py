@@ -2639,6 +2639,18 @@ class CompassSelectionCfg(BaseModel):
     max_candidates: int
     why_not_floor: float
     why_not_cap: int
+    # goal-market-compass iter-38 (J-14): the DISPLAY split between the two why-not reason classes --
+    # up to this many `excluded_by_cap` entries AND up to this many `below_selection_floor` entries are
+    # each reserved a slot within `why_not_cap` (leadership desc, ticker asc within each class); any
+    # slots a scarce class leaves unused backfill from the other class's remaining pool, never wasted.
+    # Without this split, a pure leadership-desc sort over the combined pool always favors
+    # `excluded_by_cap` rows (leadership >= the floor, by construction, always outranks every
+    # `below_selection_floor` row) -- whenever the cap-excluded pool alone exceeds `why_not_cap` (the
+    # committed 2026-08-12 frontier: 27 cap-excluded vs a cap of 20), the near-miss band would remain
+    # entirely unlistable no matter how the individual entries are labeled (BACKGROUND, J-14). Display
+    # allocation only -- never a candidacy rule (AG-15), part of `manifest_config_hash`'s broad scope
+    # only (never `candidate_rule_hash`/`cohort_rule_hash`).
+    why_not_cap_per_reason: int
     shadow: CompassSelectionShadowCfg
 
     @model_validator(mode="after")
@@ -2655,6 +2667,13 @@ class CompassSelectionCfg(BaseModel):
             raise ValueError("compass.selection.max_candidates must be positive")
         if self.why_not_cap <= 0:
             raise ValueError("compass.selection.why_not_cap must be positive")
+        if self.why_not_cap_per_reason <= 0:
+            raise ValueError("compass.selection.why_not_cap_per_reason must be positive")
+        if 2 * self.why_not_cap_per_reason > self.why_not_cap:
+            raise ValueError(
+                "compass.selection.why_not_cap_per_reason must leave room for BOTH reason classes within "
+                f"why_not_cap (2 * {self.why_not_cap_per_reason} > {self.why_not_cap})"
+            )
         if self.why_not_floor > self.leadership_min_score:
             raise ValueError(
                 "compass.selection.why_not_floor must be <= leadership_min_score "
@@ -2774,6 +2793,7 @@ def _default_compass() -> "CompassCfg":
             max_candidates=10,
             why_not_floor=75.0,
             why_not_cap=20,
+            why_not_cap_per_reason=10,
             shadow=CompassSelectionShadowCfg(min_score=75.0),
         ),
         vocabulary=CompassVocabularyCfg(

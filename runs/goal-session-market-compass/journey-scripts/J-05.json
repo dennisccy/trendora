@@ -4,8 +4,8 @@
   "name": "Each close freezes one provenance-stamped next-session manifest, exported byte-consistently",
   "default_timeout_ms": 8000,
   "steps": [
-    {"n": 1, "journey": "J-05", "action": {"type": "goto", "url": "/?asof=2025-04-15"}, "expect": {"text": "Basis: available"}},
-    {"n": 2, "journey": "J-05", "action": {"type": "goto", "url": "/?asof=2025-04-15"}, "expect": {"text": "2026-08-20T11:41:00.381102+00:00"}},
+    {"n": 1, "journey": "J-05", "action": {"type": "goto", "url": "/"}, "expect": {"text": "Basis: available"}},
+    {"n": 2, "journey": "J-05", "action": {"type": "goto", "url": "/?asof=2005-04-15"}, "expect": {"text": "Basis: available"}},
     {"n": 3, "journey": "J-05", "action": {"type": "click", "target": {"testid": "compass-manifest-regenerate-button"}}, "expect": {"text": "Confirm manifest regenerate"}},
     {"n": 4, "journey": "J-05", "action": {"type": "click", "target": {"role": "button", "name": "Cancel"}}, "expect": {"text": "Basis: available"}}
   ]

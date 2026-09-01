@@ -161,12 +161,19 @@ def test_why_not_near_miss_has_failed_conditions_with_distance(engine, cfg, sele
         result = compass.evaluate_selection(session, run, cfg)
     why_not_by_ticker = {w["ticker"]: w for w in result["why_not"]}
     assert "CCC" in why_not_by_ticker  # leadership 77 >= why_not_floor 75 -> near-miss, individually listed
-    failed = why_not_by_ticker["CCC"]["failed_conditions"]
+    ccc = why_not_by_ticker["CCC"]
+    assert ccc["reason"] == "below_selection_floor"  # goal-market-compass iter-38 (J-14)
+    assert ccc["cap_rank"] is None and ccc["cap"] is None
+    failed = ccc["failed_conditions"]
     assert any(f["condition"] == "entry_min_score" for f in failed)
     entry_fail = next(f for f in failed if f["condition"] == "entry_min_score")
     assert entry_fail["actual"] == 55.0
     assert entry_fail["threshold"] == cfg.compass.selection.entry_min_score
     assert entry_fail["distance"] == pytest.approx(cfg.compass.selection.entry_min_score - 55.0)
+    assert entry_fail["gating"] is False
+    # CCC also fails the GATING leadership check (77 < 80) -- it is why it is below_selection_floor.
+    leadership_fail = next(f for f in failed if f["condition"] == "leadership_min_score")
+    assert leadership_fail["gating"] is True
     # DDD is far below why_not_floor -> counted in the tally, but NOT given an individual why-not entry
     assert "DDD" not in why_not_by_ticker
 
@@ -184,6 +191,9 @@ def test_disposition_tally_partitions_member_count_minus_candidates(engine, cfg,
 
 
 def test_excluded_by_cap_get_empty_failed_conditions(engine, cfg, selection_run):
+    """goal-market-compass iter-38 (J-14): extended -- a cap-excluded row that truly passed every
+    qualifier now ALSO carries `reason == "excluded_by_cap"` and a non-null `cap_rank`/`cap` (the row's
+    1-based rank among all above-floor qualifying rows, and the configured cap value)."""
     capped_selection = cfg.compass.selection.model_copy(update={"max_candidates": 2})
     capped_cfg = cfg.model_copy(update={"compass": cfg.compass.model_copy(update={"selection": capped_selection})})
     with Session(engine) as session:
@@ -196,8 +206,178 @@ def test_excluded_by_cap_get_empty_failed_conditions(engine, cfg, selection_run)
     why_not_by_ticker = {w["ticker"]: w for w in result["why_not"]}
     cut_tickers = {"AAA", "BBB", "EEE", "HPE"} - {c["ticker"] for c in result["candidates"]}
     assert cut_tickers == {"AAA", "BBB"}
+    # Qualifying order (leadership desc): EEE(95) rank1, HPE(92.7) rank2, AAA(92) rank3, BBB(88) rank4.
+    expected_cap_rank = {"AAA": 3, "BBB": 4}
     for cut_ticker in cut_tickers:
-        assert why_not_by_ticker[cut_ticker]["failed_conditions"] == []  # passed everything; only the cap cut it
+        entry = why_not_by_ticker[cut_ticker]
+        assert entry["failed_conditions"] == []  # passed everything; only the cap cut it
+        assert entry["reason"] == "excluded_by_cap"
+        assert entry["cap_rank"] == expected_cap_rank[cut_ticker]
+        assert entry["cap"] == 2
+
+
+@pytest.fixture()
+def why_not_reasons_run(engine, cfg):
+    """goal-market-compass iter-38 (J-14): isolating fixture rows for the why-not reason split -- each
+    row fails (or clears) exactly one condition so a single assertion can attribute a why-not entry's
+    shape to ONE cause (iter-35 lesson, applied one level below its own TC-24 fixture-confound finding:
+    `selection_run`'s only above-floor qualifier-failing row, HPE, is ALWAYS inside a max_candidates=2
+    cap because its leadership score is so high -- so no existing fixture ever produced a cap-excluded
+    row that ALSO missed a qualifier, BACKGROUND):
+      CAND1/CAND2: L=95/90 -> always candidates (top of the leadership order).
+      PASS_CUT: L=85, E=80, R=40 -> qualifies (clears leadership/entry/risk), ranked beyond a
+        max_candidates=2 cap -> excluded_by_cap with failed_conditions == [] (TC-2).
+      DXCM: L=84.98, E=26.53, R=57.63 -> the real DXCM shape (BACKGROUND): clears the leadership floor
+        and the risk ceiling but fails the entry_min_score (70.0) ADVISORY qualifier, ranked beyond the
+        same cap -> excluded_by_cap with exactly one failed_conditions entry (entry_min_score,
+        gating: False) (TC-1).
+      NEARMISS: L=76.0, E=75.0, R=55.0 -> below leadership_min_score (80) but at/above why_not_floor
+        (75), clearing BOTH advisory qualifiers -> below_selection_floor with failed_conditions
+        containing ONLY the leadership_min_score check (gating: True) -- isolates the floor miss from
+        any advisory one (TC-3).
+      FARBELOW: L=50.0, E=80.0, R=40.0 -> far below why_not_floor -> tally-only, no individual why-not
+        entry (mirrors selection_run's DDD).
+    """
+    with Session(engine) as session:
+        run = _mk_run(session, date(2024, 5, 1))
+        _mk_result(session, run.id, "CAND1", 95.0, "A", 90.0, "A", 35.0, "B")
+        _mk_result(session, run.id, "CAND2", 90.0, "A", 88.0, "B", 38.0, "B")
+        _mk_result(session, run.id, "PASS_CUT", 85.0, "A", 80.0, "B", 40.0, "C")
+        _mk_result(session, run.id, "DXCM", 84.98, "A", 26.53, "E", 57.63, "C")
+        _mk_result(session, run.id, "NEARMISS", 76.0, "B", 75.0, "B", 55.0, "C")
+        _mk_result(session, run.id, "FARBELOW", 50.0, "E", 80.0, "B", 40.0, "C")
+        session.commit()
+        session.refresh(run)
+        return run.id
+
+
+def test_why_not_reasons_and_cap_rank_isolate_each_condition(engine, cfg, why_not_reasons_run):
+    """J-14 step 7 / TC-1 / TC-2 / TC-3: the two isolating fixtures the prior suite lacked -- an
+    above-floor, qualifier-failing, cap-excluded row (DXCM-shaped) and a below-floor near-miss that
+    clears every advisory qualifier. No entry is ever served as passing a qualifier its stored row
+    fails, and both reason classes appear together in this fixture universe."""
+    capped_selection = cfg.compass.selection.model_copy(update={"max_candidates": 2})
+    capped_cfg = cfg.model_copy(update={"compass": cfg.compass.model_copy(update={"selection": capped_selection})})
+    with Session(engine) as session:
+        run = session.get(ScannerRun, why_not_reasons_run)
+        result = compass.evaluate_selection(session, run, capped_cfg)
+
+    assert {c["ticker"] for c in result["candidates"]} == {"CAND1", "CAND2"}
+    why_not_by_ticker = {w["ticker"]: w for w in result["why_not"]}
+
+    # TC-2: PASS_CUT clears every qualifier -- cap-excluded, empty failed_conditions, ranked #3 of cap 2.
+    pass_cut = why_not_by_ticker["PASS_CUT"]
+    assert pass_cut["reason"] == "excluded_by_cap"
+    assert pass_cut["failed_conditions"] == []
+    assert pass_cut["cap_rank"] == 3
+    assert pass_cut["cap"] == 2
+
+    # TC-1: DXCM clears leadership + risk but misses the entry_min_score advisory qualifier -- served as
+    # excluded_by_cap (never as though it "passed every qualifier"), exactly one failed condition.
+    dxcm = why_not_by_ticker["DXCM"]
+    assert dxcm["reason"] == "excluded_by_cap"
+    assert dxcm["cap_rank"] == 4
+    assert dxcm["cap"] == 2
+    assert len(dxcm["failed_conditions"]) == 1
+    entry_fail = dxcm["failed_conditions"][0]
+    assert entry_fail["condition"] == "entry_min_score"
+    assert entry_fail["gating"] is False
+    assert entry_fail["threshold"] == 70.0
+    assert entry_fail["actual"] == 26.53
+    assert entry_fail["distance"] == pytest.approx(70.0 - 26.53)
+
+    # TC-3: NEARMISS is below the leadership floor but clears both advisory qualifiers -- served as
+    # below_selection_floor with EXACTLY the gating leadership_min_score miss, cap_rank/cap both null.
+    nearmiss = why_not_by_ticker["NEARMISS"]
+    assert nearmiss["reason"] == "below_selection_floor"
+    assert nearmiss["cap_rank"] is None
+    assert nearmiss["cap"] is None
+    assert len(nearmiss["failed_conditions"]) == 1
+    leadership_fail = nearmiss["failed_conditions"][0]
+    assert leadership_fail["condition"] == "leadership_min_score"
+    assert leadership_fail["gating"] is True
+    assert leadership_fail["threshold"] == 80.0
+    assert leadership_fail["actual"] == 76.0
+    assert leadership_fail["distance"] == pytest.approx(4.0)
+
+    # FARBELOW is far below why_not_floor -- tally-only, no individual why-not entry.
+    assert "FARBELOW" not in why_not_by_ticker
+
+    # No entry is ever served as passing a qualifier its stored row fails (J-14 acceptance): every
+    # failed_conditions item's `actual` genuinely misses its own `threshold` in the failing direction.
+    for entry in result["why_not"]:
+        for failed in entry["failed_conditions"]:
+            if failed["condition"] == "risk_max_score":
+                assert failed["actual"] > failed["threshold"]
+            else:
+                assert failed["actual"] < failed["threshold"]
+
+    # Both reason classes appear together when both exist in the fixture universe.
+    assert {w["reason"] for w in result["why_not"]} == {"excluded_by_cap", "below_selection_floor"}
+
+
+def test_why_not_totals_uncapped_before_display_truncation(engine, cfg, why_not_reasons_run):
+    """TC-4 / TC-11: `why_not_totals` counts the FULL pool per reason, computed from the SAME
+    non_qualifying/excluded_by_cap_pairs partitions BEFORE `why_not_cap` truncates the display list --
+    and reads an explicit 0, never a missing field, when one reason class is empty (TC-11: zero
+    cap-excluded names)."""
+    capped_selection = cfg.compass.selection.model_copy(update={"max_candidates": 2})
+    capped_cfg = cfg.model_copy(update={"compass": cfg.compass.model_copy(update={"selection": capped_selection})})
+    with Session(engine) as session:
+        run = session.get(ScannerRun, why_not_reasons_run)
+        capped_result = compass.evaluate_selection(session, run, capped_cfg)
+    assert capped_result["why_not_totals"] == {
+        "excluded_by_cap_uncapped": 2,  # PASS_CUT, DXCM
+        "below_floor_in_band_uncapped": 1,  # NEARMISS (FARBELOW is below why_not_floor)
+    }
+
+    # TC-11: default cfg (max_candidates=10) -- all 4 qualifying rows become candidates, so ZERO rows
+    # are excluded_by_cap; the total is an explicit 0, never a missing/null field.
+    with Session(engine) as session:
+        run = session.get(ScannerRun, why_not_reasons_run)
+        uncapped_result = compass.evaluate_selection(session, run, cfg)
+    assert uncapped_result["disposition_tally"]["excluded_by_cap"] == 0
+    assert uncapped_result["why_not_totals"]["excluded_by_cap_uncapped"] == 0
+    assert uncapped_result["why_not_totals"]["below_floor_in_band_uncapped"] == 1
+
+
+def test_why_not_display_reserves_slots_for_the_scarcer_reason(engine, cfg):
+    """J-14's core functional fix: `excluded_by_cap` rows are ALWAYS at/above `leadership_min_score` by
+    construction, so a plain leadership-desc sort over the combined pool always outranks every
+    `below_selection_floor` row -- on the real committed 2026-08-12 frontier this alone (27 cap-excluded
+    vs a why_not_cap of 20) makes the near-miss band entirely unlistable no matter how each entry's
+    `reason`/`failed_conditions` are labeled (BACKGROUND). Reproduces that shape at unit scale: 5
+    cap-excluded rows (94/92/90/88/85, all clearing every qualifier) outrank all 3 below-floor near-miss
+    rows (79/77/76) on raw leadership score -- a naive top-`why_not_cap` sort would show ZERO near-miss
+    names. With `why_not_cap_per_reason` reserving slots per class, the near-miss band is restored."""
+    narrowed = cfg.compass.selection.model_copy(
+        update={"why_not_cap": 4, "why_not_cap_per_reason": 2, "max_candidates": 1}
+    )
+    narrowed_cfg = cfg.model_copy(update={"compass": cfg.compass.model_copy(update={"selection": narrowed})})
+    with Session(engine) as session:
+        run = _mk_run(session, date(2024, 6, 1))
+        _mk_result(session, run.id, "CAND", 99.0, "A", 90.0, "A", 35.0, "B")  # the sole candidate (max_candidates=1)
+        _mk_result(session, run.id, "CAP1", 94.0, "A", 90.0, "A", 35.0, "B")
+        _mk_result(session, run.id, "CAP2", 92.0, "A", 90.0, "A", 35.0, "B")
+        _mk_result(session, run.id, "CAP3", 90.0, "A", 90.0, "A", 35.0, "B")
+        _mk_result(session, run.id, "CAP4", 88.0, "A", 90.0, "A", 35.0, "B")
+        _mk_result(session, run.id, "CAP5", 85.0, "A", 90.0, "A", 35.0, "B")
+        _mk_result(session, run.id, "NM1", 79.0, "B", 90.0, "A", 35.0, "B")
+        _mk_result(session, run.id, "NM2", 77.0, "B", 90.0, "A", 35.0, "B")
+        _mk_result(session, run.id, "NM3", 76.0, "B", 90.0, "A", 35.0, "B")
+        session.commit()
+        session.refresh(run)
+        result = compass.evaluate_selection(session, run, narrowed_cfg)
+
+    assert result["why_not_totals"] == {"excluded_by_cap_uncapped": 5, "below_floor_in_band_uncapped": 3}
+    shown_tickers = {w["ticker"] for w in result["why_not"]}
+    assert len(shown_tickers) == 4  # why_not_cap
+    # The reservation guarantees the TOP 2 (by leadership) of EACH reason class -- never zero near-miss
+    # names despite 5 cap-excluded rows outranking every below-floor row on raw leadership score.
+    assert shown_tickers == {"CAP1", "CAP2", "NM1", "NM2"}
+    reasons_shown = {w["ticker"]: w["reason"] for w in result["why_not"]}
+    assert reasons_shown["CAP1"] == reasons_shown["CAP2"] == "excluded_by_cap"
+    assert reasons_shown["NM1"] == reasons_shown["NM2"] == "below_selection_floor"
 
 
 def test_candidates_empty_reason_when_nothing_qualifies(engine, cfg):

@@ -1038,19 +1038,45 @@ export interface CompassCandidate {
   invalidation: string;
 }
 
+/** One qualifier a `WhyNotEntry` failed — `gating` (goal-market-compass iter-38, J-14) is the SAME tag
+ *  `_qualifier_checks` computes for every candidate checklist row: `true` only for `leadership_min_score`
+ *  (the sole candidacy gate), `false` for the advisory `entry_min_score`/`risk_max_score` qualifiers
+ *  (they annotate a caution and never remove a row from candidacy, and never explain a why-not entry's
+ *  `reason` on their own). */
 export interface WhyNotFailedCondition {
   condition: string;
   threshold: number;
   actual: number;
   distance: number;
+  gating: boolean;
 }
 
-/** One non-candidate near the selection floor (J-04) — an EMPTY `failed_conditions` means the
- *  member passed every qualifier and was excluded only by the focus-list cap, never a fabricated
- *  reason. */
+/** The closed reason vocabulary for a `WhyNotEntry` (J-14) — reuses `selection_disposition`'s EXISTING
+ *  closed vocabulary (`comparison_cohort[].selection_disposition`), no new label set. */
+export type WhyNotReason = "excluded_by_cap" | "below_selection_floor";
+
+/** One non-candidate near the selection floor (J-04; `reason`/`cap_rank`/`cap` added iter-38, J-14).
+ *  `failed_conditions` is the row's TRUE evaluation — a `below_selection_floor` entry always carries at
+ *  least the gating `leadership_min_score` miss; an `excluded_by_cap` entry's `failed_conditions` names
+ *  only ADVISORY misses (its gating check always passed) and MAY legitimately be empty — an empty list
+ *  means the member genuinely passed every qualifier and was excluded only by the focus-list cap, never
+ *  inferred from `reason` alone, and never a fabricated reason. `cap_rank` (1-based rank among all
+ *  above-floor qualifying rows) and `cap` (the configured `max_candidates` value) are non-null ONLY when
+ *  `reason === "excluded_by_cap"`. */
 export interface WhyNotEntry {
   ticker: string;
   failed_conditions: WhyNotFailedCondition[];
+  reason: WhyNotReason;
+  cap_rank: number | null;
+  cap: number | null;
+}
+
+/** The two UNCAPPED per-reason why-not pool counts (J-14) — how many non-candidates were held back by
+ *  each reason BEFORE `why_not_cap` truncates the displayed `why_not` list; each is an explicit `0`,
+ *  never a missing field, when that reason class is empty. */
+export interface WhyNotTotals {
+  excluded_by_cap_uncapped: number;
+  below_floor_in_band_uncapped: number;
 }
 
 /** The `selection` CONTENT block (J-04) — the Next-session focus section's full trace.
@@ -1060,6 +1086,7 @@ export interface WhyNotEntry {
 export interface CompassSelection {
   candidates: CompassCandidate[];
   why_not: WhyNotEntry[];
+  why_not_totals: WhyNotTotals;
   disposition_tally: { below_selection_floor: number; excluded_by_cap: number };
   candidates_empty_reason: string | null;
 }

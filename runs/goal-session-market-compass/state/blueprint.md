@@ -367,3 +367,36 @@ producer (`app.engine.compass.evaluate_selection` / `build_manifest_payload`): c
 the guard survives `-O`, and correcting a `test_manifest_invariants.py` TC-24 fixture value so it genuinely
 isolates the risk qualifier. Neither repair changes the predicate's logic, any served field, or any stored
 row/export file (AG-12) — this note records the iter-37 PLAN.
+
+**iter-38 note (2026-09-01 — additive, no IA change, no new Data Contract row):** J-14 (goal-proposer
+AUTO block, 2026-09-01) targets the ALREADY-REGISTERED "Next-session manifest — CONTENT block" row's
+`selection.why_not` field (part of `selection.*`, produced by `app.engine.compass.evaluate_selection`
+inside `app.engine.compass.build_manifest_payload`, served only by `GET /api/compass`). Measured against
+the committed `2026-08-12_v9.json` export: all 20 served `why_not` entries carry an empty
+`failed_conditions`, which `compass-focus-section.tsx:119-121` renders as "passed every qualifier, cut
+only by the focus-list cap." — false for 20 of 20, since every one fails the advisory `entry_min_score`
+qualifier (four also fail `risk_max_score`) per the same manifest's `comparison_cohort` rows; separately,
+27 non-candidates clear the 80.0 leadership floor while 25 sit in the [75.0, 80.0) near-miss band, but the
+pool is leadership-sorted before the `why_not_cap` (20) truncation so the visible list is made entirely of
+cap-excluded names and no below-floor near-miss can ever appear. This iteration adds fields to the SAME
+producer and serves them via the SAME endpoint — no new producer, no new route:
+  - `selection.why_not[].reason: "excluded_by_cap" | "below_selection_floor"` — reuses the EXISTING
+    `_DISPOSITION_EXCLUDED_BY_CAP` / `_DISPOSITION_BELOW_FLOOR` vocabulary already used by
+    `comparison_cohort[].selection_disposition` — no new label set.
+  - `selection.why_not[].failed_conditions[].gating: bool` — new field on the existing failed-condition
+    shape, reusing the `gating` tag `_qualifier_checks` already produces per check.
+  - `selection.why_not[].cap_rank: int >= 1 | null` and `.cap: int >= 1 | null` — the row's leadership
+    rank among qualifying (above-floor) rows and the configured `compass.selection.max_candidates` value;
+    both non-null only when `reason == "excluded_by_cap"`.
+  - `selection.why_not_totals: { excluded_by_cap_uncapped: int >= 0, below_floor_in_band_uncapped: int >= 0 }`
+    — the two full pool counts before the existing `why_not_cap` truncation (measured today: 27 and 25).
+  No `schema_version` bump: `selection.why_not` is an unconstrained array in
+  `docs/handoffs/trendora-next-session-manifest-v1.schema.json`, so every addition above is additive. No
+  change to `leadership_min_score`/`entry_min_score`/`risk_max_score` VALUES, candidate membership,
+  `disposition_tally`, `comparison_cohort` membership, or `near_threshold_shadow` (J-12's "Do not redo"
+  stands; AG-15). All pre-existing `next_session_manifests` rows and export files stay byte-identical
+  (AG-12) — this change affects only manifests minted AFTER it ships. This note records the iter-38 PLAN;
+  the `[TARGET]`→delivered status is the goal-evaluator's call pending J-14 evidence. J-15 (stock-kind
+  "Suppressed moves" undercount, `session_delta.py`, also goal-proposer 2026-09-01) is queued next and
+  targets the same already-registered row's `session_delta` field — deliberately not bundled with J-14
+  per the priority rubric's "never bundle two risky journeys" rule.

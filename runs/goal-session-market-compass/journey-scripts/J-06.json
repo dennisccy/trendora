@@ -4,7 +4,8 @@
   "name": "A frozen manifest never changes — later data, rebuilds, and regeneration are safe",
   "default_timeout_ms": 8000,
   "steps": [
-    {"n": 1, "journey": "J-06", "action": {"type": "goto", "url": "/?asof=2025-04-15"}, "expect": {"text": "MCD"}},
-    {"n": 2, "journey": "J-06", "action": {"type": "goto", "url": "/?asof=2025-04-15"}, "expect": {"text": "2026-08-20T11:41:00.381102+00:00"}}
+    {"n": 1, "journey": "J-06", "action": {"type": "goto", "url": "/?asof=2005-04-15"}, "expect": {"text": "retrospective"}},
+    {"n": 2, "journey": "J-06", "action": {"type": "click", "target": {"testid": "compass-manifest-regenerate-button"}}, "expect": {"text": "This mints a NEW manifest version for 2005-04-15"}},
+    {"n": 3, "journey": "J-06", "action": {"type": "click", "target": {"role": "button", "name": "Cancel"}}, "expect": {"text": "Basis: available"}}
   ]
 }

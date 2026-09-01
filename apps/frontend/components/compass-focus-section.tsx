@@ -107,6 +107,24 @@ function CandidateCard({ candidate }: { candidate: CompassCandidate }) {
   );
 }
 
+/** One why-not entry's reason-appropriate lead-in sentence (J-14) — re-renders served `reason` /
+ *  `cap_rank` / `cap` fields verbatim, applies no threshold and computes no distance of its own. A
+ *  cap-excluded entry names its rank among the above-floor names and the configured cap; a
+ *  below-floor entry gets no separate lead-in (its `failed_conditions` list, below, already names the
+ *  leadership floor first). */
+function WhyNotLeadIn({ entry }: { entry: WhyNotEntry }) {
+  if (entry.reason !== "excluded_by_cap" || entry.cap_rank === null || entry.cap === null) {
+    return null;
+  }
+  return (
+    <span className="text-text-muted">
+      {" "}
+      — ranked #{entry.cap_rank} of the above-floor names, cap {entry.cap}
+      {entry.failed_conditions.length === 0 ? " — passed every qualifier, cut only by the focus-list cap." : ""}
+    </span>
+  );
+}
+
 function WhyNotList({ entries }: { entries: WhyNotEntry[] }) {
   if (entries.length === 0) {
     return <p className="pt-1 text-xs text-text-faint">No near-miss names this session.</p>;
@@ -116,18 +134,17 @@ function WhyNotList({ entries }: { entries: WhyNotEntry[] }) {
       {entries.map((entry) => (
         <li key={entry.ticker} className="text-xs" data-testid={`compass-why-not-${entry.ticker}`}>
           <span className="num font-medium text-text">{entry.ticker}</span>
-          {entry.failed_conditions.length === 0 ? (
-            <span className="text-text-muted"> — passed every qualifier, cut only by the focus-list cap.</span>
-          ) : (
+          <WhyNotLeadIn entry={entry} />
+          {entry.failed_conditions.length > 0 ? (
             <ul className="ml-3 mt-0.5 space-y-0.5 text-text-muted">
               {entry.failed_conditions.map((failed, index) => (
                 <li key={index}>
                   {failed.condition}: {failed.actual.toFixed(1)} vs {failed.threshold.toFixed(1)} (distance{" "}
-                  {failed.distance.toFixed(1)})
+                  {failed.distance.toFixed(1)}){failed.gating ? "" : " — advisory"}
                 </li>
               ))}
             </ul>
-          )}
+          ) : null}
         </li>
       ))}
     </ul>
@@ -172,7 +189,13 @@ export function CompassFocusSection({ compass }: { compass: CompassResponse | nu
             ))}
           </div>
         )}
-        <Disclosure summary={`Not priority (${selection.why_not.length})`}>
+        <Disclosure
+          summary={`Not priority (${selection.why_not.length} shown of ${
+            selection.why_not_totals.excluded_by_cap_uncapped + selection.why_not_totals.below_floor_in_band_uncapped
+          } held back — ${selection.why_not_totals.excluded_by_cap_uncapped} cap-excluded, ${
+            selection.why_not_totals.below_floor_in_band_uncapped
+          } below-floor near-miss)`}
+        >
           <WhyNotList entries={selection.why_not} />
         </Disclosure>
       </CardContent>

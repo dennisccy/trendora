@@ -1,6 +1,7 @@
 """app.engine.compass — the deterministic narrative + candidate-selection trace + manifest assembly
 (goal-market-compass iter-2, J-03/J-04, CONTENT block; iter-3, J-05/J-06, the freeze/integrity block;
-iter-28, J-07, the `state_band` CONTENT block; iter-36, J-13, the `session_delta.rotation` CONTENT block).
+iter-28, J-07, the `state_band` CONTENT block; iter-36, J-13, the `session_delta.rotation` CONTENT block;
+iter-38, J-14, why-not entries carry their TRUE reason instead of a false universal "passed everything").
 
 Five CONTENT producers, one assembler:
 
@@ -10,9 +11,16 @@ Five CONTENT producers, one assembler:
     `compass.vocabulary.*` / `compass.delta.*` — never a literal here (see test_no_magic_numbers.py).
   - `evaluate_selection(...)` — the transparent candidate-selection rule (J-04) over stored
     `ScannerResult` rows: candidates with reasons/cautions/checklist/what-would-change/invalidation;
-    why-not entries for near-miss and cap-excluded non-candidates; a disposition tally that partitions
-    member count minus candidate count exactly; an explicit `candidates_empty_reason` when nothing
-    clears the floor. iter-3 (J-05/J-06) additionally serializes FULL frozen-context rows for every
+    why-not entries for near-miss and cap-excluded non-candidates, each carrying its OWN true `reason`
+    (`excluded_by_cap` / `below_selection_floor`, reusing `selection_disposition`'s closed vocabulary)
+    and `failed_conditions` (advisory misses carried through for cap-excluded rows too, never silently
+    discarded — iter-38, J-14); a cap-excluded entry also carries its leadership `cap_rank` among
+    qualifying rows and the configured `cap`. The DISPLAYED `why_not` list reserves
+    `why_not_cap_per_reason` slots for EACH reason class (`_select_why_not_display`) so a large
+    cap-excluded pool can never crowd out every near-miss name; `why_not_totals` discloses the two
+    UNCAPPED per-reason pool counts. Also: a disposition tally that partitions member count minus
+    candidate count exactly; an explicit `candidates_empty_reason` when nothing clears the floor.
+    iter-3 (J-05/J-06) additionally serializes FULL frozen-context rows for every
     non-candidate member — `comparison_cohort` (the whole non-selected pool, each row carrying a
     closed-vocabulary `selection_disposition`) and `near_threshold_shadow` (the leadership-banded
     subset just below the floor) — reusing the SAME `non_qualifying` / `excluded_by_cap_pairs`
@@ -664,6 +672,26 @@ def _qualifier_checks(row: dict, cfg: Config) -> list[dict]:
     ]
 
 
+def _failed_condition_entries(checks: list[dict]) -> list[dict]:
+    """goal-market-compass iter-38 (J-14): every check that did NOT pass, carrying its own `gating` tag
+    (from `_qualifier_checks`, the single source) alongside the existing threshold/actual/distance shape
+    -- so a why-not entry never claims a row passed a qualifier it failed, and a reader can tell a
+    gating miss (the candidacy floor) from an advisory one (entry/risk, never removes candidacy). Used
+    for BOTH non-qualifying rows (below the floor) and qualifying-but-cap-excluded rows (which can still
+    carry a failed ADVISORY check -- the exact case iter-35 left unrecorded, BACKGROUND)."""
+    return [
+        {
+            "condition": check["condition"],
+            "threshold": check["threshold"],
+            "actual": check["actual"],
+            "distance": abs(check["actual"] - check["threshold"]),
+            "gating": check["gating"],
+        }
+        for check in checks
+        if not check["passed"]
+    ]
+
+
 def _candidate_payload(row: dict, checks: list[dict], detail: Optional[dict], run: ScannerRun, cfg: Config) -> dict:
     """goal-market-compass iter-35 (J-12): `checks` may now include an ADVISORY qualifier that FAILED
     (leadership_min_score is the only gate -- a candidate is guaranteed to have `checks[0]["passed"]`
@@ -765,6 +793,36 @@ def _candidate_payload(row: dict, checks: list[dict], detail: Optional[dict], ru
     }
 
 
+def _select_why_not_display(why_not_pool: list[dict], why_not_cap: int, cap_per_reason: int) -> list[dict]:
+    """goal-market-compass iter-38 (J-14): reserve up to `cap_per_reason` DISPLAY slots for EACH why-not
+    reason class before filling the remaining `why_not_cap` budget from whichever class has leftover
+    entries -- without this split, a single leadership-desc sort over the combined pool always favors
+    `excluded_by_cap` rows (leadership >= the floor, by construction, outranks every
+    `below_selection_floor` row), so the near-miss band stays entirely unlistable whenever the
+    cap-excluded pool alone exceeds `why_not_cap` (the exact BACKGROUND defect: 27 cap-excluded vs a cap
+    of 20 on the committed 2026-08-12 frontier). `why_not_pool` is already sorted (leadership desc,
+    ticker asc, TC-1..TC-3's ordering); config validation (`CompassSelectionCfg._validate`) guarantees
+    `2 * cap_per_reason <= why_not_cap` so the two reservations never themselves exceed the total cap."""
+    by_reason: dict[str, list[dict]] = {_DISPOSITION_EXCLUDED_BY_CAP: [], _DISPOSITION_BELOW_FLOOR: []}
+    for entry in why_not_pool:
+        by_reason[entry["reason"]].append(entry)
+
+    selected: list[dict] = []
+    leftover: list[dict] = []
+    for reason in (_DISPOSITION_EXCLUDED_BY_CAP, _DISPOSITION_BELOW_FLOOR):
+        pool = by_reason[reason]
+        selected.extend(pool[:cap_per_reason])
+        leftover.extend(pool[cap_per_reason:])
+
+    remaining_budget = why_not_cap - len(selected)
+    if remaining_budget > 0 and leftover:
+        leftover.sort(key=lambda entry: (-entry["row"]["leadership_score"], entry["row"]["ticker"]))
+        selected.extend(leftover[:remaining_budget])
+
+    selected.sort(key=lambda entry: (-entry["row"]["leadership_score"], entry["row"]["ticker"]))
+    return selected[:why_not_cap]  # defensive: config validation guarantees this never actually trims
+
+
 def evaluate_selection(session: Session, run: ScannerRun, config: Optional[Config] = None) -> dict:
     """The `selection` CONTENT block (goal-market-compass iter-2, J-04; iter-3, J-05/J-06 adds
     `comparison_cohort` + `near_threshold_shadow`). See the module docstring for the anti-goal posture
@@ -816,17 +874,7 @@ def evaluate_selection(session: Session, run: ScannerRun, config: Optional[Confi
         if gating_checks[0]["passed"]:
             qualifying.append((row, checks))
         else:
-            failed = [
-                {
-                    "condition": check["condition"],
-                    "threshold": check["threshold"],
-                    "actual": check["actual"],
-                    "distance": abs(check["actual"] - check["threshold"]),
-                }
-                for check in checks
-                if not check["passed"]
-            ]
-            non_qualifying.append((row, failed))
+            non_qualifying.append((row, _failed_condition_entries(checks)))
 
     qualifying.sort(key=lambda pair: (-pair[0]["leadership_score"], pair[0]["ticker"]))
     candidate_pairs = qualifying[: sel.max_candidates]
@@ -839,14 +887,49 @@ def evaluate_selection(session: Session, run: ScannerRun, config: Optional[Confi
         for row, checks in candidate_pairs
     ]
 
-    why_not_pool: list[tuple[dict, list[dict]]] = [
-        (row, failed) for row, failed in non_qualifying if row["leadership_score"] >= sel.why_not_floor
+    # goal-market-compass iter-38 (J-14): the why-not pool carries BOTH non-selection reasons, each entry
+    # its OWN true evaluation -- a below-floor row's failed_conditions already includes the gating
+    # leadership_min_score miss (plus any advisory misses); a cap-excluded row's checks are re-evaluated
+    # here (`_failed_condition_entries`, the SAME helper) because a qualifying-but-cap-excluded row can
+    # still fail an ADVISORY qualifier (entry_min_score/risk_max_score) -- the exact case the prior code
+    # discarded by extending with an unconditional `[]` (BACKGROUND). `cap_rank` is the row's 1-based
+    # position in the FULL leadership-sorted `qualifying` list (candidates occupy ranks
+    # 1..max_candidates; excluded_by_cap_pairs starts at rank max_candidates + 1) -- reuses the SAME
+    # sort `qualifying` was already sorted by, no new ordering computed.
+    why_not_pool: list[dict] = [
+        {"row": row, "failed_conditions": failed, "reason": _DISPOSITION_BELOW_FLOOR, "cap_rank": None, "cap": None}
+        for row, failed in non_qualifying
+        if row["leadership_score"] >= sel.why_not_floor
     ]
-    why_not_pool.extend((row, []) for row, _checks in excluded_by_cap_pairs)  # passed everything, cut by cap
-    why_not_pool.sort(key=lambda pair: (-pair[0]["leadership_score"], pair[0]["ticker"]))
+    why_not_pool.extend(
+        {
+            "row": row,
+            "failed_conditions": _failed_condition_entries(checks),
+            "reason": _DISPOSITION_EXCLUDED_BY_CAP,
+            "cap_rank": cap_rank,
+            "cap": sel.max_candidates,
+        }
+        for cap_rank, (row, checks) in enumerate(excluded_by_cap_pairs, start=sel.max_candidates + 1)
+    )
+    # The two UNCAPPED per-reason pool counts (goal.md data-contract addition) -- computed from the SAME
+    # partitions the disposition tally above already computed, BEFORE the why_not_cap truncation below
+    # (no new query, no full-universe pass).
+    why_not_totals = {
+        "excluded_by_cap_uncapped": len(excluded_by_cap_pairs),
+        "below_floor_in_band_uncapped": sum(
+            1 for row, _failed in non_qualifying if row["leadership_score"] >= sel.why_not_floor
+        ),
+    }
+    why_not_pool.sort(key=lambda entry: (-entry["row"]["leadership_score"], entry["row"]["ticker"]))
     why_not = [
-        {"ticker": row["ticker"], "failed_conditions": failed}
-        for row, failed in why_not_pool[: sel.why_not_cap]
+        {
+            "ticker": entry["row"]["ticker"],
+            "failed_conditions": entry["failed_conditions"],
+            "reason": entry["reason"],
+            "cap_rank": entry["cap_rank"],
+            "cap": entry["cap"],
+        }
+        for entry in _select_why_not_display(why_not_pool, sel.why_not_cap, sel.why_not_cap_per_reason)
     ]
 
     candidates_empty_reason = None
@@ -894,6 +977,7 @@ def evaluate_selection(session: Session, run: ScannerRun, config: Optional[Confi
     result = {
         "candidates": candidates,
         "why_not": why_not,
+        "why_not_totals": why_not_totals,
         "disposition_tally": {
             "below_selection_floor": len(non_qualifying),
             "excluded_by_cap": len(excluded_by_cap_pairs),
