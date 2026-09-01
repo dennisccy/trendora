@@ -1,35 +1,39 @@
 # Goal Session Summary — market-compass
 
-**Final verdict:** AWAITING_PUMP
-**Total iterations:** 28
-**Wall time (seconds):** 7664
+**Final verdict:** REGRESSION_HALT
+**Total iterations:** 39
+**Wall time (seconds):** 77106
 **Quota pauses:** 0
 **Started:** 2026-08-19T21:31:52.886915Z
-**Finished:** 2026-08-28T21:21:59.372395Z
+**Finished:** 2026-09-01T18:57:38.608780Z
 
 ## Branch
 
 This session pushed iteration commits to `goal/market-compass`. Open a PR with:
 
     gh pr create --base main --head goal/market-compass \
-      --title "feat: market-compass — AWAITING_PUMP" \
+      --title "feat: market-compass — REGRESSION_HALT" \
       --body-file runs/goal-session-market-compass/summary.md
 
 ## Final journey state
 
 | Journey | Status | Last passing iter |
 |---|---|---|
-| J-01 | passing | goal-market-compass-iter-27 |
-| J-02 | partial | goal-market-compass-iter-4 |
-| J-03 | partial | goal-market-compass-iter-4 |
-| J-04 | passing | goal-market-compass-iter-27 |
-| J-05 | passing | goal-market-compass-iter-27 |
-| J-06 | passing | goal-market-compass-iter-27 |
-| J-07 | failing | - |
-| J-08 | failing | - |
-| J-09 | partial | - |
-| J-10 | passing | goal-market-compass-iter-27 |
-| J-11 | passing | goal-market-compass-iter-27 |
+| J-01 | passing | goal-market-compass-iter-38 |
+| J-02 | regressed | goal-market-compass-iter-37 |
+| J-03 | regressed | goal-market-compass-iter-37 |
+| J-04 | passing | goal-market-compass-iter-38 |
+| J-05 | passing | goal-market-compass-iter-38 |
+| J-06 | regressed | goal-market-compass-iter-37 |
+| J-07 | passing | goal-market-compass-iter-38 |
+| J-08 | regressed | goal-market-compass-iter-37 |
+| J-09 | passing | goal-market-compass-iter-37 |
+| J-10 | passing | goal-market-compass-iter-38 |
+| J-11 | regressed | goal-market-compass-iter-37 |
+| J-12 | passing | goal-market-compass-iter-38 |
+| J-13 | regressed | goal-market-compass-iter-37 |
+| J-14 | partial | - |
+| J-15 | unknown | - |
 
 ## Anti-goal violations
 
@@ -42,6 +46,7 @@ This session pushed iteration commits to `goal/market-compass`. Open a PR with:
 - [minor] AG-8 - Resilience to data-shape and data-scale change: ... unbounded whole-table ORM loads are forbidden (the delta engine reads column-projected selects, never full record_json sweeps). (critical) (iter goal-market-compass-iter-16)
 - [critical] OWNER RULING (docs/goal.md, 2026-08-27, binding) item 3 + its Post-Stage-G launch-condition clarification: 'The canonical database remains OFF and must not be mutated by this verification. Backend/frontend/browser verification runs against the disposable verification DB only.' / 'Do not interpret removal of those D->G launch conditions as permission to boot or mutate the canonical database.' Also the iter-23 spec's OUT OF SCOPE: 'Booting or mutating the canonical apps/backend/data/trendora.db for any purpose.' (iter goal-market-compass-iter-23)
 - [minor] Iteration spec binding live constraint (docs/phases/goal-market-compass-iter-27.md, BACKGROUND 'Row-count safety'): keep 'every live/canonical-DB action strictly read-only and additive-free (regression checks only, on manifests that already exist and whose runs are already intact)'; TESTING REQUIREMENTS authorized only 2025-04-15 (TC-6) and 2026-08-12 (TC-7) as live requests. (iter goal-market-compass-iter-27)
+- [critical] AG-8 — Resilience to data-shape and data-scale change: widening the data basis must never crash an existing page or exhaust memory — consumers of widened fields are re-validated, the UI degrades gracefully (contained error boundary, honest "—"/NA placeholder), and unbounded whole-table ORM loads are forbidden (the delta engine reads column-projected selects, never full record_json sweeps). (iter goal-market-compass-iter-38)
 
 ## Telemetry
 
@@ -603,23 +608,210 @@ See `runs/goal-session-market-compass/telemetry.jsonl` for the structured event 
       [engine] showcase-join       0.0m  (contains agent time above)
       (resume-skipped: goal-decomposer, developer)
       pump-wait                220.0m
-  session: 27 completed iteration(s), mean wall 129.3m
-      total reviewer                  1706.0m
-      total developer                 1515.8m
-      total coherence-auditor          544.6m
-      total goal-decomposer            513.7m
-      total orchestrator               494.6m
-      total goal-evaluator             436.8m
-      total auditor                    376.2m
-      total browser-qa-agent           314.0m
-      total iteration-summarizer       193.9m
-      total qa                         169.3m
-      total ui-test-designer           146.9m
-      total ui-impact-analyst           45.4m
-      total demo-narrator               33.0m
-      total readme-maintainer           24.7m
+  goal-market-compass-iter-28  depth=lean  verdict=?  wall=?  (incomplete/interrupted attempt)
+      coherence-auditor            3.6m  calls=1
+      browser-qa-replay            1.1m  calls=1
+      [engine] showcase-join       0.0m  (contains agent time above)
+      (resume-skipped: goal-decomposer, developer, reviewer)
+      pump-wait                  0.0m
+  goal-market-compass-iter-28  depth=lean  verdict=ESCALATE  wall=27.2m
+      goal-evaluator              14.1m  calls=1
+      browser-qa-agent            11.1m  calls=1
+      coherence-auditor            7.6m  calls=1
+      browser-qa-replay            1.9m  calls=1
+      [engine] lean-pipeline      13.1m  (contains agent time above)
+      [engine] showcase-join       0.0m  (contains agent time above)
+      (resume-skipped: goal-decomposer, developer, reviewer, coherence-auditor)
+      pump-wait                  0.1m
+      overlap saved              7.5m  (parallel steps)
+  goal-market-compass-iter-29  depth=full  verdict=ESCALATE  wall=103.2m
+      auditor                     20.8m  calls=1
+      goal-evaluator              14.1m  calls=1
+      demo-narrator               11.4m  calls=2
+      developer                    9.1m  calls=1
+      reviewer                     7.7m  calls=1
+      coherence-auditor            7.4m  calls=1
+      browser-qa-agent             7.4m  calls=1
+      ui-impact-analyst            6.4m  calls=1
+      qa                           6.3m  calls=1
+      goal-decomposer              6.2m  calls=1
+      readme-maintainer            5.6m  calls=1
+      orchestrator                 5.6m  calls=1
+      iteration-summarizer         5.5m  calls=1
+      [engine] full-pipeline      63.7m  (contains agent time above)
+      [engine] showcase-join      11.8m  (contains agent time above)
+      (resume-skipped: ui-test-design, ux-regression)
+      pump-wait                  1.0m
+      OVER BUDGET at qa-loop: 3649s > 3600s (mode=trim)
+      overlap saved             10.2m  (parallel steps)
+  goal-market-compass-iter-30  depth=full  verdict=CONTINUE  wall=118.3m
+      developer                   25.9m  calls=1
+      goal-evaluator              17.5m  calls=1
+      auditor                     17.4m  calls=1
+      goal-decomposer             14.4m  calls=1
+      reviewer                     7.6m  calls=1
+      browser-qa-agent             7.5m  calls=1
+      coherence-auditor            7.4m  calls=1
+      orchestrator                 7.4m  calls=1
+      ui-impact-analyst            6.5m  calls=1
+      qa                           6.4m  calls=1
+      iteration-summarizer         5.8m  calls=1
+      demo-narrator                5.6m  calls=1
+      [engine] full-pipeline      78.8m  (contains agent time above)
+      [engine] showcase-join       0.1m  (contains agent time above)
+      (resume-skipped: ui-test-design, ux-regression)
+      pump-wait                  0.8m
+      OVER BUDGET at qa-loop: 4554s > 3600s (mode=trim)
+      overlap saved             11.0m  (parallel steps)
+  goal-market-compass-iter-31  depth=lean  verdict=ESCALATE  wall=74.3m
+      developer                   18.1m  calls=2
+      goal-evaluator              17.6m  calls=1
+      reviewer                    15.2m  calls=2
+      goal-decomposer             14.4m  calls=1
+      browser-qa-agent             7.4m  calls=1
+      iteration-summarizer         5.8m  calls=1
+      browser-qa-replay            1.5m  calls=1
+      [engine] lean-pipeline      42.2m  (contains agent time above)
+      [engine] showcase-join       0.1m  (contains agent time above)
+      (resume-skipped: coherence-auditor)
+      pump-wait                  0.5m
+      overlap saved              5.7m  (parallel steps)
+  goal-market-compass-iter-32  depth=full  verdict=CONTINUE  wall=111.1m
+      developer                   25.9m  calls=1
+      goal-evaluator              17.5m  calls=1
+      auditor                     17.4m  calls=1
+      ui-test-designer            10.8m  calls=1
+      ui-impact-analyst            8.1m  calls=1
+      qa                           8.0m  calls=1
+      reviewer                     7.6m  calls=1
+      iteration-summarizer         7.5m  calls=1
+      goal-decomposer              7.5m  calls=1
+      orchestrator                 7.3m  calls=1
+      browser-qa-agent             5.7m  calls=1
+      [engine] full-pipeline      86.0m  (contains agent time above)
+      [engine] showcase-join       0.1m  (contains agent time above)
+      (resume-skipped: ux-regression, coherence-auditor)
+      pump-wait                  0.9m
+      OVER BUDGET at qa-loop: 4570s > 3600s (mode=trim)
+      overlap saved             12.2m  (parallel steps)
+  goal-market-compass-iter-33  depth=lean  verdict=ESCALATE  wall=90.3m
+      developer                   34.2m  calls=1
+      goal-evaluator              25.9m  calls=1
+      goal-decomposer             14.5m  calls=1
+      coherence-auditor            8.0m  calls=1
+      browser-qa-agent             7.9m  calls=1
+      reviewer                     7.7m  calls=1
+      iteration-summarizer         5.8m  calls=1
+      browser-qa-replay            1.1m  calls=1
+      [engine] lean-pipeline      49.9m  (contains agent time above)
+      [engine] showcase-join       0.1m  (contains agent time above)
+      (resume-skipped: coherence-auditor)
+      pump-wait                  0.8m
+      OVER BUDGET at coherence-auditor: 3868s > 3600s (mode=trim)
+      overlap saved             14.6m  (parallel steps)
+  goal-market-compass-iter-34  depth=full  verdict=GOAL_ACHIEVED  wall=141.6m
+      developer                   25.9m  calls=1
+      auditor                     17.4m  calls=1
+      goal-evaluator              17.4m  calls=1
+      goal-decomposer             14.6m  calls=1
+      iteration-summarizer        11.4m  calls=2
+      ui-impact-analyst            8.1m  calls=1
+      qa                           8.1m  calls=1
+      reviewer                     7.7m  calls=1
+      goal-evaluator-confirm       7.5m  calls=1
+      coherence-auditor            7.5m  calls=1
+      ui-test-designer             7.4m  calls=1
+      browser-qa-agent             7.4m  calls=1
+      orchestrator                 7.3m  calls=1
+      demo-narrator                5.8m  calls=1
+      [engine] full-pipeline      88.9m  (contains agent time above)
+      [engine] showcase-join       0.1m  (contains agent time above)
+      (resume-skipped: ux-regression)
+      pump-wait                  1.4m
+      OVER BUDGET at qa-loop: 5162s > 3600s (mode=trim)
+      overlap saved             12.0m  (parallel steps)
+  goal-market-compass-iter-35  depth=lean  verdict=CONTINUE  wall=68.1m
+      developer                   25.9m  calls=1
+      goal-evaluator              17.5m  calls=1
+      goal-decomposer              9.0m  calls=1
+      coherence-auditor            7.9m  calls=1
+      browser-qa-agent             7.8m  calls=1
+      reviewer                     7.7m  calls=1
+      browser-qa-replay            1.0m  calls=1
+      [engine] lean-pipeline      41.5m  (contains agent time above)
+      [engine] showcase-join       0.0m  (contains agent time above)
+      (resume-skipped: coherence-auditor)
+      pump-wait                  0.3m
+      overlap saved              8.7m  (parallel steps)
+  goal-market-compass-iter-36  depth=lean  verdict=ESCALATE  wall=101.0m
+      developer                   43.5m  calls=2
+      goal-evaluator              25.9m  calls=1
+      reviewer                    15.3m  calls=2
+      coherence-auditor            8.7m  calls=1
+      browser-qa-agent             7.6m  calls=1
+      iteration-summarizer         7.5m  calls=1
+      goal-decomposer              7.5m  calls=1
+      browser-qa-replay            2.2m  calls=1
+      [engine] lean-pipeline      67.6m  (contains agent time above)
+      [engine] showcase-join       0.1m  (contains agent time above)
+      (resume-skipped: coherence-auditor)
+      pump-wait                  0.3m
+      OVER BUDGET at browser-qa: 3986s > 3600s (mode=trim)
+      overlap saved             17.1m  (parallel steps)
+  goal-market-compass-iter-37  depth=full  verdict=GOAL_ACHIEVED  wall=140.7m
+      browser-qa-agent            20.9m  calls=1
+      goal-evaluator              18.2m  calls=1
+      auditor                     17.8m  calls=1
+      qa                          15.3m  calls=1
+      goal-decomposer             14.6m  calls=1
+      iteration-summarizer        13.3m  calls=2
+      developer                    9.3m  calls=1
+      ui-test-designer             7.8m  calls=1
+      coherence-auditor            7.7m  calls=1
+      ui-impact-analyst            7.6m  calls=1
+      orchestrator                 7.5m  calls=1
+      reviewer                     7.5m  calls=1
+      goal-evaluator-confirm       7.3m  calls=1
+      demo-narrator                5.8m  calls=1
+      [engine] full-pipeline      85.4m  (contains agent time above)
+      [engine] showcase-join       0.1m  (contains agent time above)
+      (resume-skipped: ux-regression)
+      pump-wait                  1.5m
+      OVER BUDGET at qa-loop: 4935s > 3600s (mode=trim)
+      overlap saved             19.9m  (parallel steps)
+  goal-market-compass-iter-38  depth=lean  verdict=REGRESSION  wall=118.2m
+      browser-qa-agent            44.5m  calls=2
+      developer                   26.5m  calls=1
+      goal-evaluator              17.8m  calls=1
+      goal-decomposer             14.4m  calls=1
+      coherence-auditor            7.5m  calls=1
+      reviewer                     7.4m  calls=1
+      iteration-summarizer         7.3m  calls=1
+      browser-qa-replay            3.5m  calls=1
+      [engine] lean-pipeline      78.6m  (contains agent time above)
+      [engine] showcase-join       0.0m  (contains agent time above)
+      (resume-skipped: coherence-auditor)
+      pump-wait                  0.5m
+      OVER BUDGET at coherence-auditor: 5580s > 3600s (mode=trim)
+      overlap saved             10.8m  (parallel steps)
+  session: 38 completed iteration(s), mean wall 120.7m
+      total reviewer                  1797.5m
+      total developer                 1760.0m
+      total goal-evaluator             640.3m
+      total goal-decomposer            630.7m
+      total coherence-auditor          617.8m
+      total orchestrator               529.6m
+      total auditor                    467.1m
+      total browser-qa-agent           449.1m
+      total iteration-summarizer       263.7m
+      total qa                         213.3m
+      total ui-test-designer           172.9m
+      total ui-impact-analyst           82.0m
+      total demo-narrator               61.6m
+      total readme-maintainer           30.3m
+      total browser-qa-replay           24.3m
+      total goal-evaluator-confirm      14.9m
       total ux-regression-reviewer      12.4m
-      total browser-qa-replay           12.0m
-      total AWAITING_PUMP paused gaps: 923.0m
-      halts: AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, STALLED, REGRESSION_HALT, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, AWAITING_PUMP, STALLED, STALLED, STALLED, STALLED, STALLED, AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP
+      total AWAITING_PUMP paused gaps: 923.6m
+      halts: AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, STALLED, REGRESSION_HALT, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, AWAITING_PUMP, STALLED, STALLED, STALLED, STALLED, STALLED, AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, REGRESSION_HALT
 ```

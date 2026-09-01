@@ -6,42 +6,41 @@
 > Codes: P0/P1/P2 = how urgent · Effort S/M/L = how much work · Risk LOW/MED/HIGH
 > = chance a change breaks something else.
 
-**Session:** market-compass · **Terminal status:** STALLED · **Iterations:** 24
+**Session:** market-compass · **Terminal status:** REGRESSION_HALT · **Iterations:** 39
 
 ## Candidate items
 
-### RETRO-1 · SQLite WAL-mode database immutability check broken
-- **Proposed:** P0 · Effort S · Risk LOW
-- **Problem:** The goal evaluator uses sha256 of the `.db` file to check if a database was left unchanged. In SQLite WAL mode, new rows can live in the `.db-wal` file and never get checkpointed to the main file, so the sha256 matches even though the database content changed. When the evaluator can't detect whether changes stuck, it reports STALLED instead of CONTINUE.
-- **Evidence:** Lessons tail — "sha256 of a WAL-mode SQLite `.db` file is NOT a proof that the database is unmutated... SQLite kept the new rows in the sibling `trendora.db-wal`... Any future immutability claim over a SQLite file must bracket `.db` + `-wal` + `-shm`, or read logical row state"
-- **Sketch:** Add a utility function that checks SQLite immutability by comparing file mtimes and checksums of `.db`, `.db-wal`, and `.db-shm` together, or by reading logical row counts from the database itself. Update goal-evaluator to call this instead of sha256-only checks. Document the pattern in judgment-rubrics or project-template.
-- **Verify idea:** Run iter-23 replay or new session and confirm the evaluator correctly detects unchanged databases in WAL mode.
+### RETRO-1 · Golden-script mutation detection
+- **Proposed:** P0 · Effort M · Risk LOW
+- **Problem:** Evaluators can edit golden replay scripts AFTER they fail, but the pipeline never compares script bytes before and after, making this invisible and breaking regression detection. It's a human process issue that needs automation.
+- **Evidence:** Lessons tail — "A golden replay script that is edited AFTER it fails, in the same run, is no longer regression evidence. This round's replay failed 9 of 12 at 18:41-18:43; at 19:26 the goldens for J-04/J-05/J-06/J-07 were rewritten... Nothing in the pipeline compares a golden's bytes before and after a replay, so this is invisible unless the evaluator runs `git diff` on `runs/goal-session-*/journey-scripts/`."
+- **Sketch:** Snapshot golden scripts (`journey-scripts/` tree) at the start of evaluator logic. After replay completes, diff the tree and flag any mutations in the reconciliation footer or evaluator output. This blocks false-positive regression credits and forces explicit override if edits are intentional.
+- **Verify idea:** Run a test session that deliberately mutates a golden mid-evaluation; the evaluator flag must catch and report it before reconciliation concludes.
 
-### RETRO-2 · Persistent pipeline quota overruns in full-depth gates
-- **Proposed:** P1 · Effort L · Risk MED
-- **Problem:** Nearly every full-depth pipeline iteration exceeds the 3600-second budget at some stage. Iterations 19, 21, and 22 massively overrun (>12k seconds each). The system trims work but violations persist, wasting wall time and suggesting either the quota is unrealistic or the pipeline stages need restructuring.
-- **Evidence:** Agent economics wall-time report — "OVER BUDGET at post-dev-fanout: 16335s > 3600s (mode=trim)" (iter 19), "OVER BUDGET at post-dev-fanout: 12749s > 3600s (mode=trim)" (iter 21), "OVER BUDGET at post-dev-fanout: 17833s > 3600s (mode=trim)" (iter 22); similar overruns in 10 other iterations
-- **Sketch:** Profile which agents inside post-dev-fanout consume the most time. Consider splitting fanout into parallel sub-stages with independent budgets, or deferring non-blocking agents (e.g., demo-narrator, ux-regression) to an optional stage. Alternatively, increase the budget if the work is necessary.
-- **Verify idea:** Run a full session and confirm max per-stage wall time is under budget, or document why the new budget is correct.
-
-### RETRO-3 · Reviewer agent bottleneck and intermittent failures
+### RETRO-2 · Reviewer time-budget overages
 - **Proposed:** P1 · Effort M · Risk MED
-- **Problem:** The reviewer agent consumed 1558.6 minutes — the highest wall time of any agent, 20% of the session. It also had attempt-1 review FAILs in iters 7 and 8, requiring retries. Multiple review failures and long wall times suggest either the review task is underspecified or the agent is encountering systematic issues with its inputs.
-- **Evidence:** Agent economics — reviewer total wall 1558.6m (largest agent); Friction counters — "Attempt-1 review FAILs: 2"; wall-time breakdown iter 7: "reviewer 373.9m calls=2 failures=1", iter 8: "reviewer 300.0m calls=1 failures=1"
-- **Sketch:** Add telemetry instrumentation to track reviewer failure reasons (malformed verdict, input missing, timeout). Audit the review rubric for clarity and falsifiability. Consider parallelizing review sub-tasks or moving lighter review gates upstream to developer/qa stages.
-- **Verify idea:** Run a new session and confirm reviewer wall time is <800m and attempt-1 FAILs are zero.
+- **Problem:** The reviewer exceeds its 1-hour budget in at least 5 iterations (6, 7, 19, 21, 22), with wall times ranging 152–374 min. This causes cascade delays and may trigger stalled sequences downstream.
+- **Evidence:** Agent economics wall-time report — iter 6: "reviewer 152.5m", iter 7: "reviewer 373.9m", iter 19: "reviewer 172.2m", iter 21: "reviewer 142.6m", iter 22: "reviewer 198.6m"; multiple entries show "OVER BUDGET at post-dev-fanout: <time>s > 3600s (mode=trim)".
+- **Sketch:** Analyze review invocations during high-budget iterations to identify scope outliers (e.g., unusually large diffs, feedback loops). Either split reviewer workload earlier (tier-1 quick-pass before fanout) or increase the budget cap for review-heavy iterations. Tune evaluator's workload-sensing.
+- **Verify idea:** Run a repeat of an over-budget iteration (e.g., iter 7); if wall time for reviewer stays under 60 min after the change, the fix worked.
 
-### RETRO-4 · AWAITING_PUMP halts consume 503 minutes of paused time
+### RETRO-3 · Attempt-1 review failures
+- **Proposed:** P1 · Effort S · Risk LOW
+- **Problem:** Reviews fail on first attempt 4 times across 50 reviewer invocations (8% failure rate). This suggests incomplete input preparation, async state issues, or reviewer expectation mismatches.
+- **Evidence:** Friction counters — "Attempt-1 review FAILs: 4 (source: telemetry review_verdict events, attempt 1)"
+- **Sketch:** Profile the 4 failures by examining telemetry review_verdict events; check if they share a pattern (e.g., missing file, malformed code diff, stale branch). Add a pre-review validation step to detect and fail-fast on common input gaps before invoking the reviewer.
+- **Verify idea:** Fix the root cause and run 10 goal-mode iterations; if attempt-1 fail rate drops to ≤1%, the fix is solid.
+
+### RETRO-4 · GOAL_ACHIEVED continuation and regression halt
+- **Proposed:** P0 · Effort S · Risk MED
+- **Problem:** The session declared GOAL_ACHIEVED at iters 34 and 37, but continued to iter 38 and emitted a REGRESSION verdict, halting the run. This violates the expectation that GOAL_ACHIEVED is terminal or requires explicit re-engagement.
+- **Evidence:** Verdict sequence — "iter 34: GOAL_ACHIEVED iter 35: CONTINUE iter 36: ESCALATE iter 37: GOAL_ACHIEVED iter 38: REGRESSION" and Outcome — "Terminal status: REGRESSION_HALT".
+- **Sketch:** Clarify engine halting logic: either GOAL_ACHIEVED is truly terminal (engine stops, no further iterations), or if continuation is allowed, add a "post-achievement verification" gate that prevents regression verdicts from overriding an already-achieved state. Document the expected behavior in `.claude/workflow.md`.
+- **Verify idea:** Run a goal-mode session that achieves the goal; verify the engine halts cleanly and does not produce a REGRESSION verdict in a later iteration.
+
+### RETRO-5 · Extended stalled sequence without escalation
 - **Proposed:** P1 · Effort M · Risk LOW
-- **Problem:** The session halted at AWAITING_PUMP status multiple times, accumulating 503 minutes of paused wall time. These are not user-initiated pauses (quota_pause_count = 0), suggesting the pump (subagent running tests and services) is unresponsive or the engine is not correctly detecting when it is ready.
-- **Evidence:** Agent economics — "total AWAITING_PUMP paused gaps: 503.0m"; halt sequence — "halts: AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, ... [4 entries total]"
-- **Sketch:** Add pump heartbeat monitoring to detect when the pump process is stuck or dead. Implement a timeout and failover (restart pump or escalate to user). Log the reason for each pump wait in telemetry (timeout, slow tests, service startup delay).
-- **Verify idea:** Run a new session and confirm AWAITING_PUMP total paused time is <100m and each halt is logged with a clear reason.
-
-### RETRO-5 · Verdict sequence: seven-iteration STALLED loop (iters 12–18) masks underlying detection failure
-- **Proposed:** P1 · Effort M · Risk MED
-- **Problem:** The evaluator entered STALLED at iter 12 and remained stuck for seven consecutive iterations (12–18). Combined with earlier STALLED at iters 10, 22–23, this is a recurring pattern. Once the database immutability check is fixed (RETRO-1), the engine should detect stuck states earlier and escalate instead of looping silently.
-- **Evidence:** Verdict sequence — "iter 10: STALLED\niter 11: REGRESSION\niter 12: STALLED\niter 13: STALLED\niter 14: STALLED\niter 15: STALLED\niter 16: STALLED\niter 17: STALLED\niter 18: STALLED"
-- **Sketch:** Add a rule: if iter N returns STALLED and iter N-1 was also STALLED, after 4 consecutive matches escalate to user with details (evaluator reason, last verdicts, proposed recovery) instead of silently continuing. Alternatively, trigger a lightweight replay to verify actual progress was made.
-- **Verify idea:** Run a new session and confirm that if evaluator detection fails, the engine escalates within 2–4 iters instead of looping 7+ times.
-
+- **Problem:** The session entered a stalled sequence (iters 10–18, eight consecutive STALLED or STALLED-ish verdicts) with no automatic escalation or halt. The evaluator lacks a detector for unproductive loops or stuck states.
+- **Evidence:** Verdict sequence — "iter 10: STALLED iter 11: REGRESSION iter 12: STALLED iter 13: STALLED iter 14: STALLED iter 15: STALLED iter 16: STALLED iter 17: STALLED iter 18: STALLED"
+- **Sketch:** Implement a stall-counter in the evaluator: if ≥5 consecutive STALLED verdicts occur without a CONTINUE/ESCALATE/GOAL_ACHIEVED, auto-escalate to BLOCKED or trigger a manual review checkpoint. Alternatively, add a heuristic to detect zero progress (e.g., no new fixes, same test failures) and halt earlier.
+- **Verify idea:** Inject a synthetic stalled loop (modify goal-evaluator to emit STALLED repeatedly) and verify the engine detects it and escalates within 5 iterations.
