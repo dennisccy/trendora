@@ -2712,3 +2712,160 @@ the recovery list. ONE MECHANICAL ITEM: the whole iteration — plan, both hando
 evidence folder and the changed test file — is uncommitted at scoring time; confirm it lands. ONE
 STANDING FRAMEWORK NOTE: `goal_gate.py`'s duplicate-journey-heading defect is still unfixed and must
 be closed before any GOAL_ACHIEVED certification.
+
+## Iteration 31 — goal-market-compass-iter-31
+
+**Date:** 2026-09-01T03:00:00Z
+**Verdict:** ESCALATE
+**Depth dispatched:** lean — **the spec required `full`** and gave a written trigger; `iter-31/depth-dispatched`
+reads `lean`. This is the **eighth** full->lean demotion this session (iters 2, 6, 8, 23, 24, 26, 28, 31).
+No auditor, no QA agent, no ux-regression, no closure lane ran. Reviewer + coherence + browser-qa + replay did.
+
+**Owner-facing lines:** `J-02 AND J-03 BOTH CLOSED — the session's two oldest open journeys, stuck since
+round 6, are done; 10 of 11 journeys now pass` · `ZERO DATABASE WRITES — the .db file's mtime (01:32:31)
+predates the iteration's own start (02:56) and the WAL is 0 bytes; 28 manifest rows before and after` ·
+`ANTI-GOAL LEDGER: 9 total, 0 unresolved` · `J-09 IS NOT AN OWNER QUESTION AFTER ALL — its blocking 2.99 GB
+measurement has no surviving raw evidence, was taken while a second automated run used the same machine,
+and under ~2x the documented load; re-measuring cleanly is ordinary work` · `the J-02 and J-03 replay
+scripts were rewritten AFTER the replay lane ran and have never been executed — third round running for
+this pattern` · `the handoff's alarming "empty cohort" observation is simply wrong — I read the stored row`.
+
+**Journey deltas:**
+- **Newly passing: J-02** "What changed since the previous session" and **J-03** "Plain-English summary
+  with cited facts" — both `partial` since iter-6's incident-era downgrade, 25 iterations ago, and neither
+  re-examined since. Promoted on evidence I opened and re-derived myself, not on anyone's write-up.
+  `J-02-whatchanged-suppressed.png` is a full-page capture at the frontier (2026-08-12) showing the
+  header "vs 2026-08-11 (1 day ago)", 17 change rows in the order Sector(5) -> Theme(2) -> Stock(10), and
+  the "Suppressed moves (36)" disclosure OPEN — I counted the 36 rows in the image and every one reads
+  `magnitude < threshold` (0.26<5.00, 2.46<5.00, 3.28<5.00, then 1.00<2.00 and 0.00<2.00).
+  `J-03-summary-citedfacts.png` shows the four sentences and the cited-facts panel OPEN, with
+  `regime_score 73.18` / `severity 25.85` equal to the Regime and Market-phase cards printed higher on the
+  SAME screen. **I then re-derived all of it read-only from stored manifest row id 28**: `prior_as_of`
+  2026-08-11, `gap_days` 1, `changes` 17 with **zero** below-threshold entries, `suppressed` 36 ==
+  `suppressed_count` with **zero** at-or-above-threshold entries, every `drill_href` carrying
+  `?asof=2026-08-12`, exactly 4 narrative sentences matching the screen word for word. J-02 step 5 and
+  J-03 step 5 (earliest stored run) are covered by the replay lane's exact-string assertion at
+  `?asof=1996-02-01` plus `J-02-verify.png`, which visibly renders "This is the earliest stored session —
+  no prior-session comparison is available."; I confirmed `MIN(scanner_runs.asof_date)=1996-02-01`
+  read-only, so that really is the earliest run. J-03 step 6's retrospective stamp is VISIBLE in
+  `J-03-verify.png` (2026-03-30) and `J-02-verify.png` (1996-02-01). `evidence_makeup: true` on both —
+  the `[NEW]`-flagged walkthrough each acceptance names is still unrecorded (capture task, methodology
+  A.7, never an iteration goal).
+- **The steps NO lane verified, which I closed myself.** The browser lane wrote twice that the
+  dev-handoff citation steps were "outside browser-QA scope; not verified here", and the handoff never
+  made those citations (J-02 step 6; J-03 step 3; J-03 step 5's NA-velocity half). I located the tests
+  and ran them: `test_quiet_pair_yields_no_changes_but_nonzero_suppressed`,
+  `test_new_to_universe_reported_distinctly_never_as_score_change`,
+  `test_content_hash_stable_across_identical_rebuilds`,
+  `test_direction_na_velocity_variant_when_phase_unavailable` — **4 passed in 0.62s**. The property is
+  covered and green; only the handoff's wording was missing.
+- Newly failing: **none.** Regressed: **none.**
+- Re-verified, unchanged: **J-01, J-04, J-05, J-06, J-07, J-08, J-10, J-11** — merged results 10/10 PASS,
+  all re-stamped to iter-31. Two spot-checks opened: `J-07-verify.png` at 2026-08-03 reads improving /
+  improving / little changed (matching iter-29's derivation to the decimal), and the frontier landing view
+  inside the J-02 capture shows all three badges "little changed" — J-07 holds. `J-04-verify.png` is AGAIN
+  the 2026-03-30 top-of-page viewport stopping above the candidate card, so `evidence_makeup: true` is KEPT
+  for the **thirteenth** iteration running.
+- **ITER-30'S J-11 COVERAGE GAP IS CLOSED.** `J-11.json`, rewritten 2026-09-01T01:51:59 and never executed,
+  ran FIRST in this iteration's replay lane exactly as the spec bound it to, and PASSED on its first-ever
+  execution. I checked its mtime: still 01:51:59 — it was not re-edited afterwards. The binding instruction
+  was honoured precisely.
+- **BUT THE PATTERN MOVED RATHER THAN DIED — third round running, and I am the only one who caught it.**
+  `journey-scripts/J-02.json` (mtime 03:35:14) and `J-03.json` (mtime 03:35:18) were BOTH overwritten by
+  the browser-qa lane AFTER the replay lane wrote its results at 03:31:03. J-02 gained a whole new step;
+  J-03's step 3 moved from `?asof=2026-03-30` to `2025-04-15`. The lane says so honestly in its own notes
+  and lint-checked them, but **neither edited golden has ever been executed**. So the two journeys promoted
+  today carry no working automatic guard. This is the exact "a golden written after the replay lane is not
+  coverage" lesson that THIS iteration's own plan quoted in writing, recurring on J-07 (iter-29), J-11
+  (iter-30) and now J-02+J-03.
+- Not targeted: **J-09** stays `partial` at iter-25 — but its gap text is rewritten, see below.
+- **`spec_hash`: all eleven byte-identical to the recorded values** — I ran `goal_gate.py hash-journeys`
+  and compared every one. No `journeys-changed.md`, no `browser-infra.json`, no `DEFERRED-BUDGET` rows,
+  NOT maintenance isolation.
+- Anti-goal violations: **NONE new** among AG-1..AG-18 — I answered all eighteen explicitly and re-derived
+  the six at real risk (AG-3, AG-9, AG-12, AG-13, AG-17, AG-18) myself read-only against the live 8.4 GB
+  database, with a control `CREATE TABLE` refused. Confirmed AFTER every lane finished: 28 manifest rows /
+  18 distinct `as_of` / max id 28, census byte-identical; `state_band_json` non-null on exactly 2 rows;
+  `prospective_eligible=1` on **0** rows; newest `available_at_utc` still iter-30's 2026-09-01 00:13:07;
+  `data_provider_runs` still 549 with newest 2026-08-23; `MAX(daily_prices.date)` still 2026-08-12;
+  `scanner_runs` still 3128. **Strongest fact of the round: the database file's mtime is 2026-09-01
+  01:32:31 — BEFORE this iteration began at 02:56 — and the WAL is 0 bytes. Not one byte was written.**
+  Ledger unchanged at **9 total, 0 unresolved**. Considered and rejected as a ledger entry: the replay lane
+  again requested `?asof=2026-03-30`, outside the declared safe set — nothing permanent resulted (that date
+  already had a row, the post-lane census is unchanged), the developer flagged it rather than absorbing it,
+  and the browser lane repointed the golden to a safe date.
+- Coherence: COHERENCE-PASS (deterministic zero-change pass — product diff empty). Deterministic scan:
+  CLEAN. Review: FAIL on the first pass (one CRITICAL — a stale J-03 golden that the handoff's "no
+  discrepancy anywhere" claim had concealed), then PASS_WITH_NOTES after a proper fix round. Not a
+  fail-open: the retry policy worked exactly as designed.
+- **J-09's blocker is NOT what six earlier rounds recorded.** Every evaluator since iter-25 has carried
+  "J-09's ~2.99 GB acceptability" as an open OWNER question, on the strength of the journey's own "stop for
+  owner review" clause. I read the actual measurement record. `reports/perf-budgets.md`'s **iter-25 AUDIT
+  CORRECTION** states in terms that the 3,064,772 kB figure "is also not independently corroborated: no
+  sampler log or /proc capture from this run survives, so that number rests on the measuring agent's report
+  alone"; that a SECOND goal-mode engine (tensteps, sid `ten-steps-v1`, iter 17, `depth=full`, pid 3510323)
+  was live on the host throughout the burst window; and that the plateau was sampled under roughly TWICE
+  the request volume the Method section documents. J-09 step 2 explicitly requires a `/proc/<pid>/status`
+  reading, and no surviving primary capture backs the current number. So the owner ruling is NOT the only
+  unblock path — a clean re-measurement with durable evidence on a quiet host is ordinary, non-destructive,
+  already-authorised work. That is why this is ESCALATE and not STALLED.
+- **A false alarm I cleared.** The handoff recorded an "Observation" that `comparison_cohort` and
+  `near_threshold_shadow` read back as empty arrays at the frontier. They do not: manifest row 28 stores
+  `comparison_cohort_json` with **539** entries and `near_threshold_shadow_json` with **25** — exactly the
+  counts printed on the page ("comparison cohort (539) + near-threshold shadow (25)"). The developer looked
+  under the `selection` block, whose keys are only candidates / why_not / disposition_tally /
+  candidates_empty_reason. Left standing, this would have sent a future round hunting a bug that is not there.
+
+**Reasoning:** The round did its job and I did not take that from anyone's write-up. Two journeys that had
+been half-finished since round six — the "what changed" list and the plain-English summary on the front
+page — now work. I opened the pictures, and then I read the saved record straight out of the database and
+worked the numbers out myself: seventeen changes listed, thirty-six changes correctly held back as too
+small, and every one of those thirty-six really is below its own cut-off. The four summary sentences on the
+screen are the four sentences in the stored record, word for word, and the two facts the goal asks to be
+checked appear twice on the same screen with the same values. I also proved the round was clean in the
+strongest way available: the database file was never written to at all — its timestamp is older than the
+round itself — so nothing could have been added, changed or deleted. Ten of eleven journeys now pass. Why
+escalate rather than simply continue? Two reasons, both evidenced. First, this round's own plan asked for
+the full team and explained why, and the system ran the light version anyway — the eighth time this
+session. A plain recommendation has now failed twice in a row, at rounds 28 and 31, while an escalation has
+held the depth every time it was used. Second, and more important, the one job left is the riskiest in the
+project: it deliberately loads the owner's computer with a burst of traffic, on the very machine a run of
+this system froze last August, and the rule that governs it is one only the owner may change. The last time
+that measurement was taken, three of its claims turned out to be wrong and only the independent checker
+found them — and I have now found a fourth, that the number itself has no surviving raw evidence behind it.
+The final journey should not be the one we check the least. And this light round proved the point again:
+the reviewer caught a false "nothing is wrong" claim, and I caught two things no lane caught — two replay
+scripts rewritten after they were tested and therefore never actually run, and an alarming defect report
+that is simply mistaken. That is twenty-two rounds running where someone later found what the earlier
+checks missed. Why not GOAL_ACHIEVED? J-09 is still open. Why not REGRESSION? Nothing that worked stopped
+working, and no stored record moved. Why not STALLED? Because of the J-09 finding above — the next step is
+ordinary work, not an owner decision.
+
+**Next-step recommendation:** FINISH **J-09 "The backend fits the host"** — the only journey left. Do NOT
+treat it as waiting for the owner. Measure the program's memory use again, properly: on a quiet machine
+with nothing else of ours running, under the load the write-up actually describes, and **keep the raw
+evidence this time** — the reading taken straight from the system, saved to a file that survives. The
+existing 2.99 GB figure has none of that behind it. Then append the new dated figure beside the old ones,
+never over them. Only if the clean number still misses the 2.5 GB goal does the owner's decision become the
+way forward — and at that point say so plainly and stop, never move the goal to make it pass. RUN IT AT
+FULL DEPTH; only the owner may add `Depth enforcement: required`, and standing guidance keeps
+`CHAIN_REQUIRE_FULL_DEPTH` and `CHAIN_MAINTENANCE_ISOLATION` OFF. **ONE SAFETY POINT FOR THE OWNER:** that
+measurement deliberately loads the computer that a goal-mode run froze on 20 August 2026 — nothing else
+should be running on it during that round. TWO REPAIR ITEMS THAT SHOULD RIDE ALONG: (1) run the rewritten
+J-02 and J-03 replay scripts FIRST and report their real results out loud, then do not edit them again
+whatever happens — they have never been executed; (2) the new J-02 script looks for the exact words
+"Suppressed moves (36)", a count tied to one date, so it will break if the data ever moves. NINE CARRIED
+ITEMS, none blocking: J-04's picture still needs re-taking to include the candidate card (13th round owed);
+J-02, J-03, J-05, J-06 and J-08 all still owe a recorded walkthrough and J-07's is only four steps (all
+passenger tasks, never an iteration goal); one test is red on three files untouched since an old commit and
+should be fixed or formally waived; the "What changed" and "Leadership rotation" lists still show the
+identical rows (owner's call); the iteration-23 throw-away copy (7.8 GB) may still be deleted;
+`apps/frontend/.next-verify/` build cache is tracked in git and dirties every diff; J-01's automatic
+re-check still asserts far less than the journey claims; and the handoff omitted three fixture citations its
+own journey steps require (I supplied them by running the tests). FIVE OLDER OWNER QUESTIONS remain open and
+non-blocking: J-06's "underlying run unavailable" wording; J-01's first two test steps; whether an empty
+"next-session focus" is acceptable; whether MNST joins the recovery list; and whether 12 August should keep
+showing its "rebuilt" note. ONE MECHANICAL ITEM: the whole iteration — plan, handoff, reports, evidence
+folder and both rewritten replay scripts — is uncommitted at scoring time; confirm it lands. ONE STANDING
+FRAMEWORK NOTE: `goal_gate.py`'s duplicate-journey-heading defect is still unfixed and must be closed before
+any GOAL_ACHIEVED certification.

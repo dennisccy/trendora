@@ -1,0 +1,19 @@
+{
+  "phase": "goal-market-compass-iter-31",
+  "status": "in_progress",
+  "current_step": "dev_complete",
+  "updated_at": "2026-09-01T03:20:00Z",
+  "started_at": "2026-09-01T01:56:20Z",
+  "cli": "claude",
+  "blockers": [],
+  "changed_files": [
+    "runs/goal-session-market-compass/journey-scripts/J-03.json",
+    "reports/phase-goal-market-compass-iter-31-regression-replay-results.md",
+    "reports/qa/goal-market-compass-iter-31-evidence/J-01..J-11-verify.png",
+    "docs/handoffs/goal-market-compass-iter-31-dev.md"
+  ],
+  "tests_run": true,
+  "tests_result": "FIX ROUND (reviewer FAIL, 1 CRITICAL issue). Fixed the single listed issue: runs/goal-session-market-compass/journey-scripts/J-03.json carried two stale iter-2 expected strings (step 1 'severity 25.8/100' -> '25.9/100'; step 2 cited-fact '73.24' -> '73.18'), both re-derived from the live recovered DB (GET /api/compass: severity=25.85 rendered by compass.py's {:.1f} as 25.9; regime_score=73.18 rendered by formatFactValue as '73.18'). Reproduced the reviewer's FAIL first (rc=5, step 01 text did not appear), then re-ran the FULL deterministic replay lane with J-11 FIRST: 10/10 journeys PASS, 0 skipped, verdict PASS (rc=0) -- J-11 passed on its first-ever execution, reported verbatim, golden not re-edited. Unit tests re-run: test_session_delta.py + test_compass.py 49 passed; test_api_compass.py 17 passed. Zero product code / config / test-file changes this round. next_session_manifests re-censused read-only AFTER the lane: 28 rows / 18 distinct as_of dates -- unchanged, zero new mints (control CREATE TABLE refused).",
+  "browser_checks_run": true,
+  "next_action": "review"
+}

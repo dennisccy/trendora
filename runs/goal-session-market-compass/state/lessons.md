@@ -453,3 +453,32 @@ TARGET journey does not automatically protect the REQUIRED-STILL-PASSING journey
 file then reports PASS — check the golden's mtime against the replay evidence timestamp before
 accepting the reconciliation, and require the repaired golden to be executed in the NEXT replay lane
 before the journey is described as replay-green.
+
+## iter-31 — 2026-09-01T03:00:00Z
+
+**Verdict:** ESCALATE
+**Lesson:** A carried "open owner question" can be a mis-diagnosis that nobody re-reads. Six
+evaluators in a row recorded J-09 as owner-gated on a ~2.99 GB memory figure, but the measurement's
+own iter-25 AUDIT CORRECTION in `reports/perf-budgets.md` says the number "is also not independently
+corroborated: no sampler log or /proc capture from this run survives", that a second goal-mode engine
+(tensteps) was running on the host throughout the burst, and that the load was ~2x what the Method
+section documents — while J-09 step 2 explicitly requires a `/proc/<pid>/status` reading. The blocker
+was an evidence gap, not an owner decision, and re-reading the primary artifact instead of the
+carried summary is what surfaced it.
+**Applies to:** any iteration about to record, carry, or act on a "waiting on the owner" / STALLED-class
+blocker — open the underlying measurement or artifact and check whether primary evidence actually
+survives before treating the human as the only unblock path.
+
+## iter-31 — 2026-09-01T03:00:00Z
+
+**Verdict:** ESCALATE
+**Lesson:** Fixing the "golden rewritten after the replay lane" defect on the named journey does not
+stop it recurring elsewhere in the same round. The plan bound J-11 explicitly and that worked
+perfectly (`J-11.json` ran first, passed, mtime unchanged) — but the browser-qa lane then overwrote
+`J-02.json` (03:35:14) and `J-03.json` (03:35:18) *after* the replay results were written (03:31:03),
+leaving both newly-promoted journeys with an unexecuted, lint-only guard. Only artifact mtimes reveal
+it; every prose report in the round reads clean, and the browser lane disclosed the rewrite honestly
+without noticing it had voided its own coverage.
+**Applies to:** any iteration whose plan names a golden-script hygiene rule — bind it to ALL journeys
+in the run, not just the offending one, and require any lane that writes or overwrites a
+`journey-scripts/*.json` to re-run the replay lane afterwards and report the real result.

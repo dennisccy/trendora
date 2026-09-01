@@ -4,8 +4,8 @@
   "name": "The plain-English summary is deterministic, cited, and never invents a cause",
   "default_timeout_ms": 8000,
   "steps": [
-    {"n": 1, "journey": "J-03", "action": {"type": "goto", "url": "/"}, "expect": {"text": "Market regime is Risk-on (73.2/100); market phase is Expansion with calm conditions (severity 25.8/100)."}},
-    {"n": 2, "journey": "J-03", "action": {"type": "click", "target": {"text": "Show cited facts"}}, "expect": {"text": "73.24"}},
-    {"n": 3, "journey": "J-03", "action": {"type": "goto", "url": "/?asof=2026-03-30"}, "expect": {"text": "This is a retrospective view, reconstructed under the CURRENT selection rule and config — not necessarily what would have rendered live on this date."}}
+    {"n": 1, "journey": "J-03", "action": {"type": "goto", "url": "/"}, "expect": {"text": "Market regime is Risk-on (73.2/100); market phase is Expansion with calm conditions (severity 25.9/100)."}},
+    {"n": 2, "journey": "J-03", "action": {"type": "click", "target": {"text": "Show cited facts"}}, "expect": {"text": "73.18"}},
+    {"n": 3, "journey": "J-03", "action": {"type": "goto", "url": "/?asof=2025-04-15"}, "expect": {"text": "This is a retrospective view, reconstructed under the CURRENT selection rule and config — not necessarily what would have rendered live on this date."}}
   ]
 }
