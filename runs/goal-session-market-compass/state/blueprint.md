@@ -265,3 +265,19 @@ already-registered single producers and endpoints — this iteration reads them,
 duplicate any. Live `/api/compass` calls stay confined to the same three already-manifested `as_of`
 values used at iter-31 (frontier `2026-08-12`, `2025-04-15`, `1996-02-01`), so zero new
 `next_session_manifests` rows are expected.
+
+**iter-33 note (2026-09-01 — informational, no IA change, no Data Contract row change):** J-09's
+warm-up memory bound (Constraints (c) — bounding the cold cadence-date allocation
+`apps/backend/app/engine/warmup.py:351`'s `with bar_cache(session):` block produces, via
+`apps/backend/app/engine/prices.py`'s `_BarCache`/`bar_cache`/`prefill`) touches no page, nav
+entry, computing module, serving endpoint, or displayed field — the new memory-budget key is a
+performance-only tunable under `config.yaml` (`compass.*`/`startup.*`), not a Data Contract value,
+matching the iter-4/25/32 precedent for J-09's other config-only changes. Artifacts are a new
+`reports/perf-budgets.md` Addendum 44 plus a dated correction note on Addendum 43, both internal
+ops reports outside the Information Architecture and Data Contract, and a raw sample file under
+`runs/goal-market-compass-iter-33/`. This iteration's byte-identity spot-check exists specifically
+to prove every already-registered Data Contract row (Next-session manifest CONTENT + FREEZE/
+INTEGRITY blocks, engine identity, stock sector label, regime/phase/breadth, sector/theme scores,
+evidence ledger status) is read unchanged through its already-registered single producer and
+endpoint across the authorized 7-value as-of set — this iteration reads them, it does not move,
+duplicate, or add to any.
