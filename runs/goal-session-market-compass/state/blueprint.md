@@ -238,3 +238,15 @@ module, serving endpoint, or displayed field is introduced; `build_state_band` i
 (binding "Do not redo"). The `[TARGET]` → `[LIVE]` flip on the `state_band` row remains the
 goal-evaluator's call, pending its confirmation that J-07 passes with this iteration's evidence at
 the default `/` view.
+
+**iter-31 note (2026-09-01 — informational, no IA change, no Data Contract row change):** J-02
+"what-changed" and J-03 "plain-English summary" (both registered at baseline under the Today (`/`)
+home) are re-verified live against the fully-recovered database (frontier `2026-08-12`, J-10/J-11
+complete) for the first time since iter-6 downgraded them to `partial` mid-incident. Both rows'
+already-registered single producer (`app.engine.compass.build_manifest_payload`, composing
+`app.engine.session_delta.compute_delta` and the narrative sentence builder) and single serving
+endpoint (`GET /api/compass`) are unchanged — this iteration reads them, it does not move or duplicate
+either. No new page, nav entry, computing module, serving endpoint, or displayed field is introduced.
+Live `/api/compass` calls this iteration are confined to three already-manifested `as_of` values
+(frontier `2026-08-12`, `2025-04-15`, `1996-02-01` — the true earliest stored run) so zero new
+`next_session_manifests` rows are expected; see `state/assumptions.md` (`iter-31 — goal-decomposer`).

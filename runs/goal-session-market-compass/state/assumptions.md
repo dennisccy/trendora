@@ -611,3 +611,30 @@ dates must keep showing the rebuild note, the remedy is a display change — sur
 in the versions strip — which a future iteration can ship without touching any stored row. NOT
 reversible for the row: version 7 exists permanently (AG-12 forbids deleting it, and deleting it would
 itself be the prohibited write).
+
+## iter-31 — goal-decomposer (chose the exact live `as_of` set for J-02/J-03 re-verification to guarantee zero new manifest mints)
+
+**Ambiguity:** J-02 step 5 ("step the as-of switcher to the earliest stored run") and J-03 steps 5-6
+("at the earliest stored run" / "any pre-frontier historical date") name a CLASS of date, not a specific
+one. Per the binding "Do not redo" note in the inlined iteration state, any live
+`GET /api/compass?as_of=<D>` for a manifest-less `D` permanently mints a new `next_session_manifests`
+row (create-once-on-GET), and the plan must name the exact `as_of` in advance — the goal text does not
+supply it.
+
+**We chose:** constrain every live `/api/compass` call this iteration to exactly
+`{no param (frontier, 2026-08-12), "2025-04-15", "1996-02-01"}`. Grounds, each checked by me read-only
+against the live database: (a) `SELECT DISTINCT as_of FROM next_session_manifests` returns 18 dates
+including all three of these — zero new mints regardless of which is visited; (b)
+`SELECT MIN(asof_date) FROM scanner_runs` returns `1996-02-01` with no earlier row, so it is literally
+"the earliest stored run" J-02 step 5 / J-03 step 5 require, and it already carries a manifest row; (c)
+`2025-04-15` is already the proven, repeatedly-used safe historical/retrospective date (iter-26 mint,
+iter-28 assumption-ledger entry) for J-03 step 6's retrospective-stamp check. Non-manifest reads
+(`GET /api/runs`, `GET /api/sectors`, `GET /api/stocks`) for J-02 step 4's spot-checks may additionally
+target `2026-08-11` (the frontier's immediately preceding stored run, confirmed via
+`SELECT asof_date FROM scanner_runs WHERE asof_date < '2026-08-12' ORDER BY asof_date DESC LIMIT 1`) —
+those endpoints carry no manifest and cannot mint anything regardless of date.
+
+**Reversible:** yes — a test-data scoping call with no product-code or database impact. If a future
+iteration needs to exercise the create-once-on-GET mint path itself (a date with NO existing manifest),
+that is a new, explicitly authorized live action for that iteration's own plan — none of this
+iteration's evidence would need redoing.
