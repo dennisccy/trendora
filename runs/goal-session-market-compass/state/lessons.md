@@ -581,3 +581,20 @@ criterion WORKING — step-07's missing `Unassigned` is exactly what J-01's ≥9
 produces — so open the screenshot before recording it as a defect.
 **Applies to:** any iteration asserting "zero database writes" (J-09/J-10/J-11 measurement rounds), and
 any lane reading demo soft notes as failures.
+
+## iter-35 — 2026-09-01T12:20:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** A false label survived 34 iterations because the test fixture **confounded the two
+possible causes**: the only qualifier-failing row in `test_compass.py`'s `selection_run` fixture (CCC,
+L=77) was *also* below the 80 leadership floor, so no test could distinguish "excluded by leadership"
+from "excluded by all three checks" — both hypotheses predicted the same output. Worse, the fix's
+*replacement* fixture repeats the shape: `test_manifest_invariants.py:933` sets the HPE row's risk to
+`58.9` and comments it "fails BOTH qualifiers", but the ceiling is `60.0` and lower is safer, so risk
+actually passes. The reviewer caught it; the real dataset (CRL, L 86.23 / E 23.62 / R 64.2) covers the
+case by luck, not by design. When a rule has N independent conditions, the fixture needs a row that
+isolates each one — otherwise the suite is green and blind.
+**Applies to:** any iteration adding or changing a multi-condition gate/filter/predicate (selection
+rules, eligibility checks, threshold partitions) — especially `apps/backend/app/engine/compass.py` and
+its fixtures in `apps/backend/tests/test_compass.py` / `test_manifest_invariants.py`. Before accepting
+a gating test, check that each condition has a fixture row where it is the ONLY one failing.

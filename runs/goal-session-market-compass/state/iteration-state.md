@@ -1,26 +1,40 @@
 # Iteration State — market-compass
 
-**After iteration:** 34 · **Date:** 2026-09-01 · **Verdict:** GOAL_ACHIEVED
+**After iteration:** 35 · **Date:** 2026-09-01 · **Verdict:** CONTINUE
 
 ## Journeys
 
-11 passing (J-01..J-11) · 0 failing · 0 unknown — 11 total. All re-verified at iter-34; `spec_hash` current for all eleven, drift `changed: []`.
+12 passing (J-01..J-12) · 1 failing (J-13) — 13 total. `goal_gate.py journeys` exits 1, `blocking: ["J-13"]`.
 
 ## Active blockers
 
-- none. All deterministic gates pass (results exit 0, journeys 11/11, regressions exit 0, coherence PASS). One OWNER CONFIRMATION pending, non-blocking: accept J-09's memory figure (~2,253 MB vs the 2,560 MB limit, measured twice from separate boots, agreeing to 0.06%).
-- Non-blocking, outside this goal (build tooling): the walkthrough-waived evidence exemption in `incredible_auto_dev/scripts/automation/lib/merge_ui_test_results.py` works but nothing invokes it — wire `replay-lane.sh`'s merge to pass a per-iteration evidence fragment, or a future round can silently return to BLOCKED.
+- **J-13 "Leadership rotation"** (owner: dev) — never built; the ONLY thing blocking completion. Three
+  defects I measured on `2026-08-12_v8.json` + `compass-leadership-rotation-section.tsx:38`: (a) line 38
+  is a client-side `changes.filter(kind in {sector,theme,stock})` over an array with 0 market/breadth
+  entries, so it duplicates all 17 What-changed rows; (b) entries carry unsigned `magnitude`, no `delta`,
+  no `direction_word`; (c) NO `rotation` key, and sector = 5 shown + 24 suppressed = **29 of 31** ETFs.
+- Non-blocking: `test_manifest_invariants.py:933` risk fixture `58.9` vs a `60.0` ceiling makes its
+  "fails BOTH qualifiers" comment false (raise above 60.0); the two new `assert` guards at
+  `compass.py:462`/`:689` should `raise`; `test_no_magic_numbers.py` red on 3 untouched files.
 
 ## Last 2 verdicts
 
-- iter 34: GOAL_ACHIEVED — J-09 measured twice from two separate boots (2,307,092 and 2,305,668 kB, ~12% under the 2,621,440 kB bar, agreeing to 0.062%); `apps/` diff EMPTY; 11/11 executed PASS; `goal_gate.py results` exit 0; depth genuinely full (audit + QA + closure artifacts all exist, which iter-33 lacked entirely).
-- iter 33: ESCALATE — J-09's number was right but the round that closed the session ran lean against a `Depth: full` spec with no disclosure, and the deterministic gate exited 1 on a BLOCKED headline. Both defects are now discharged.
+- iter 35: CONTINUE — J-12 built and verified (37→0 mislabeled rows, 502+27+10=539), nothing frozen
+  moved, but the goal GREW: J-13 landed 2026-09-01 unbuilt and I proved it fails.
+- iter 34: GOAL_ACHIEVED — closed J-09 on two independent memory readings; superseded, because
+  `docs/goal.md` gained J-12 and J-13 after that verdict.
 
 ## Do not redo
 
-- **J-09 is CLOSED and now independently corroborated** — do NOT re-open it as a build and do NOT touch `apps/backend/app/engine/warmup.py` or `prices.py`. The mechanism shipped at iter-33; iter-34 only re-measured it. Evidence: `runs/goal-market-compass-iter-34/j09-vmpeak-samples-{dev,auditor}.csv`, `reports/perf-budgets.md` Addendum 45.
-- **The harness fix's correctness is PROVEN — do not re-litigate it.** Executed, not read: waived set = exactly `{J-09, J-10, J-11}` from goal.md's literal marker; the placeholder-plus-prose cell returns `False`; iter-33's REAL inputs through the patched merge still return `BLOCKED`/exit 1. Only the WIRING (blocker above) is outstanding.
-- **Constraints (a), (b), (c) all landed** — (a)/(b) at iter-5, (c) at iter-33. The "boolean switch vs literal configured budget" wording gap is recorded in the assumption ledger and deliberately NOT reopened.
-- **Evidence make-up rides as a passenger, never as an iteration goal** — J-04's crop (16th round) and the six owed journey-attributed walkthroughs (J-02/J-03/J-05/J-06/J-07/J-08) are `Depth: evidence` tasks on already-working features. Never score them blocking.
-- **`.steps/*.done` is NOT a depth signal** — those markers are written only by the lean lane, so their absence means full. Verify depth from `iter-<N>/depth-dispatched`, the `Depth arbiter:` line in `engine.log`, and whether the audit/QA/closure artifacts exist.
-- **Carried, non-blocking, repeatedly re-confirmed:** two pre-existing red unit tests on untouched files (fix or formally waive); `browser_checks_run: false` despite 18 captures; `apps/frontend/.next-verify/` tracked in git; the iteration-23 throwaway clone (7.8 GB); five older owner questions (J-06 wording, J-01's first two test steps, empty "next-session focus", MNST, the 12 Aug "rebuilt" note).
+- **J-12 is CLOSED** — do NOT re-open `evaluate_selection`'s gating logic. Leadership is the sole gate;
+  entry/risk are advisory. `config.yaml compass.selection.rule_version` is now `"v2"`.
+- **Never mutate, relabel, re-hash or delete a stored manifest row or export file** (AG-12/AG-17).
+  `2026-08-12` v5/v6/v7 keep their 37 mislabeled rows and `rule_version: "v1"`; the correction lives
+  ONLY in v8. Verified byte-identical this round.
+- **J-09 stays closed** — do not touch `warmup.py`/`prices.py`; Constraints (a)/(b)/(c) stay landed.
+- **No threshold VALUE may change** (80.0 / 70.0 / 60.0) — AG-15; which checks GATE is now settled.
+- **Evidence capture is never an iteration goal** — J-04's crop (17th round owed) and the 7 journeys
+  owing a `[NEW]` walkthrough (J-02/03/05/06/07/08/12) ride as passengers or a `Depth: evidence` round.
+- **Depth for the J-13 round is `full`** (shared `session_delta` producer feeds J-02/J-05/J-06/J-07;
+  J-13 must prove What-changed unchanged; real UI for ux-regression). A drop to `lean` must be
+  surfaced explicitly and marked unmet (`docs/goal.md:2607-2620`).

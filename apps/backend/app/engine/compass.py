@@ -459,6 +459,27 @@ def _cohort_row(row: dict, record: Optional[dict], theme_rank_by_slug: dict[str,
     }
 
 
+def _assert_disposition_predicate(comparison_cohort: list[dict], sel) -> None:
+    """goal-market-compass iter-35 (J-12): makes `selection_disposition` truthful BY CONSTRUCTION, not
+    merely by the caller's good behavior -- asserts each label's OWN predicate holds for every cohort row
+    before `evaluate_selection` ever returns: `below_selection_floor` implies leadership below the floor,
+    `excluded_by_cap` implies leadership at or above it. A violation here would mean the partition logic
+    above regressed, not that a row is legitimately mislabeled -- this must never fire in production."""
+    for row in comparison_cohort:
+        disposition = row["selection_disposition"]
+        cleared_floor = row["leadership_score"] >= sel.leadership_min_score
+        if disposition == _DISPOSITION_BELOW_FLOOR:
+            assert not cleared_floor, (
+                f"{row['ticker']}: selection_disposition=below_selection_floor but leadership_score "
+                f"{row['leadership_score']} >= leadership_min_score {sel.leadership_min_score}"
+            )
+        elif disposition == _DISPOSITION_EXCLUDED_BY_CAP:
+            assert cleared_floor, (
+                f"{row['ticker']}: selection_disposition=excluded_by_cap but leadership_score "
+                f"{row['leadership_score']} < leadership_min_score {sel.leadership_min_score}"
+            )
+
+
 def _scan_selection_language(candidates: list[dict], why_not: list[dict], cfg: Config) -> None:
     """TC-35: extend the SAME runtime banned-language guard `build_narrative` already uses to
     `evaluate_selection`'s candidate reason/caution/invalidation/why-not strings — these are about to be
@@ -485,6 +506,12 @@ def _scan_selection_language(candidates: list[dict], why_not: list[dict], cfg: C
 
 
 def _qualifier_checks(row: dict, cfg: Config) -> list[dict]:
+    """goal-market-compass iter-35 (J-12): each check now carries its own `gating` tag -- the SINGLE
+    source of truth for which qualifier is the candidacy gate (`leadership_min_score`, per the goal
+    file's own declared rule and `config.yaml`'s comment) versus an advisory qualifier
+    (`entry_min_score`/`risk_max_score`) that annotates a caution and the eligibility checklist but never
+    removes a row from candidacy. Both `evaluate_selection`'s partition and `_candidate_payload`'s
+    checklist/reason/caution construction read this ONE tag rather than re-deriving it."""
     sel = cfg.compass.selection
     return [
         {
@@ -492,23 +519,32 @@ def _qualifier_checks(row: dict, cfg: Config) -> list[dict]:
             "threshold": sel.leadership_min_score,
             "actual": row["leadership_score"],
             "passed": row["leadership_score"] >= sel.leadership_min_score,
+            "gating": True,
         },
         {
             "condition": "entry_min_score",
             "threshold": sel.entry_min_score,
             "actual": row["entry_quality_score"],
             "passed": row["entry_quality_score"] >= sel.entry_min_score,
+            "gating": False,
         },
         {
             "condition": "risk_max_score",
             "threshold": sel.risk_max_score,
             "actual": row["risk_score"],
             "passed": row["risk_score"] <= sel.risk_max_score,
+            "gating": False,
         },
     ]
 
 
 def _candidate_payload(row: dict, checks: list[dict], detail: Optional[dict], run: ScannerRun, cfg: Config) -> dict:
+    """goal-market-compass iter-35 (J-12): `checks` may now include an ADVISORY qualifier that FAILED
+    (leadership_min_score is the only gate -- a candidate is guaranteed to have `checks[0]["passed"]`
+    True, but entry_min_score/risk_max_score are never guaranteed). Each check's own `gating` tag (from
+    `_qualifier_checks`, the single source) decides whether it contributes a "clears" REASON (passed) or,
+    for an advisory miss, a CAUTION citing the threshold and the row's actual stored value -- never a
+    reason claiming it clears a qualifier it did not clear."""
     vocab = cfg.compass.vocabulary
     checklist = [
         {
@@ -516,6 +552,7 @@ def _candidate_payload(row: dict, checks: list[dict], detail: Optional[dict], ru
             "threshold": check["threshold"],
             "actual": check["actual"],
             "verdict": "Pass" if check["passed"] else "Miss",
+            "gating": check["gating"],
         }
         for check in checks
     ]
@@ -529,16 +566,44 @@ def _candidate_payload(row: dict, checks: list[dict], detail: Optional[dict], ru
         for check in checks
     ]
     sel = cfg.compass.selection
-    reasons = [
-        f"Leadership score {row['leadership_score']:.1f} clears the {sel.leadership_min_score:.1f} floor "
-        f"({vocab.leadership_words[row['leadership_bucket']]}).",
-        f"Entry Quality score {row['entry_quality_score']:.1f} clears the {sel.entry_min_score:.1f} "
-        f"qualifier ({vocab.entry_words[row['entry_quality_bucket']]}).",
-        f"Risk score {row['risk_score']:.1f} clears the {sel.risk_max_score:.1f} ceiling "
-        f"({vocab.risk_words[row['risk_bucket']]}).",
-    ]
+    reason_by_condition = {
+        "leadership_min_score": (
+            f"Leadership score {row['leadership_score']:.1f} clears the {sel.leadership_min_score:.1f} floor "
+            f"({vocab.leadership_words[row['leadership_bucket']]})."
+        ),
+        "entry_min_score": (
+            f"Entry Quality score {row['entry_quality_score']:.1f} clears the {sel.entry_min_score:.1f} "
+            f"qualifier ({vocab.entry_words[row['entry_quality_bucket']]})."
+        ),
+        "risk_max_score": (
+            f"Risk score {row['risk_score']:.1f} clears the {sel.risk_max_score:.1f} ceiling "
+            f"({vocab.risk_words[row['risk_bucket']]})."
+        ),
+    }
+    # Advisory-qualifier-miss caution text (never shown for the leadership gate -- a candidate always
+    # clears it). States the threshold and the row's ACTUAL stored value only -- no advice-sounding tail
+    # (mirrors the ATR_RISK_BUDGET caution's fact-only posture, TC-34).
+    caution_by_condition = {
+        "entry_min_score": (
+            f"ENTRY_QUALITY_QUALIFIER: Entry Quality score {row['entry_quality_score']:.1f} is below the "
+            f"{sel.entry_min_score:.1f} qualifier ({vocab.entry_words[row['entry_quality_bucket']]}) -- "
+            "advisory only; Leadership alone determines candidacy."
+        ),
+        "risk_max_score": (
+            f"RISK_QUALIFIER: Risk score {row['risk_score']:.1f} is above the {sel.risk_max_score:.1f} "
+            f"ceiling ({vocab.risk_words[row['risk_bucket']]}) -- advisory only; Leadership alone "
+            "determines candidacy."
+        ),
+    }
+    reasons = []
+    qualifier_cautions = []
+    for check in checks:
+        if check["passed"]:
+            reasons.append(reason_by_condition[check["condition"]])
+        elif not check["gating"]:  # a candidate's gating check always passes -- this is always an advisory miss
+            qualifier_cautions.append(caution_by_condition[check["condition"]])
 
-    cautions = []
+    cautions = list(qualifier_cautions)
     invalidation_note = "No stored invalidation note for this row."
     risk_budget = (detail or {}).get("risk_budget") or {}
     atr = risk_budget.get("atr_pct") or {}
@@ -617,7 +682,12 @@ def evaluate_selection(session: Session, run: ScannerRun, config: Optional[Confi
             "sector": sector,
         }
         checks = _qualifier_checks(row, cfg)
-        if all(check["passed"] for check in checks):
+        # goal-market-compass iter-35 (J-12): `leadership_min_score` (the sole `gating: True` check) is
+        # the ONLY candidacy gate -- `entry_min_score`/`risk_max_score` are advisory and never remove a
+        # row from candidacy, matching the goal file's own declared rule and config.yaml's own comment.
+        gating_checks = [check for check in checks if check["gating"]]
+        assert len(gating_checks) == 1, "expected exactly one gating qualifier check (leadership_min_score)"
+        if gating_checks[0]["passed"]:
             qualifying.append((row, checks))
         else:
             failed = [
@@ -655,9 +725,11 @@ def evaluate_selection(session: Session, run: ScannerRun, config: Optional[Confi
 
     candidates_empty_reason = None
     if not candidates:
+        # goal-market-compass iter-35 (J-12, TC-7): names ONLY the gating rule -- Entry Quality/Risk are
+        # advisory qualifiers and are never cited here as though they gated inclusion.
         candidates_empty_reason = (
-            f"No stored member cleared the selection rule (Leadership >= {sel.leadership_min_score:.1f}, "
-            f"Entry Quality >= {sel.entry_min_score:.1f}, Risk <= {sel.risk_max_score:.1f}) for this as-of."
+            f"No stored member cleared the Leadership score floor ({sel.leadership_min_score:.1f}) for "
+            "this as-of -- the sole candidacy gate."
         )
 
     # --- iter-3 (J-05/J-06): comparison cohort (every non-candidate member) + near-threshold shadow.
@@ -686,6 +758,12 @@ def evaluate_selection(session: Session, run: ScannerRun, config: Optional[Confi
         for cohort_row, (row, _disposition) in zip(comparison_cohort, non_candidate_pairs)
         if sel.shadow.min_score <= row["leadership_score"] < sel.leadership_min_score
     ]
+
+    # goal-market-compass iter-35 (J-12): make `selection_disposition` truthful BY CONSTRUCTION, not
+    # merely by convention -- a per-row runtime check (mirrors `_scan_selection_language`'s
+    # belt-and-suspenders posture) that each label's own predicate actually holds, on every produced
+    # manifest, before it is ever returned.
+    _assert_disposition_predicate(comparison_cohort, sel)
 
     result = {
         "candidates": candidates,

@@ -87,9 +87,15 @@ def selection_run(engine, cfg):
     """One run with a deliberately varied cross-section for J-04 selection tests:
       AAA: L=92 A, E=85 B, R=40 C  -> qualifies (clears all three)
       BBB: L=88 A, E=78 B, R=45 C  -> qualifies
-      CCC: L=77 B, E=55 D, R=50 C  -> fails entry_min_score (70) -> near-miss why-not (leadership 77 >= floor 75)
-      DDD: L=30 E, E=20 E, R=90 E  -> fails everything, leadership far below why_not_floor -> tally only, no entry
+      CCC: L=77 B, E=55 D, R=50 C  -> below the leadership floor (80) -> near-miss why-not (>= why_not_floor 75)
+      DDD: L=30 E, E=20 E, R=90 E  -> far below floor -> tally only, no individual why-not entry
       EEE: L=95 A, E=90 A, R=35 B  -> qualifies, no risk_budget key at all (honest-NA caution path)
+      HPE: L=92.7 A, E=21.5 E, R=58.9 C -> goal-market-compass iter-35 (J-12): the real HPE shape from
+        the frontier export's mislabel -- leadership CLEARS the floor but the entry qualifier fails. Is a
+        CANDIDATE (leadership_min_score is the only candidacy gate) carrying an advisory caution, never
+        `below_selection_floor` despite failing a qualifier -- the exact case the prior buggy code got
+        wrong (BACKGROUND: CCC, the suite's only other qualifier-failing row, is ALSO below the floor, so
+        it alone never exercised this path).
     """
     with Session(engine) as session:
         run = _mk_run(session, date(2024, 3, 1))
@@ -98,6 +104,7 @@ def selection_run(engine, cfg):
         _mk_result(session, run.id, "CCC", 77.0, "B", 55.0, "D", 50.0, "C")
         _mk_result(session, run.id, "DDD", 30.0, "E", 20.0, "E", 90.0, "E")
         _mk_result(session, run.id, "EEE", 95.0, "A", 90.0, "A", 35.0, "B", atr_value=None)
+        _mk_result(session, run.id, "HPE", 92.7, "A", 21.5, "E", 58.9, "C")
         session.commit()
         session.refresh(run)
         return run.id
@@ -111,7 +118,7 @@ def test_candidates_match_stored_scores_and_word_maps(engine, cfg, selection_run
         run = session.get(ScannerRun, selection_run)
         result = compass.evaluate_selection(session, run, cfg)
     by_ticker = {c["ticker"]: c for c in result["candidates"]}
-    assert set(by_ticker) == {"AAA", "BBB", "EEE"}
+    assert set(by_ticker) == {"AAA", "BBB", "EEE", "HPE"}
     aaa = by_ticker["AAA"]
     assert aaa["leadership_score"] == 92.0
     assert aaa["leadership_word"] == cfg.compass.vocabulary.leadership_words["A"]
@@ -121,14 +128,30 @@ def test_candidates_match_stored_scores_and_word_maps(engine, cfg, selection_run
 
 
 def test_checklist_verdicts_reproduce_inclusion(engine, cfg, selection_run):
+    """iter-35 (J-12, TC-6/TC-14): the GATING check (leadership_min_score) ALONE reproduces inclusion --
+    every candidate's gating verdict is Pass and is tagged `gating: True` -- while ADVISORY checks
+    (entry_min_score/risk_max_score) are tagged `gating: False` and may legitimately Miss (HPE clears
+    leadership but misses its entry qualifier) without affecting candidacy."""
     with Session(engine) as session:
         run = session.get(ScannerRun, selection_run)
         result = compass.evaluate_selection(session, run, cfg)
     for candidate in result["candidates"]:
-        assert all(row["verdict"] == "Pass" for row in candidate["checklist"])
         assert {row["condition"] for row in candidate["checklist"]} == {
             "leadership_min_score", "entry_min_score", "risk_max_score",
         }
+        for row in candidate["checklist"]:
+            assert row["gating"] == (row["condition"] == "leadership_min_score")
+        gating_rows = [row for row in candidate["checklist"] if row["gating"]]
+        assert len(gating_rows) == 1
+        assert gating_rows[0]["verdict"] == "Pass"  # the gating verdict ALONE reproduces inclusion
+    # HPE: leadership (gating) Pass, entry (advisory) Miss -- proves an advisory Miss never excludes.
+    hpe = next(c for c in result["candidates"] if c["ticker"] == "HPE")
+    entry_row = next(row for row in hpe["checklist"] if row["condition"] == "entry_min_score")
+    assert entry_row["verdict"] == "Miss" and entry_row["gating"] is False
+    # every OTHER candidate in this fixture clears every qualifier -- what_would_change stays all-met there
+    for candidate in result["candidates"]:
+        if candidate["ticker"] == "HPE":
+            continue
         assert all(row["met"] is True for row in candidate["what_would_change"])
 
 
@@ -167,10 +190,14 @@ def test_excluded_by_cap_get_empty_failed_conditions(engine, cfg, selection_run)
         run = session.get(ScannerRun, selection_run)
         result = compass.evaluate_selection(session, run, capped_cfg)
     assert len(result["candidates"]) == 2
-    assert result["disposition_tally"]["excluded_by_cap"] == 1  # AAA/BBB/EEE qualify, cap keeps top 2
+    # AAA/BBB/EEE/HPE all clear the leadership floor (qualify); cap keeps only the top 2 by leadership.
+    assert {c["ticker"] for c in result["candidates"]} == {"EEE", "HPE"}
+    assert result["disposition_tally"]["excluded_by_cap"] == 2
     why_not_by_ticker = {w["ticker"]: w for w in result["why_not"]}
-    cut_ticker = ({"AAA", "BBB", "EEE"} - {c["ticker"] for c in result["candidates"]}).pop()
-    assert why_not_by_ticker[cut_ticker]["failed_conditions"] == []  # passed everything; only the cap cut it
+    cut_tickers = {"AAA", "BBB", "EEE", "HPE"} - {c["ticker"] for c in result["candidates"]}
+    assert cut_tickers == {"AAA", "BBB"}
+    for cut_ticker in cut_tickers:
+        assert why_not_by_ticker[cut_ticker]["failed_conditions"] == []  # passed everything; only the cap cut it
 
 
 def test_candidates_empty_reason_when_nothing_qualifies(engine, cfg):
@@ -182,6 +209,13 @@ def test_candidates_empty_reason_when_nothing_qualifies(engine, cfg):
         result = compass.evaluate_selection(session, run, cfg)
     assert result["candidates"] == []
     assert isinstance(result["candidates_empty_reason"], str) and result["candidates_empty_reason"]
+    # iter-35 (J-12, TC-7): names ONLY the gating rule (leadership) -- never entry/risk as though they gated.
+    reason_lower = result["candidates_empty_reason"].lower()
+    assert "entry_min_score" not in reason_lower
+    assert "risk_max_score" not in reason_lower
+    assert "entry quality" not in reason_lower
+    assert "risk" not in reason_lower
+    assert "leadership" in reason_lower
 
 
 def test_risk_off_regime_adds_caution_to_every_candidate(engine, cfg, selection_run):
@@ -192,7 +226,7 @@ def test_risk_off_regime_adds_caution_to_every_candidate(engine, cfg, selection_
         session.commit()
         session.refresh(run)
         result = compass.evaluate_selection(session, run, cfg)
-    assert len(result["candidates"]) == 3
+    assert len(result["candidates"]) == 4
     for candidate in result["candidates"]:
         assert any(c.startswith("REGIME_RISK_OFF") for c in candidate["cautions"])
         assert not any("buy" in c.lower() or "sell" in c.lower() for c in candidate["cautions"])
@@ -263,9 +297,92 @@ def test_excluded_by_cap_cohort_rows_carry_that_disposition(engine, cfg, selecti
     with Session(engine) as session:
         run = session.get(ScannerRun, selection_run)
         result = compass.evaluate_selection(session, run, capped_cfg)
-    cut_ticker = ({"AAA", "BBB", "EEE"} - {c["ticker"] for c in result["candidates"]}).pop()
-    cohort_row = next(row for row in result["comparison_cohort"] if row["ticker"] == cut_ticker)
-    assert cohort_row["selection_disposition"] == "excluded_by_cap"
+    cut_tickers = {"AAA", "BBB", "EEE", "HPE"} - {c["ticker"] for c in result["candidates"]}
+    for cut_ticker in cut_tickers:
+        cohort_row = next(row for row in result["comparison_cohort"] if row["ticker"] == cut_ticker)
+        assert cohort_row["selection_disposition"] == "excluded_by_cap"
+
+
+# --- iter-35 (J-12): leadership_min_score is the ONLY candidacy gate --------------------------------
+
+
+def test_hpe_shape_row_clears_floor_never_below_selection_floor_and_carries_caution(engine, cfg, selection_run):
+    """TC-2/TC-5/TC-9: the real HPE shape (leadership clears the floor, entry qualifier fails) is a
+    CANDIDATE -- never `below_selection_floor` -- and carries an advisory caution citing `entry_min_score`
+    and the row's actual `entry_quality_score` value, never a reason claiming it clears that qualifier.
+    This is the EXACT case the prior buggy code mislabeled on the frontier export (37/539 rows, HPE
+    92.71 highest)."""
+    with Session(engine) as session:
+        run = session.get(ScannerRun, selection_run)
+        result = compass.evaluate_selection(session, run, cfg)
+    hpe = next(c for c in result["candidates"] if c["ticker"] == "HPE")
+    assert not any(row["ticker"] == "HPE" for row in result["comparison_cohort"])  # never a non-candidate here
+    assert not any(reason.startswith("Entry Quality") for reason in hpe["reasons"])  # never claims it clears entry
+    assert any(reason.startswith("Leadership") for reason in hpe["reasons"])  # the gating check IS a reason
+    caution = next(c for c in hpe["cautions"] if c.startswith("ENTRY_QUALITY_QUALIFIER"))
+    assert "21.5" in caution  # the row's actual stored entry_quality_score value
+    assert f"{cfg.compass.selection.entry_min_score:.1f}" in caution  # the threshold
+
+
+def test_disposition_predicate_holds_for_every_comparison_cohort_row(engine, cfg, selection_run):
+    """iter-35 (J-12): `selection_disposition` is truthful BY CONSTRUCTION -- every row's OWN predicate
+    holds (below_selection_floor => leadership < floor; excluded_by_cap => leadership >= floor). Zero
+    comparison_cohort rows at/above the floor are mislabeled below_selection_floor (TC-2/TC-9's
+    zero-mislabel requirement, exercised directly rather than only via the internal runtime assertion)."""
+    with Session(engine) as session:
+        run = session.get(ScannerRun, selection_run)
+        result = compass.evaluate_selection(session, run, cfg)
+    floor = cfg.compass.selection.leadership_min_score
+    assert result["comparison_cohort"]  # the fixture has non-candidate rows -- a non-vacuous check
+    for row in result["comparison_cohort"]:
+        if row["selection_disposition"] == "below_selection_floor":
+            assert row["leadership_score"] < floor
+        elif row["selection_disposition"] == "excluded_by_cap":
+            assert row["leadership_score"] >= floor
+        else:
+            pytest.fail(f"unexpected disposition {row['selection_disposition']!r}")
+    assert not any(
+        row["leadership_score"] >= floor and row["selection_disposition"] == "below_selection_floor"
+        for row in result["comparison_cohort"]
+    )
+
+
+def test_perturbing_advisory_qualifiers_leaves_hashes_membership_and_dispositions_unchanged(engine, cfg, selection_run):
+    """iter-35 (J-12, TC-4/TC-15): completes the counter-test J-06 already specified but the suite never
+    implemented (the suite's only other qualifier-failing row, CCC, was ALSO below the leadership floor,
+    so it alone never exercised this path). Perturbing entry_min_score/risk_max_score moves NEITHER
+    candidate_rule_hash NOR cohort_rule_hash, and leaves the candidate list (tickers, in order), the
+    comparison_cohort (membership AND every selection_disposition), and the near-threshold shadow cohort
+    byte-identical -- proving the two advisory qualifiers no longer gate membership at all."""
+    perturbed_selection = cfg.compass.selection.model_copy(
+        update={
+            "entry_min_score": cfg.compass.selection.entry_min_score + 15.0,
+            "risk_max_score": cfg.compass.selection.risk_max_score - 15.0,
+        }
+    )
+    perturbed_cfg = cfg.model_copy(
+        update={"compass": cfg.compass.model_copy(update={"selection": perturbed_selection})}
+    )
+    # sanity: the perturbation is real (manifest_config_hash DOES move) -- otherwise this test proves nothing.
+    assert compass._hash_subset(compass._manifest_config_subset(cfg)) != compass._hash_subset(
+        compass._manifest_config_subset(perturbed_cfg)
+    )
+
+    with Session(engine) as session:
+        run = session.get(ScannerRun, selection_run)
+        before = compass.evaluate_selection(session, run, cfg)
+        after = compass.evaluate_selection(session, run, perturbed_cfg)
+
+    assert compass._hash_subset(compass._candidate_rule_subset(cfg)) == compass._hash_subset(
+        compass._candidate_rule_subset(perturbed_cfg)
+    )
+    assert compass._hash_subset(compass._cohort_rule_subset(cfg)) == compass._hash_subset(
+        compass._cohort_rule_subset(perturbed_cfg)
+    )
+    assert [c["ticker"] for c in before["candidates"]] == [c["ticker"] for c in after["candidates"]]
+    assert before["comparison_cohort"] == after["comparison_cohort"]  # membership AND every disposition
+    assert before["near_threshold_shadow"] == after["near_threshold_shadow"]
+    assert before["disposition_tally"] == after["disposition_tally"]
 
 
 def test_near_threshold_shadow_is_half_open_band_below_floor(engine, cfg, selection_run):
@@ -389,8 +506,8 @@ def test_focus_count_sentence_matches_candidate_count(engine, cfg, selection_run
         narrative = compass.build_narrative(session, run, None, selection, cfg)
     focus = next(s for s in narrative["sentences"] if s["template_id"] == "focus_count")
     facts = {f["name"]: f["value"] for f in focus["facts"]}
-    assert facts["candidate_count"] == len(selection["candidates"]) == 3
-    assert "3" in focus["text"]
+    assert facts["candidate_count"] == len(selection["candidates"]) == 4
+    assert "4" in focus["text"]
 
 
 def test_banned_language_scan_raises_on_violation(cfg):

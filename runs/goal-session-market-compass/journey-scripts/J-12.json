@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "journey": "J-12",
+  "name": "Every frozen selection disposition is true -- the leadership floor is the only inclusion gate, and a caution qualifier moves no membership",
+  "default_timeout_ms": 10000,
+  "steps": [
+    {"n": 1, "journey": "J-12", "action": {"type": "goto", "url": "/"}, "expect": {"text": "10 names worth monitoring next session."}},
+    {"n": 2, "journey": "J-12", "action": {"type": "click", "target": {"text": "Eligibility checklist"}}, "expect": {"text": "ENTRY_QUALITY_QUALIFIER"}},
+    {"n": 3, "journey": "J-12", "action": {"type": "click", "target": {"text": "Audit table — comparison cohort (529) + near-threshold shadow (25)"}}, "expect": {"text": "excluded by cap"}}
+  ]
+}

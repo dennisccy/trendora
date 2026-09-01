@@ -3325,3 +3325,140 @@ OWNER QUESTIONS** remain open and non-blocking: J-06's "underlying run unavailab
 first two test steps; whether an empty "next-session focus" is acceptable; whether MNST joins the
 recovery list; and whether 12 August should keep showing its "rebuilt" note. **ONE MECHANICAL ITEM:**
 the whole iteration is uncommitted at scoring time; confirm it lands.
+
+## Iteration 35 — goal-market-compass-iter-35
+
+**Date:** 2026-09-01T12:20:00Z
+**Verdict:** CONTINUE
+**Depth dispatched:** lean — **and this time the depth was legitimate, which I verified rather than
+assumed.** `iter-35/depth-dispatched` reads `lean`, the spec's own metadata reads `Depth: lean`, and
+the decomposer logged its reasoning in `assumptions.md` (the dispatched `evidence` depth was ruled
+inapplicable because J-12 was not recorded passing and needed real code). No `Depth: full` was
+required and none was silently dropped — unlike iter-33. The lean lane also performed WELL here: the
+reviewer caught a real fixture bug, the coherence auditor caught the `assert` issue, and browser QA
+swept all 529 rendered rows in the DOM.
+
+**Owner-facing lines:** `A FALSE LABEL ON 37 OF 539 NAMES IS GONE — I re-derived both ends myself:
+37 mislabeled in v7 (HPE 92.71 highest), ZERO in v8` · `THE PARTITION IS EXACT: 502 + 27 + 10 = 539 =
+member_count, the goal file's own predicted numbers` · `NOTHING FROZEN MOVED — v7's export md5
+d905dcfeb788… is byte-identical to the value captured before the change, and its mtime predates the
+run` · `THE DATABASE GREW BY EXACTLY ONE ROW (28→29) AND NOTHING ELSE — scanner_runs still 3128,
+data_provider_runs still 549, price frontier still 2026-08-12, prospective_eligible=1 on 0 rows` ·
+`ANTI-GOAL LEDGER: 9 total, 0 unresolved` · `GOLDEN-SCRIPT HYGIENE CLEAN FOR THE FOURTH ROUND RUNNING`
+· `BUT THE GOAL GREW: two new must-have jobs landed on 1 Sept; this round built one, the other is
+unbuilt and I proved it fails` · `THE DETERMINISTIC GATE AGREES WITH ME: journeys exit 1,
+blocking ["J-13"]`.
+
+**Journey deltas:**
+- **Newly passing: J-12** "Every frozen selection disposition is true" — a NEW Must-have journey
+  (goal-proposer, 2026-09-01), built and verified this round. Promoted on artifacts I opened and
+  numbers I re-derived, not on anyone's write-up. TC-1 baseline reproduced from the committed,
+  untouched `2026-08-12_v7.json`: **37 of 539** `comparison_cohort` rows carry `leadership_score >=
+  80.0` yet read `below_selection_floor`, top five HPE 92.71 / GRMN 89.12 / NTAP 87.65 / ABNB 87.10 /
+  DELL 86.43 — the goal text's figures exactly. In the newly minted `v8`: **ZERO**, and the reverse
+  predicate also holds (0 `excluded_by_cap` rows below the floor) in BOTH versions. Partition
+  **502 + 27 + 10 = 539** = `universe.member_count`. Shadow cohort **25 rows, identical ticker set**
+  across v7/v8 (TC-10). HPE's `reasons` cite ONLY the two genuinely-cleared checks — no false
+  entry-clears claim — and its caution cites threshold 70.0 AND actual 21.5; checklist tags leadership
+  `gating:true`, entry/risk `gating:false`. The spec's Error case (above floor, fails BOTH qualifiers)
+  is exercised by REAL data: **CRL** (L 86.23 / E 23.62 / R 64.2) is a candidate carrying both
+  cautions. Screenshot opened and it shows the acceptance state.
+- **Newly failing: J-13** "Leadership rotation says which way, shows both directions, and stops
+  repeating What-changed" — the OTHER new Must-have journey, never built, explicitly out of scope this
+  round. Scored `failing` rather than `unknown` because I measured all three cited defects MYSELF
+  against the manifest minted TODAY under the corrected rule, so this is positive evidence of absence,
+  not missing evidence: (a) `compass-leadership-rotation-section.tsx:38` is a client-side
+  `changes.filter(kind in {sector,theme,stock})` and v8's `changes` holds 5 sector + 2 theme + 10 stock
+  with ZERO market/breadth, so the filter removes nothing and the section repeats all 17 rows the card
+  above already showed — plainly visible in this round's own J-12 screenshot; (b) entries carry
+  `{drill_href, from, kind, label, magnitude, threshold, to}` — `magnitude` is UNSIGNED, no `delta`,
+  no `direction_word`; (c) `session_delta` has NO `rotation` key at all, and sector accounts for only
+  5 + 24 = **29 of the 31** configured sector/industry ETFs (theme closes at 11/11).
+- **Regressed: none.** `goal_gate.py regressions pre→post` exits 0.
+- **Re-verified, unchanged: J-01..J-08** — merged results 9/9 executed PASS, 0 skipped, 0 FAIL, 0
+  `DEFERRED-BUDGET`, each with a fresh screenshot, all re-stamped to iter-35. **J-09, J-10, J-11 were
+  NOT re-verified** (outside the Required-still-passing set) and I say so rather than implying they
+  were; they carry over under A.6, and I checked the durability precondition instead of assuming it —
+  the entire product diff is 5 backend files and their surfaces are byte-unchanged. `spec_hash`
+  carried forward unchanged for those three, re-stamped for the ten I did verify.
+- **Two spot-checks opened.** `J-06-verify.png` (historical as-of 2025-04-15) carries the honest
+  disclosure "This is a retrospective view, reconstructed under the CURRENT selection rule and config —
+  not necessarily what would have rendered live on this date" — exactly the right sentence to find on
+  the round that changed the selection rule. `J-04-verify.png` is AGAIN the 2026-03-30 top-of-page
+  viewport stopping above the candidate cards — the **17th consecutive round**; a fresh capture landed
+  and reproduces the identical fault, so `evidence_makeup: true` is deliberately KEPT.
+- **`spec_hash`: all eleven pre-existing byte-identical to the recorded values**; drift `changed: []`;
+  no `journeys-changed.md`, no `browser-infra.json`, NOT maintenance isolation.
+- Anti-goal violations: **NONE new** among AG-1..AG-18 — I answered all eighteen explicitly with
+  citations and re-derived the six at real risk myself, read-only. Strongest facts: the `config.yaml`
+  diff is **only `rule_version` "v1"→"v2"** plus comments, with all three threshold values appearing as
+  unchanged context lines (AG-15); `v7`'s export md5 `d905dcfeb788…` matches the pre-change capture and
+  its mtime (01:12) predates the run (AG-12/AG-17); **0 banned-term hits across all 4,033 strings** in
+  v8's selection + cohort blocks (AG-1/AG-2); numeric keys on all 10 candidates are exactly the three
+  existing scores — the new `gating` field is a BOOLEAN (AG-11); `host-guard.env` untouched, caps
+  unmoved (AG-10). Ledger unchanged at **9 total, 0 unresolved.**
+- **FIVE FINDINGS NO LANE MADE.** (1) The reviewer's fixture finding is CORRECT and I confirmed it in
+  the file: `test_manifest_invariants.py:933` sets risk `58.9` and comments "fails BOTH qualifiers",
+  but the ceiling is 60.0 and lower is safer — only entry fails, so the spec's error case is exercised
+  by no test in this diff (real data covers it). (2) **That is the SAME confounding mistake that hid
+  the original bug** — the old fixture's only qualifier-failing row (CCC, L=77) was also below the 80
+  floor, so no test could separate the two causes; the replacement repeats the shape. (3) Residual
+  exposure is bounded and now machine-detectable: three frozen exports (v5/v6/v7) still carry the 37
+  mislabeled rows, correctly untouched, and every one is stamped `rule_version: "v1"` against v8's
+  `"v2"` — I confirmed the discriminator is present in all eight files. (4) The bare `assert` guards
+  no-op under `python -O`; I checked the launch path and found no `-O`/`PYTHONOPTIMIZE`, so they are
+  live as run. (5) The new J-12 golden embeds today's counts in its click target and expected text, so
+  a data-basis move would fail it on wording rather than behaviour.
+- Deterministic gates, all run by me: `results` **exit 0** · `journeys` **exit 1**,
+  `{"total":13,"passing":12,"blocking":["J-13"]}` · `regressions` **exit 0** ·
+  `coherence --for-achievement` **exit 0** · drift `changed: []`. Review: **PASS_WITH_NOTES** (2 MINOR,
+  both real, neither blocking). Coherence: **COHERENCE-PASS**. Scan: **CLEAN**.
+
+**Reasoning:** The job set for this round was done properly, and I checked it myself rather than
+trusting the report. A label next to company names was simply false: 37 of 539 names were marked "below
+the selection floor" when their leadership scores were in fact above it — the best of them scoring 92.7
+against a floor of 80. I opened the old file and counted the 37 myself, then opened the new file and
+counted zero. The three groups now add up exactly to the total, and the numbers match what the goal file
+itself predicted. I also proved the round was clean in the strongest way available: the old, wrong file
+is still on disk untouched, with the same fingerprint it had before the work started and a timestamp
+older than the round, and the database gained exactly one new row and nothing else — no new price data,
+no new scan, nothing rewritten. That matters, because the project's rules say a mistake in a frozen
+record must be corrected by adding a new version, never by editing the old one, and that is exactly what
+happened. All eight jobs that had to keep working were re-run with fresh pictures and all eight passed.
+So why not declare the goal finished? Because the goal itself grew. Two new must-have jobs were added to
+the goal file on 1 September. This round built the first. The second has not been started, and I did not
+merely take that on trust — I opened the file the system produced this morning and confirmed the panel in
+question still copies the list above it, still gives no sense of direction, and still loses two rows
+without saying so. The project's own automatic check agrees with me and names that same job as the one
+thing blocking completion. Why not halt on a problem? Nothing that worked stopped working, no frozen
+record moved, and no rule was broken. Why not escalate? Escalation is for when a light round uncovers
+trouble it could not handle, and the opposite happened here: the light round worked well, catching a real
+test-fixture error and a code-robustness issue. The next round should be a full one, but that is a
+planning judgement about the work ahead, not a rescue.
+
+**Next-step recommendation:** Build the last remaining job, J-13 "Leadership rotation says which way",
+and run that round at FULL depth. Today that panel is wrong in three ways I measured myself: it repeats
+all 17 rows the list directly above it already shows; it never says whether a move is better or worse
+(a row reads "Home Construction 21 → 25" and the reader has to know a smaller number is better); and it
+silently loses two of the 31 configured sector groups, which appear in neither the shown list nor the
+held-back list. Full depth is warranted for a concrete reason, not caution: this work changes the shared
+piece of code that produces the "what changed" figures, and four jobs that pass today read those same
+figures, while J-13's own text demands proof that the "What changed" panel comes out unchanged. It is
+also the first round in a while with real screen changes for the visual check to examine. **TWO SMALL
+REPAIRS TO CARRY ALONG, neither worth its own round:** raise the test fixture's risk value above 60.0 so
+it genuinely fails both qualifiers as its comment claims; and turn the two new guard statements into real
+errors so they cannot be switched off by an optimisation flag. **STILL OWED, and never a round of their
+own:** J-04's picture has now been taken 17 times with the same wrong crop, and seven jobs still owe a
+labelled walkthrough recording — photography tasks on features that already work. **ONE OWNER POINT,
+NOT BLOCKING:** the corrected labels are visible today because a "regenerate" button was pressed during
+this round; older frozen files keep the wrong labels permanently, which is deliberate and is what your
+own rules require, and each file now carries a version stamp ("v1" wrong, "v2" corrected) so anything
+reading them can tell the difference. If you would rather the main page always show freshly corrected
+figures without that button press, that is a separate small piece of work. **CARRIED, none blocking:**
+one pre-existing red test on three untouched files should be fixed or formally waived; the iteration-23
+throw-away copy (7.8 GB) may still be deleted; `apps/frontend/.next-verify/` is still tracked in git;
+J-01's and J-04's automatic re-checks still assert far less than those jobs claim. **FIVE OLDER OWNER
+QUESTIONS** remain open and non-blocking: J-06's "underlying run unavailable" wording; J-01's first two
+test steps; whether an empty "next-session focus" is acceptable; whether MNST joins the recovery list;
+and whether 12 August should keep showing its "rebuilt" note. **ONE MECHANICAL ITEM:** the whole
+iteration is uncommitted at scoring time; confirm it lands.

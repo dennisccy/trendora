@@ -130,6 +130,69 @@ def test_compass_route_serves_every_new_field_directly(compass_engine, cfg):
     ]
 
 
+@pytest.fixture()
+def compass_engine_two_candidates(tmp_path):
+    """goal-market-compass iter-35 (J-12, TC-8): two `ScannerRun` rows each carrying TWO `ScannerResult`
+    rows -- a plain qualifier-clearing name (AAA) plus the real HPE shape (leadership clears the floor,
+    entry qualifier fails) -- so the candidate count is non-trivial (2, not 1) when proving the served
+    `selection.candidates` count agrees with the narrative's focus-count sentence."""
+    engine = make_engine(f"sqlite:///{tmp_path / 'compass_api_two.db'}")
+    create_db_and_tables(engine)
+    with Session(engine) as session:
+        for bar_date in (date(2024, 6, 1), date(2024, 6, 8)):
+            session.add(DailyPrice(
+                symbol="SPY", date=bar_date, open=1.0, high=1.0, low=1.0, close=1.0, volume=1.0,
+            ))
+        session.commit()
+        for i, (asof, regime_score) in enumerate(((date(2024, 6, 1), 50.0), (date(2024, 6, 8), 58.0))):
+            run = ScannerRun(
+                asof_date=asof, created_at=datetime(2024, 6, 1 + i * 7, tzinfo=timezone.utc),
+                provider="seed", benchmark="SPY", regime_score=regime_score, regime_label="Expansion",
+                regime_components_json="[]", breadth_above_50dma=55.0, breadth_above_200dma=60.0,
+                new_high_low_json="{}", candidate_counts_json="{}",
+            )
+            session.add(run)
+            session.commit()
+            session.refresh(run)
+            session.add(ScannerResult(
+                run_id=run.id, ticker="AAA", name="AAA Corp", leadership_score=92.0, leadership_bucket="A",
+                entry_quality_score=85.0, entry_quality_bucket="B", risk_score=40.0, risk_bucket="C",
+                setup_status="Breakout-watch", rank=1,
+                record_json=json.dumps({"ticker": "AAA", "invalidation": {"note": "AAA note"}}),
+            ))
+            session.add(ScannerResult(
+                run_id=run.id, ticker="HPE", name="HPE Corp", leadership_score=92.7, leadership_bucket="A",
+                entry_quality_score=21.5, entry_quality_bucket="E", risk_score=58.9, risk_bucket="C",
+                setup_status="Breakout-watch", rank=2,
+                record_json=json.dumps({"ticker": "HPE", "invalidation": {"note": "HPE note"}}),
+            ))
+            session.commit()
+    return engine
+
+
+def test_candidate_count_agrees_across_selection_and_narrative_focus_sentence(compass_engine_two_candidates, cfg):
+    """iter-35 (J-12, TC-8): `selection.candidates` length and the narrative's `focus_count` sentence
+    (fact AND text) agree at the served-response layer -- the SAME single served document the
+    Next-session focus section and the plain-English summary sentence both read directly. Also proves
+    HPE (clears leadership, fails its entry qualifier) is counted as a candidate, never a
+    `below_selection_floor` comparison_cohort row."""
+    from app.api.compass import compass as compass_route
+
+    _freeze_frontier(compass_engine_two_candidates, cfg)
+    with Session(compass_engine_two_candidates) as session:
+        result = compass_route(None, session)
+
+    candidate_tickers = {c["ticker"] for c in result["selection"]["candidates"]}
+    assert candidate_tickers == {"AAA", "HPE"}
+    assert not any(row["ticker"] == "HPE" for row in result["comparison_cohort"])
+
+    candidate_count = len(result["selection"]["candidates"])
+    focus = next(s for s in result["narrative"]["sentences"] if s["template_id"] == "focus_count")
+    facts = {f["name"]: f["value"] for f in focus["facts"]}
+    assert facts["candidate_count"] == candidate_count == 2
+    assert str(candidate_count) in focus["text"]
+
+
 def test_compass_route_computes_once_serves_from_storage_after(compass_engine, cfg, monkeypatch):
     """TC-1: once frozen, the SECOND call for the same as-of returns byte-identical content with ZERO
     additional producer calls (get_or_create_manifest short-circuits on the stored row)."""

@@ -1,0 +1,21 @@
+{
+  "phase": "goal-market-compass-iter-35",
+  "status": "in_progress",
+  "current_step": "dev_complete",
+  "updated_at": "2026-09-01T10:43:10Z",
+  "started_at": "2026-09-01T10:00:00Z",
+  "cli": "claude",
+  "blockers": [],
+  "changed_files": [
+    "apps/backend/app/engine/compass.py",
+    "config.yaml",
+    "apps/backend/tests/test_compass.py",
+    "apps/backend/tests/test_manifest_invariants.py",
+    "apps/backend/tests/test_api_compass.py",
+    "docs/handoffs/goal-market-compass-iter-35-dev.md"
+  ],
+  "tests_run": true,
+  "tests_result": "test_compass.py 40 passed (37 pre-existing + 3 new: HPE-shape reason/caution, per-row disposition predicate, qualifier-perturbation counter-test on hashes+membership). test_manifest_invariants.py 53 passed (52 + 1 new TC-24-area test). test_api_compass.py 18 passed (17 + 1 new candidate-count agreement test). test_engine_identity.py + test_methodology.py 24 passed (unaffected). test_j11_avb_diagnostic.py 36 passed (unaffected by the _qualifier_checks gating-field addition). test_no_magic_numbers.py: 1 pre-existing unrelated failure (indicators.py/forward_testing.py/research.py literals, none touched this iteration) -- confirmed pre-existing, not caused by this change. Live production verification: minted ONE new manifest version (2026-08-12, v7 -> v8) via the existing confirm-gated POST /api/compass/regenerate action under the corrected rule -- 0/539 comparison_cohort rows mislabeled (was 37/539), disposition_tally 502+27+10=539 (matches goal.md's predicted partition exactly), HPE is now a candidate with an entry_min_score caution, near_threshold_shadow membership unchanged (25 rows), candidate_rule_hash/cohort_rule_hash both moved (rule_version v1->v2), manifest validates against the committed schema, manifest_hash verifies. All 28 pre-existing next_session_manifests rows (content_hash+manifest_hash) proven byte-identical before/after via a read-only DB query (md5 of the ordered hash list matched exactly); v7's export file md5 unchanged; git status on the (gitignored) exports dir shows no diff.",
+  "browser_checks_run": false,
+  "next_action": "review"
+}

@@ -968,3 +968,93 @@ re-recording them is the second optional item in my next-step recommendation.
 walkthrough is a hard acceptance condition rather than a capture task, one `Depth: evidence` round
 records the six; no journey's status or product evidence would need redoing, and the product itself
 is unaffected either way.
+
+## iter-35 — goal-decomposer (evidence-depth recommendation vs. two newly-proposed, never-built Must-have journeys)
+
+**Ambiguity:** the evaluator's depth recommendation for this iteration ("evidence — BINDING by
+default") was computed from the iter-34 journey state (11/11 passing, all remaining work being
+walkthrough capture). Since then the goal-proposer appended two NEW Must-have journeys, J-12 and
+J-13, to `docs/goal.md`'s AUTO block (dated 2026-09-01) — neither appears in the inlined
+journey-history digest (still J-01..J-11 only). It is not stated whether a depth recommendation
+computed before new goal content lands still binds, nor which of the two new journeys to prioritize.
+
+**We chose:** target J-12 only, at Depth: lean. Grounds, each checked by me: (a) `Depth: evidence` is
+defined only for "all Target journeys are already recorded passing" with the deliverable being
+capture only (skips developer/reviewer) — J-12 is not recorded passing (it does not exist in
+journey-history yet) and requires an actual code change, so `evidence` does not apply to this scope
+by definition, independent of any staleness argument; I verified the cited defect is real rather than
+trusting the goal text: `apps/backend/app/engine/compass.py:602-703` today labels EVERY row that
+fails any of the three qualifier checks (leadership, entry, risk) as `below_selection_floor`,
+confirming the proposer's claim; (b) between J-12 and J-13 (also new/unbuilt), I picked J-12 under
+rule 4 (smallest spec wins ties: one backend module + config + tests, no frontend change, versus
+J-13's backend session_delta change AND a frontend rotation-component rework) and rule 5 (never
+bundle two risky journeys); J-12 is also the higher-severity pick — an AG-3-adjacent correctness
+defect (37/539 rows carry a false disposition label in a committed export) versus J-13's
+completeness/UX gap; (c) no FULL trigger holds for J-12: its own Acceptance text states "no new
+producer, no new route, no new Data Contract value" (rules out trigger 2, data-model migration); the
+change is confined to one engine module plus config/tests, not clearly cross-cutting (trigger 1);
+prior verdict is GOAL_ACHIEVED, not ESCALATE (trigger 3 not met); consecutive lean iterations = 0 of
+a 6 cadence (trigger 4 not due) — so LEAN, the framework default, applies once `evidence` is ruled
+out as inapplicable.
+
+**Reversible:** yes — no mutation from this spec itself (planning only). If the owner or a future
+evaluator rules that a stale depth recommendation must still be honored as a separate evidence-only
+round before any new goal content is picked up, the remedy is to insert that round ahead of this one;
+none of J-12's eventual implementation or evidence would need redoing, since its scope is unaffected
+by which round it is labeled under.
+
+## iter-35 — goal-evaluator (a never-tested new journey scored `failing` rather than `unknown`)
+
+**Ambiguity:** J-13 was appended to `docs/goal.md` on 2026-09-01, is absent from `journey-history.json`,
+and was explicitly OUT OF SCOPE this iteration — no test lane ran it and no results row exists for it.
+My agent contract says "If you cannot find evidence for a journey … set its status to `unknown` … Do
+NOT guess", while the schema defines `failing` as "verified failing in this iteration". It is unstated
+which applies to a brand-new journey that no lane was ever asked to test.
+
+**We chose:** `failing`, on the grounds that I have positive evidence of the asserted behaviour being
+ABSENT rather than an absence of evidence — and I obtained it myself rather than inferring it from the
+goal-proposer's text. Each of J-13's three cited defects re-measured by me against
+`2026-08-12_v8.json`, the manifest minted TODAY under this iteration's corrected rule (so the reading is
+current, not stale): (a) `session_delta` has keys `{changes, gap_days, prior_as_of, suppressed,
+suppressed_count}` and **no `rotation` key at all**, so step 1's core assertion fails by construction;
+(b) every change entry carries `{drill_href, from, kind, label, magnitude, threshold, to}` — `magnitude`
+is unsigned and there is no `delta` and no `direction_word` anywhere, so step 3 fails; (c) sector
+accounts for 5 shown + 24 suppressed = **29 of the 31** configured sector/industry ETFs (`etfs.sector`
+11 + `industry` 20) while theme closes at 2 + 9 = 11/11, so step 4 fails. Plus
+`compass-leadership-rotation-section.tsx:38` is a client-side `changes.filter(...)` over an array with
+zero market/breadth entries, so the section provably duplicates the card above it — visible in this
+iteration's own `UT-J-12-result.png`. `unknown` would have understated a measured, reproducible defect
+and would have left the next decomposer without a target. What I did NOT do: score it from the
+goal-proposer's prose — every figure above is one I computed.
+
+**Reversible:** yes — no mutation, and cheap to revisit. If the owner or a future evaluator rules that a
+journey no lane was asked to test must be `unknown` regardless of artifact evidence, flipping the status
+changes nothing material: `journeys` still exits 1 and J-13 remains the sole blocker either way, and
+none of this iteration's J-12 evidence would need redoing.
+
+## iter-35 — goal-evaluator (a NEW journey promoted to `passing` although its Walkthrough acceptance limb was never captured)
+
+**Ambiguity:** J-12's Acceptance ends with "**Walkthrough:** a `[NEW]`-flagged walkthrough of the
+corrected disposition table … viewable via `demo.sh market-compass --session-live`" (TC-13 repeats it).
+No demo ran at this lean depth — `reports/demo/goal-market-compass-iter-35/` does not exist. Prior
+precedent (iters 27-34) applied methodology A.7 to keep ALREADY-passing journeys passing despite the
+same missing limb; it is unstated whether the same relaxation may be used to promote a journey to
+`passing` for the FIRST time.
+
+**We chose:** promote J-12 to `passing`, set `evidence_makeup: true`, and record the missing walkthrough
+as a capture gap. Grounds, each checked by me: (a) A.7's rail is that the relaxation "never applies when
+the asserted BEHAVIOR is unmet" — here the behaviour is met and I re-derived every acceptance number
+independently (37→0 mislabeled rows; 502+27+10=539; shadow cohort identical at 25 rows; HPE's caution
+citing threshold 70.0 and actual 21.5; CRL proving the fails-both case), so only the presentation
+artifact is absent; (b) the behaviour additionally has a live browser citation — a DOM sweep of all 529
+rendered audit-table rows plus a screenshot I opened showing the acceptance state; (c) my agent contract
+states as a hard rule that an evidence-capture gap may never be scored as blocking, and A.7 says the
+make-up ride is "NEVER a new iteration's goal"; (d) holding a journey open on a missing recording when
+its measured objective is demonstrably met is the framework's own #1 anti-pattern. What I did NOT do:
+hide it — the flag is set in `journey-history.json`, the gap text names TC-13 explicitly, and the
+re-capture is listed in my recommendation as a passenger task.
+
+**Reversible:** yes — no mutation. If the owner rules the `[NEW]`-flagged walkthrough is a hard
+acceptance condition rather than a capture task, one `Depth: evidence` round records J-12 alongside the
+seven journeys already owing one; no product code and none of this iteration's measurement evidence
+would need redoing.

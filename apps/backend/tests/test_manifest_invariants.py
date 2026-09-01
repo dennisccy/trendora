@@ -46,7 +46,10 @@ def _mk_run(session: Session, asof: date, regime_score: float = 60.0) -> Scanner
     return run
 
 
-def _mk_result(session: Session, run_id: int, ticker: str, l_score: float = 92.0, l_bucket: str = "A") -> None:
+def _mk_result(
+    session: Session, run_id: int, ticker: str, l_score: float = 92.0, l_bucket: str = "A",
+    e_score: float = 85.0, e_bucket: str = "B", r_score: float = 40.0, r_bucket: str = "C",
+) -> None:
     record = {
         "ticker": ticker,
         "invalidation": {"note": f"{ticker} note", "price": 100.0},
@@ -56,8 +59,8 @@ def _mk_result(session: Session, run_id: int, ticker: str, l_score: float = 92.0
         ScannerResult(
             run_id=run_id, ticker=ticker, name=ticker, sector="Technology",
             leadership_score=l_score, leadership_bucket=l_bucket,
-            entry_quality_score=85.0, entry_quality_bucket="B",
-            risk_score=40.0, risk_bucket="C",
+            entry_quality_score=e_score, entry_quality_bucket=e_bucket,
+            risk_score=r_score, risk_bucket=r_bucket,
             setup_status="Breakout-watch", rank=1, record_json=json.dumps(record),
         )
     )
@@ -918,6 +921,26 @@ def test_tc24_disposition_tallies_partition_member_count_minus_candidate_count(e
     dispositions = [row["selection_disposition"] for row in result["comparison_cohort"]]
     assert len(dispositions) == member_count - candidate_count
     assert set(dispositions) <= {"below_selection_floor", "excluded_by_cap"}
+
+
+def test_tc24_leadership_min_score_is_the_only_gate_regardless_of_qualifiers(engine, cfg):
+    """goal-market-compass iter-35 (J-12): a row that CLEARS the leadership floor but fails BOTH the
+    entry and risk qualifiers is never `below_selection_floor` -- it is a candidate (or `excluded_by_cap`
+    if the cap binds). A row BELOW the floor is `below_selection_floor` regardless of how its qualifiers
+    score. Mirrors the frontier export's measured defect (37/539 rows, HPE 92.71 highest, BACKGROUND)."""
+    with Session(engine) as session:
+        run = _mk_run(session, date(2024, 12, 8))
+        _mk_result(session, run.id, "HPE", 92.7, "A", 21.5, "E", 58.9, "C")  # clears floor, fails BOTH qualifiers
+        _mk_result(session, run.id, "LOW", 30.0, "E", 90.0, "A", 10.0, "A")  # below floor, clears BOTH qualifiers
+        session.commit()
+        session.refresh(run)
+        result = compass.evaluate_selection(session, run, cfg)
+    candidate_tickers = {c["ticker"] for c in result["candidates"]}
+    cohort_by_ticker = {row["ticker"]: row for row in result["comparison_cohort"]}
+    assert "HPE" in candidate_tickers or cohort_by_ticker.get("HPE", {}).get("selection_disposition") == "excluded_by_cap"
+    assert "HPE" not in cohort_by_ticker or cohort_by_ticker["HPE"]["selection_disposition"] != "below_selection_floor"
+    assert cohort_by_ticker["LOW"]["selection_disposition"] == "below_selection_floor"
+    assert "LOW" not in candidate_tickers
 
 
 # --- TC-25 (schema conformance) ---------------------------------------------------------------------

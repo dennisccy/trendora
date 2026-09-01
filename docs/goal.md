@@ -2244,6 +2244,190 @@ manifest artifact (it must be self-describing and self-caveating).
      between the two markers below (see the goal-self-extension skill). The human-authored journeys
      above and the Anti-goals below are never machine-edited. An empty block = nothing auto-proposed yet. -->
 <!-- AUTO:journeys -->
+
+- **J-12: Every frozen selection disposition is true — the leadership floor is the only inclusion
+  gate, and a caution qualifier moves no membership (goal-proposer, 2026-09-01)**
+  - Why: measured on the committed at-ingest export
+    `apps/backend/data/exports/next_session_manifests/2026-08-12_v7.json` (the frontier as-of, i.e.
+    the default `/` view): **37 of the 539 `comparison_cohort` rows carry
+    `leadership_score >= compass.selection.leadership_min_score` (80.0) — up to 92.71 (HPE,
+    `leadership_bucket` A, `rank_in_run` 1) — yet every one of them is frozen with
+    `selection_disposition: "below_selection_floor"`**, and `disposition_tally` reads
+    `{below_selection_floor: 539, excluded_by_cap: 0}`. The label is false on its face: a downstream
+    consumer filtering `below_selection_floor` would conclude these names had weak leadership when the
+    opposite is true, and the mislabel is sealed inside the hash-covered artifact this whole cycle
+    exists to freeze. Cause (`apps/backend/app/engine/compass.py`): `_qualifier_checks` returns three
+    checks and `evaluate_selection` admits a member only `if all(check["passed"] ...)`, so
+    `entry_min_score` and `risk_max_score` **gate** inclusion; every non-qualifying row is then stamped
+    `_DISPOSITION_BELOW_FLOOR` regardless of which check failed. That contradicts this goal file's own
+    Improvement direction, which defines the frozen rule as "floor → deterministic order → cap;
+    **nothing else excludes**", defines `below_selection_floor` as "leadership below
+    `leadership_min_score`", and states that "qualifiers annotate cautions and **never gate inclusion
+    today**" — and it makes J-06's stated counter-test ("changing … a caution qualifier moves neither
+    scientific hash **nor any membership**") currently FALSE. The suite cannot see it: the only
+    qualifier-failing row in `apps/backend/tests/test_compass.py`'s `selection_run` fixture (CCC,
+    L=77) is *also* below the 80 floor, and `test_manifest_invariants.py`'s
+    `test_tc23_why_not_and_qualifier_changes_move_only_manifest_config_hash` perturbs `why_not_cap`
+    only — it never perturbs a qualifier and never asserts the "nor any membership" half.
+  - Steps:
+    1. Before changing anything, reproduce and record the violation from the committed artifact:
+       count the `comparison_cohort` rows whose `leadership_score` is at or above
+       `compass.selection.leadership_min_score` and whose `selection_disposition` is
+       `below_selection_floor` in `2026-08-12_v7.json` (expected 37 of 539; highest HPE at 92.71), and
+       record that pre-fix baseline in the dev handoff. Do NOT mutate, relabel, re-hash, re-export or
+       delete that file or any stored manifest row (AG-12/AG-17) — the incident record is evidence
+    2. Conform `compass.evaluate_selection` to the rule this goal file already declares:
+       `leadership_min_score` is the ONLY inclusion gate; `entry_min_score` and `risk_max_score` become
+       advisory qualifiers that annotate cautions and the eligibility checklist and never remove a
+       member. Deterministic ordering (leadership desc, ticker asc) and `max_candidates` are unchanged.
+       Bump `compass.selection.rule_version` (already inside `candidate_rule_hash`'s scope) so manifests
+       minted under the corrected rule are distinguishable from those minted under the old one. Change
+       no threshold VALUE — nothing here is chosen from realized forward returns (AG-15)
+    3. Make the disposition truthful by construction and assert it per row, not merely in aggregate:
+       every non-candidate that cleared the floor is `excluded_by_cap`, every other is
+       `below_selection_floor`, and a test asserts each label's own predicate holds
+       (`below_selection_floor` ⇒ `leadership_score < leadership_min_score`). The closed vocabulary stays
+       two members and the committed schema's `selection_disposition` enum is unchanged — no new
+       versioned schema file and no `schema_version` bump
+    4. Fix the sentences the correction makes false: `candidates_empty_reason` names only the gating
+       rule (never entry/risk as though they gated); a candidate that misses an advisory qualifier
+       renders a **caution** citing that threshold and the stored actual value, never a reason claiming
+       it "clears" that qualifier; each eligibility-checklist row's verdict comes from the existing
+       fixed set (Pass / Miss / Supportive / Neutral / Unknown / NA) and marks the check as gating or
+       advisory, so the gating verdicts ALONE reproduce inclusion/exclusion for every spot-checked name
+       (J-04 steps 4-5 stay satisfied)
+    5. Complete the counter-test J-06 already specifies but the suite never implemented: perturb
+       `entry_min_score` and `risk_max_score` and assert that neither `candidate_rule_hash` nor
+       `cohort_rule_hash` moves AND that the candidate list, the comparison-cohort membership, every
+       `selection_disposition`, and the near-threshold shadow cohort are all identical. Add the fixture
+       row the suite lacks — a member ABOVE the leadership floor that fails a qualifier (the real HPE
+       shape: L≈92.7 / E≈21.5 / R≈58.9)
+    6. Prove nothing frozen moved: the stored `next_session_manifests` rows and their export files are
+       byte-identical before and after (AG-12), the code change alone mints no new version, and the
+       pre-fix mislabeled versions remain readable exactly as they are with their eligibility unchanged
+       (AG-17) — the correction appears only in manifests minted after the `rule_version` bump
+    7. Re-verify end to end at the frontier as-of: the Next-session focus section, the summary's
+       focus-count sentence and `GET /api/compass` agree on the candidate count; the manifest strip's
+       expanded table shows the corrected dispositions; the disposition tallies still partition member
+       count minus candidate count exactly (on today's data expect 502 `below_selection_floor` + 27
+       `excluded_by_cap` + 10 candidates = 539 members — record the measured partition if the data has
+       moved); and the shadow cohort's membership (leadership in `[shadow.min_score,
+       leadership_min_score)`, 25 rows today) is unchanged, since nothing in this journey touches
+       `cohort_rule_hash`'s semantics
+    8. Cite in the dev handoff the disclosure that `provenance.config_keys` includes
+       `compass.selection` and `provenance.engine_files` hashes `compass.py`, so the `rule_version` bump
+       and the code edit legitimately move `generation.engine_identity` on NEWLY created manifests and
+       runs — an expected, disclosed identity change, never a backfill or re-stamp of existing rows
+  - Acceptance:
+    - **Consistency (single source):** the candidate set, dispositions, cohorts, reasons, cautions and
+      checklist remain slices of the ONE `compass.evaluate_selection` trace computed inside
+      `build_manifest_payload` and served only by `GET /api/compass` — no new producer, no new route,
+      no new Data Contract value, and no client-side rule; `state/blueprint.md` records a dated note on
+      the existing Next-session manifest CONTENT / FREEZE-INTEGRITY rows stating the `rule_version`
+      bump and the truthful-disposition invariant.
+    - **Correctness:** after the fix, ZERO `comparison_cohort` rows labelled `below_selection_floor`
+      have `leadership_score >= leadership_min_score` (was 37 of 539); the tallies still partition
+      member count minus candidate count exactly; the qualifier counter-test passes on both scientific
+      hashes AND on membership; `content_hash` still reproduces across two builds of the same inputs
+      and is still invariant to perturbation of post-as-of bars.
+    - **Honest status & anti-goals:** no threshold VALUE is tuned and nothing is chosen from realized
+      returns (AG-15); no new composite or blended candidate number appears (AG-11); frozen rows and
+      export bytes are untouched and no manifest is regenerated, rebound or re-hashed by this journey
+      (AG-12), with pre-fix manifests keeping their `prospective_eligible` value exactly (AG-17);
+      candidate framing stays "worth monitoring next session" with cautions — no imperative verbs, no
+      forecast wording, no proven-language, and the evidence chips keep reading their true ledger
+      status (AG-1/AG-2). If conforming to the documented rule would violate any anti-goal or regress a
+      passing journey, STOP and surface it for owner review rather than widening the rule.
+    - **Walkthrough:** a `[NEW]`-flagged walkthrough of the corrected disposition table (an above-floor
+      name no longer labelled "below the selection floor"), a candidate carrying an advisory-qualifier
+      caution, and the focus section under the corrected rule, viewable via
+      `demo.sh market-compass --session-live`.
+
+- **J-13: "Leadership rotation" says which way, shows both directions, and stops repeating
+  What-changed (goal-proposer, 2026-09-01)**
+  - Why: the Vision promises `/` answers "where leadership is rotating" and the Success Criteria
+    require that from `/` alone a reader can identify "the top sector/theme movers **in both
+    directions**", but no Must-have journey asserts that section's CONTENT (J-07 step 1 asserts only
+    that it renders in page order), and three measured defects sit behind it.
+    **(a) It is a duplicate.** `apps/frontend/components/compass-leadership-rotation-section.tsx`
+    renders `compass.session_delta.changes.filter(kind ∈ {sector, theme, stock})` — a client-side
+    subset of the SAME array `compass-whatchanged-card.tsx` renders in full. On the frontier manifest
+    (`2026-08-12_v7.json`, the default `/` view) `changes` holds 17 entries — 5 sector, 2 theme, 10
+    stock, 0 market, 0 breadth — so the rotation section repeats **all 17 rows** the card directly
+    above it already showed.
+    **(b) It has no direction.** A change entry is `{from, to, magnitude}` with an UNSIGNED magnitude
+    and no direction field, so "Home Construction (iShares) 21 → 25" (worse) and "Regional Banks (SPDR)
+    13 → 10" (better) look identical; the reader must know that a lower rank number is better and that
+    leadership bucket E → D is an improvement. The iter-28 `state_band` block already established the
+    correct served shape — a signed `delta` plus a `direction_word` from
+    `compass.vocabulary.direction_words` — and the change entries never got it.
+    **(c) Both directions are not guaranteed, and an above-threshold mover can vanish uncounted.**
+    `session_delta._sector_changes` / `_theme_changes` sort by `abs(rank move)` and return
+    `changes[: compass.delta.top_k]` (5) while returning the FULL `suppressed` list, so one direction
+    can be cut away entirely and an above-threshold mover ranked beyond `top_k` is dropped from
+    `changes` AND never counted in `suppressed`. Measured on the frontier: theme accounts for 2 + 9 =
+    11 of its 11 configured themes, but sector accounts for only 5 + 24 = **29 of the 31** configured
+    sector/industry ETFs (`config.etfs.sector` 11 + `industry` 20) — two sector rows unaccounted for,
+    while the card's "Suppressed moves (36)" disclosure claims to say what was held back.
+  - Steps:
+    1. On `/` at the latest as-of, assert the Leadership rotation section renders a **served**
+       `session_delta.rotation` block rather than a client-side filter of `session_delta.changes`, and
+       that it contains no stock-kind row — stock leadership-bucket crossings stay in the What-changed
+       card above (this journey adds no stock-level weakness view; Non-Goals: group-level only)
+    2. Assert the block carries, for each group kind (sector and theme), two explicitly labelled sides
+       — gaining leadership and losing leadership — each ordered most-moved first, each capped by a new
+       config-only key `compass.delta.rotation_top_k`, each entry still gated by the existing
+       `compass.delta.rank_move_min` threshold, and each side rendering its own honest empty state
+       ("no sector lost ground beyond the threshold this session") rather than a blank
+    3. Assert every rotation row carries a **signed** delta and a served `direction_word` taken from
+       the existing `compass.vocabulary.direction_words` map, with the polarity resolved engine-side (a
+       rank number that FALLS is "improving"); assert the same signed delta + direction word ride on
+       the `session_delta.changes` entries so the What-changed card can show them too, and assert the
+       frontend selects no word, computes no sign, and applies no threshold
+    4. Assert the group accounting is complete and disclosed: for each group kind, the entries shown on
+       the two sides plus the disclosed suppressed (below-threshold) count plus any disclosed
+       "further movers not shown" residual equals the full configured group count (31 sector/industry,
+       11 theme) — an above-threshold mover beyond `rotation_top_k` is never silently dropped
+    5. Spot-check one gaining and one losing sector row against the stored ranks served by
+       `GET /api/sectors` at the prior and current as-of dates, and one theme row against
+       `GET /api/themes`: the from/to values and the signed delta equal the stored rows
+    6. Assert the What-changed card is unchanged by this journey — same entries, same
+       market → breadth → sectors → themes → stocks order, same thresholds, same suppressed count as
+       before the change, so every J-02 assertion still holds
+    7. Step the as-of switcher to the earliest stored run; assert the rotation block renders its
+       no-prior-run state consistent with What-changed's — no deltas, no direction words, nothing
+       fabricated
+    8. Cite in the dev handoff the fixture test where one side is empty (every threshold-crossing mover
+       is a gainer): the losing side renders its explicit empty state and the gaining side is
+       unaffected; and the fixture where an above-threshold mover falls beyond `rotation_top_k` and is
+       disclosed in the residual count rather than dropped
+  - Acceptance:
+    - **Consistency (single source):** `session_delta.rotation` and the signed `delta`/`direction_word`
+      fields are computed ONCE by the existing `app.engine.session_delta.compute_delta` inside
+      `app.engine.compass.build_manifest_payload` and served only by the existing `GET /api/compass` —
+      no new producer and no new route; they are registered as added fields of the "Next-session
+      manifest — CONTENT block" Data Contract row in `state/blueprint.md` with a dated note, exactly as
+      iter-28 registered `state_band`; the direction word reuses `compass.vocabulary.direction_words`
+      (never a second word map) and `rotation_top_k` is config-only (`session_delta.py` and
+      `compass.py` are already `test_no_magic_numbers.CALC_FILES` entries, so no literal may appear).
+    - **Correctness:** from/to values and signed deltas equal the stored sector/theme rank rows for both
+      as-of dates; every displayed row meets `rank_move_min`; both sides are populated whenever both
+      sides have a threshold-crossing mover; the per-kind accounting closes against the configured group
+      counts; and every produced manifest still validates against the committed schema at
+      `docs/handoffs/trendora-next-session-manifest-v1.schema.json` with NO `schema_version` bump and no
+      new versioned schema file (`session_delta` is an open object there, so this extension is additive).
+    - **Honest status & anti-goals:** no new composite or blended rotation score is introduced (AG-11) —
+      a rotation row carries only the stored ranks and their signed difference; no existing
+      `compass.delta` threshold VALUE is retuned (`rotation_top_k` is a new display cap, never a
+      revision of `rank_move_min`); empty sides, the residual count and the no-prior-run state are
+      explicit and dated, never blank and never fabricated; no imperative, forecast or proven-language
+      (AG-1/AG-2); and `candidate_rule_hash`, `cohort_rule_hash`, candidate membership and both cohorts
+      are provably unmoved by this journey while frozen manifests and export bytes stay untouched
+      (AG-12).
+    - **Walkthrough:** a `[NEW]`-flagged walkthrough of the both-directions rotation section — a gaining
+      side, a losing side, one empty side with its honest state, and the direction words — viewable via
+      `demo.sh market-compass --session-live`.
+
 <!-- /AUTO:journeys -->
 
 ## Anti-goals

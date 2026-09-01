@@ -1430,7 +1430,13 @@ compass:
       - { min: 0.40, label: "tense" }
       - { min: 0.60, label: "stressed" }
   selection:
-    rule_version: "v1"
+    # goal-market-compass iter-35 (J-12): bumped v1 -> v2 -- `evaluate_selection` now actually enforces
+    # what this section's own comments always declared (leadership_min_score is the ONLY candidacy gate;
+    # entry_min_score/risk_max_score are advisory qualifiers that never remove a row from candidacy). No
+    # threshold VALUE below changed (AG-15) -- only which checks GATE vs. ANNOTATE. rule_version is inside
+    # BOTH candidate_rule_hash's and cohort_rule_hash's scope, so manifests minted under the corrected
+    # rule are distinguishable from those minted under the old (buggy) one.
+    rule_version: "v2"
     leadership_min_score: 80.0       # the ONLY candidacy gate on Leadership (never the Actionable/A-bucket setup status)
     entry_min_score: 70.0            # candidacy qualifier: Entry Quality score floor
     risk_max_score: 60.0             # candidacy qualifier: Risk score ceiling (risk is a danger score — lower is safer)

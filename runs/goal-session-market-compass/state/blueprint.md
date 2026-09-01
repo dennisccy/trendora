@@ -296,3 +296,24 @@ recorded as verified through cited non-UI evidence instead of forcing a `BLOCKED
 browser row — pipeline tooling, not Trendora product surface; no new page, nav entry, computing module,
 serving endpoint, or displayed field results from it either. Nothing in this iteration changes any row
 above.
+
+**iter-35 note (2026-09-01 — additive, no IA change, no new Data Contract row):** the goal-proposer's
+newly-added J-12 (`docs/goal.md` AUTO block, 2026-09-01) targets a measured correctness defect inside
+the ALREADY-REGISTERED "Next-session manifest — CONTENT block" row's `selection.candidates` /
+`selection.disposition_tally` / `selection.why_not` fields: `app.engine.compass.evaluate_selection`
+currently gates candidacy on all three qualifier checks (leadership, entry, risk) instead of leadership
+alone (confirmed live at `apps/backend/app/engine/compass.py:602-703` — every row failing ANY check is
+labeled `below_selection_floor`), mislabeling 37 of 539 `comparison_cohort` rows in the committed
+frontier export (`2026-08-12_v7.json`) despite clearing the leadership floor (highest: HPE, 92.71). This
+iteration plans a fix wholly inside the SAME producer (`app.engine.compass.evaluate_selection` /
+`build_manifest_payload`) and SAME endpoint (`GET /api/compass`): `leadership_min_score` becomes the
+sole inclusion gate; `entry_min_score`/`risk_max_score` become advisory qualifiers (cautions +
+eligibility-checklist annotations only, never gating membership); `compass.selection.rule_version` bumps
+so corrected-rule manifests are distinguishable from prior ones. No new producer, no new route, no new
+Data Contract row or field, no schema-file version bump — the `selection_disposition` closed vocabulary
+(`below_selection_floor` | `excluded_by_cap`) is unchanged, only which rows land in each bucket. All
+pre-existing `next_session_manifests` rows and export files stay byte-identical (AG-12); pre-fix
+mislabeled versions keep their original `selection_disposition`/`prospective_eligible` values exactly
+(AG-17) — the correction applies only to manifests minted after the `rule_version` bump. This note
+records the iter-35 PLAN; the `[TARGET]`→delivered status is the goal-evaluator's call pending J-12
+evidence.
