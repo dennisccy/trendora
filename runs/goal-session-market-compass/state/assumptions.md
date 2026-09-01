@@ -1058,3 +1058,28 @@ re-capture is listed in my recommendation as a passenger task.
 acceptance condition rather than a capture task, one `Depth: evidence` round records J-12 alongside the
 seven journeys already owing one; no product code and none of this iteration's measurement evidence
 would need redoing.
+
+## iter-36 — goal-decomposer (scoping J-13's "signed delta + direction_word rides on session_delta.changes too" to sector/theme kinds only)
+
+**Ambiguity:** J-13 step 3 (`docs/goal.md` AUTO block) reads "assert the same signed delta + direction
+word ride on the `session_delta.changes` entries so the What-changed card can show them too" without
+naming which `kind`s. The rotation block itself is explicitly group-level only (step 1 excludes
+`stock`), and `market`/`breadth` entries already have a comparable direction concept expressed elsewhere
+(the narrative's own `_direction_sentence`/`state_band.regime`) computed from a different input (regime
+score, not a stored rank). It is unstated whether the addition to `session_delta.changes` should cover
+all five kinds or only the two the rotation block itself covers.
+
+**We chose:** scope the `delta`/`direction_word` addition on `session_delta.changes[]` to `kind ∈
+{sector, theme}` only — the same two kinds the rotation block covers, computed from the same rank pairs.
+Grounds: (a) the sentence's own antecedent ("the same signed delta") most naturally refers to the
+rotation row just described in step 3's first half, which is sector/theme only; (b) `market`/`stock`
+kind entries have no analogous "rank" concept to sign against (market is a regime-score delta already
+narrated elsewhere; stock is a bucket-letter crossing, not a numeric rank) — inventing a sign convention
+for them would be new engine logic outside J-13's measured defects (a)-(c), all of which cite sector/
+theme only; (c) this keeps the change minimal and additive, consistent with the "no new producer, no new
+route" Acceptance constraint, and does not touch the `market`/`stock` entry shape the What-changed card
+already renders unchanged (step 6).
+
+**Reversible:** yes — additive JSON fields only, no mutation. If a future evaluator or the owner reads
+step 3 as covering all five kinds, extending `delta`/`direction_word` to `market`/`stock` entries is a
+small additive follow-up; nothing in this iteration's sector/theme work would need redoing.

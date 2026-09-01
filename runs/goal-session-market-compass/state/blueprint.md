@@ -55,6 +55,7 @@ The other ten nav entries keep their route, order position, and content unchange
 | J-05 / J-06 manifest freeze + immutability | `/` — manifest strip; its expanded table IS the manifest audit view (candidates + comparison cohort + near-threshold shadow) — no separate nav route exists for it | Today |
 | J-07 Today page (ten-second read) | `/` — whole page, top to bottom, chrome (readiness/preflight) above the body | Today |
 | J-08 market relocation + history-never-lies | `/market` (relocated body); `/?asof=<date>` (retrospective compass) | Market / Today |
+| J-13 leadership rotation (gaining/losing, both directions) | `/` — Leadership rotation section (existing `compass-leadership-rotation-section.tsx` slot; no new route) | Today |
 
 ## Data Contract
 
@@ -317,3 +318,39 @@ mislabeled versions keep their original `selection_disposition`/`prospective_eli
 (AG-17) — the correction applies only to manifests minted after the `rule_version` bump. This note
 records the iter-35 PLAN; the `[TARGET]`→delivered status is the goal-evaluator's call pending J-12
 evidence.
+
+**iter-36 note (2026-09-01 — additive, no IA change, no new Data Contract row):** J-13 (goal-proposer
+AUTO block, 2026-09-01) targets the ALREADY-REGISTERED "Next-session manifest — CONTENT block" row's
+`session_delta` field. Confirmed live at `apps/frontend/components/compass-leadership-rotation-section.tsx:38`:
+the Leadership rotation section is a client-side `session_delta.changes.filter(kind in {sector,theme,stock})`
+over the SAME array `compass-whatchanged-card.tsx` already renders in full (0 market/breadth entries on the
+frontier, so it duplicates all 17 What-changed rows verbatim); change entries carry only an unsigned
+`magnitude` (no `delta`, no `direction_word`); and `_sector_changes`/`_theme_changes`
+(`apps/backend/app/engine/session_delta.py:105-162`) sort+slice to `top_k` without disclosing movers that
+clear `rank_move_min` but fall beyond the cap, so an above-threshold mover can vanish from both `changes`
+and `suppressed` (measured: sector accounts for only 29 of its 31 configured ETFs on the frontier). This
+iteration adds fields to the SAME producer (`app.engine.compass.build_manifest_payload`, reusing
+`app.engine.session_delta.compute_delta`'s already-computed sector/theme rank pairs — no second
+computation) and serves them via the SAME endpoint (`GET /api/compass`) — no new producer, no new route:
+  - `session_delta.rotation.{sector,theme}` — each an object with two explicitly labeled sides
+    (`gaining`, `losing`), each entry `{label, from, to, delta (signed), direction_word, drill_href}`,
+    each side capped by a NEW config-only key `compass.delta.rotation_top_k` (added under the existing
+    `compass.delta` block; both `session_delta.py` and `compass.py` stay `test_no_magic_numbers.CALC_FILES`
+    entries, so no literal may appear in code) and gated by the EXISTING `compass.delta.rank_move_min`;
+    plus a per-kind accounting object (`shown_count`, `suppressed_count`, `residual_count`,
+    `configured_total`) that must close exactly against the configured group counts (31 sector/industry,
+    11 theme). Group-level only — no stock-kind row (stock bucket crossings stay in `session_delta.changes`
+    / What-changed only).
+  - `session_delta.changes[]` entries of `kind ∈ {sector, theme}` additionally carry the SAME signed
+    `delta` and served `direction_word` (single computation, two placements) — `market`/`breadth`/`stock`
+    kind entries are unchanged by this addition.
+  - `direction_word` reuses the EXISTING `compass.vocabulary.direction_words` map via the EXISTING
+    `_flat_band_word` classifier (`apps/backend/app/engine/compass.py:134`) — never a second word map; the
+    polarity is resolved engine-side (a FALLING rank number is "improving"), mirroring the `state_band.stress`
+    sign-transform precedent (iter-28).
+  - No `schema_version` bump: `session_delta` is an open object in
+    `docs/handoffs/trendora-next-session-manifest-v1.schema.json`. No change to `compass.selection.*`,
+    `evaluate_selection`, candidate membership, or either frozen cohort (J-12's "Do not redo" stays intact).
+    All pre-existing `next_session_manifests` rows and export files stay byte-identical (AG-12) — this
+    change affects only manifests minted AFTER it ships. This note records the iter-36 PLAN; the
+    `[TARGET]`→delivered status is the goal-evaluator's call pending J-13 evidence.
