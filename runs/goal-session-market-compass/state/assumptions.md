@@ -848,3 +848,33 @@ the residual risk (the bound is tied to the data basis, not to a ceiling) is rec
 **Reversible:** yes — no mutation. If the owner rules that Constraints (c) requires an actual
 configured byte budget, that is a further bounded engineering item on top of a now-passing J-09; none
 of this iteration's measurement evidence would need redoing.
+
+## iter-34 — goal-decomposer (two scoping reads: "fix the results file" as a scoped harness code
+change, and J-09 as a legitimate Target journey despite the binding "Do not redo")
+
+**Ambiguity:** iter-33's evaluator recommended repair item (3) — "fix the results file so it stops
+recording this round's own target job as 'never tested'" — does not say whether the fix is a one-off
+manual edit to a single generated report, or a durable code change to the merge/gate scripts that
+produce that report every iteration. Separately, iter-33's own "Do not redo" list is binding
+("J-09 is CLOSED on the numbers — do NOT re-open it as a build... the next round CONFIRMS, it does not
+rebuild"), and it is not stated whether naming J-09 as this iteration's `Target journeys:` entry
+conflicts with that instruction.
+
+**We chose:** (a) implement the results-file fix as a scoped, durable change to
+`incredible_auto_dev/scripts/automation/lib/merge_ui_test_results.py` (and `goal_gate.py` only if
+required), keyed strictly to `docs/goal.md`'s own literal `**Walkthrough:** waived` marker — never a
+one-off manual edit of a single iteration's report, and never a bare journey-ID allowlist that could
+silently exempt a future unwaived journey; a companion regression test (TC-8) proves the exemption does
+not generalize. (b) score J-09 as a legitimate `Target journeys:` entry, explicitly labeled
+"confirmation only," on the grounds that the binding "Do not redo" instruction forbids REBUILDING the
+warm-up mechanism (`warmup.py`/`prices.py`), not re-verifying or re-recording evidence for an
+already-shipped, already-passing journey — the two are different acts, and OUT OF SCOPE in this spec
+explicitly reiterates the rebuild prohibition so nobody reads "Target journey" as license to touch the
+mechanism.
+
+**Reversible:** yes — no product mutation either way. If the owner or a future evaluator rules that the
+results-file exemption should instead be a manual per-iteration edit rather than durable harness code,
+the new regression test and merge-script change can be reverted without redoing any of this iteration's
+memory-measurement evidence; if the owner rules J-09 should never appear on a `Target journeys:` line
+again once closed, this iteration's re-measurement evidence still stands on its own as a
+Required-still-passing-style confirmation.

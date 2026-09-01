@@ -281,3 +281,18 @@ INTEGRITY blocks, engine identity, stock sector label, regime/phase/breadth, sec
 evidence ledger status) is read unchanged through its already-registered single producer and
 endpoint across the authorized 7-value as-of set — this iteration reads them, it does not move,
 duplicate, or add to any.
+
+**iter-34 note (2026-09-01 — informational, no IA change, no Data Contract row change):** J-09's
+closing re-measurement (extended ≥360s standing-warm capture, taken twice — developer run plus an
+independent auditor re-derivation from a fresh boot — with the settled `VmRSS_kB`/`VmSize_kB` plateau
+reported beside the `VmPeak_kB` high-water mark) touches no page, nav entry, computing module, serving
+endpoint, or displayed field — its only artifacts are a new dated Addendum 45 in
+`reports/perf-budgets.md` and raw sampler CSVs under `runs/goal-market-compass-iter-34/`, both internal
+ops evidence outside the Information Architecture and Data Contract, matching the iter-25/32/33
+precedent for J-09's other measurement-only rounds. This iteration also patches the goal-mode harness
+(`incredible_auto_dev/scripts/automation/lib/merge_ui_test_results.py`, and `goal_gate.py` if required)
+so a journey whose `docs/goal.md` Acceptance carries the literal `**Walkthrough:** waived` marker can be
+recorded as verified through cited non-UI evidence instead of forcing a `BLOCKED` headline for lacking a
+browser row — pipeline tooling, not Trendora product surface; no new page, nav entry, computing module,
+serving endpoint, or displayed field results from it either. Nothing in this iteration changes any row
+above.
