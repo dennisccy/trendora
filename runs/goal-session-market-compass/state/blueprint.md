@@ -354,3 +354,16 @@ computation) and serves them via the SAME endpoint (`GET /api/compass`) — no n
     All pre-existing `next_session_manifests` rows and export files stay byte-identical (AG-12) — this
     change affects only manifests minted AFTER it ships. This note records the iter-36 PLAN; the
     `[TARGET]`→delivered status is the goal-evaluator's call pending J-13 evidence.
+
+**iter-37 note (2026-09-01 — informational, no IA change, no Data Contract row change):** this iteration
+is a pure closing/hardening round on ALREADY-registered rows — no new page, nav entry, computing module,
+serving endpoint, or displayed field is introduced. It (a) re-verifies J-13's already-registered
+`session_delta.rotation` fields (registered iter-36) with a genuinely-run full-depth pipeline and a real,
+measured acceptance screenshot, replacing iter-36's 100%-blank capture; (b) replays `journey-scripts/J-13.json`
+for the first time (written after iter-36's replay window, so it had never executed); and (c) makes two
+backend robustness repairs wholly internal to the ALREADY-registered "Next-session manifest — CONTENT block"
+producer (`app.engine.compass.evaluate_selection` / `build_manifest_payload`): converting
+`_assert_disposition_predicate`'s two bare `assert` statements (added iter-35 for J-12) to explicit raises so
+the guard survives `-O`, and correcting a `test_manifest_invariants.py` TC-24 fixture value so it genuinely
+isolates the risk qualifier. Neither repair changes the predicate's logic, any served field, or any stored
+row/export file (AG-12) — this note records the iter-37 PLAN.
