@@ -12625,3 +12625,196 @@ block intact); `git diff -- config.yaml` shows no changes this round.
 This iteration's spec required `Depth: full` (rule 3, mandatory after iter-31's ESCALATE). See the
 dev handoff for whether that depth was actually achieved or demoted — per `docs/goal.md`'s binding
 loop-mechanics rule, this addendum does not itself make that call.
+
+## Correction note (2026-09-01, market-compass iter-33, repair item 3) — Addendum 43's TC-5 sentence was scoped to the wrong backend instance; Addendum 43's own text above is left untouched
+
+Addendum 43's TC-5 section (above) states: "No `as_of` outside this 3-value set was requested at
+any point this iteration (confirmed by the `logs/backend.log` compass-endpoint histogram above:
+exactly 3 compass calls in the 'before' pass + 3 in the 'after' pass, 6 total)." That histogram is
+correct for the SPECIFIC backend instance launched at `2026-09-01T03:19:17Z` (the one the byte-
+identity spot-check ran against), but iter-32's own session ran a SECOND backend instance earlier
+(launched `2026-09-01T03:14:26Z`, used by the deterministic replay lane) that served **24 compass
+GETs across 8 distinct as-of forms**, four of them — `2026-03-30`, `2026-07-23`, `2026-08-03`,
+`2026-08-11` — outside the stated 3-value set (all HTTP 200). iter-32's own auditor found and
+corrected this same wrong scoping in the dev handoff (`docs/handoffs/goal-market-compass-iter-32-
+audit.md`, finding B2; the handoff itself carries the fix, appended as an "Auditor correction"
+section) but never propagated the correction to this file — this note closes that gap, append-only,
+per this iteration's repair item 3 (TC-9).
+
+**True combined-backend-instance scope:** across BOTH backend instances iter-32's session launched,
+30 total `/api/compass` GETs were served across 8 distinct as-of forms — the 6 explicitly authorized
+(bare/frontier, `2025-04-15`, `1996-02-01`, two passes each) plus 24 more from the replay lane's
+navigation of stored goldens (which visit `2026-03-30`, `2026-07-23`, `2026-08-03`, `2026-08-11` in
+addition to the 3-value set). All 200. **The safety conclusion is unaffected and was independently
+re-verified from the canonical DB, not from either handoff:** `next_session_manifests` unchanged at
+28 rows / 18 distinct `as_of` / max id 28 across the whole session (max `created_at` predates both
+instances' launches), and `GET /api/compass` (`apps/backend/app/api/compass.py`) has no write path
+(no `session.add`, no `commit` — the only mint path is `POST /compass/regenerate`, which nothing in
+iter-32 called). AG-12 holds. This is exactly the pattern this session's iter-33 spec resolves going
+forward: the "Do not redo" list's inlined authorized as-of set for this and future iterations is now
+the full 7-value union every stored golden actually visits (see Addendum 44 below), so a replay-lane
+run is no longer scoped outside the iteration's own authorized set by construction.
+
+## Addendum 44 (2026-09-01T05:26:57Z-05:29:57Z UTC, market-compass iter-33 developer pass) — J-09's cold warm-up allocation bounded via a config-only budget; the ≤ 2.5 GB target is MET for the first time this session (2,467,888 kB, 5.86% under target)
+
+### Mechanism (TC-1) — why this does not reproduce the iter-42/43 whole-job regression
+
+**Mandatory reading done first, per this iteration's safety catch:** `docs/handoffs/goal-ops-
+hardening-iter-43-dev.md` (the revert of iter-42's `WHERE symbol IN (expected_symbols)` filter on
+`_BarCache.prefill`, after the iter-42 auditor measured a net **+5.1% whole-job memory REGRESSION**
+from EXCLUDING ~36-43 ETF/index/sector symbols from the eager array-based scan, forcing them onto
+the costlier per-symbol `list[Bar]` lazy-load path) and `apps/backend/app/engine/prices.py:245-259`'s
+iter-41/42/43 docstring paragraphs (the `_SymbolColumns` array-based representation — iter-41, B5 —
+cuts resident bytes roughly 3x per row versus `list[Bar]`'s individually-boxed-float NamedTuples,
+measured at ~1.1 GB at the live 3.3M-row basis).
+
+**Root cause investigated live, not assumed** (per BACKGROUND's explicit prompt): a call-stack trace
+during this iteration's own test development (`test_warmup_loads_each_symbol_at_most_once_across_
+cadence_and_forward_returns`, reproduced first on an unmodified baseline via `git stash`) confirmed
+`warmup.py:351`'s pre-iter-33 bare `with bar_cache(session):` never called `.prefill()` — every
+symbol the cadence loop's `run_scan` calls touched was loaded through `bars_asof`'s lazy per-symbol
+branch, which unconditionally builds the costlier `list[Bar]` representation. Because `run_scan`
+scores essentially the whole live universe on its FIRST cadence date already (breadth/regime/sector/
+theme all read the full pool), nearly every symbol's full series ended up resident in the costlier
+shape almost immediately — consistent with iter-32's own finding that the peak is a boot transient
+reached BEFORE readiness, not a slow per-date accumulation.
+
+**The fix** (`apps/backend/app/engine/warmup.py`, `apps/backend/app/config.py`, `config.yaml`): a new
+boot-validated boolean config key, `startup.warmup_bar_cache_bounded` (default `true`), selects
+`prices.prefilled_bar_cache(session)` (the SAME unconditional whole-table eager scan `_BarCache.
+prefill` already runs for every OTHER caller, `expected_symbols=None` — deliberately NOT the reverted
+iter-42 filtered shape) instead of the bare lazy `bar_cache(session)` context around the cadence loop
++ trailing `backfill_forward_returns` call. **This cannot reproduce the iter-42-class regression
+because it is all-or-nothing, never partial:** iter-42's regression came from a MIX of
+representations (some symbols eager/compact, others forced onto the costlier lazy path by exclusion);
+this key selects ONE representation for EVERY symbol the cadence loop touches, with zero
+`expected_symbols` filtering either way — there is no sub-population this key can push onto a
+costlier path. `false` reverts to the pre-iter-33 shape (owner rollback lever; no other code path
+changes). Two new targeted tests
+(`apps/backend/tests/test_warmup.py::test_warmup_bar_cache_bounded_config_selects_prefill_mechanism`,
+`::test_warmup_bar_cache_bounded_is_byte_identical_to_unbounded`) prove the config key genuinely
+selects the mechanism (never a filtered `expected_symbols`) and that bounded vs unbounded runs
+produce byte-identical `ScannerRun`/`ScannerResult`/`ForwardReturn` rows on the same fast fixture. No
+new numeric literal was introduced into `warmup.py` (the key is a boolean selector, not a threshold),
+so no `test_no_magic_numbers.py` `CALC_FILES` registration applies — confirmed by re-running
+`test_no_magic_numbers.py`'s existing subset unmodified.
+
+### Method — live re-measurement
+
+Two fresh backend boots via `bash scripts/start-backend.sh` (HOST-GUARD block intact, confirmed by
+reading the script before use), separated by a `git stash`/`git stash pop` so the "before" boot ran
+the genuinely unmodified baseline code and the "after" boot ran this iteration's change:
+
+- **"Before" boot** (baseline code, `git stash` applied): captured the 16-file byte-identity set
+  (below) and the `next_session_manifests` census (28 rows / 18 distinct `as_of` / max id 28), then
+  stopped cleanly (`SIGTERM`, confirmed exited, port confirmed free).
+- **"After" boot** (this iteration's change): `/proc/<pid>/status` sampled every **1 second** (per-
+  second, not the 5s interval prior addenda used) from process start via
+  `runs/goal-market-compass-iter-33/vmpeak_sampler.py`, alongside `GET /api/health`'s `readiness`
+  field on every sample — **capture window `2026-09-01T05:26:57.66Z` → `2026-09-01T05:29:57.30Z`
+  UTC, 177 rows, raw CSV at `runs/goal-market-compass-iter-33/j09-vmpeak-samples.csv`** (every
+  sample, not just the peak).
+
+### Honest host-quiet disclosure (same discipline as Addendum 43)
+
+`host-guard/events.jsonl` and process state were checked immediately before this measurement: a
+sibling goal-mode session (`/home/dennis-chan/Git/tensteps`, sid `ten-steps-v1`) was actively
+dispatching (an `auditor` step, started 06:06:29 local, still running at measurement time) throughout
+this capture window — the same class of disclosed, not-materially-controlling contention Addendum 43
+recorded. `free -h` at measurement time: `MemAvailable` ~21 GB, swap 8 KiB used, load average
+0.99/1.34/1.19 on this 16-thread host — comfortable headroom. No sibling process was stopped or
+otherwise touched (not this developer's call to make unilaterally, per the same reasoning Addendum 43
+recorded). This figure is presented as honestly and thoroughly instrumented, not as guaranteed-clean.
+
+### Result vs the ≤ 2.5 GB target and vs every prior figure
+
+| Measurement | VmPeak (kB) | VmPeak (MB) | vs 2,621,440 kB (2.5 GB) target | vs iter-32 (3,038,684 kB) | Margin vs `memory_cap_mb` (8192 MB) |
+|---|---|---|---|---|---|
+| Addendum 40 (iter-4) | 3,439,100 | 3,358.5 | +817,660 kB over (+31.2%) | +400,416 kB (+13.2%) | 59.0% margin |
+| Addendum 41 (iter-25, unsupported) | 3,064,772 | 2,993.0 | +443,332 kB over (+16.9%) | +26,088 kB (+0.86%) | 63.5% margin |
+| Addendum 43 (iter-32, clean re-measurement) | 3,038,684 | 2,967.5 | +417,244 kB over (+15.9%) | — (baseline) | 63.8% margin |
+| **Addendum 44 (this pass — bounded)** | **2,467,888** | **2,410.0** | **−153,552 kB under (−5.86%, PASS)** | **−570,796 kB (−18.78%)** | **69.9% margin** |
+| Target (DEFINITION OF DONE) | ≤2,621,440 | ≤2,560.0 | — | — | — |
+
+**MET for the first time this session:** measured max `VmPeak_kB` = **2,467,888 kB**, 153,552 kB
+(5.86%) UNDER the 2,621,440 kB target — an 18.78% reduction from iter-32's own clean re-measurement,
+achieved with a config-only, whole-job-safe bound and a proven byte-identical served output (below).
+`memory_cap_mb` (8192), `malloc_arena_max` (2), `pool_size` (24), and `max_overflow` (44) are
+UNCHANGED (AG-10; owner-only values) — this result did not touch any owner-gated value.
+
+**At peak / at t+20s / end-of-window** (VmPeak / VmSize / VmRSS, kB; the CSV carries every sample):
+
+| Moment | elapsed_s | VmPeak_kB | VmSize_kB | VmRSS_kB | readiness |
+|---|---|---|---|---|---|
+| Nearest sample to t+20s | 19.48 | 2,208,092 | 2,208,092 | 1,655,836 | initializing |
+| Readiness first flips to `ready` | 28.82 | (see next row) | | | ready |
+| **Peak (max VmPeak reached)** | **30.83** | **2,467,888** | **2,467,888** | **1,337,360** | **ready** |
+| End of 180s observation window | 179.65 | 2,467,888 | 2,204,776 | 1,627,100 | ready |
+
+VmPeak (a high-water mark by definition) plateaued at 2,467,888 kB from t+30.83s and never moved for
+the remaining ~149s of observation — matching the same "plateau reached at/shortly after readiness,
+never during background continuation" signature Addendum 41/43 established, with one honestly-noted
+timing difference from Addendum 43: this pass's peak lands ~2s AFTER readiness (28.82s -> 30.83s)
+rather than the ~10s-BEFORE-readiness Addendum 43 found — consistent with the mechanism change (one
+front-loaded `prefill` streamed scan, launched at the start of the cadence loop, versus many
+individually-triggered lazy loads spread across the loop's first iterations). VmSize/VmRSS fluctuate
+modestly after readiness (background continuation, including the per-claim drawdown-expectations warm
+— unrelated to this iteration's target block, see the dev handoff) but VmPeak itself never regresses.
+
+### TC-4 — concurrent-load check: PASS, zero `QueuePool` TimeoutError
+
+A request burst at exactly `server.limit_concurrency` (64) simultaneous connections, 5 rounds, via
+`runs/goal-market-compass-iter-33/pool_pressure_burst.py concurrent`: **start 2026-09-01T05:27:27Z,
+end 2026-09-01T05:27:32Z, 320 total requests, 0 non-200, 0 client-side errors.** Server-side
+corroboration from `logs/backend.log` (grepped from this boot's own launch banner, `=== start-
+backend.sh: launching at 2026-09-01T05:26:50Z ===`, forward): 397 request lines, all 200, **0
+`QueuePool` lines** — the most recent `QueuePool` line anywhere in the whole append-only log predates
+this session by nearly a month (2026-08-04), matching every prior addendum's finding.
+
+### TC-5 — byte-identity spot check: zero diff across all 7 authorized as-of values, 2 endpoints, 16 total captures
+
+`GET /api/compass` and `GET /api/dashboard`, for the full authorized 7-value as-of set this
+iteration's BACKGROUND establishes (`{no param (frontier, "2026-08-12"), "1996-02-01", "2025-04-15",
+"2026-03-30", "2026-07-23", "2026-08-03", "2026-08-11"}`), captured once against the "before" boot
+(unmodified baseline code) and once against the "after" boot (this iteration's change) — 16
+endpoint/as-of pairs. Every pair is byte-identical: `cmp -s` reports zero diff on all 16 files, and
+the aggregate md5 of the 16 sorted per-file md5s matches exactly between the two captures
+(`73f7213ef5a6976c17876444b2b79c79` both sides). Raw files under
+`runs/goal-market-compass-iter-33/byte-identity-before/` and `.../byte-identity-after/`. This proves
+Constraints (c)'s "no served value changes" requirement directly on the real committed-seed DB, not
+only on the small synthetic fixture the two new `test_warmup.py` tests use.
+
+### TC-6 — manifest immutability: unchanged across both boots
+
+`next_session_manifests` row count / distinct `as_of` count / max id, read before the "before" boot,
+again after the "before" boot's byte-identity captures, and again after the "after" boot's full
+measurement window (including the replay lane and the concurrent-load burst): **unchanged at 28 rows
+/ 18 distinct `as_of` / max id 28** at every checkpoint — zero new mints, zero mutations, matching the
+iter-32/iter-31 census exactly.
+
+### Deterministic replay lane (repair items 1/2, TC-7/TC-8)
+
+Invoked WITH `--results reports/phase-goal-market-compass-iter-33-regression-replay-results.md`
+against the "after" boot's backend + a freshly-started frontend (`bash scripts/start-frontend.sh`):
+**rc=0, 10/10 Required-still-passing journeys (J-01 through J-08, J-10, J-11) PASS, 0 skipped.** The
+results file exists, is non-empty, and lists an actually-executed PASS row for each journey (not a
+lint-only note) — TC-7. Its rows were merged into
+`reports/phase-goal-market-compass-iter-33-ui-test-results.md` via
+`scripts/automation/lib/merge_ui_test_results.py`; the merged file's headline reads **PASS, 10/10,
+0 skipped** — no journey the replay lane covered is left recorded SKIPPED — TC-8.
+
+### AG-9 / AG-10 for this pass
+
+AG-9 — every live call (both boots' byte-identity captures, the standing-warm sampling, the
+concurrent-load burst, the replay lane's navigation) is a local HTTP GET/browser interaction against
+an already-running backend/frontend and the committed canonical DB; zero external network calls;
+zero writes beyond the pre-existing, already-authorized golden replay pattern. AG-10 — both backend
+instances were launched only via `scripts/start-backend.sh` (HOST-GUARD block intact, confirmed by
+reading the script before use); `git diff -- config.yaml` shows only the new `startup.
+warmup_bar_cache_bounded` key added — no owner-gated value (`memory_cap_mb`, `malloc_arena_max`,
+`pool_size`, `max_overflow`) touched.
+
+### Depth note
+
+See the dev handoff for this iteration's depth disposition — per `docs/goal.md`'s binding loop-
+mechanics rule, this addendum does not itself make that call.

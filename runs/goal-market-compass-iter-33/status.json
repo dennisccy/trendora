@@ -1,0 +1,31 @@
+{
+  "phase": "goal-market-compass-iter-33",
+  "status": "in_progress",
+  "current_step": "dev_complete",
+  "updated_at": "2026-09-01T05:35:00Z",
+  "started_at": "2026-09-01T04:47:19Z",
+  "cli": "claude",
+  "blockers": [],
+  "changed_files": [
+    "config.yaml",
+    "apps/backend/app/config.py",
+    "apps/backend/app/engine/warmup.py",
+    "apps/backend/tests/test_warmup.py",
+    "reports/perf-budgets.md",
+    "reports/phase-goal-market-compass-iter-33-regression-replay-results.md",
+    "reports/phase-goal-market-compass-iter-33-ui-test-results.md",
+    "reports/qa/goal-market-compass-iter-33-evidence/",
+    "runs/goal-market-compass-iter-33/j09-vmpeak-samples.csv",
+    "runs/goal-market-compass-iter-33/vmpeak_sampler.py",
+    "runs/goal-market-compass-iter-33/pool_pressure_burst.py",
+    "runs/goal-market-compass-iter-33/byte_identity_capture.py",
+    "runs/goal-market-compass-iter-33/concurrent64-burst-results.jsonl",
+    "runs/goal-market-compass-iter-33/byte-identity-before/",
+    "runs/goal-market-compass-iter-33/byte-identity-after/",
+    "docs/handoffs/goal-market-compass-iter-33-dev.md"
+  ],
+  "tests_run": true,
+  "browser_checks_run": true,
+  "qa_verdict": null,
+  "next_action": "reviewer"
+}

@@ -1334,6 +1334,21 @@ startup:
   health_poll_interval_seconds: 2.0        # badge poll cadence while warming (fast flip to Ready, not a 30s cycle)
   health_poll_idle_interval_seconds: 30.0  # slower poll cadence the badge backs off to once Ready (>= active)
   background_compute_history_size: 5       # ops-hardening iter-24 (J-09): recent_outcomes ring cap (>= 1)
+  warmup_bar_cache_bounded: true            # goal-market-compass iter-33 (J-09/AG-8, Constraints (c)): the
+    # background warm-up's cadence loop (warmup.py's cadence `run_scan` x N dates + trailing
+    # backfill_forward_returns) opens a `_BarCache` context around itself (app.engine.prices). `true` (the
+    # bound) routes that context through `prefilled_bar_cache` -- the SAME unconditional whole-table eager
+    # scan iter-43 restored (no expected_symbols filter, so no iter-42-class exclusion) -- which builds the
+    # compact array-based `_SymbolColumns` representation for every touched symbol instead of letting the
+    # cadence loop accumulate the costlier per-symbol `list[Bar]` NamedTuple representation via lazy loads
+    # (the pre-iter-33 shape). `_SymbolColumns` vs `list[Bar]` is the SAME representation iter-41 (B5)
+    # already proved cuts resident bytes ~3x with byte-identical served values; this key only decides
+    # WHICH loading path the warm-up's cadence context takes, never which rows/symbols it includes -- so it
+    # cannot reproduce the iter-42 whole-job regression (that regression came from EXCLUDING ~36-43 ETF/
+    # index symbols from the eager scan, forcing a MIX of representations; this key is all-or-nothing, never
+    # partial). `false` reverts to the pre-iter-33 lazy `bar_cache` shape for owner rollback. See
+    # docs/handoffs/goal-market-compass-iter-33-dev.md for the live re-measurement this key's default was
+    # chosen from.
 
 # ----------------------------------------------------------------------------------------
 # goal-mcp-loop iter-33 CONSUMED — the daily preflight verdict (J-20 / backlog B-301).

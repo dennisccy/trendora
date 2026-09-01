@@ -3022,3 +3022,150 @@ wording; J-01's first two test steps; whether an empty "next-session focus" is a
 joins the recovery list; and whether 12 August should keep showing its "rebuilt" note. ONE STANDING
 FRAMEWORK NOTE: `goal_gate.py`'s duplicate-journey-heading defect is still unfixed (this round's goal
 slice again lists J-10 twice) and must be closed before any GOAL_ACHIEVED certification.
+
+## Iteration 33 — goal-market-compass-iter-33
+
+**Date:** 2026-09-01T06:55:00Z
+**Verdict:** ESCALATE
+**Depth dispatched:** lean — **against the spec, and nobody said so.** `docs/phases/goal-market-compass-iter-33.md`
+metadata reads `Depth: full` with a written Trigger-1 structural justification, and
+`runs/goal-session-market-compass/session.json` records `next_depth: "full"`; yet
+`runs/goal-session-market-compass/iter-33/depth-dispatched` reads `lean` and `iter-33/.steps/` contains only
+`decomposer.done`, `developer.done`, `review-1.done`, `coherence.done` — **no auditor, no QA agent, no closure,
+no ux-regression.** I grepped the dev handoff for any disclosure of the demotion: there is none, although the
+spec's own NOTES made it mandatory and `docs/goal.md:2423-2436` is a binding owner rule ("MUST be surfaced
+explicitly and MUST NOT silently fall back to `lean` ... mark the depth requirement **unmet**"). I am marking it
+unmet here, as that rule directs.
+
+**Owner-facing lines:** `J-09 IS MET FOR THE FIRST TIME THIS SESSION — 2,467,888 kB against the 2,621,440 kB bar,
+5.86% UNDER, and -18.78% against iter-32's 3,038,684 kB; I computed the maximum myself over all 177 raw rows` ·
+`16/16 API captures byte-identical under my own cmp; 320/320 HTTP 200; perf-budgets.md is +193/-0, strictly
+append-only` · `ZERO DATABASE WRITES — the .db mtime (01:32:31) predates the iteration's own 05:47 snapshot and
+the WAL is 0 bytes, across TWO full backend boots` · `ANTI-GOAL LEDGER: 9 total, 0 unresolved` · `BUT THE
+DETERMINISTIC RESULTS GATE ALREADY REFUSES THIS ROUND — I ran it: goal_gate.py results exits 1 on the BLOCKED
+headline, because the merged file records this iteration's OWN target journey as "named but never executed"` ·
+`AND THE NUMBER THAT CLOSES A 33-ROUND SESSION HAD ONE REVIEWER AND NO INDEPENDENT AUDITOR` ·
+`GOLDEN-SCRIPT HYGIENE CLEAN FOR THE SECOND ROUND RUNNING — I read all ten mtimes; every one predates the run`.
+
+**Journey deltas:**
+- **Newly passing: J-09** "The backend fits the host — standing memory halves with zero behavior change" —
+  `partial` since iter-3, the last non-passing journey in the session. Promoted on artifacts I opened and
+  re-derived myself, not on anyone's write-up. All five acceptance limbs: **(step 2)** max `VmPeak_kB` =
+  **2,467,888** computed by me over all 177 rows of `j09-vmpeak-samples.csv` (single pid 2271693, 1s interval,
+  window 05:26:57.66Z-05:29:57.30Z), 153,552 kB under the 2,621,440 kB bar; **(step 3)**
+  `git diff --stat reports/perf-budgets.md` = **+193/-0**, strictly append-only, Addendum 44 plus the dated
+  correction note after Addendum 43 whose own text is untouched; **(step 4)** I counted the burst JSONL myself —
+  320 records, **all status 200, zero errors**, and zero `QueuePool` lines in `logs/backend.log`; **(step 5)** I
+  ran `cmp` over all 16 before/after captures (7 authorized as-of values × `/api/compass` + `/api/dashboard`) —
+  **16 compared, 0 differing**; **(step 1 / Consistency)** `config.yaml`'s `database:` block is untouched
+  (`cache_size -65536`, `pool_size 24`, `max_overflow 44`) and the new key adds no numeric literal to
+  `warmup.py`. J-09's own Acceptance waives the Walkthrough, so the absence of a screenshot is by design, not a
+  gap.
+- Newly failing: **none.** Regressed: **none.**
+- **Re-verified, unchanged: J-01, J-02, J-03, J-04, J-05, J-06, J-07, J-08, J-10, J-11** — merged results
+  10/10 PASS with a fresh screenshot each, all re-stamped to iter-33. Three spot-checks opened (one more than
+  required, because this round changed shared engine infrastructure): `J-07-verify.png` at 2026-08-03 reads
+  66.07 improving / 29.35 improving / 45.1% little changed with the Summary agreeing (+4.7 regime-score
+  points) — identical **to the decimal** to iter-29, iter-31 and iter-32; `J-01-verify.png` at the frontier
+  shows MARKET REGIME 73.18, the same `regime_score` iter-31 re-derived from stored manifest row 28, with
+  GRMN's honest sector label and three "Not yet proven" badges; `J-04-verify.png` is AGAIN the 2026-03-30
+  top-of-page viewport stopping above the candidate card, so `evidence_makeup: true` is KEPT for the
+  **fifteenth** iteration running (a fresh capture landed and reproduces the identical framing fault, so I
+  deliberately did not clear the flag). Those two matching screenshots are independent corroboration that the
+  warm-up change moved no displayed number — stronger than the byte-identity `cmp` alone, because they are
+  rendered pages, not API bytes.
+- **GOLDEN-SCRIPT HYGIENE CLEAN, SECOND ROUND RUNNING.** I read all ten `journey-scripts/*.json` mtimes: every
+  one predates this iteration's 06:01 start (J-01 2026-08-20 … J-11 2026-09-01 01:51:59), and none was
+  rewritten after the replay lane wrote its results at 06:37. The iter-29/30/31 defect family stays closed.
+- **Repair items 1-3 all genuinely landed**, and I verified each rather than accepting the handoff's claim:
+  the replay lane ran WITH `--results` and the file exists non-empty with ten executed PASS rows (TC-7); those
+  rows are merged into `ui-test-results.md` with nothing the lane covered left SKIPPED (TC-8); the dated
+  correction note stands after Addendum 43 with 0 deleted lines anywhere in the file (TC-9).
+- **`spec_hash`: all eleven byte-identical to the recorded values** — I ran `goal_gate.py hash-journeys` and
+  compared every one. No `journeys-changed.md`, no `browser-infra.json`, no `DEFERRED-BUDGET` rows, NOT
+  maintenance isolation.
+- Anti-goal violations: **NONE new** among AG-1..AG-18 — I answered all eighteen explicitly in the evaluation
+  and re-derived the six at real risk (AG-3, AG-8, AG-9, AG-10, AG-12, AG-14) myself, read-only. Census after
+  every lane: 28 manifest rows / 18 distinct `as_of` / max id 28, max `created_at` 2026-09-01 00:12:07,
+  `state_band_json` non-null on exactly 2 rows, `prospective_eligible=1` on **0** rows, `data_provider_runs`
+  still 549, `MAX(daily_prices.date)` still 2026-08-12, `scanner_runs` still 3128 — identical to iter-31/32.
+  **Strongest fact of the round: the database file's mtime is 2026-09-01 01:32:31 — BEFORE this iteration's
+  05:47 snapshot — and the WAL is 0 bytes. Not one byte was written, across TWO full backend boots.** AG-10
+  intact: `host-guard.env` untouched (mtime 2026-08-19), both HOST-GUARD blocks present, no cap widened.
+  AG-14: 0 tapeology hits in the product diff (the 2 raw-diff hits are inside `trace/trace.jsonl`, bookkeeping).
+  Ledger unchanged at **9 total, 0 unresolved.**
+- **THREE FINDINGS NO LANE MADE.** (1) **The deterministic results gate already refuses this round.** I ran
+  `goal_gate.py results reports/phase-goal-market-compass-iter-33-ui-test-results.md` myself: **exit 1**,
+  because the merged headline is `BLOCKED` and the "Missing Target Journeys" section names `UT-J-09` as "named
+  but never executed". So `GOAL_ACHIEVED` could not have stood on this iteration's record whatever verdict I
+  wrote — it would have been mechanically demoted. This is a lane/record mismatch (J-09 has no UI by design and
+  the goal waives its walkthrough), not a product defect, and it is fixable in one line of the merge step.
+  (2) **The measurement window is too short to support the "standing memory" half of the journey's title.**
+  This round's window ends at t+179.65 with VmSize 2,204,776 / VmRSS 1,627,100 kB. iter-32's 396s window
+  recorded its late release at **t+181** — dropping to 1,310,036 / 672,140 and settling at 1,298,796 /
+  725,856. So this round stopped one sample before the interesting moment, and the settled footprint after the
+  change is simply unknown. Addendum 44 calls the post-readiness movement "modest fluctuation"; the swing I
+  measured is **~960 MB** (t+50.92 RSS 665,756 → t+81.24 RSS 1,627,208). The binding metric is unaffected —
+  `VmPeak` is a monotonic high-water mark, it froze at t+30.83 and never moved for the remaining 149s, and this
+  round's sampler attached at boot (VmPeak 1,098,724 at t=0) where iter-32's attached mid-boot (2,125,140 at
+  t=0), so this capture covers MORE of the process lifetime, not less. (3) **The shipped mechanism is not the
+  literal thing Constraints (c) asks for.** The constraint says `_BarCache.prefill`'s cold path is "re-bounded
+  to a configured **memory budget**" — a size. What shipped is a config-gated **representation switch**
+  (`startup.warmup_bar_cache_bounded`, a boolean). I judge it a legitimate satisfaction of the constraint's
+  purpose and I say why in the assumption ledger, but the words and the deliverable are not the same thing and
+  the next round should not pretend otherwise.
+- Coherence: **COHERENCE-PASS**. Deterministic scan: **CLEAN**. Review: **PASS** (`issues: []`).
+
+**Reasoning:** The job asked for was done, and done honestly, and I checked it myself rather than trusting the
+write-up. The backend's memory use was measured again after a real change to how it loads price history, and
+this time it fits: about 2,410 MB against a 2,560 MB goal, and about 18% lower than last round. I opened the raw
+reading file and worked out the highest value myself across all 177 readings. I compared all sixteen
+before-and-after copies of the two main data feeds byte for byte and every single one matched, which is direct
+proof that no number a user sees has moved. I counted the 320 load-test requests and every one succeeded. And I
+proved the round was clean in the strongest way available: the database file was never written to at all,
+because its timestamp is older than the round itself, across two full restarts of the backend. All ten other
+journeys were re-run with fresh pictures and all ten passed; I opened three of those pictures and two of them
+show exactly the same numbers as earlier rounds, down to the decimal. So the product side is finished. Why not
+declare the goal achieved? Two reasons, neither of them about the product, and both of which I checked rather
+than assumed. The first is that the project's own automatic gate already refuses this round: the results file
+marks this round's own target job as "never tested" and carries a blocked headline, so a "goal achieved" verdict
+would have been overturned by the machine within seconds. I ran that check myself instead of guessing. The
+second matters more. The plan for this round said in writing that the full team was required, and explained why:
+the code changed here is shared by nearly every part of the engine, and the last attempt to change this exact
+piece caused a real regression that had to be undone. The session's own settings file also said full. The light
+version ran anyway — one reviewer, and no independent checker at all — and nobody mentioned it, although both the
+plan and the owner's own written rule require a dropped depth to be announced. The single number that closes a
+thirty-three round project should not be the one that got the least checking. Why not simply continue? Because
+only escalation forces the depth back up, and this session's own record shows a plain recommendation failing
+twice while escalation held every time. Why not REGRESSION? Nothing that worked stopped working, no stored
+record moved, no rule was broken. Why not STALLED? Nothing here waits on the owner — one ordinary round finishes
+it.
+
+**Next-step recommendation:** Run ONE more round at **FULL DEPTH** and treat it as the closing check, not as new
+building — there is nothing left to build, all eleven jobs now pass. Four things: (1) have the independent
+checker take the memory measurement again from scratch, on a quiet machine with nothing else of ours running,
+and say plainly whether it also lands under the line — today's figure is only 5.9% under, from a single run,
+taken while a second automated project was using the same computer; (2) take that reading over at least six
+minutes rather than three, because this round's window stopped just before the point where last round's memory
+was handed back, so what the program settles at is still unknown; (3) fix the results file so it stops recording
+this round's own target job as "never tested" — the job has no screen by design and the goal itself waives the
+picture, so the report should carry the memory reading as its evidence, and until that is fixed the automatic
+gate will keep refusing to certify no matter how good the evidence is; (4) state the depth that actually ran, in
+words, in the handoff. **TWO OWNER POINTS, NEITHER BLOCKING:** (a) that measurement deliberately loads the
+computer a run of this system froze on 20 August 2026 — nothing else of ours should run during it; (b) one owner
+line could close this today instead — if you accept the figure as it stands, the goal is finished now and the
+round above becomes a confirmation rather than a condition. **CARRIED ITEMS, none blocking:** J-04's picture
+still needs re-taking to include the candidate card (15th round owed, and this round's fresh picture repeats the
+fault); J-02, J-03, J-05, J-06 and J-08 still owe a recorded walkthrough and J-07's is only four steps; one test
+is red on three untouched files and should be fixed or formally waived; a SECOND test (`test_warmup.py`'s
+load-once check) is also red on unmodified code, cause found and written down but not fixed; the "What changed"
+and "Leadership rotation" lists still show identical rows; the iteration-23 throw-away copy (7.8 GB) may still
+be deleted; `apps/frontend/.next-verify/` is still tracked in git; J-01's automatic re-check still asserts far
+less than the journey claims; and this round's load test used only the light health endpoint (320 requests)
+where last round also ran a 482-request test across five heavier pages. **RETIRED THIS ROUND:** the standing
+worry that `goal_gate.py` counts a journey twice — I read `docs/goal.md` directly and it has exactly eleven
+journey headings with no duplicate; the doubled J-10 line appears only in the trimmed copy handed to agents,
+which is cosmetic and affects no gate. **FIVE OLDER OWNER QUESTIONS** remain open and non-blocking: J-06's
+"underlying run unavailable" wording; J-01's first two test steps; whether an empty "next-session focus" is
+acceptable; whether MNST joins the recovery list; and whether 12 August should keep showing its "rebuilt" note.
+**ONE MECHANICAL ITEM:** the whole iteration is uncommitted at scoring time; confirm it lands.

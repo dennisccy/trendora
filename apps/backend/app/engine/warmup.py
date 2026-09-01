@@ -35,7 +35,7 @@ from app.engine import data_manager, evidence, forward_testing
 from app.engine import j11_preboot_guard
 from app.engine.forward_testing import backfill_forward_returns, walk_forward_asof_dates
 from app.engine.ledger import FORWARD_WALK_TYPE, read_entries
-from app.engine.prices import bar_cache, latest_data_date
+from app.engine.prices import bar_cache, latest_data_date, prefilled_bar_cache
 from app.engine.scanner import get_run_for_date, run_scan
 from app.models import ScannerRun
 
@@ -348,7 +348,37 @@ def _run_warmup(engine: Engine, cfg: Config, prog: "data_manager.JobProgress") -
             # orthogonal to the iter-28 single-flight guard (which serializes the warm-up THREAD in
             # `start_warmup`); the cache only changes how this thread's own session loads bars. The cache
             # dies with the `with Session` block; the warm-up adds no bars, so no read sees a stale series.
-            with bar_cache(session):
+            #
+            # goal-market-compass iter-33 (J-09/AG-8, Constraints (c)): before this iteration this was an
+            # UNCONDITIONAL `with bar_cache(session):` — a bare (non-prefilling) context, so every symbol
+            # the cadence loop touched was loaded through `bars_asof`'s lazy per-symbol branch, which
+            # always builds the costlier `list[Bar]` NamedTuple representation (`prices.py`'s eager-scan
+            # `_SymbolColumns` array representation — iter-41/B5 — was never reached from this call site).
+            # Because `run_scan` scores essentially the whole live universe on its FIRST cadence date
+            # already (breadth/regime/sector/theme all read the full pool), nearly every symbol's full
+            # series ends up resident in the costlier shape almost immediately — this is the "1.29 GB,
+            # five-second start-up spike" iter-32's raw evidence pinned to this exact block (peak reached
+            # BEFORE readiness, matching a load-on-first-touch pattern, not a slow per-date accumulation).
+            # `cfg.startup.warmup_bar_cache_bounded` (default True) now selects `prefilled_bar_cache`
+            # instead: the SAME `_BarCache`, the SAME symbols, the SAME rows — but loaded via ONE
+            # unconditional whole-table streamed scan (`expected_symbols=None`, so nothing is excluded —
+            # deliberately NOT the iter-42 `WHERE symbol IN (...)` filter reverted at iter-43; see that
+            # docstring paragraph in `prices.py` and `docs/handoffs/goal-ops-hardening-iter-43-dev.md`)
+            # into `_SymbolColumns`'s `array.array('d')` columns, the same compact representation
+            # `_BarCache.prefill` already produces for every OTHER prefilling caller. Every consumer below
+            # (`run_scan` -> `regime.py`/`sectors.py`/`themes.py`/`market_phase.py`/`bars_asof`/
+            # `bars_after`, and `backfill_forward_returns`) reads the cache through the exact same
+            # `full[:cut]` / indexing / `len` operations either representation supports identically (the
+            # `Sequence` duck-typing contract `_SymbolColumns` implements) — so served values are
+            # byte-identical regardless of which branch loaded them; only the resident bytes differ. Set
+            # `false` to revert to the pre-iter-33 lazy shape (owner rollback lever; no other code path
+            # changes).
+            cache_ctx = (
+                prefilled_bar_cache(session)
+                if cfg.startup.warmup_bar_cache_bounded
+                else bar_cache(session)
+            )
+            with cache_ctx:
                 for index, asof in enumerate(dates, start=1):
                     # goal-market-compass iter-18 (J-11 step 11 ruling requirement 7): the SAME
                     # persisted-boundary check `ensure_latest_snapshot` already performs before ITS OWN

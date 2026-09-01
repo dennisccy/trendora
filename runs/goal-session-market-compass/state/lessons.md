@@ -522,3 +522,33 @@ the auditor's own re-run. A gate that asserts an artifact without opening it is 
 from a gate that read it, right up until the claim is false.
 **Applies to:** any iteration whose Definition of Done names a generated report as evidence — bind the
 generating command to the output path, and make the lane fail when the file is absent or empty.
+
+## iter-33 — 2026-09-01T06:55:00Z
+
+**Verdict:** ESCALATE
+**Lesson:** The memory win came from changing the REPRESENTATION, not from capping a size — and it
+runs counter to intuition. `warmup.py:351`'s cadence loop now opens `prefilled_bar_cache` instead of
+the lazy `bar_cache`, so it eagerly scans the WHOLE `daily_prices` table (a superset of what the lazy
+path loaded) into `_SymbolColumns`' `array.array('d')` columns, and peaks **lower** (2,467,888 kB vs
+3,038,684 kB) precisely because it loads MORE rows in a cheaper shape than fewer rows in `list[Bar]`
+NamedTuples. That asymmetry is also the cleanest proof the win is real: a mechanism that reads a
+superset cannot be winning by reading less. Corollary risk to watch: the bound is now tied to the
+data basis, not to a configured ceiling — on a basis where the cadence loop touches only a small
+subset of symbols, the eager whole-table scan could cost more than the lazy path it replaced.
+**Applies to:** any iter touching `apps/backend/app/engine/prices.py` (`_BarCache`/`bar_cache`/
+`prefill`/`prefilled_bar_cache`) or `warmup.py`'s cadence loop; and any future memory-budget work
+under `docs/goal.md` Constraints (c).
+
+## iter-33 — 2026-09-01T06:55:00Z
+
+**Verdict:** ESCALATE
+**Lesson:** A memory measurement's WINDOW LENGTH is itself a variable, and comparing end-of-window
+figures across different window lengths invents regressions that are not there. iter-33 sampled 180s
+and ended at VmRSS 1,627,100 kB; iter-32 sampled 396s and ended at 725,856 kB — which reads as a 2x
+standing-footprint regression until you notice iter-32's own release happened at **t+181**, one
+sample past where iter-33 stopped. Only `VmPeak` (a monotonic high-water mark) is safely comparable
+across unequal windows. Also check where the sampler ATTACHED: iter-32's first row already showed
+VmPeak 2,125,140 kB (mid-boot), iter-33's showed 1,098,724 kB (at boot), so the two captures cover
+different fractions of the process lifetime.
+**Applies to:** any iter that re-measures J-09 / appends to `reports/perf-budgets.md`, or that
+compares two `/proc` sampler CSVs.

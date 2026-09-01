@@ -533,6 +533,16 @@ class StartupCfg(BaseModel):
         Defaults to `5` (present so a config fixture predating this field still loads unchanged — the
         established `extra="allow"`/back-compat-default convention this class already uses). MUST be
         `>= 1`.
+      - `warmup_bar_cache_bounded` (goal-market-compass iter-33, J-09/AG-8, Constraints (c)) — governs
+        which `app.engine.prices` bar-cache context the background warm-up's cadence loop
+        (`app.engine.warmup._run_warmup`) opens around itself. `true` (the bound, and the default) uses
+        `prefilled_bar_cache` — the same unconditional whole-table eager scan `_BarCache.prefill` runs
+        (no `expected_symbols` filter, so no iter-42-class per-symbol exclusion), which builds the
+        compact array-based `_SymbolColumns` representation for every touched symbol instead of the
+        costlier per-symbol `list[Bar]` NamedTuple representation the plain lazy `bar_cache` context
+        accumulates. `false` reverts to the pre-iter-33 lazy `bar_cache` shape (owner rollback lever).
+        Defaults to `True` (present so a config fixture predating this field still loads unchanged — the
+        same back-compat-default convention as `background_compute_history_size`).
 
     Boot-validated: the budget + both poll intervals MUST be `> 0`, the batch size `>= 1`, the idle
     interval `>= the active interval`, and `background_compute_history_size >= 1`. An invalid block
@@ -544,6 +554,7 @@ class StartupCfg(BaseModel):
     health_poll_interval_seconds: float
     health_poll_idle_interval_seconds: float
     background_compute_history_size: int = 5
+    warmup_bar_cache_bounded: bool = True
 
     @model_validator(mode="after")
     def _validate(self) -> "StartupCfg":
