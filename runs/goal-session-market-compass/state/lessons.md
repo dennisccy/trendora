@@ -425,3 +425,31 @@ replay evidence before crediting a `PASS` row as a guard.
 **Applies to:** any iteration closing a journey whose value is frozen into `next_session_manifests`
 (or any create-once immutable record), and any iteration that adds/edits a golden in
 `runs/goal-session-<sid>/journey-scripts/` in the same round it claims replay coverage.
+
+## iter-30 — 2026-09-01T02:10:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** Minting a NEW manifest version to fix one field can silently REMOVE an unrelated
+disclosure, because `GET /api/compass` serves only the latest version and the version strip carries
+no per-version basis column (`apps/backend/app/api/compass.py:42-56, 69-73`). Version 7 on
+2026-08-12 was frozen from the already-rebuilt run, so `basis_disclosure` flipped that date's chip
+from `Basis: rebuilt` to `Basis: available` — truthful about v7, but the incident-rebuild warning is
+now invisible everywhere. Nobody in the plan, dev, review or QA lanes noticed; only the independent
+auditor did, and the browser lane framed the resulting replay failure as merely "a stale golden".
+**Applies to:** any iteration that mints a new manifest version on an as-of that already had one —
+enumerate every read-time-derived field the served payload exposes (basis, mode, eligibility,
+freshness) and state before/after values for each, not just the field being fixed.
+
+## iter-30 — 2026-09-01T02:12:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** The "a golden written AFTER the replay is not coverage" rule was quoted in this
+iteration's own plan — and correctly enforced for J-07 (mtime 01:14:16, before its 01:45 replay) —
+while the SAME defect happened unguarded on J-11 in the same run: `J-11.json` was rewritten at
+01:51:59, after both the replay (01:45) and the LLM lane (01:49-01:51), flipping its expectation
+from `Basis: rebuilt` to `Basis: available`, and has never been executed. A lesson applied to the
+TARGET journey does not automatically protect the REQUIRED-STILL-PASSING journeys.
+**Applies to:** any iteration where a deterministic replay golden goes red and the merged results
+file then reports PASS — check the golden's mtime against the replay evidence timestamp before
+accepting the reconciliation, and require the repaired golden to be executed in the NEXT replay lane
+before the journey is described as replay-green.

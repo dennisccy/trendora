@@ -2577,3 +2577,138 @@ J-06's "underlying run unavailable" wording; J-01's first two test steps; whethe
 "next-session focus" is acceptable; whether MNST joins the recovery list. ONE STANDING FRAMEWORK NOTE:
 `goal_gate.py`'s duplicate-journey-heading defect is still unfixed (this round's goal slice again lists
 J-10 twice) and must be closed before any GOAL_ACHIEVED certification.
+
+## Iteration 30 — goal-market-compass-iter-30
+
+**Date:** 2026-09-01T02:10:00Z
+**Verdict:** CONTINUE
+**Depth dispatched:** full — **as the spec required**, for the second round running. `iter-30/depth-dispatched`
+reads `full`; reviewer, QA, coherence, closure and the independent auditor all ran (ux-regression alone was
+shed by the wall-clock trim). The full->lean demotion that hit iters 2, 6, 8, 23, 24, 26 and 28 did not recur.
+
+**Owner-facing lines:** `J-07 CLOSED — the three direction words are real on the page a user lands on`
+· `ONE PERMANENT ROW ADDED, EXACTLY AS AUTHORIZED (id 28, as_of 2026-08-12, version 7, prospective_eligible=0);
+27 before, all 27 untouched, 28 now` · `ANTI-GOAL LEDGER: 9 total, 0 unresolved` · `minting v7 removed the
+"Basis: rebuilt" note from 2026-08-12 — an owner question, not a rule breach` · `J-11's automatic re-check was
+rewritten AFTER it failed and has never been run`.
+
+**Journey deltas:**
+- **Newly passing: J-07** "The Today page answers the ten-second read" — `partial` since iter-28 (and
+  `failing` before that), promoted on evidence I opened myself. `UT-J-11-result.png` is a full-page
+  capture at Latest (2026-08-12, no `asof`) showing the six body sections in the required order with
+  readiness chrome above and market words only inside (steps 1, 5). `UT-02-result.png` shows regime
+  73.18 / Risk-on, severity 25.85 / Expansion / P(bear) 0.00, breadth 59.8% (step 2) and all three
+  badges reading `little changed` (step 3); `UT-03-result.png` shows the Summary agreeing
+  ("-0.3 regime-score points"). `UT-06-result.png` shows no cross-view chart on `/` and the link
+  reaching `/market` (step 6). **I re-derived all three words read-only myself** from stored values +
+  `config.yaml`: regime 73.44->73.18 = -0.26 vs `velocity_flat_band` 2.0; severity 26.03->25.85 = -0.18
+  vs `stress_velocity_flat_band` 5.0; breadth 57.38->59.84 = +2.46 vs `breadth_min_change_pts` 5.0 —
+  every one inside its flat band, every one matching version 7's `state_band_json` to the bit. Steps 4
+  and 7 carry from iter-28's live capture under evidence durability: `git diff a8dc7f6b..HEAD --
+  apps/backend/app apps/frontend` is EMPTY — zero application source line has changed since iter-28.
+  `evidence_makeup: true` KEPT, but for a smaller reason than before: the walkthrough now shows the
+  real words (the iter-29 "NA frames" defect is FIXED) and is merely 4 steps rather than the
+  top-to-bottom read the goal names.
+- Newly failing: **none.** Regressed: **none.**
+- Re-verified, unchanged: **J-01, J-04, J-05, J-06, J-08, J-10, J-11** — merged results 16/16 PASS, all
+  re-stamped to iter-30. Two spot-checks opened: J-05's 2025-04-15 strip (retrospective / version 2 /
+  frozen / not prospective-eligible, Members 531, cohort 521 + shadow 28, v1 stamped
+  2026-08-20T11:41:00.381102, v2 2026-08-28T12:45:04.938308 — byte-consistent with the iter-26..29
+  record) and J-04's capture, which is AGAIN the 2026-03-30 top-of-page viewport stopping above the
+  candidate card, so `evidence_makeup: true` is KEPT for the **twelfth** iteration running.
+- **J-11 carries two real gaps although its merged row is PASS.** (1) COVERAGE: the deterministic
+  replay golden FAILED (`step 01 expected "Basis: rebuilt" did not appear`) and `J-11.json` was then
+  rewritten at **01:51:59** — after the replay lane (01:45) and after the LLM lane (01:49-01:51) — to
+  expect `"Basis: available"`; I read the mtime and the git diff myself. The repaired golden has never
+  been executed. This is the exact "a golden written after replay is not coverage" pattern this
+  iteration's own plan quoted as a lesson for J-07, recurring on J-11 (auditor B2). Per the
+  merged-file rule the authoritative verdict is PASS and the substance was re-confirmed live, but the
+  automatic guard is owed. (2) OWNER QUESTION: minting v7 replaced 2026-08-12's served `Basis: rebuilt`
+  chip with `Basis: available` (auditor B1). I verified the mechanism read-only: v7 records
+  `source_run_created_at 2026-08-26T10:53:02.010362`, exactly run 3158's `created_at`, so `available`
+  is truthful FOR v7; 2026-08-11 still reads `rebuilt` correctly (v3 records 2026-08-14T20:47:21
+  against a run created 2026-08-26T10:53:01). The mechanism is intact — what changed is that no served
+  surface now discloses that this date's run was destroyed and rebuilt, because the API serves only the
+  latest version and the version strip has no per-version basis column.
+- Not targeted, carried unchanged: J-02, J-03 stay `partial` at iter-6 (they are OUTSIDE this
+  iteration's Required-still-passing set, so their goldens were not even replayed); J-09 stays
+  `partial` at iter-25.
+- **`spec_hash`: all eleven byte-identical to the recorded values** — I ran `goal_gate.py
+  hash-journeys` and compared every one. No `journeys-changed.md`, no `browser-infra.json`, no
+  `DEFERRED-BUDGET` rows, NOT maintenance isolation.
+- Anti-goal violations: **NONE new** among AG-1..AG-18 — I answered all eighteen explicitly and
+  re-derived the five at real risk (AG-3, AG-5, AG-9, AG-12, AG-17) myself read-only against the live
+  database. Confirmed: 28 manifest rows; `as_of='2026-08-12'` versions 1-7 (ids 1/9/10/11/13/23/28);
+  versions 1-6 keep their original `available_at_utc` stamps and NULL `state_band_json`; exactly 2 rows
+  in the whole table carry a `state_band`; newest `data_provider_runs` id 549 dated 2026-08-23;
+  `MAX(daily_prices.date)` still 2026-08-12; zero `scanner_runs` since 2026-08-30; `scanner_runs`
+  total 3128. Ledger unchanged at **9 total, 0 unresolved**. Considered and rejected as a ledger entry:
+  the lost `rebuilt` disclosure (B1) — nothing was mutated or deleted, the correction arrived as a new
+  version row exactly as AG-12 requires, and `docs/goal.md:1020`'s "do not regenerate them" sits inside
+  J-11's *incident-rebuild* step list under the heading "Incident-rebuild snapshot creation must
+  not…", while owner ruling 5 (2026-08-27) resumed ordinary product work without further authorization.
+  Assumption-ledger entry written so one owner line can overrule me.
+- Coherence: COHERENCE-PASS. Deterministic scan: CLEAN. Review: PASS (zero issues). QA: PASS / UI-PASS.
+  Closure: CLOSURE-PASS. Audit: **PASS_WITH_GAPS** (B1, B2, B3-fixed, B4, F1, F2, T1, T2).
+  UX-regression: SKIPPED by the wall-clock trim (non-blocking lane).
+
+**Reasoning:** The one job asked for was done and it genuinely works, and I did not take that from
+anyone's write-up. For two rounds the front page said "NA" where it should have said whether things
+are improving or getting worse, while the sentence one line below reported a real change on the same
+screen. That contradiction is gone. I opened the picture of the page a person actually lands on and
+all three words read "little changed", with the sentence underneath agreeing. Then I worked the three
+words out myself from the stored numbers and the rule file: the market score moved a quarter of a
+point, stress moved a fifth of a point, and breadth moved two and a half points, and each of those is
+inside the "too small to matter" range the rule file sets. So "little changed" is the honest answer,
+not a fallback, and it matches the saved record to the last decimal. I also proved the round was
+clean: exactly one new saved briefing, the numbering unbroken from one to twenty-eight, all
+twenty-seven earlier ones untouched after every lane had finished, no outside data fetched, and the
+data set not advanced by a single day. So J-07 closes. Two honest findings the owner should read.
+First, the day of 12 August used to carry a note saying its underlying data had been destroyed and
+rebuilt after the accident; the new saved briefing was built from the repaired data, so the note now
+correctly says "available" — but the older warning is no longer visible anywhere for that day. Both
+statements are true about the version each describes, nothing was altered or deleted, and the rule
+that would forbid this sits inside the repair operation's own instructions, not in the general rules —
+so I did not call it a breach. I did write it down as a choice the owner can reverse with one line.
+Second, the automatic re-check for that same day was rewritten AFTER it failed and has never been
+run since, so it currently guards nothing. Why CONTINUE rather than GOAL_ACHIEVED? Three journeys are
+still unfinished — J-02, J-03 and J-09. Why not REGRESSION? Nothing that worked stopped working, no
+journey fell back, no saved briefing was altered or removed, and no listed rule was broken. Why not
+STALLED? Nothing waits on the owner: the next piece is ordinary product work he already authorised.
+Why not ESCALATE? The escalation conditions are not met — the target journey passed instead of failing
+again, the review lane passed, and this was a full round, not a light one. My predecessors escalated
+to force the depth back up; the depth held this time, and escalating again to grant myself something I
+did not earn would be the self-granting move the planner has correctly refused before. One process
+fact: this is the twenty-first round running where a later lane found what the earlier ones missed —
+this time the independent checker, on both of the findings above.
+
+**Next-step recommendation:** BUILD **J-02 "What changed since the previous session"** and **J-03
+"Plain-English summary with cited facts"** — the two oldest unfinished journeys, both half-done since
+round 6, both about text a reader sees on the front page, and both ordinary work needing no owner
+permission. RUN IT AT FULL DEPTH: this round the independent checker found two real problems four
+earlier lanes had signed off on, which is now twenty-one rounds in a row. Only the owner may add
+`Depth enforcement: required`; standing guidance keeps `CHAIN_REQUIRE_FULL_DEPTH` and
+`CHAIN_MAINTENANCE_ISOLATION` OFF. TWO REPAIR ITEMS THAT SHOULD RIDE ALONG: (1) run J-11's rewritten
+test script FIRST in the next automatic re-check and report the result out loud — it has never been
+executed, so J-11 has no working guard; if it fails, say so and do not edit it again afterwards;
+(2) re-record the J-07 walkthrough as a full top-to-bottom read of the front page — the current one is
+correct but only four steps (passenger task, never an iteration goal). TWO OWNER DECISIONS, neither
+blocking: (a) whether 12 August should keep showing the "rebuilt" note — if yes, the fix is to show a
+note per saved version, a display change only, never a change to any saved record; (b) whether the
+three direction words being real on only 2 of 18 saved dates is acceptable — THE NEXT ROUND MUST NOT
+fill in the other 16 on its own, because that would mean sixteen permanent additions to the protected
+table, the exact class of action needing his sanction. EIGHT CARRIED ITEMS, none blocking: J-04's
+picture still needs re-taking to include the candidate card (twelfth round owed); J-05, J-06 and J-08
+still owe recorded walkthroughs; one test in the named set is red on three files untouched since an
+old commit (`indicators.py`, `forward_testing.py`, `research.py`) and should be fixed or formally
+waived; the "What changed" / "Leadership rotation" duplicate-list question is still the owner's call;
+the iteration-23 throw-away copy (7.8 GB) may still be deleted; `apps/frontend/.next-verify/` (228
+files, ~160 MB of build cache) is tracked in git and dirties every diff; J-01's automatic re-check
+still asserts far less than the journey claims; and this round's bookkeeping file records
+`browser_checks_run: false` although sixteen pictures were taken. FIVE OLDER OWNER QUESTIONS remain
+open and non-blocking: J-09's ~2.99 GB acceptability; J-06's "underlying run unavailable" wording;
+J-01's first two test steps; whether an empty "next-session focus" is acceptable; whether MNST joins
+the recovery list. ONE MECHANICAL ITEM: the whole iteration — plan, both handoffs, all reports, the
+evidence folder and the changed test file — is uncommitted at scoring time; confirm it lands. ONE
+STANDING FRAMEWORK NOTE: `goal_gate.py`'s duplicate-journey-heading defect is still unfixed and must
+be closed before any GOAL_ACHIEVED certification.

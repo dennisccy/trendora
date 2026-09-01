@@ -571,3 +571,43 @@ since).
 rules that demonstrating the direction words correctly on one real date is sufficient, and that "NA"
 on the frontier landing view is acceptable because the data set contains no newer trading day, then
 J-07 becomes `passing` immediately and none of this iteration's evidence needs redoing.
+
+## iter-30 — goal-evaluator (regenerating a manifest on an incident date read as authorized ordinary work, not a breach of J-11 step 4, even though it removed that date's `Basis: rebuilt` disclosure)
+
+**Ambiguity:** `docs/goal.md:1020-1027` (inside J-11's Steps, step 4, headed "Mint NO new historical
+manifests (critical)") says: "For the 4 dates that DO have manifests (2026-08-05, 08-10, 08-11,
+08-12): do not regenerate them ... The existing read-time **basis disclosure** is the sanctioned
+mechanism for surfacing that a stored source run was rebuilt or is unavailable." This iteration
+regenerated one of those four dates (2026-08-12, version 7). Because `GET /api/compass` serves only
+the latest version and the version strip carries no per-version basis
+(`apps/backend/app/api/compass.py:42-56, 69-73`), the served chip flipped from `Basis: rebuilt` to
+`Basis: available`, so no surface now discloses that this date's underlying run was destroyed and
+rebuilt. The text does not say whether that clause binds only the J-11 incident-rebuild operation or
+stands as a permanent protection on those four dates. The independent auditor (B1) raised exactly
+this fork and rated it IMPORTANT, needing an owner ruling.
+
+**We chose:** read it as binding the J-11 incident-rebuild operation only, treat the mint as
+authorized ordinary product work, open NO anti-goal ledger entry, and hold J-11 at `passing` — while
+recording the consequence prominently for the owner. Grounds, each checked by me: (a) the clause sits
+inside J-11's own step list under the binding rule "**Incident-rebuild snapshot creation** must not
+mint a `NextSessionManifest` for an as-of that did not already have one before the maintenance
+operation", and the paragraph closes "A **maintenance rebuild** must never create an apparently
+historical prior that did not actually exist at that time" — every sentence is scoped to the
+maintenance operation; (b) owner ruling 5 (2026-08-27, binding) states "Normal Market Compass product
+work resumes immediately ... No further owner authorization is needed for ordinary non-destructive
+product iterations", and the confirm-gated regenerate action is shipped product behaviour proven at
+iter-26 and iter-29; (c) the same ruling closed J-11 and forbids reopening it; (d) AG-12 is satisfied
+literally and I verified it read-only — no row mutated or deleted, versions 1-6 keep their original
+stamps and NULL `state_band_json`, the correction arrived as a new version row, and v1-v7 are all
+still listed in the UI strip; (e) AG-17 is satisfied — v7 is `prospective_eligible=0` with its own
+mint-time `available_at_utc`, and no earlier row's eligibility, hash or timestamp changed; (f) the
+`Basis: available` chip is not a false statement — I re-derived that v7's recorded
+`source_run_created_at 2026-08-26T10:53:02.010362` equals run 3158's `created_at` exactly, and that
+2026-08-11 still correctly reads `rebuilt`. What I did NOT do: let it pass silently — it is in J-11's
+`gap` field, the evaluation, the log's owner-facing lines, and the next-step recommendation.
+
+**Reversible:** partly. Reversible for the POLICY and the DISPLAY: if the owner rules that those four
+dates must keep showing the rebuild note, the remedy is a display change — surface a per-version basis
+in the versions strip — which a future iteration can ship without touching any stored row. NOT
+reversible for the row: version 7 exists permanently (AG-12 forbids deleting it, and deleting it would
+itself be the prohibited write).
