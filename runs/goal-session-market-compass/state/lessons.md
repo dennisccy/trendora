@@ -482,3 +482,43 @@ without noticing it had voided its own coverage.
 **Applies to:** any iteration whose plan names a golden-script hygiene rule — bind it to ALL journeys
 in the run, not just the offending one, and require any lane that writes or overwrites a
 `journey-scripts/*.json` to re-run the replay lane afterwards and report the real result.
+
+## iter-32 — 2026-09-01T05:40:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** A perf measurement's *other columns* are where the answer hides. `j09-vmpeak-samples.csv`
+also carried `VmSize_kB` and `VmRSS_kB`, and nobody — developer, reviewer, QA — scored from them; only
+the auditor noticed, and even he filed it as a footnote. Read row-wise, they show the 3,038,684 kB
+VmPeak is a ~1.29 GB spike at t+15.94s (ten seconds BEFORE readiness) that is released by t+20.94s,
+leaving 1,298,796 kB virtual / 725,856 kB resident at serving time. A monotonic high-water metric
+NEVER tells you what a process holds; always plot the neighbouring columns before concluding "the
+footprint is X".
+**Applies to:** any iteration reading, quoting, or acting on a VmPeak / high-water-mark figure, or
+appending to `reports/perf-budgets.md`.
+
+## iter-32 — 2026-09-01T05:40:00Z (second lesson)
+
+**Verdict:** CONTINUE
+**Lesson:** iter-31's lesson ("check whether a 'waiting on the owner' blocker really is owner-owned")
+needed a second application one level down, and three lanes failed it. The dev handoff, the QA report
+AND the independent auditor all described `docs/goal.md` Constraints (b)/(c) as "owner-only items" and
+recommended halting J-09 for an owner ruling. The goal text says the opposite: the Host-resource-fit
+block is headed "(owner, 2026-08-20 — **binding**)" and `docs/goal.md:2396-2400` states the rules
+"ride the nearest applicable slices", noting (a) and (b) already landed at iter-5. "Owner-authored"
+is not "owner-gated" — an owner-written binding rule is an instruction TO BUILD, not a permission to
+wait for. Open the constraint's own text before recording it as a human-owned blocker.
+**Applies to:** any evaluator or decomposer about to return STALLED, or to write "owner's call" into
+a blocker list, on the strength of a rule labelled `(owner, <date>)`.
+
+## iter-32 — 2026-09-01T05:40:00Z (third lesson)
+
+**Verdict:** CONTINUE
+**Lesson:** The "golden rewritten after replay is not coverage" family (iters 29/30/31) was genuinely
+closed this round — all ten golden mtimes predate the iteration — but the family MUTATED rather than
+died, for the fifth round running. `demo_runner.py` writes its results file only when `--results` is
+passed (`demo_runner.py:2080-2085`); the developer omitted it, so the TC-7 artifact never existed,
+and the reviewer (04:39) and QA (04:47) both certified a file whose mtime is 05:19 — created later by
+the auditor's own re-run. A gate that asserts an artifact without opening it is indistinguishable
+from a gate that read it, right up until the claim is false.
+**Applies to:** any iteration whose Definition of Done names a generated report as evidence — bind the
+generating command to the output path, and make the lane fail when the file is absent or empty.

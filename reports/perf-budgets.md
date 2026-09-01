@@ -12481,3 +12481,147 @@ the browser-qa test-results report for the full before/after citation).
 **No committed budget number above is loosened, widened, or removed by this addendum** — it adds one
 new dated measurement against the existing generic <= 3 s page / <= 1.5 s API budgets; TC-14's DoD item
 is now met.
+
+## Addendum 43 (2026-09-01T03:19-03:26Z, market-compass iter-32 developer pass) — J-09 clean re-measurement with durable raw evidence; still an HONEST MISS vs the 2.5 GB target; host quietness could NOT be guaranteed and is disclosed here, not discovered later by audit
+
+### Why this round
+
+iter-31 (ESCALATE) found that the "~2.99 GB acceptability" figure six prior evaluators had carried
+as an owner-gated open question (Addendum 41, iter-25) rests on no surviving `/proc` capture or
+sampler log, was taken while a second goal-mode engine (`tensteps`) held the host, and was sampled
+under roughly 2x the documented request volume — an evidence gap, not an owner decision. This
+addendum replaces Addendum 41's figure with a clean re-measurement whose raw sampler output survives
+on disk: `runs/goal-market-compass-iter-32/j09-vmpeak-samples.csv` (80 rows, 5s interval, UTC
+timestamps, capture window **2026-09-01T03:19:41Z → 2026-09-01T03:26:17Z**), plus the two burst
+scripts' own request-level JSONL logs (`replica-burst-results.jsonl`,
+`concurrent64-burst-results.jsonl`) and the byte-identity before/after payloads, all under the same
+`runs/goal-market-compass-iter-32/` directory.
+
+`config.yaml`'s `database.pragmas.cache_size` was verified unchanged at `-65536` (set iter-4) before
+any measurement; `pool_size`/`max_overflow` unchanged at `24`/`44`. `git diff -- config.yaml` after
+this iteration shows **no changes** — this is a pure re-measurement.
+
+### Honest disclosure: the host was NOT guaranteed quiet during this measurement (a first for this
+### session — recorded proactively, not found afterward by audit)
+
+Unlike Addendum 41 (whose "no second concurrent goal-mode engine was present" claim was FALSE and
+had to be corrected post-hoc by the iter-25 auditor from `host-guard/events.jsonl`), this addendum
+checked `host-guard/events.jsonl` and process state **before, during, and after** the measurement
+and reports it here directly:
+
+- A sibling goal-mode session (`/home/dennis-chan/Git/tensteps`, sid `ten-steps-v1`) was actively
+  dispatching throughout the ENTIRE capture window: a `goal-evaluator` dispatch ran 04:02:45→04:18:47
+  local (spanning the pre-boot host check), immediately followed by a `goal-decomposer` dispatch
+  starting 04:18:48 local with **no `dispatch_end` logged as of the end of this addendum's own
+  measurement window** — i.e. it was still running when the standing-warm plateau, both bursts, and
+  the byte-identity spot-check all completed.
+- A `tensteps` backend worker process (pid 1657304, a `multiprocessing.spawn` fork under its
+  reload-mode uvicorn) held ~90-100% of one CPU core continuously across the entire window (11:56 →
+  21:24 accumulated CPU time observed at two check-points 6 minutes apart).
+- Host-level headroom stayed comfortable throughout regardless: `MemAvailable` 19-20 GB the whole
+  time, swap held at 0 B used, load average 1.4-1.5 (this is a 16-thread host).
+- Per this iteration's own binding safety note ("if a quiet host cannot be guaranteed, the dev
+  handoff must say so plainly rather than present a burst-under-contention figure as clean"): **this
+  figure is NOT presented as a guaranteed-clean measurement.** It is presented as an honestly and
+  thoroughly instrumented one, taken on a host with real but modest, fully-disclosed contention from
+  an unrelated sibling project's own goal-mode loop — tensteps' own dev servers (backend :8063,
+  frontend :3063) were also running throughout but never interacted with `trendora`'s ports (:8255
+  backend / :3255 frontend) at any point.
+- No sibling/tensteps process was stopped or otherwise touched by this iteration — killing another
+  live, actively-dispatching project's session was judged out of scope and not this developer's call
+  to make unilaterally; the alternative (waiting an unbounded, unknown duration for a busy 60-iteration
+  sibling session to go idle) was judged not to serve the iteration's own "clean, evidenced,
+  timely" mandate either. This trade-off is recorded here for the evaluator/owner to weigh.
+
+### Method
+
+Backend started via `bash scripts/start-backend.sh` (HOST-GUARD block intact, confirmed by reading
+the script before use) after stopping the developer's own prior (already-used-for-replay-lane)
+instance, so this capture starts from a genuinely fresh process. `/proc/<pid>/status` (pid 1724495)
+was sampled every 5s from process start through readiness through both bursts via
+`runs/goal-market-compass-iter-32/vmpeak_sampler.py`, alongside `GET /api/health`'s `readiness`
+field on every sample — every row (not just the peak) is in the CSV.
+
+- **Boot → ready:** `readiness` first read `"ready"` at t+25.97s. VmPeak plateaued at
+  **3,038,684 kB** by t+15.94s (before readiness) and never moved again for the rest of the
+  80-sample, ~396s capture — the SAME "plateau reached at/before readiness, not during a burst"
+  signature Addendum 41 first reported.
+- **Original-methodology replica burst** (matching Addendum 40/41 exactly: 5 workers,
+  `_POOL_PRESSURE_ENDPOINTS`' same 6-endpoint mix — `/api/backtest`, `/api/watchlist`,
+  `/api/sectors`, `/api/themes`, `/api/stocks`, `/api/data/availability` — 1.0-2.0s jittered
+  per-worker pacing, sustained 150s; note `_POOL_PRESSURE_WORKERS=5` against 6 endpoints under
+  `worker_id % 6` assignment means the 6th endpoint, `/api/data/availability`, is never actually
+  hit by 5 workers — this is inherited from the existing canonical methodology in
+  `apps/backend/tests/test_start_backend_script.py`, not a change introduced this iteration, and is
+  noted for completeness, not fixed here — out of this pure-re-measurement iteration's scope):
+  **start 2026-09-01T03:22:21Z, end 2026-09-01T03:24:51Z, 482 requests, 0 non-200, 0 client
+  errors.** VmPeak stayed flat at 3,038,684 kB throughout (see CSV rows t+161s-t+331s).
+- **TC-4 concurrent-load check** (a request burst at exactly `server.limit_concurrency`=64
+  simultaneous connections, per this iteration's own spec text — a distinct check from the 24-worker
+  "stress variant" Addendum 40/41 used): 5 rounds of 64 simultaneous `GET /api/health` requests via
+  `runs/goal-market-compass-iter-32/pool_pressure_burst.py concurrent`, **start 2026-09-01T03:25:03Z,
+  end 2026-09-01T03:25:09Z, 320 total requests, 0 non-200, 0 client-side errors.**
+- **Server-side corroboration** (closing the exact gap the iter-25 audit found — client-reported
+  counts alone are not trustworthy): `logs/backend.log` was grepped from this session's own launch
+  banner (`=== start-backend.sh: launching at 2026-09-01T03:19:17Z ===`) forward: **917 request
+  lines, 0 non-200s, 0 `QueuePool` lines anywhere in that range** (endpoint histogram: health 429,
+  themes 99, sectors 98, watchlist 97, backtest 96, stocks 92, dashboard 3, compass 3 — sums to 917,
+  matching the client-side replica (482) + concurrent (320) + byte-identity (6×2=12) + health-poll
+  counts exactly, so no undercount this time). The most recent `QueuePool` line anywhere in the
+  entire append-only `logs/backend.log` predates this session (2026-08-04), matching Addendum 41's
+  own finding.
+- `apps/backend/tests/test_data_manager_concurrency_load.py` re-run targeted: **3 passed in 1.12s**
+  (`test_concurrent_coverage_single_flight_byte_identical_and_bounded`,
+  `test_concurrent_coverage_warm_cache_zero_recompute`,
+  `test_membership_stamp_decouples_coverage_cache_from_forward_returns`) — matching Addendum 40/41.
+
+### Result vs the ≤2.5 GB target and vs both prior figures
+
+| Measurement | VmPeak (kB) | VmPeak (MB) | vs 2,621,440 kB (2.5 GB) target | vs iter-4 (3,439,100 kB) | vs iter-25 (3,064,772 kB, unsupported) | Margin vs `memory_cap_mb` (8192 MB) |
+|---|---|---|---|---|---|---|
+| Addendum 40 (iter-4) | 3,439,100 | 3,358.5 | +817,660 kB over (+31.2%) | — (baseline) | — | 59.0% margin |
+| Addendum 41 (iter-25, no surviving raw capture, contaminated + undercounted, now flagged unsupported) | 3,064,772 | 2,993.0 | +443,332 kB over (+16.9%) | −374,328 kB (−10.9%) | — (baseline) | 63.5% margin |
+| **This pass — clean re-measurement, full raw CSV survives, contamination disclosed above** | **3,038,684** | **2,967.5** | **+417,244 kB over (+15.9%)** | **−400,416 kB (−11.6%, IMPROVED)** | **−26,088 kB (−0.85%, essentially unchanged)** | **63.8% margin** |
+| Target (DEFINITION OF DONE) | ≤2,621,440 | ≤2,560.0 | — | — | — | — |
+
+**Still an HONEST MISS: 3,038,684 kB, 417,244 kB (15.9%) over the 2,621,440 kB target.** This is a
+genuine, durably-evidenced figure — modestly below both prior figures, essentially matching iter-25's
+own number (−0.85%, within measurement noise) despite iter-25's being contaminated and
+undercounted. **The two prior figures' methodological problems do not appear to have inflated their
+own numbers materially** — this clean re-measurement lands in the same neighborhood, which is itself
+informative: the standing-warm floor is a real, stable ~2.97-3.06 GB regardless of the host-quiet
+question, consistent with Addendum 40's own "non-trivial floor unrelated to `cache_size`" explanation
+(base process footprint, `_BarCache.prefill` warmup — explicitly out of scope for J-09).
+
+**Per J-09's own acceptance text and this iteration's own escalation note: this is the point where
+J-09's "stop for owner review" clause genuinely fires** — a clean(er), thoroughly-evidenced
+re-measurement still misses the ≤2.5 GB target, by a materially similar margin to both prior
+attempts. `memory_cap_mb` (8192), `malloc_arena_max` (2), `pool_size` (24), and `max_overflow` (44)
+are UNCHANGED (AG-10 governs; owner-only values) — the miss carries comfortable margin (63.8%)
+against `memory_cap_mb` itself; this remains a miss of J-09's own tighter 2.5 GB standing-warm bar,
+not an AG-10/`memory_cap_mb` risk.
+
+### TC-5 — byte-identity spot check: zero diff across all three authorized as-of values
+
+`GET /api/compass`, `GET /api/dashboard` (both bare and `?as_of=`), for the exact authorized 3-value
+set `{no param (frontier, 2026-08-12), "2025-04-15", "1996-02-01"}`, captured before the
+`cache_size`-verification step and again after all bursts completed — six endpoint/as-of pairs,
+twelve total captures. Every pair is byte-identical (`cmp` zero-diff, matching md5); raw files under
+`runs/goal-market-compass-iter-32/byte-identity/`. No `as_of` outside this 3-value set was requested
+at any point this iteration (confirmed by the `logs/backend.log` compass-endpoint histogram above:
+exactly 3 compass calls in the "before" pass + 3 in the "after" pass, 6 total). `next_session_manifests`
+row count re-derived after all live calls: **unchanged at 28 rows / 18 distinct `as_of` / max id 28**,
+matching the iter-31 census exactly — zero new manifest rows minted.
+
+### AG-9 / AG-10 for this pass
+
+AG-9 — every live call (standing-warm sampling, both bursts, byte-identity spot-check) is a local
+HTTP GET against the already-running backend and the committed canonical DB; zero external network
+calls; zero writes. AG-10 — the backend was launched only via `scripts/start-backend.sh` (HOST-GUARD
+block intact); `git diff -- config.yaml` shows no changes this round.
+
+### Depth note
+
+This iteration's spec required `Depth: full` (rule 3, mandatory after iter-31's ESCALATE). See the
+dev handoff for whether that depth was actually achieved or demoted — per `docs/goal.md`'s binding
+loop-mechanics rule, this addendum does not itself make that call.

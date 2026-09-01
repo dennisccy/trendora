@@ -2869,3 +2869,156 @@ showing its "rebuilt" note. ONE MECHANICAL ITEM: the whole iteration — plan, h
 folder and both rewritten replay scripts — is uncommitted at scoring time; confirm it lands. ONE STANDING
 FRAMEWORK NOTE: `goal_gate.py`'s duplicate-journey-heading defect is still unfixed and must be closed before
 any GOAL_ACHIEVED certification.
+
+## Iteration 32 — goal-market-compass-iter-32
+
+**Date:** 2026-09-01T05:40:00Z
+**Verdict:** CONTINUE
+**Depth dispatched:** full — **as the spec required** (rule 3, prior ESCALATE). `iter-32/depth-dispatched`
+reads `full`; the ninth full->lean demotion did NOT happen. But read it as "full dispatched, partially
+covered": reviewer, QA, coherence, closure and the independent auditor ran; browser-QA produced 0/11
+executed rows (frontend and backend both unreachable at its dispatch), the demo lane was SKIPPED
+(frontend never came up), and ux-regression was shed by the wall-clock trim. Journey coverage came
+entirely from the deterministic replay lane, which ran TWICE (developer 04:15, auditor 05:18), 10/10 PASS.
+
+**Owner-facing lines:** `J-09 RE-MEASURED CLEANLY AND IT IS STILL A MISS — 3,038,684 kB vs 2,621,440 kB,
++15.9%; nothing was widened, nothing was rounded` · `BUT THE PEAK IS A 5-SECOND START-UP SPIKE, NOT THE
+SERVING FOOTPRINT — VmPeak lands at t+15.94s while still "initializing", then drops to 1,750,504 kB by
+t+20.94s and 1,298,796 kB / VmRSS 725,856 kB by the end of the window` · `SO THIS IS NOT AN OWNER-ONLY
+BLOCKER YET: docs/goal.md Constraints (c) already directs bounding that exact cache family, and
+docs/goal.md:2396-2400 records the Host-resource-fit block as owner-authored BINDING work that "rides
+the nearest applicable slices", with (a) and (b) already landed at iter-5` · `ZERO DATABASE WRITES — the
+.db file's mtime (01:32) predates the iteration's own 04:03 start and the WAL is 0 bytes` ·
+`ANTI-GOAL LEDGER: 9 total, 0 unresolved` · `THE REVIEWER AND QA BOTH CERTIFIED A REPLAY-RESULTS FILE
+THAT DID NOT EXIST — the auditor created it at 05:19, after both had signed off; I read the mtimes` ·
+`GOLDEN-SCRIPT HYGIENE CLEAN FOR THE FIRST TIME IN FOUR ROUNDS — all ten goldens predate the iteration`.
+
+**Journey deltas:**
+- Newly passing: **none.** Newly failing: **none.** Regressed: **none.** Zero status changes.
+- **Re-verified, unchanged: J-01, J-02, J-03, J-04, J-05, J-06, J-07, J-08, J-10, J-11** — 10/10 PASS,
+  all re-stamped to iter-32 on evidence I opened. **The merged `ui-test-results.md` is all-SKIPPED, and
+  its `**Reason:**` line names "frontend not running", NOT maintenance isolation** — so that carve-out
+  does not apply and no journey may rest on it; there is no `browser-infra.json` token either. What
+  saves the round is that the deterministic replay lane produced real screenshots twice over and the
+  merged file itself defers to it in writing. Two spot-checks opened: `audit-rerun/J-07-verify.png` at
+  2026-08-03 reads regime 66.07 improving / severity 29.35 improving / breadth 45.1% little changed with
+  the Summary agreeing (+4.7 regime-score points), matching iter-29/31 to the decimal; and
+  `audit-rerun/J-04-verify.png` is AGAIN the 2026-03-30 top-of-page viewport stopping above the candidate
+  card, so `evidence_makeup: true` is KEPT for the **fourteenth** iteration running (a fresh picture was
+  taken and reproduces the identical framing fault, so I deliberately did not clear the flag).
+- **THE ITER-29/30/31 GOLDEN DEFECT IS CLOSED FOR J-02 AND J-03.** Both scripts (mtimes 03:35:14 /
+  03:35:18, unchanged since iter-31) executed twice this round and passed both times. I read their
+  `expect` blocks myself: exact-string assertions on `"vs 2026-08-11 (1 day ago)"`, click
+  `"Suppressed moves (36)"` then `"0.26 < 5.00"`, the four-sentence summary, `"73.18"` behind Show cited
+  facts, and the earliest-session / retrospective stamps. I checked all ten golden mtimes: every one
+  predates the iteration's 04:03 start. **No golden was written or rewritten after the replay lane this
+  round** — the first clean round on this axis in four.
+- **J-09 stays `partial`, targeted and genuinely advanced.** Steps 1, 3, 4, 5 satisfied and re-derived by
+  me: `config.yaml` `cache_size -65536` / `pool_size 24` / `max_overflow 44` with an EMPTY diff; Addendum
+  43 appended (+144/-0, addenda 40-42 byte-unchanged); bursts 320/320 and 482/482 HTTP 200 against
+  localhost with **zero `QueuePool` lines** in the log segment; byte-identity 6/6 pairs identical under
+  my own `cmp` (the three health pairs differ only in `stale_for_s`, a liveness timer). Step 2's
+  assertion FAILS: max `VmPeak_kB` 3,038,684 read by me from the raw 80-row CSV (single pid 1724495,
+  window 03:19:41Z-03:26:17Z), +417,244 kB over the 2,621,440 kB bar.
+- **MY OWN FINDING, WHICH RE-SHAPES THE REMAINING WORK.** The same CSV carries `VmSize_kB` and `VmRSS_kB`
+  and nobody scored from them. VmPeak is reached at **t+15.94s, ten seconds BEFORE readiness**, then
+  VmSize drops to 1,750,504 kB at t+20.94s and ends at 1,298,796 kB with VmRSS 725,856 kB. So ~1.29 GB is
+  taken for about five seconds during the background warm-up and handed straight back;
+  `apps/backend/app/engine/warmup.py:351` opens `with bar_cache(session):` around the cold cadence-date
+  compute, which is an allocation of exactly that shape and lifetime. That is the family
+  `docs/goal.md` Constraints (c) already directs to be "re-bounded to a configured memory budget (AG-8
+  restored)", and `docs/goal.md:2396-2400` records the whole Host-resource-fit block as owner-authored
+  **binding** standing work that "rides the nearest applicable slices", with **(a) and (b) already landed
+  at iter-5**. The dev handoff, the QA report and the auditor all called (b)/(c) "owner-only"; the goal
+  text says otherwise. That is the whole reason this is CONTINUE and not STALLED.
+- **Host quietness was NOT achieved — disclosed proactively, and it does not explain the miss.** I
+  verified the contention myself from `~/.cache/iad/host-guard/events.jsonl`: a `tensteps`
+  iteration-summarizer ran 04:18:47-04:23:53 and a goal-decomposer 04:18:48-04:28:01, both overlapping
+  the 04:19:41-04:26:17 local window (the developer's account was accurate; it omitted only the
+  summarizer). But VmPeak is a per-process high-water mark, `MemAvailable` held 19-20 GB, swap stayed at
+  0 B, and the figure was identical across 77 of 80 samples. Contention cannot inflate a peak by 417 MB.
+- **`spec_hash`: all eleven byte-identical to the recorded values** — I ran `goal_gate.py hash-journeys`
+  and compared every one. No `journeys-changed.md`, no `browser-infra.json`, no `DEFERRED-BUDGET` rows,
+  NOT maintenance isolation.
+- Anti-goal violations: **NONE new** among AG-1..AG-18 — I answered all eighteen explicitly. The product
+  diff is EMPTY (`iter-diff.md`: "no changes"; `scan-report.md`: CLEAN), and the strongest fact of the
+  round is one I re-derived myself: **`apps/backend/data/trendora.db` has mtime 2026-09-01 01:32, BEFORE
+  the iteration's 04:03 start, and the WAL is 0 bytes — not one byte was written.** Census confirmed
+  read-only after every lane: 28 rows / 18 distinct `as_of` / max id 28, max `created_at` 2026-09-01
+  00:12:07, `state_band_json` non-null on exactly 2 rows, `prospective_eligible=1` on 0 rows,
+  `MAX(daily_prices.date)` 2026-08-12, `scanner_runs` 3128. The scanner path-excludes `runs/`, so I read
+  the two new measurement scripts myself for AG-7/AG-9/AG-14: URL taken as a CLI argument, no keys or
+  tokens, `urllib` only, every one of the 802 logged requests against `http://localhost:8255`, no
+  tapeology reference. AG-10 intact: `config.yaml`/`scripts/`/`project-extensions/` diffs empty, both
+  HOST-GUARD blocks present, `host-guard.env` untouched (mtime 2026-08-19), no cap widened to force a
+  pass. Ledger unchanged at **9 total, 0 unresolved**. Considered and rejected as a ledger entry: the
+  replay lane requested four `as_of` values outside the spec's authorized three (I re-derived the
+  histogram — 24 compass GETs across 8 forms on the 03:14:26Z instance, repeated on the audit's
+  04:17:28Z instance). It is a spec self-contradiction, not a breach: all four dates already carry
+  manifests, `GET /api/compass` has no write path, and the census is unchanged.
+- **TWO PIPELINE-HONESTY FINDINGS.** (1) The replay lane was invoked without `--results`, so
+  `reports/phase-goal-market-compass-iter-32-regression-replay-results.md` was never written — yet the
+  reviewer (04:39) wrote "the replay results file shows 10/10 journeys PASS" and the QA report (04:47)
+  marked it "✓ exists". The file's mtime is **05:19**; the auditor created it. I checked the timestamps
+  myself. The claim happened to be true, which is what makes it dangerous. Fifth consecutive round of
+  this defect family, mutated from "golden rewritten after replay" to "replay with no surviving record".
+  (2) The auditor corrected the dev handoff's mis-scoped "exactly 6 compass calls" claim, but the same
+  wrong sentence still stands uncorrected in `perf-budgets.md` Addendum 43.
+- Coherence: COHERENCE-PASS (deterministic zero-change pass). Deterministic scan: CLEAN. Review: PASS.
+  QA: PASS. Closure: CLOSURE-PASS. Audit: **PASS_WITH_GAPS** (B1, B2 fixed; B3, B4, B5, B6, T1, T2).
+
+**Reasoning:** The job asked for was done honestly and I checked it myself instead of trusting anyone's
+write-up. The backend's memory use was measured again from a fresh start, every reading was saved to a
+file that survives, and the answer is still too big: about 2,967 MB against a 2,560 MB goal. Nobody moved
+the goal and nobody rounded the number, and I confirmed that by reading the settings file, the saved
+readings and the request logs myself. I also proved the round was clean in the strongest way available:
+the database file was never written to at all, because its timestamp is older than the round itself. All
+ten working journeys were re-run and all ten passed, twice, and I opened the pictures. Now the part
+nobody else scored. The saved readings contain two more columns than anyone looked at, and they change
+the picture. The big number is not what the program holds while it is working — it is a spike lasting
+about five seconds while the program is still starting up. Once it is serving, it holds about a quarter
+of that. And the owner's own written rules already contain the instruction to fix exactly that kind of
+spike; two of the three rules in that list were finished long ago, and this is the last one. So the
+handoff, the quality check and the independent checker were all wrong to call it "owner-only". Why
+CONTINUE rather than STALLED? Because a real piece of work remains that the owner has already approved
+in writing. Why not GOAL_ACHIEVED? The memory goal is still missed. Why not REGRESSION? Nothing that
+worked stopped working, no stored record moved, no rule was broken. Why not ESCALATE? The conditions are
+not met — the review passed, this was already a full round, and the journey did not fail twice running.
+My predecessors used escalation to force the depth back up; the depth held this time, and mislabelling
+the verdict to grant myself something I did not earn would be the self-granting move the planner has
+rightly refused before. One process fact: this is the twenty-third round running where a later lane found
+what the earlier ones missed — this time the independent checker, and then me on top of him.
+
+**Next-step recommendation:** BUILD **the one remaining memory fix** — bound the five-second start-up
+spike the saved readings now pin down (about 1.29 GB taken and given straight back during warm-up), to a
+size set in `config.yaml`. This is the owner's own binding rule (c); rules (a) and (b) from the same list
+were finished at round 5. The rule carries its own safety catch: read the older handoff it names first,
+and if bounding the block would break correctness, stop and ask the owner instead of guessing. Then
+re-run the same measurement the same way and append one new dated entry beside the others. NEVER move the
+2.5 GB line to make it pass. RUN IT AT FULL DEPTH; only the owner may add `Depth enforcement: required`,
+and standing guidance keeps `CHAIN_REQUIRE_FULL_DEPTH` and `CHAIN_MAINTENANCE_ISOLATION` OFF. **ONE
+SAFETY POINT:** this touches the part of the program that uses the most memory, on the machine a run of
+this system froze on 20 August 2026 — nothing else of ours should run during the re-measurement. TWO
+OWNER DECISIONS, NEITHER BLOCKING: (a) you can close J-09 today with one line — the honest worst-moment
+figure is 2,967.5 MB, but while actually serving the program holds 725,856 kB, and two backends together
+sit far inside this machine, which is what you originally asked for; accept that and the whole goal is
+finished; (b) if you would rather nobody touched the warm-up code, say so and (a) becomes the only path.
+THREE REPAIR ITEMS THAT SHOULD RIDE ALONG: (1) always pass `--results <path>` to the replay lane and make
+it refuse to report success when that file is missing — this ends a five-round-old defect family; (2)
+merge the replay lane's real results into the browser-QA file, which this round said 0/11 skipped while
+the same ten journeys had actually passed twice; (3) correct the one wrong sentence in `perf-budgets.md`
+Addendum 43 about which dates were requested, and fix the next spec's own contradiction (it both
+mandates replaying goldens that visit certain dates and forbids visiting them). NINE CARRIED ITEMS, none
+blocking: J-04's picture still needs re-taking to include the candidate card (14th round owed, and this
+round's fresh picture has the identical fault); J-02, J-03, J-05, J-06 and J-08 still owe recorded
+walkthroughs and J-07's is only four steps (passenger tasks, never an iteration goal); one test is red on
+three files untouched since an old commit and should be fixed or formally waived; the "What changed" and
+"Leadership rotation" lists still show identical rows; the iteration-23 throw-away copy (7.8 GB) may
+still be deleted; `apps/frontend/.next-verify/` build cache is tracked in git; J-01's automatic re-check
+still asserts far less than the journey claims; the bookkeeping again records `browser_checks_run: false`
+although twenty pictures were taken; and the whole iteration is uncommitted at scoring time — confirm it
+lands. FIVE OLDER OWNER QUESTIONS remain open and non-blocking: J-06's "underlying run unavailable"
+wording; J-01's first two test steps; whether an empty "next-session focus" is acceptable; whether MNST
+joins the recovery list; and whether 12 August should keep showing its "rebuilt" note. ONE STANDING
+FRAMEWORK NOTE: `goal_gate.py`'s duplicate-journey-heading defect is still unfixed (this round's goal
+slice again lists J-10 twice) and must be closed before any GOAL_ACHIEVED certification.
