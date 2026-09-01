@@ -1,0 +1,125 @@
+{
+  "schema_version": 1,
+  "phase_id": "goal-market-compass-iter-37",
+  "base_url": "http://localhost:3255",
+  "default_timeout_ms": 8000,
+  "steps": [
+    {
+      "n": 1,
+      "title": "Open the Today page",
+      "narration": "The market compass loads with the latest market state at the top, a plain-English summary, and all the key sections below.",
+      "point_out": "The page renders cleanly top to bottom: market-state band with regime and phase scores, summary card, and navigation chrome.",
+      "journey": "",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "goto",
+        "url": "/"
+      },
+      "expect": {
+        "text": "Market state"
+      }
+    },
+    {
+      "n": 2,
+      "title": "Scroll to the Leadership rotation card",
+      "narration": "Below the What changed summary is a new Leadership rotation card that shows both directions—which sectors and themes gained ground and which lost ground this session.",
+      "point_out": "The card displays real, multi-colour content with two labelled columns: Gaining (left) and Losing (right), each showing rank changes with signed deltas and direction words.",
+      "journey": "J-13",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "click",
+        "target": {
+          "role": "heading",
+          "name": "Leadership rotation"
+        }
+      },
+      "expect": {
+        "text": "Gaining"
+      }
+    },
+    {
+      "n": 3,
+      "title": "Read a Gaining sector example",
+      "narration": "In the Gaining column, you see sectors that improved—their ranking rose in the market, so they're gaining ground.",
+      "point_out": "An example row shows the sector name, a rank from → to, the signed delta in parentheses, and the word \"improving\" to indicate the direction.",
+      "journey": "J-13",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "click",
+        "target": {
+          "role": "heading",
+          "name": "Sector rotation"
+        }
+      },
+      "expect": {
+        "text": "improving"
+      }
+    },
+    {
+      "n": 4,
+      "title": "Read a Losing sector example",
+      "narration": "The Losing column shows sectors that weakened—their ranking fell, so they're losing ground. Each row shows the opposite direction word.",
+      "point_out": "An example row shows a positive signed delta and the word \"deteriorating\" to indicate the loss of ground.",
+      "journey": "J-13",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "click",
+        "target": {
+          "role": "heading",
+          "name": "Theme rotation"
+        }
+      },
+      "expect": {
+        "text": "Losing"
+      }
+    },
+    {
+      "n": 5,
+      "title": "Scroll to Next-session focus candidates",
+      "narration": "Below the rotation section, the Next-session focus lists candidate stocks and ETFs that meet the selection criteria, with clear explanations of why each is or isn't eligible.",
+      "point_out": "The candidates show Leadership, Entry, and Risk labels. Each candidate displays a checklist of qualification criteria (Pass, Miss, Supportive, Neutral) and a what-would-change-this panel.",
+      "journey": "J-04",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "click",
+        "target": {
+          "role": "heading",
+          "name": "Next-session focus"
+        }
+      },
+      "expect": {
+        "text": "Leadership"
+      }
+    },
+    {
+      "n": 6,
+      "title": "Navigate to the Market page",
+      "narration": "The market surface shows the regime × phase cross-view, breadth trends, and deep dives into sectors and themes. Everything relocates intact and history remains honest.",
+      "point_out": "The sidebar navigation shows Today before Market, each page is highlighted correctly when active, and the market page displays glance cards, the regime × phase cross-view, and all category drilldowns.",
+      "journey": "J-08",
+      "new": false,
+      "verified": true,
+      "section": "highlights",
+      "action": {
+        "type": "click",
+        "target": {
+          "role": "link",
+          "name": "Market"
+        }
+      },
+      "expect": {
+        "text": "Regime"
+      }
+    }
+  ]
+}

@@ -1,40 +1,40 @@
 # Iteration State — market-compass
 
-**After iteration:** 36 · **Date:** 2026-09-01 · **Verdict:** ESCALATE
+**After iteration:** 37 · **Date:** 2026-09-01 · **Verdict:** GOAL_ACHIEVED
 
 ## Journeys
 
-13 passing (J-01..J-13) · 0 failing · 0 unknown — 13 total. All gates green: `journeys` exit 0
-`{"total":13,"passing":13,"blocking":[]}`, `results` 0, `regressions` 0, `coherence` 0, drift `changed: []`.
+13 passing (J-01..J-13) · 0 failing · 0 partial · 0 unknown — 13 total. All 13 re-verified THIS
+iteration (12 by deterministic replay + fresh screenshot; J-09 by the evidence lane its own goal text
+prescribes). 0 FAIL, 0 skipped, 0 DEFERRED-BUDGET. All gates exit 0; drift `changed: []`; ledger 0 unresolved.
 
 ## Active blockers
 
-- **Verification deficit, NOT a journey deficit (owner: engine/dev).** Spec
-  `docs/phases/goal-market-compass-iter-36.md` reads `Depth: full`; `iter-36/depth-dispatched` reads
-  `lean`; trace steps 370-375 launched every agent as "goal-mode **lean** iteration". Missing on disk:
-  audit handoff, QA report, ux-regression, closure verdict — the lanes the Full trigger named.
-- **J-13's acceptance screenshot is blank** (`UT-J-13-rotation-both-directions.png`, 1683×1260, ONE
-  distinct colour): scored `passing` from re-derived data evidence + `evidence_makeup`, but no visual
-  record of the new panel exists. **Its golden never ran** (`J-13.json` mtime 13:35; replay ran 13:30).
-- Non-blocking: `test_manifest_invariants.py:933` risk fixture `58.9` vs a 60.0 ceiling; bare `assert`
-  guards at `compass.py:462`/`:689`; `test_no_magic_numbers.py` red on 3 untouched files.
+- none. The goal is reached; the loop should halt.
+- Non-blocking evidence debt (never an iteration goal): 6 journeys owe a labelled walkthrough
+  frame — J-02, J-03, J-05, J-06, J-07, J-12 (`evidence_makeup: true`). One `Depth: evidence`
+  round captures all six, no code change.
 
 ## Last 2 verdicts
 
-- iter 36: ESCALATE — J-13 built and verified by me (9/9 rotation rows match stored ranks; accounting
-  closes 31/31 and 11/11), nothing regressed, but the round ran lean where its spec said full and the
-  new screen's only picture is blank. GOAL_ACHIEVED was available and declined; see `assumptions.md`.
-- iter 35: CONTINUE — J-12 built (37→0 mislabeled rows); the goal GREW when J-13 landed unbuilt.
+- iter 37: GOAL_ACHIEVED — full depth genuinely ran (`engine.log:7947-7951`); J-13's acceptance
+  screenshot measured at 13,647 distinct colours and read by the evaluator; its golden executed and
+  passed; both carried repairs landed and were re-derived under `python -O`.
+- iter 36: ESCALATE — full depth silently became lean, and J-13's only screenshot was 100% blank.
 
 ## Do not redo
 
-- **J-13's PRODUCT WORK IS DONE — do not rebuild it.** Iteration 37 is a CLOSING round, no new feature
-  work: (1) genuinely full depth, proven by the four missing report FILES and never by a marker;
-  (2) replay the J-13 golden; (3) re-take the blank screenshot as a passenger.
-- **J-12 is CLOSED** (do not re-open `evaluate_selection`; `selection.rule_version` `"v2"`); **J-09 stays
-  closed** (do not touch `warmup.py`/`prices.py`; host-guard caps unmoved, AG-10).
-- **Never mutate, relabel, re-hash or delete a stored manifest row or export file** (AG-12/AG-17); v1..v8
-  keep their bytes and the rotation block lives ONLY in v9. **No threshold VALUE may change** (80.0 /
-  70.0 / 60.0 / `rank_move_min` / `top_k`) — AG-15; only `compass.delta.rotation_top_k: 5` was added.
-- **Evidence capture is never an iteration goal** — J-04's crop (18 rounds owed) and the 8 journeys owing
-  a `[NEW]` walkthrough ride as passengers, never as the round's purpose.
+- **The goal is CLOSED at 13/13.** Do not manufacture new scope from the journey list; new work
+  requires a `docs/goal.md` edit by the owner.
+- **J-13 is DONE and verified visually** — `session_delta.rotation`, both labelled sides, signed
+  deltas, direction words, 31/31 and 11/11 accounting. Evidence:
+  `reports/qa/goal-market-compass-iter-37-evidence/UT-J-13-rotation-both-directions.png`.
+- **Both iter-37 repairs are DONE**: `compass.py` `_assert_disposition_predicate` raises explicitly
+  (both branches verified under `-O`); `test_manifest_invariants.py` TC-24 risk fixture is `65.0`.
+- **J-04's and J-08's capture debt is PAID** — `reports/demo/goal-market-compass-iter-37/step-05.png`
+  and `step-06.png` show their acceptance states; `evidence_makeup` cleared. Do not schedule a round
+  for them.
+- **Never schedule an iteration whose only content is evidence capture.** Remaining recordings ride
+  as passenger tasks or one `Depth: evidence` round.
+- **Golden mtime is NOT a "has it run" signal** — browser-QA re-writes unchanged goldens
+  (`J-13.json`, 15:12:41, md5 identical to the HEAD blob). Compare md5 vs `git show HEAD:<path>`.

@@ -4,154 +4,150 @@
       "id": "J-01",
       "name": "Sector labels are honest and nearly complete on new runs",
       "status": "passing",
-      "last_verified_iter": "goal-market-compass-iter-35",
-      "last_passing_iter": "goal-market-compass-iter-35",
+      "last_verified_iter": "goal-market-compass-iter-37",
+      "last_passing_iter": "goal-market-compass-iter-37",
       "first_seen_iter": "goal-market-compass-iter-0",
-      "last_evidence_path": "reports/qa/goal-market-compass-iter-35-evidence/J-01-verify.png",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-37-evidence/J-01-verify.png",
       "spec_hash": "5217f3fe85d2a05c2f436d3ec6d140f2b7539b8798c161925a2e9e76ddab61f9",
-      "gap": "NOT re-verified this iteration — outside the iter-36 Required-still-passing set (J-02/J-04/J-05/J-06/J-07/J-08/J-12); status carried over under methodology A.6 (evidence expires with CHANGE, not time). Durability precondition CHECKED, not assumed: the 10-file product diff touches no scanner/sector-attribution code and no market-page file; daily_prices frontier still 2026-08-12, scanner_runs unchanged for existing dates, data_provider_runs still 549."
+      "gap": "Re-verified this iteration by deterministic replay at GENUINELY-FULL depth (golden script executed, fresh screenshot). Merged results reports/phase-goal-market-compass-iter-37-ui-test-results.md: 13/13 executed PASS, 0 skipped, 0 FAIL, 0 DEFERRED-BUDGET. Golden mtime predates the 14:59:16 replay run (hygiene clean). CARRIED (non-blocking): this journey's golden asserts far less than the journey text claims (first two steps in particular) - a coverage note raised since iter-30, never a blocker."
     },
     "J-02": {
       "id": "J-02",
       "name": "What changed since the previous session",
       "status": "passing",
-      "last_verified_iter": "goal-market-compass-iter-36",
-      "last_passing_iter": "goal-market-compass-iter-36",
+      "last_verified_iter": "goal-market-compass-iter-37",
+      "last_passing_iter": "goal-market-compass-iter-37",
       "first_seen_iter": "goal-market-compass-iter-0",
-      "last_evidence_path": "reports/qa/goal-market-compass-iter-36-evidence/J-02-verify.png",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-37-evidence/J-02-verify.png",
       "spec_hash": "4a55fbb172e17090c2d095af6a36d95e08edadeda2ed05941cbe3ce9476eb993",
-      "gap": "Re-verified this iteration by deterministic replay at LEAN depth (golden script executed, fresh screenshot); merged results reports/phase-goal-market-compass-iter-36-ui-test-results.md, 8/8 executed PASS, 0 skipped, 0 FAIL, 0 DEFERRED-BUDGET. Golden mtime predates the 13:30 replay run (hygiene clean). TC-10 additionally re-derived BY ME at the data layer: session_delta.changes in 2026-08-12_v9.json is identical to v8 (same 17 entries, same sector->theme->stock order, same thresholds, same suppressed_count 36, identical suppressed list) once the two NEW additive fields (delta, direction_word) are stripped. The golden's own frontier step ('vs 2026-08-11 (1 day ago)', 'Suppressed moves (36)' -> '0.26 < 5.00') passed against v9. What-changed is provably unmoved by J-13.",
+      "gap": "Re-verified this iteration by deterministic replay at GENUINELY-FULL depth (golden script executed, fresh screenshot). Merged results reports/phase-goal-market-compass-iter-37-ui-test-results.md: 13/13 executed PASS, 0 skipped, 0 FAIL, 0 DEFERRED-BUDGET. Golden mtime predates the 14:59:16 replay run (hygiene clean). STILL OWED (capture only, evidence_makeup KEPT): no walkthrough frame attributed to J-02 in reports/demo/goal-market-compass-iter-37/ (this round's recording covers J-13, J-04, J-08). Behaviour unaffected.",
       "evidence_makeup": true
     },
     "J-03": {
       "id": "J-03",
       "name": "Plain-English summary with cited facts",
       "status": "passing",
-      "last_verified_iter": "goal-market-compass-iter-35",
-      "last_passing_iter": "goal-market-compass-iter-35",
+      "last_verified_iter": "goal-market-compass-iter-37",
+      "last_passing_iter": "goal-market-compass-iter-37",
       "first_seen_iter": "goal-market-compass-iter-0",
-      "last_evidence_path": "reports/qa/goal-market-compass-iter-35-evidence/J-03-verify.png",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-37-evidence/J-03-verify.png",
       "spec_hash": "81cd6c9267c0d734cd88b19f43baf53bcab70c7b60d60cd5b2018a76425e87e7",
-      "gap": "NOT re-verified this iteration — outside the iter-36 Required-still-passing set (J-02/J-04/J-05/J-06/J-07/J-08/J-12); status carried over under methodology A.6 (evidence expires with CHANGE, not time). Durability precondition CHECKED, not assumed: compass.py WAS touched, so I proved the narrative producer's OUTPUT is unmoved rather than assuming it — the `narrative` block is byte-identical between 2026-08-12_v8.json and the newly minted v9.",
+      "gap": "Re-verified this iteration by deterministic replay at GENUINELY-FULL depth (golden script executed, fresh screenshot). Merged results reports/phase-goal-market-compass-iter-37-ui-test-results.md: 13/13 executed PASS, 0 skipped, 0 FAIL, 0 DEFERRED-BUDGET. Golden mtime predates the 14:59:16 replay run (hygiene clean). STILL OWED (capture only, evidence_makeup KEPT): no walkthrough frame attributed to J-03 in this round's recording.",
       "evidence_makeup": true
     },
     "J-04": {
       "id": "J-04",
       "name": "Each next-session candidate explains why and why-not",
       "status": "passing",
-      "last_verified_iter": "goal-market-compass-iter-36",
-      "last_passing_iter": "goal-market-compass-iter-36",
+      "last_verified_iter": "goal-market-compass-iter-37",
+      "last_passing_iter": "goal-market-compass-iter-37",
       "first_seen_iter": "goal-market-compass-iter-0",
-      "last_evidence_path": "reports/qa/goal-market-compass-iter-36-evidence/J-04-verify.png",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-37-evidence/J-04-verify.png",
       "spec_hash": "d1521389ca8fcf3fd1b7ac60e53bdb9608112247219ccbbea2ae66e99bff8ad0",
-      "gap": "Re-verified this iteration by deterministic replay at LEAN depth (golden script executed, fresh screenshot); merged results reports/phase-goal-market-compass-iter-36-ui-test-results.md, 8/8 executed PASS, 0 skipped, 0 FAIL, 0 DEFERRED-BUDGET. Golden mtime predates the 13:30 replay run (hygiene clean). STILL OWED: J-04-verify.png is AGAIN the top-of-page viewport stopping above the candidate card — 18th consecutive round. Capture defect only (A.7); the golden's DOM expects hold. evidence_makeup KEPT.",
-      "evidence_makeup": true
+      "gap": "Re-verified this iteration by deterministic replay at GENUINELY-FULL depth (golden script executed, fresh screenshot). Merged results reports/phase-goal-market-compass-iter-37-ui-test-results.md: 13/13 executed PASS, 0 skipped, 0 FAIL, 0 DEFERRED-BUDGET. Golden mtime predates the 14:59:16 replay run (hygiene clean). CAPTURE DEBT CLEARED BY THE EVALUATOR THIS ROUND: reports/demo/goal-market-compass-iter-37/step-05.png ('Scroll to Next-session focus candidates', J-04) was OPENED BY ME and shows the acceptance state in full - HPE and GRMN candidate cards with LEADERSHIP/ENTRY/RISK, WHY, CAUTIONS, Eligibility checklist, 'What would change this' and an INVALIDATION line. That is the state the J-04-verify.png crop has stopped above for 19 consecutive rounds; evidence_makeup CLEARED. The verify-screenshot crop itself is still the top-of-page viewport (golden viewport matter, now non-blocking since a good capture exists)."
     },
     "J-05": {
       "id": "J-05",
       "name": "Each close freezes one next-session manifest, exported byte-consistently",
       "status": "passing",
-      "last_verified_iter": "goal-market-compass-iter-36",
-      "last_passing_iter": "goal-market-compass-iter-36",
+      "last_verified_iter": "goal-market-compass-iter-37",
+      "last_passing_iter": "goal-market-compass-iter-37",
       "first_seen_iter": "goal-market-compass-iter-0",
-      "last_evidence_path": "reports/qa/goal-market-compass-iter-36-evidence/J-05-verify.png",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-37-evidence/J-05-verify.png",
       "spec_hash": "de33a9d149ebefe4f8cf0ffb9fe86243e3f9fa9d83850c890848f268e5c54c4f",
-      "gap": "Re-verified this iteration by deterministic replay at LEAN depth (golden script executed, fresh screenshot); merged results reports/phase-goal-market-compass-iter-36-ui-test-results.md, 8/8 executed PASS, 0 skipped, 0 FAIL, 0 DEFERRED-BUDGET. Golden mtime predates the 13:30 replay run (hygiene clean). Manifest freeze/export limb additionally corroborated: all pre-existing export files (2024-06-08/07-01/07-08/08-01 v1, 2026-08-12 v5..v8) have mtimes predating this iteration's 12:23 snapshot; v7 md5 d905dcfeb7883d86602d64d4c24682ad still matches the value iter-35 recorded.",
+      "gap": "Re-verified this iteration by deterministic replay at GENUINELY-FULL depth (golden script executed, fresh screenshot). Merged results reports/phase-goal-market-compass-iter-37-ui-test-results.md: 13/13 executed PASS, 0 skipped, 0 FAIL, 0 DEFERRED-BUDGET. Golden mtime predates the 14:59:16 replay run (hygiene clean). STILL OWED (capture only, evidence_makeup KEPT): no walkthrough frame attributed to J-05 in this round's recording. AG-12 additionally re-derived BY ME: all 9 export md5s captured read-only, v7 = d905dcfeb7883d86602d64d4c24682ad (identical to the value iters 35 and 36 recorded), every export mtime predates this iteration's 13:19:20 start.",
       "evidence_makeup": true
     },
     "J-06": {
       "id": "J-06",
       "name": "A frozen manifest never changes",
       "status": "passing",
-      "last_verified_iter": "goal-market-compass-iter-36",
-      "last_passing_iter": "goal-market-compass-iter-36",
+      "last_verified_iter": "goal-market-compass-iter-37",
+      "last_passing_iter": "goal-market-compass-iter-37",
       "first_seen_iter": "goal-market-compass-iter-0",
-      "last_evidence_path": "reports/qa/goal-market-compass-iter-36-evidence/J-06-verify.png",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-37-evidence/J-06-verify.png",
       "spec_hash": "4934b178e966fdb05cfb68537e861e0f34f961f630a57e4098f9fb69be2cdda8",
-      "gap": "Re-verified this iteration by deterministic replay at LEAN depth (golden script executed, fresh screenshot); merged results reports/phase-goal-market-compass-iter-36-ui-test-results.md, 8/8 executed PASS, 0 skipped, 0 FAIL, 0 DEFERRED-BUDGET. Golden mtime predates the 13:30 replay run (hygiene clean). Immutability limb re-derived BY ME: minting v9 this round left v1..v8 rows and files byte-untouched; candidate_rule_hash / cohort_rule_hash / manifest_config_hash / narrative / state_band / selection / comparison_cohort / near_threshold_shadow are all byte-identical between v8 and v9 — only session_delta changed.",
+      "gap": "Re-verified this iteration by deterministic replay at GENUINELY-FULL depth (golden script executed, fresh screenshot). Merged results reports/phase-goal-market-compass-iter-37-ui-test-results.md: 13/13 executed PASS, 0 skipped, 0 FAIL, 0 DEFERRED-BUDGET. Golden mtime predates the 14:59:16 replay run (hygiene clean). STILL OWED (capture only, evidence_makeup KEPT): no walkthrough frame attributed to J-06 in this round's recording. Immutability re-derived BY ME read-only: next_session_manifests count 34 (unchanged from iter-36), no row created/mutated/deleted, no v10 minted, content_hash values intact.",
       "evidence_makeup": true
     },
     "J-07": {
       "id": "J-07",
       "name": "The Today page answers the ten-second read",
       "status": "passing",
-      "last_verified_iter": "goal-market-compass-iter-36",
-      "last_passing_iter": "goal-market-compass-iter-36",
+      "last_verified_iter": "goal-market-compass-iter-37",
+      "last_passing_iter": "goal-market-compass-iter-37",
       "first_seen_iter": "goal-market-compass-iter-0",
-      "last_evidence_path": "reports/qa/goal-market-compass-iter-36-evidence/J-07-verify.png",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-37-evidence/J-07-verify.png",
       "spec_hash": "3277c326632d90b5aa5d4331f051b419d2e71d022b640c5851acd9f105d57b72",
-      "gap": "Re-verified this iteration by deterministic replay at LEAN depth (golden script executed, fresh screenshot); merged results reports/phase-goal-market-compass-iter-36-ui-test-results.md, 8/8 executed PASS, 0 skipped, 0 FAIL, 0 DEFERRED-BUDGET. Golden mtime predates the 13:30 replay run (hygiene clean). Spot-check opened: J-07-verify.png at as-of 2026-08-03 reads 66.07 improving / 29.35 improving / 45.1% little changed with the Summary agreeing (+4.7 regime-score points) — identical to the decimal to iters 29/31/32/33/34. state_band is byte-identical v8->v9.",
+      "gap": "Re-verified this iteration by deterministic replay at GENUINELY-FULL depth (golden script executed, fresh screenshot). Merged results reports/phase-goal-market-compass-iter-37-ui-test-results.md: 13/13 executed PASS, 0 skipped, 0 FAIL, 0 DEFERRED-BUDGET. Golden mtime predates the 14:59:16 replay run (hygiene clean). Spot-check OPENED BY ME: J-07-verify.png at as-of 2026-08-03 reads regime 66.07 improving / phase 29.35 improving / breadth 45.1% little changed with the Summary agreeing (+4.7 regime-score points) - identical to the decimal to iters 29/31/32/33/34/36. STILL OWED (capture only, evidence_makeup KEPT): no walkthrough frame attributed to J-07.",
       "evidence_makeup": true
     },
     "J-08": {
       "id": "J-08",
       "name": "Market page moves over intact and history stays honest",
       "status": "passing",
-      "last_verified_iter": "goal-market-compass-iter-36",
-      "last_passing_iter": "goal-market-compass-iter-36",
+      "last_verified_iter": "goal-market-compass-iter-37",
+      "last_passing_iter": "goal-market-compass-iter-37",
       "first_seen_iter": "goal-market-compass-iter-0",
-      "last_evidence_path": "reports/qa/goal-market-compass-iter-36-evidence/J-08-verify.png",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-37-evidence/J-08-verify.png",
       "spec_hash": "621deda83bfbe069b3899a9860d352ac2ef7f6e7f80acf0630cd39acbb2ce860",
-      "gap": "Re-verified this iteration by deterministic replay at LEAN depth (golden script executed, fresh screenshot); merged results reports/phase-goal-market-compass-iter-36-ui-test-results.md, 8/8 executed PASS, 0 skipped, 0 FAIL, 0 DEFERRED-BUDGET. Golden mtime predates the 13:30 replay run (hygiene clean). Market surface untouched by this iteration's diff (no market-page file in the 10 changed files).",
-      "evidence_makeup": true
+      "gap": "Re-verified this iteration by deterministic replay at GENUINELY-FULL depth (golden script executed, fresh screenshot). Merged results reports/phase-goal-market-compass-iter-37-ui-test-results.md: 13/13 executed PASS, 0 skipped, 0 FAIL, 0 DEFERRED-BUDGET. Golden mtime predates the 14:59:16 replay run (hygiene clean). CAPTURE DEBT CLEARED: reports/demo/goal-market-compass-iter-37/step-06.png ('Navigate to the Market page', J-08) landed this round; evidence_makeup CLEARED. Note the walkthrough itself carries no [NEW] flag - correct, because this closing round shipped no new feature."
     },
     "J-09": {
       "id": "J-09",
       "name": "The backend fits the host - standing memory halves with zero behavior change",
       "status": "passing",
-      "last_verified_iter": "goal-market-compass-iter-34",
-      "last_passing_iter": "goal-market-compass-iter-34",
+      "last_verified_iter": "goal-market-compass-iter-37",
+      "last_passing_iter": "goal-market-compass-iter-37",
       "first_seen_iter": "goal-market-compass-iter-3",
-      "last_evidence_path": "runs/goal-market-compass-iter-34/j09-vmpeak-samples-dev.csv (366 rows, 1s, pid 2633998, 369.43s) + runs/goal-market-compass-iter-34/j09-vmpeak-samples-auditor.csv (370 rows, pid 2885192, 374.16s, independent from-scratch re-derivation) + runs/goal-market-compass-iter-34/byte-identity-now/ + reports/perf-budgets.md Addendum 45",
+      "last_evidence_path": "reports/phase-goal-market-compass-iter-37-ui-test-results.md (evidence-based row: live VmPeak 2,292,200 kB <= 2,621,440 kB target) + reports/perf-budgets.md Addendum 45",
       "spec_hash": "a067a11b356f9d24bf56963bac5bee35a616b5c4af06479c92c0ae900fca9551",
-      "gap": "NOT re-verified this iteration — outside the iter-36 Required-still-passing set (J-02/J-04/J-05/J-06/J-07/J-08/J-12); status carried over under methodology A.6 (evidence expires with CHANGE, not time). Durability precondition CHECKED, not assumed: warmup.py / prices.py untouched; config.yaml diff is ONE added line (compass.delta.rotation_top_k) with memory_cap_mb 8192, malloc_arena_max 2, pool_size 24, max_overflow 44 all unchanged; the new rank-pair reads are column-projected selects bounded to one run_id (31/11 rows), never a whole-table or record_json sweep (AG-8).",
-      "notes": "EVALUATOR'S OWN FINDING, RESOLVING WHAT THE AUDITOR LEFT OPEN: the audit flagged the 379,072-byte trendora.db-wal (mtime 07:42:52 UTC) as an 'unexplained' write it could not attribute. The evaluator identified it exactly: it is ONE row appended to `market_phase_cache` (id 12, asof_key '2026-08-05', created_at 2026-09-01 07:42:52.209806 UTC -- 13 ms from the WAL mtime), a derived memoization cache the backend populates on the normal read path. It carries the SAME dataset_version ('r3158-f6814320|s2') as all 11 pre-existing rows, the earliest of which dates from 2026-08-27, so nothing about the underlying data moved. It landed during the showcase walkthrough lane (demo screenshots stamped 07:42-07:43 UTC) on the browser-QA boot, i.e. BETWEEN the two measured boots and outside both -- so TC-6's zero-write claim holds for both measured boots exactly as reported. NOT an anti-goal violation: AG-12 governs next_session_manifests, which the evaluator queried read-only and found unchanged (28 rows, 18 distinct as_of, max id 28, max created_at 2026-09-01 00:12:07 -- predating this iteration's 07:17 start), and AG-9 is untouched because the value is computed from local data with no network call. Full read-only census identical to iter-31/32/33: scanner_runs 3128, data_provider_runs 549, MAX(daily_prices.date) 2026-08-12, prospective_eligible=1 on 0 of 28 rows (AG-17 intact). The main .db file's mtime is 2026-09-01 00:32:31 UTC, BEFORE the iteration started, and a control connection opened mode=ro refused CREATE TABLE. MECHANISM NOTE CARRIED FROM iter-33, deliberately NOT reopened (this spec's OUT OF SCOPE): what ships is a config-gated boolean representation switch (startup.warmup_bar_cache_bounded), not the literal 'configured memory budget' size that Constraints (c) words. Recorded as a wording gap, not a defect."
+      "gap": "Re-verified this iteration by the evidence lane (this journey has no golden - runs/goal-session-market-compass/state/golden-gaps lists exactly J-09 - and its own docs/goal.md text states 'Walkthrough: waived - deliberately backend-only', replacing the demo requirement with the dated VmPeak measurement). Results row in reports/phase-goal-market-compass-iter-37-ui-test-results.md: live backend pid 68389 on port 8255 reports VmPeak 2,292,200 kB, 12.56% under the 2,621,440 kB (2.5 GB) target. RE-DERIVED BY ME: config.yaml database.pragmas.cache_size is still -65536 (the J-09 change persists); 'grep ^## Addendum reports/perf-budgets.md' confirms Addendum 45 is still the newest heading; 'git status --porcelain -- reports/perf-budgets.md' is empty (no addendum rewritten or lost); warmup.py / prices.py / config.yaml all untouched by this iteration's 2-file diff."
     },
     "J-10": {
       "id": "J-10",
       "name": "Bounded recovery of the two trading days the iter-5 drill deleted",
       "status": "passing",
-      "last_verified_iter": "goal-market-compass-iter-34",
-      "last_passing_iter": "goal-market-compass-iter-34",
+      "last_verified_iter": "goal-market-compass-iter-37",
+      "last_passing_iter": "goal-market-compass-iter-37",
       "first_seen_iter": "goal-market-compass-iter-6",
-      "last_evidence_path": "reports/qa/goal-market-compass-iter-34-evidence/J-10-verify.png",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-37-evidence/J-10-verify.png",
       "spec_hash": "42ad18079fd7b367ce272c1a13960375b428c36ba9b21f0f709a09b3465384c2",
-      "gap": "NOT re-verified this iteration — outside the iter-36 Required-still-passing set (J-02/J-04/J-05/J-06/J-07/J-08/J-12); status carried over under methodology A.6 (evidence expires with CHANGE, not time). Durability precondition CHECKED, not assumed: no data-recovery code touched; MAX(daily_prices.date) still 2026-08-12 and data_provider_runs still 549."
+      "gap": "Re-verified this iteration by deterministic replay at GENUINELY-FULL depth (golden script executed, fresh screenshot). Merged results reports/phase-goal-market-compass-iter-37-ui-test-results.md: 13/13 executed PASS, 0 skipped, 0 FAIL, 0 DEFERRED-BUDGET. Golden mtime predates the 14:59:16 replay run (hygiene clean). AG-9 re-derived BY ME read-only: data_provider_runs still 549 and the price frontier still 2026-08-12 - no live fetch of any kind this iteration; the dated single-use exception stays exhausted."
     },
     "J-11": {
       "id": "J-11",
       "name": "Incident-bounded clean regeneration of derived state",
       "status": "passing",
-      "last_verified_iter": "goal-market-compass-iter-34",
-      "last_passing_iter": "goal-market-compass-iter-34",
+      "last_verified_iter": "goal-market-compass-iter-37",
+      "last_passing_iter": "goal-market-compass-iter-37",
       "first_seen_iter": "goal-market-compass-iter-8",
-      "last_evidence_path": "reports/qa/goal-market-compass-iter-34-evidence/J-11-verify.png",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-37-evidence/J-11-verify.png",
       "spec_hash": "012568db747b3063b51b4c5e65e53353ae6e780e779d12a06d511b60fc07e8f3",
-      "gap": "NOT re-verified this iteration — outside the iter-36 Required-still-passing set (J-02/J-04/J-05/J-06/J-07/J-08/J-12); status carried over under methodology A.6 (evidence expires with CHANGE, not time). Durability precondition CHECKED, not assumed: no regeneration/incident code touched; prospective_eligible=1 on 0 rows; no stored manifest row mutated or deleted."
+      "gap": "Re-verified this iteration by deterministic replay at GENUINELY-FULL depth (golden script executed, fresh screenshot). Merged results reports/phase-goal-market-compass-iter-37-ui-test-results.md: 13/13 executed PASS, 0 skipped, 0 FAIL, 0 DEFERRED-BUDGET. Golden mtime predates the 14:59:16 replay run (hygiene clean). AG-17 re-derived BY ME read-only: prospective_eligible = 0 on every recent manifest row (ids 27-34); nothing was retroactively upgraded."
     },
     "J-12": {
       "id": "J-12",
       "name": "Every frozen selection disposition is true — the leadership floor is the only inclusion gate, and a caution qualifier moves no membership",
       "status": "passing",
-      "last_verified_iter": "goal-market-compass-iter-36",
-      "last_passing_iter": "goal-market-compass-iter-36",
+      "last_verified_iter": "goal-market-compass-iter-37",
+      "last_passing_iter": "goal-market-compass-iter-37",
       "first_seen_iter": "goal-market-compass-iter-35",
-      "last_evidence_path": "reports/qa/goal-market-compass-iter-36-evidence/J-12-verify.png",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-37-evidence/J-12-verify.png",
       "spec_hash": "a6ff5522a37745f8e997b0adf44edd84b17472a99821d5b21b93e9bb39de073c",
       "evidence_makeup": true,
-      "gap": "Re-verified this iteration by deterministic replay at LEAN depth (golden script executed, fresh screenshot); merged results reports/phase-goal-market-compass-iter-36-ui-test-results.md, 8/8 executed PASS, 0 skipped, 0 FAIL, 0 DEFERRED-BUDGET. Golden mtime predates the 13:30 replay run (hygiene clean). Selection invariant re-derived BY ME on the NEW v9 manifest: 502 below_selection_floor + 27 excluded_by_cap = 529 comparison cohort, + 10 candidates = 539 = universe.member_count; ZERO rows with leadership_score >= 80.0 mislabelled below_selection_floor; near-threshold shadow still 25 rows; selection block byte-identical to v8. STILL OWED: the [NEW]-flagged walkthrough (TC-13)."
+      "gap": "Re-verified this iteration by deterministic replay at GENUINELY-FULL depth (golden script executed, fresh screenshot). Merged results reports/phase-goal-market-compass-iter-37-ui-test-results.md: 13/13 executed PASS, 0 skipped, 0 FAIL, 0 DEFERRED-BUDGET. Golden mtime predates the 14:59:16 replay run (hygiene clean). The disposition guard this journey rests on was HARDENED this round and I re-derived its behaviour MYSELF under 'python -O' (sys.flags.optimize == 1): BOTH converted branches raise AssertionError (below_selection_floor on a row above the 80.0 floor; excluded_by_cap on a row below it) while a valid row passes silently - so the guard can no longer be stripped by an optimisation flag. STILL OWED (capture only, evidence_makeup KEPT): no walkthrough frame attributed to J-12 in this round's recording."
     },
     "J-13": {
       "id": "J-13",
       "name": "\"Leadership rotation\" says which way, shows both directions, and stops repeating What-changed",
       "status": "passing",
-      "last_verified_iter": "goal-market-compass-iter-36",
-      "last_passing_iter": "goal-market-compass-iter-36",
+      "last_verified_iter": "goal-market-compass-iter-37",
+      "last_passing_iter": "goal-market-compass-iter-37",
       "first_seen_iter": "goal-market-compass-iter-35",
-      "last_evidence_path": "reports/qa/goal-market-compass-iter-36-evidence/J-13-legacy-asof-rotation-not-recorded.png",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-37-evidence/UT-J-13-rotation-both-directions.png",
       "spec_hash": "6269a6022fd62cf27e5aaba77819a48d4f36311ce18061a4da672ed4e6c90b29",
-      "gap": "NEWLY PASSING — promoted on evidence I re-derived MYSELF from raw artifacts, not from any handoff. Results row: UT-J-13 PASS in reports/phase-goal-market-compass-iter-36-ui-test-results.md. CAPTURE DEFECT (A.7, evidence_makeup): the cited acceptance screenshot reports/qa/goal-market-compass-iter-36-evidence/UT-J-13-rotation-both-directions.png is a 100%-uniform blank image (1683x1260, ONE distinct colour RGB(18,22,27), zero content) — it shows nothing, so no visual artifact of the new rotation UI exists. Substance verified independently instead: (a) the newly minted 2026-08-12_v9.json serves a real session_delta.rotation block — sector gaining 5 / losing 2, theme gaining 1 / losing 1, zero stock rows, row shape closed to {label,from,to,delta,direction_word,drill_href}; (b) accounting closes EXACTLY — sector 7+24+0 = 31 and theme 2+9+0 = 11, against configured_total derived from len(etfs.sector)+len(etfs.industry) and len(themes); the previously measured 29/31 sector gap is closed; (c) AG-3: all 7 sector and both theme rows' from/to and signed delta equal the STORED ranks in sector_scores/theme_scores at runs 3157 (2026-08-11) and 3158 (2026-08-12) — including the two rows that were uncounted before (Banks (SPDR) 15->13, Technology 16->14); (d) polarity correct — every falling rank number is 'improving', every rising one 'deteriorating'; (e) TC-6: the same signed delta + direction_word ride the sector/theme session_delta.changes entries and NOT the stock ones; (f) TC-10: What-changed byte-identical to v8 modulo the two additive fields; (g) the client-side ROTATION_KINDS/.filter() duplication is gone from compass-leadership-rotation-section.tsx and the component now renders served fields only. STILL OWED (capture only, never an iteration goal): a non-blank acceptance screenshot; a replay of the J-13 golden (runs/goal-session-market-compass/journey-scripts/J-13.json, written 13:35 AFTER the 13:30 replay run — never yet executed); and the [NEW]-flagged walkthrough (no demo lane ran at this depth). NOT verified live: the residual_count>0 path (residual is 0 on the frontier) and the per-side empty state (no side is empty on the frontier) — both covered only by unit fixtures (test_rotation_full_universe_closure_and_residual_isolation, test_rotation_empty_losing_side_when_every_mover_is_a_gainer).",
-      "evidence_makeup": true
+      "gap": "THE ITER-36 BLOCKER IS CLOSED AND I VERIFIED IT MYSELF. (1) Acceptance screenshot reports/qa/goal-market-compass-iter-37-evidence/UT-J-13-rotation-both-directions.png: 1683x4320, PIL.Image.getcolors() measured BY ME at 13,647 distinct colours, 693,670 bytes - iter-36's capture was 1 colour across 2,120,580 pixels. I OPENED it and read the panel out of the image: 'Leadership rotation' > 'Sector rotation' with labelled 'Gaining' (Regional Banks (SPDR) 13->10 (-3) improving; Bitcoin Miners (Valkyrie) 29->26 (-3) improving; Real Estate 25->22 (-3) improving; Banks (SPDR) 15->13 (-2) improving; Technology 16->14 (-2) improving) and labelled 'Losing' (Home Construction (iShares) 21->25 (+4) deteriorating; Materials 12->16 (+4) deteriorating), disclosure '7 of 31 shown - 24 below threshold - 0 beyond the display cap.' (7+24+0=31); 'Theme rotation' Gaining Ai Data Centre 9->4 (-5) improving, Losing Homebuilders 5->10 (+5) deteriorating, '2 of 11 shown - 9 below threshold - 0 beyond the display cap.' (2+9+0=11). Zero stock-kind rows. (2) The golden runs/goal-session-market-compass/journey-scripts/J-13.json EXECUTED for the first time in the 14:59:16 replay and PASSED; its bytes are provably the ones that ran (md5 7106ad83b8b728e7f5c919872a54fd59 == the HEAD blob committed at ab3cca63; git diff HEAD empty) even though browser-qa re-wrote the file at 15:12:41 with identical content. (3) A walkthrough recording landed: reports/demo/goal-market-compass-iter-37/step-02/03/04.png, attributed to J-13; I opened step-03 and it shows the same both-directions panel with the What-changed card above it carrying the stock rows the rotation panel correctly does not repeat. evidence_makeup CLEARED. Residual, non-blocking: the walkthrough carries no [NEW] flag (correct - no new feature this round), demo step-03 and step-04 are byte-identical (md5 db70e40f...), and the empty-side and residual-count limbs are still exercised only by unit fixtures because today's live data has neither."
     }
   },
   "anti_goal_violations": [
@@ -224,5 +220,5 @@
       "resolution": "No enumerated anti-goal is breached: the row is additive (AG-12 forbids mutation/deletion, not creation, and forbids deleting this row now), correctly classified retrospective and prospective_eligible=0 (AG-17), and no live fetch occurred (AG-9). Owner ruling 2026-08-27 item 6 gates 'immutable-manifest mutation', not an additive create-once row produced by the shipped read path, and directs the non-destructive default. Remedy applied: the auditor appended a dated correction to the dev handoff so 26, not 25, is the standing record. Residual is a PROCESS gap only — a browser lane took a permanent write on its own judgment against an explicit prohibition; carried as a lesson, not as an open data defect."
     }
   ],
-  "updated_at": "2026-09-01T12:50:26.008755+00:00"
+  "updated_at": "2026-09-01T15:01:16.845297+00:00"
 }

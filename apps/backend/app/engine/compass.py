@@ -593,15 +593,17 @@ def _assert_disposition_predicate(comparison_cohort: list[dict], sel) -> None:
         disposition = row["selection_disposition"]
         cleared_floor = row["leadership_score"] >= sel.leadership_min_score
         if disposition == _DISPOSITION_BELOW_FLOOR:
-            assert not cleared_floor, (
-                f"{row['ticker']}: selection_disposition=below_selection_floor but leadership_score "
-                f"{row['leadership_score']} >= leadership_min_score {sel.leadership_min_score}"
-            )
+            if cleared_floor:
+                raise AssertionError(
+                    f"{row['ticker']}: selection_disposition=below_selection_floor but leadership_score "
+                    f"{row['leadership_score']} >= leadership_min_score {sel.leadership_min_score}"
+                )
         elif disposition == _DISPOSITION_EXCLUDED_BY_CAP:
-            assert cleared_floor, (
-                f"{row['ticker']}: selection_disposition=excluded_by_cap but leadership_score "
-                f"{row['leadership_score']} < leadership_min_score {sel.leadership_min_score}"
-            )
+            if not cleared_floor:
+                raise AssertionError(
+                    f"{row['ticker']}: selection_disposition=excluded_by_cap but leadership_score "
+                    f"{row['leadership_score']} < leadership_min_score {sel.leadership_min_score}"
+                )
 
 
 def _scan_selection_language(candidates: list[dict], why_not: list[dict], cfg: Config) -> None:

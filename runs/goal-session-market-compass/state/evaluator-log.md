@@ -3616,3 +3616,159 @@ far less than that job claims. **FIVE OLDER OWNER QUESTIONS** remain open and no
 is acceptable; whether MNST joins the recovery list; and whether 12 August should keep showing its
 "rebuilt" note. **ONE MECHANICAL ITEM:** the whole iteration is uncommitted at scoring time; confirm it
 lands.
+
+## Iteration 37 — goal-market-compass-iter-37
+
+**Date:** 2026-09-01T15:00:00Z
+**Verdict:** GOAL_ACHIEVED
+**Depth dispatched:** full — **and this time it was genuinely full, which I verified by artifact and
+by log, not by marker.** `engine.log:7947-7951` (14:19:15-14:19:20) reads `Depth arbiter: FULL pass
+granted (reason: prior-verdict-ESCALATE)` → `Iter spec depth: full` → `Dispatching FULL pipeline via
+run-phase.sh --no-finalize`. `runs/goal-market-compass-iter-37/depth-dispatched` reads `full`. The
+lanes that were missing at iter-36 all produced real files this time: audit handoff (20,506 B),
+QA report (5,792 B), ui-impact (`user-visible-changes`, `ui-surface-map`), ui-test-design
+(`ui-test-plan`, `what-to-click`), browser-QA (`ui-test-results.md` + `.llm.md`), demo recording,
+closure verdict. **The fifth silent depth drop did NOT happen.** One lane WAS shed — UX-regression —
+but by a DECLARED wall-clock budget trim written in both `engine.log:8041,8044` and the artifact
+itself, which is the opposite of iter-36's silent substitution.
+
+**Owner-facing lines:** `THE BLANK PICTURE IS FIXED AND I LOOKED AT IT MYSELF — 13,647 distinct
+colours where iter-36 had exactly 1, and I read the panel out of the image: two labelled sides,
+signed deltas, direction words` · `THE ACCOUNTING CLOSES IN THE PICTURE: 7+24+0 = 31 of 31 sector and
+2+9+0 = 11 of 11 theme, printed on the page` · `THE CHECK SCRIPT THAT HAD NEVER RUN, RAN AND PASSED —
+and its bytes are provably the ones that executed (md5 == the HEAD blob, git diff empty)` · `I RAN
+THE HARDENED GUARD MYSELF UNDER python -O AND BOTH BRANCHES STILL RAISE` · `NOTHING FROZEN MOVED —
+v7 md5 d905dcfeb788… identical for the third round running; DB still 34 manifests / 3130 scans / 549
+provider runs / frontier 2026-08-12; ZERO new rows` · `THE PRODUCT DIFF IS TWO BACKEND FILES, 56
+LINES` · `ANTI-GOAL LEDGER: 9 total, 0 unresolved; I answered all EIGHTEEN explicitly` · `EVERY GATE
+EXITS 0 — journeys 13/13, blocking []` · `J-04's 19-ROUND CAPTURE DEBT IS CLOSED: the walkthrough
+finally shows the candidate cards, and I opened it`.
+
+**Journey deltas:**
+- **Newly passing: none. Newly failing: none. Regressed: none.** `goal_gate.py regressions pre→post`
+  exits 0. All thirteen were already `passing`; this round re-verified all thirteen and re-stamped
+  them to iter-37.
+- **Re-verified, all 13** — merged results 13/13 executed PASS, 0 skipped, 0 FAIL, 0
+  `DEFERRED-BUDGET`. Twelve by deterministic replay with a fresh screenshot each; **J-09 by the
+  evidence lane**, which is correct rather than a gap — `state/golden-gaps` contains exactly `J-09`
+  and the journey's OWN `docs/goal.md` text reads "**Walkthrough:** waived — deliberately
+  backend-only … the demo requirement is replaced by the dated VmPeak measurement". I checked that
+  text rather than accepting the results file's framing, then re-derived the substance: `config.yaml`
+  `cache_size` still `-65536`, `## Addendum 45` still the newest heading in `perf-budgets.md`,
+  `git status --porcelain` on that file empty, live VmPeak 2,292,200 kB ≤ the 2,621,440 kB target.
+- **J-13's iter-36 blocker is CLOSED, and I closed it on artifacts I opened, not on any report.**
+  `UT-J-13-rotation-both-directions.png` measures 1683×4320 with **13,647 distinct colours** by
+  `PIL.Image.getcolors()` (iter-36: exactly ONE colour across 2,120,580 px). I then cropped and READ
+  the panel: "Leadership rotation" → "Sector rotation" with a labelled **Gaining** side (Regional
+  Banks (SPDR) 13→10 (−3) improving; Bitcoin Miners (Valkyrie) 29→26 (−3) improving; Real Estate
+  25→22 (−3) improving; Banks (SPDR) 15→13 (−2) improving; Technology 16→14 (−2) improving) and a
+  labelled **Losing** side (Home Construction (iShares) 21→25 (+4) deteriorating; Materials 12→16
+  (+4) deteriorating), with "7 of 31 shown · 24 below threshold · 0 beyond the display cap." — and
+  "Theme rotation" Gaining Ai Data Centre 9→4 (−5) improving / Losing Homebuilders 5→10 (+5)
+  deteriorating with "2 of 11 shown · 9 below threshold · 0 beyond the display cap." Zero stock-kind
+  rows. The nine rows are exactly the nine iter-36's evaluator re-derived against the stored ranks.
+  `evidence_makeup` CLEARED.
+- **The J-13 golden genuinely executed for the first time.** `engine.log:8010` routes it into the
+  deterministic replay set at 14:59:16; the replay results record `UT-J-13 … PASS`. Browser-QA then
+  re-wrote the file at 15:12:41, so the spec's literal mtime clause reads false again — but I checked
+  the bytes instead of the clock: on-disk md5 `7106ad83b8b728e7f5c919872a54fd59` equals the HEAD blob
+  committed at `ab3cca63`, and `git diff HEAD` on it is empty. The re-write changed nothing.
+- **J-04's nineteen-round capture debt is CLOSED — a finding no lane made.**
+  `reports/demo/goal-market-compass-iter-37/step-05.png` ("Scroll to Next-session focus candidates",
+  J-04) shows the acceptance state in full: HPE and GRMN cards with LEADERSHIP/ENTRY/RISK, WHY,
+  CAUTIONS, Eligibility checklist, "What would change this", and an INVALIDATION line. That is
+  precisely what the `J-04-verify.png` crop has stopped above since iter-19. The verify crop is still
+  wrong; it no longer matters, because a good capture of the same state now exists. `evidence_makeup`
+  CLEARED for J-04 and (via step-06, Market page) for J-08.
+- **Two spot-checks opened.** `J-07-verify.png` at 2026-08-03 reads 66.07 improving / 29.35 improving
+  / 45.1% little changed with the Summary agreeing (+4.7 regime-score points) — identical **to the
+  decimal** to iters 29/31/32/33/34/36. `J-04-verify.png` is again the top-of-page viewport, as
+  expected and now non-blocking.
+- **`spec_hash`: all thirteen byte-identical to the recorded values** — drift `changed: []`, no
+  `journeys-changed.md`. Re-stamped for all thirteen, since all thirteen were verified this round.
+  No `browser-infra.json`; NOT maintenance isolation.
+- Anti-goal violations: **NONE new** among AG-1..AG-18 — answered all eighteen explicitly with
+  citations, and re-derived the six at real risk myself, read-only. Strongest facts: `config.yaml`
+  diff is **completely empty**, so no threshold moved (AG-15) and the memory caps stand (AG-10);
+  `host-guard.env` untouched (mtime 2026-08-19); all nine export md5s captured, v7 =
+  `d905dcfeb7883d86602d64d4c24682ad` matching the value iters 35 AND 36 recorded, every export mtime
+  predating this round's 13:19:20 start (AG-12); read-only census `next_session_manifests` **34**
+  (unchanged — iter-36 gained five, this round gained **zero**), `scanner_runs` 3130,
+  `data_provider_runs` 549, frontier 2026-08-12 (AG-9/AG-12); `prospective_eligible = 0` on ids 27-34
+  (AG-17); a `mode=ro` control refused `CREATE TABLE`, so the whole census could not have written.
+  Ledger unchanged at **9 total, 0 unresolved**.
+- **THE TWO REPAIRS, BOTH RE-DERIVED BY ME.** (1) I ran `python -O` against the live code
+  (`sys.flags.optimize == 1`) and watched **BOTH** converted branches raise `AssertionError` —
+  `below_selection_floor` on a row above the 80.0 floor AND `excluded_by_cap` on a row below it —
+  while a valid row passed silently. That is stronger than the shipped test, which covers only the
+  first branch (the auditor's B1, which I confirm). (2) `config.yaml` reads `risk_max_score: 60.0`,
+  so the fixture's new `65.0` genuinely fails the risk qualifier and `21.5` genuinely fails the
+  `70.0` entry qualifier while `92.7` still clears the `80.0` floor — the confound the fixture
+  carried through iters 35-36 is gone, and the test now asserts the served `what_would_change`
+  checklist rather than implying it from literals.
+- **FINDINGS NO LANE MADE.** (a) `reports/demo/.../step-03.png` and `step-04.png` are byte-identical
+  (md5 `db70e40f…`) although the script labels them "Read a Gaining sector example" and "Read a
+  Losing sector example" — harmless, because both sides sit side-by-side in one frame, but the two
+  steps do not distinguish anything. (b) The walkthrough carries no `[NEW]` flag on any step — which
+  is arguably CORRECT for a round that shipped no new feature, rather than the defect prior rounds
+  logged it as. (c) `apps/frontend/.next-verify/` accounts for 61 of the 63 diff paths and five
+  untracked files; the product diff is two backend files, 56 lines.
+- Deterministic gates, all run by me: `results` **exit 0** · `journeys` **exit 0**,
+  `{"total":13,"passing":13,"blocking":[]}` · `regressions` **exit 0** · `coherence
+  --for-achievement` **exit 0** · drift `changed: []`. Review: **PASS** (clean, first attempt,
+  `issues: []`). QA: **PASS** / **UI-PASS**. Audit: **PASS_WITH_GAPS** (both gaps process-evidence,
+  both reproduced by me). Coherence: **COHERENCE-PASS**, zero advisory notes. Closure:
+  **CLOSURE-PASS**. Scan: **CLEAN**.
+
+**THE ONE THING THAT DID NOT COME BACK, and why it does not change the answer:** the UX-regression
+reviewer was shed at 15:26:56 by the wall-clock budget trim (4,935s against a 3,600s budget), so one
+of the four artifacts the spec named as its proof is a 284-byte skip stub. I weighed this seriously,
+because withholding certification for exactly this class of deficit is what I did last round. It
+comes out differently here for a concrete reason, not a softening: iter-36 rewrote 136 lines of a
+user-facing component and lost the lane whose whole job is looking at rewritten screens; **iter-37
+changed no screen at all** — I checked, and the entire product diff is `compass.py` (18 lines) and
+`test_manifest_invariants.py` (47 lines), with zero `.tsx`, zero component, zero route. A
+visual-change reviewer had nothing to review. And the deficit that actually mattered — nobody had
+ever seen the panel — is closed four times over: the QA lane inspected it and returned UI-PASS, the
+browser lane captured and measured it, the demo lane recorded it, and I opened two of those images
+myself. Finally, the drop was DECLARED in two places, which is exactly the half of `docs/goal.md`'s
+loop-mechanics rule iter-36 violated.
+
+**Reasoning:** Last round I refused to declare the project finished for two reasons, and both are now
+fixed — I checked each myself instead of believing the write-up. First, the round was told to use the
+full checking team and quietly used the light one; this time the log shows the full team was called
+and their files are all on disk. Second, the one picture of the new panel was a blank rectangle;
+this time I measured it (13,647 different colours against one last time) and then looked at it, and
+it shows exactly what the job promised: two clearly labelled sides, a signed number and a plain word
+on every row, and counts that add up to all 31 sector groups and all 11 themes. The check script
+that had never once run did run this round and passed, and I proved the file that ran is the file on
+disk by comparing fingerprints rather than timestamps. The two small repairs also landed and I
+re-derived both: I ran the hardened guard myself under the optimisation flag that used to switch it
+off, and both of its checks still fired. Nothing that already worked stopped working — all thirteen
+jobs were re-run this round with fresh evidence, not carried on trust. Nothing frozen moved: the
+nine exported files still carry the same fingerprints, one of them matching a value written down two
+rounds ago, and the database has exactly the same 34 records it started with. No rule was broken; I
+went through all eighteen. One planned reviewer was dropped because the round ran over time, and I
+looked hard at whether that should hold the verdict again. It should not: that reviewer exists to
+inspect changed screens, and this round changed no screen — only two backend files — and the drop
+was written down openly, which is precisely what was missing last time. Continuing would produce
+nothing; there is no work left to do, and holding the goal open on missing recordings of features
+that already work is the exact trap this framework warns about most.
+
+**Next-step recommendation:** Halt — goal achieved. Stop the loop here; nothing is left to build.
+**IF you want the remaining photography done, it is one short round and never more:** six jobs
+still owe a labelled walkthrough frame — J-02 "What changed", J-03 "Plain-English summary", J-05
+"Freeze one manifest", J-06 "A frozen manifest never changes", J-07 "Today page ten-second read"
+and J-12 "Every frozen disposition is true". A single `Depth: evidence` round records all six with
+no code change at all. **THREE SMALL CARRIED ITEMS, none urgent:** one pre-existing failing test on
+three files this project has not touched in weeks (fix or formally waive it); the 7.8 GB throwaway
+copy from round 23 may be deleted; and the `apps/frontend/.next-verify/` build folder is stored in
+version control and clutters every diff — it should be ignored instead. **TWO UPSTREAM FIXES worth
+one line each:** the browser-QA step should not re-write a check script whose contents it did not
+change (that is what makes the timestamp test read false two rounds running), and the round's own
+plan should say a screen IS present when its only acceptance evidence is a screenshot. **FIVE OLDER
+OWNER QUESTIONS** remain open and none blocks anything: J-06's "underlying run unavailable" wording;
+whether J-01's first two automatic checks assert enough; whether an empty "next-session focus" list
+is acceptable; whether MNST joins the recovery list; and whether 12 August should keep showing its
+"rebuilt" note. **ONE MECHANICAL ITEM:** the whole round is uncommitted at scoring time; confirm it
+lands.

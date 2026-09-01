@@ -626,3 +626,27 @@ reads that block except the decomposer.
 **Applies to:** every goal-mode evaluator; check `docs/phases/<iter>.md` `**Depth:**` against
 `iter-N/depth-dispatched` as a two-line mechanical diff before scoring. Also a framework gap worth
 fixing upstream: the engine should refuse, or loudly stamp, a dispatch whose depth is below the spec's.
+
+## iter-37 — 2026-09-01T15:00:00Z
+
+**Verdict:** GOAL_ACHIEVED
+**Lesson:** The root cause of iter-36's blank J-13 screenshot is now known and should never be
+re-derived a fourth time: `runs/goal-session-market-compass/trace/0385-browser-qa-agent.log:8`
+records that the browser tool returns a single-colour frame after ANY scroll on `/`; the working
+fix is `set_viewport` to the full document height (1683×4320) so no scroll happens before the
+capture. Separately, a golden's mtime is an unreliable "has it ever run" signal in this pipeline —
+browser-QA re-writes goldens it did not change (J-13.json, 15:12:41, byte-identical to the HEAD
+blob), so compare md5 against `git show HEAD:<path>` instead of comparing clocks.
+**Applies to:** any iteration capturing a full-page screenshot of `/`, and any evaluator applying
+the iter-36 "check golden mtimes before crediting coverage" lesson.
+
+## iter-37 — 2026-09-01T15:00:02Z
+
+**Verdict:** GOAL_ACHIEVED
+**Lesson:** A capture debt can be paid by a DIFFERENT lane than the one that owes it. J-04's
+verify screenshot has cropped above the candidate cards for 19 consecutive rounds and no round ever
+fixed the golden's viewport — but this round's walkthrough recording
+(`reports/demo/goal-market-compass-iter-37/step-05.png`) captured exactly that state as a side
+effect of a J-13-focused demo script. Before scheduling an evidence-only round for a long-standing
+capture gap, check the demo/walkthrough artifacts for a frame that already shows the state.
+**Applies to:** any evaluator carrying an `evidence_makeup` flag for more than two iterations.
