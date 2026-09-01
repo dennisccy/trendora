@@ -1083,3 +1083,74 @@ already renders unchanged (step 6).
 **Reversible:** yes — additive JSON fields only, no mutation. If a future evaluator or the owner reads
 step 3 as covering all five kinds, extending `delta`/`direction_word` to `market`/`stock` entries is a
 small additive follow-up; nothing in this iteration's sector/theme work would need redoing.
+
+## iter-36 — goal-evaluator (a target journey promoted to `passing` on a 100%-blank acceptance screenshot)
+
+**Ambiguity:** J-13's only cited acceptance artifact,
+`reports/qa/goal-market-compass-iter-36-evidence/UT-J-13-rotation-both-directions.png`, is a
+1683×1260 image with exactly ONE distinct colour across all 2,120,580 pixels — it shows nothing.
+Methodology A.3 says to "confirm the image shows the acceptance state" and that no citation means
+`unknown`; A.7 says a defective CAPTURE never downgrades a confirmed behaviour and rides a make-up lane.
+It is unstated which applies to a screenshot that exists and is cited but is informationally empty, and
+whether a FIRST-TIME promotion may use A.7 at all.
+
+**We chose:** `passing` with `evidence_makeup: true` and the defect stated verbatim in the gap, the
+eval table, and the log. Grounds, each checked by me: (a) A.7's rail is that the relaxation "never
+applies when the asserted BEHAVIOR is unmet" — here the behaviour is met and I re-derived every
+acceptance limb myself from raw artifacts rather than from prose: the served `session_delta.rotation`
+block in `2026-08-12_v9.json` (5/2 sector, 1/1 theme, zero stock rows, closed six-field row shape), the
+accounting closing exactly at 7+24+0 = 31 and 2+9+0 = 11 against a `configured_total` the code derives
+from `len(etfs.sector)+len(etfs.industry)` and `len(themes)`, and all NINE rows' from/to and signed delta
+matching the STORED `sector_scores`/`theme_scores` ranks at runs 3157 and 3158; (b) a REAL browser
+screenshot of the same component on the same page DOES exist this round
+(`J-13-legacy-asof-rotation-not-recorded.png`, 6,740 distinct colours), so the section demonstrably
+renders live in a browser — only the frontier-state capture failed; (c) three independent agents
+(developer, reviewer, browser-QA) each drove a live browser and independently reported the SAME exact
+strings ("Regional Banks (SPDR) 13 → 10 (-3) · improving", "7 of 31 shown · 24 below threshold · 0 beyond
+the display cap."), which I confirmed are exactly what the served data plus the component's JSX template
+must produce — convergent, not a single claim; (d) my agent contract states as a hard rule that an
+evidence-capture gap may never be scored as blocking, and A.7 says the make-up ride is "NEVER a new
+iteration's goal". What I did NOT do: hide it — the blankness is measured and quoted in the journey gap,
+in the eval's journey table, in the eval Summary, and as blocker 1 of the log entry, and it is the reason
+my verdict is ESCALATE rather than GOAL_ACHIEVED.
+
+**Reversible:** yes — no mutation, and one screenshot fixes it. If the owner or a future evaluator rules
+that an informationally-empty screenshot equals no screenshot, J-13 drops to `unknown` and the next
+full-depth round re-captures it; none of the served-data, stored-rank, or byte-identity evidence I derived
+would need redoing, and the product is unaffected either way.
+
+## iter-36 — goal-evaluator (declined GOAL_ACHIEVED although every deterministic gate passed and the decision tree's rule 3 matched)
+
+**Ambiguity:** the verdict decision tree is "apply top-down; first match wins", and rule 3 (GOAL_ACHIEVED)
+sits ABOVE rule 4 (ESCALATE). After this round all thirteen Must-have journeys are `passing`, the
+anti-goal ledger is 9 total / 0 unresolved, `coherence.md` is COHERENCE-PASS, and there is no
+`journeys-changed.md` — so rule 3 matches mechanically, and I confirmed it by running every gate myself
+(`results` 0, `journeys` 0 with `blocking: []`, `regressions` 0, `coherence --for-achievement` 0, drift
+`changed: []`). It is unstated whether an evaluator may decline rule 3 on a VERIFICATION deficit in the
+iteration itself, as opposed to a journey, anti-goal or coherence deficit.
+
+**We chose:** ESCALATE, and said plainly in both the eval and the log that a GOAL_ACHIEVED was
+mechanically available and I declined it for exactly one round. Grounds, each checked by me: (a) the
+deficit is real and evidenced, not a feeling — the spec reads `Depth: full` with an explicit Full trigger,
+`session.json next_depth` is `"full"`, the decomposer was dispatched "BINDING by default" (trace step 368),
+and yet trace steps 370-375 launched every downstream agent as "goal-mode **lean** iteration", with no
+audit handoff, QA report, ux-regression or closure verdict anywhere on disk; (b) iter-35's binding
+"Do not redo" block required in terms that "a drop to `lean` must be surfaced explicitly and marked
+unmet", and no agent did so, so declining to certify is the instruction being honoured rather than
+overridden; (c) rule 3's own parenthetical frames GOAL_ACHIEVED as "the first key, not the final word" —
+i.e. a certification I must be willing to stand behind, and I am not willing to stand behind a round that
+skipped the inspection it was told to perform while producing an empty picture of its only new screen;
+(d) the lost lanes are precisely the ones the spec's Full trigger named, including ux-regression, on the
+one round in months that rewrote a user-facing component (136 lines) — and this round's OWN reviewer
+found a CRITICAL page-crashing defect in round 1, direct evidence that independent lanes find real faults
+in this change; (e) direct session precedent: iter-33 returned ESCALATE for this same depth drop, iter-34
+then ran genuinely full and its auditor found five findings (B1-B5) no other lane had; (f) this does not
+risk the "vague criteria → infinite loop" anti-pattern, because the exit conditions are three concrete,
+one-round, mechanically checkable items (four named artifacts exist; the J-13 golden replays; a non-blank
+screenshot lands) and there is NO new feature work left. What I did NOT do: dress it up as a journey or
+anti-goal failure — every journey is recorded `passing` and the ledger is recorded clean.
+
+**Reversible:** yes — no mutation, and it costs exactly one round. If the owner or the loop rules that a
+matching rule 3 must be honoured regardless of dispatch depth, flipping this verdict to GOAL_ACHIEVED
+requires changing nothing else: `journey-history.json` already records 13/13 `passing`, every gate already
+exits 0, and none of this round's evidence would need redoing.

@@ -94,8 +94,16 @@ def test_compass_route_serves_every_new_field_directly(compass_engine, cfg):
     # NOTES: assert every new field at the response layer itself -- never behind a fixture-data gate.
     assert result["as_of"] == "2024-06-08"
     assert isinstance(result["session_delta"], dict)
-    for key in ("prior_as_of", "gap_days", "changes", "suppressed", "suppressed_count"):
+    for key in ("prior_as_of", "gap_days", "changes", "suppressed", "suppressed_count", "rotation"):
         assert key in result["session_delta"]
+    # goal-market-compass iter-36 (J-13): the rotation block itself, served directly (no sector/theme
+    # rank data seeded by this fixture, so both kinds honestly show zero rows -- still fully shaped).
+    rotation = result["session_delta"]["rotation"]
+    assert set(rotation.keys()) == {"sector", "theme"}
+    for kind, total in (("sector", len(cfg.etfs.sector) + len(cfg.etfs.industry)), ("theme", len(cfg.themes))):
+        block = rotation[kind]
+        assert block["gaining"] == [] and block["losing"] == []
+        assert block["configured_total"] == total
     assert isinstance(result["narrative"], dict) and "sentences" in result["narrative"]
     assert isinstance(result["selection"], dict)
     for key in ("candidates", "why_not", "disposition_tally", "candidates_empty_reason"):
@@ -128,6 +136,41 @@ def test_compass_route_serves_every_new_field_directly(compass_engine, cfg):
             "generated_at": result["generation"]["generated_at"],
         }
     ]
+
+
+def test_compass_route_serves_legacy_pre_iter36_row_without_rotation_key(compass_engine, cfg):
+    """goal-market-compass iter-36 fix (reviewer CRITICAL): the shape the Today page's Leadership
+    rotation section must survive on as-of navigation. Every `next_session_manifests` row minted BEFORE
+    iter-36 stores a `session_delta` blob with NO `rotation` key at all (the key was added INSIDE the
+    existing blob, and a frozen row is never rewritten — AG-12), and `manifest_row_payload` serves those
+    bytes verbatim. So `GET /api/compass` for such an as-of legitimately returns a NON-NULL `prior_as_of`
+    (a real prior session exists) together with an ABSENT `rotation` — a third state, distinct from both
+    the no-prior-run state and an empty side. Asserted at the ROUTE layer (not just
+    `manifest_row_payload`) because that is the exact payload the frontend consumes; the frontend's
+    matching guard is type-enforced by `SessionDelta.rotation?:` in `apps/frontend/lib/api.ts`."""
+    from app.api.compass import compass as compass_route
+
+    _freeze_frontier(compass_engine, cfg)
+    # Simulate a pre-iter-36 row by stripping the key this iteration's write path added -- byte-for-byte
+    # the shape of every row already stored before this iteration shipped.
+    with Session(compass_engine) as session:
+        row = session.exec(select(NextSessionManifest).where(NextSessionManifest.as_of == date(2024, 6, 8))).first()
+        stored = json.loads(row.session_delta_json)
+        assert "rotation" in stored  # sanity: the current write path DOES add it
+        del stored["rotation"]
+        row.session_delta_json = json.dumps(stored)
+        session.add(row)
+        session.commit()
+
+    with Session(compass_engine) as session:
+        result = compass_route(None, session)
+
+    session_delta = result["session_delta"]
+    assert session_delta["prior_as_of"] == "2024-06-01"  # a real prior session -- NOT the no-prior-run state
+    assert "rotation" not in session_delta  # honestly absent, never fabricated/backfilled
+    # the rest of the legacy block is served unchanged -- only `rotation` is missing
+    for key in ("gap_days", "changes", "suppressed", "suppressed_count"):
+        assert key in session_delta
 
 
 @pytest.fixture()

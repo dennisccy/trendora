@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "journey": "J-13",
+  "name": "Leadership rotation says which way, shows both directions, and stops repeating What-changed",
+  "default_timeout_ms": 8000,
+  "steps": [
+    {"n": 1, "journey": "J-13", "action": {"type": "goto", "url": "/"}, "expect": {"text": "Sector rotation"}},
+    {"n": 2, "journey": "J-13", "action": {"type": "goto", "url": "/"}, "expect": {"text": "Regional Banks (SPDR)"}},
+    {"n": 3, "journey": "J-13", "action": {"type": "goto", "url": "/"}, "expect": {"text": "13 → 10 (-3) · improving"}},
+    {"n": 4, "journey": "J-13", "action": {"type": "goto", "url": "/"}, "expect": {"text": "21 → 25 (+4) · deteriorating"}},
+    {"n": 5, "journey": "J-13", "action": {"type": "goto", "url": "/"}, "expect": {"text": "7 of 31 shown · 24 below threshold · 0 beyond the display cap."}},
+    {"n": 6, "journey": "J-13", "action": {"type": "goto", "url": "/"}, "expect": {"text": "2 of 11 shown · 9 below threshold · 0 beyond the display cap."}},
+    {"n": 7, "journey": "J-13", "action": {"type": "goto", "url": "/?asof=1996-01-02"}, "expect": {"text": "This is the earliest stored session — there is no prior session to compare rotation against."}}
+  ]
+}

@@ -13,7 +13,17 @@ import pytest
 from sqlmodel import Session, SQLModel, create_engine, select
 
 from app.config import load_config
-from app.engine.session_delta import KIND_BREADTH, KIND_MARKET, KIND_SECTOR, KIND_STOCK, KIND_THEME, compute_delta, find_previous_run
+from app.engine.session_delta import (
+    KIND_BREADTH,
+    KIND_MARKET,
+    KIND_SECTOR,
+    KIND_STOCK,
+    KIND_THEME,
+    compute_delta,
+    find_previous_run,
+    sector_rank_pairs,
+    theme_rank_pairs,
+)
 from app.models import ScannerResult, ScannerRun, SectorScoreRow, ThemeScoreRow
 
 
@@ -316,3 +326,96 @@ def test_no_forward_returns_or_lookahead_import(engine, cfg):
                 if alias.name in banned:
                     offenders.add(alias.name)
     assert not offenders, f"session_delta.py's code references banned lookahead identifiers: {offenders}"
+
+
+# --- iter-36 (J-13): signed delta + sector/theme rank-pair builders -----------------------------
+
+
+def test_sector_theme_change_entries_carry_signed_delta(engine, cfg, two_runs):
+    """`session_delta.changes` sector/theme-kind entries now carry a SIGNED `delta` (`cur_rank -
+    prev_rank`) alongside the existing unsigned `magnitude` -- other kinds (market/breadth/stock) are
+    untouched (no `delta` key at all)."""
+    run_a_id, run_b_id = two_runs
+    with Session(engine) as session:
+        run_a = session.get(ScannerRun, run_a_id)
+        run_b = session.get(ScannerRun, run_b_id)
+        result = compute_delta(session, run_b, run_a, cfg)
+    sector_changes = {c["label"]: c for c in _by_kind(result["changes"], KIND_SECTOR)}
+    # Technology XLK: rank 1 -> 3 (rose, worse -> positive delta); Energy XLE: rank 3 -> 1 (fell, better -> negative)
+    assert sector_changes["Technology"]["delta"] == 2
+    assert sector_changes["Energy"]["delta"] == -2
+    theme_changes = {c["label"]: c for c in _by_kind(result["changes"], KIND_THEME)}
+    # Artificial Intelligence: rank 1 -> 3 (delta +2)
+    assert theme_changes["Artificial Intelligence"]["delta"] == 2
+    for kind in (KIND_MARKET, KIND_BREADTH, KIND_STOCK):
+        for entry in _by_kind(result["changes"], kind):
+            assert "delta" not in entry
+
+
+def test_sector_rank_pairs_returns_all_comparable_pairs_uncapped_and_unthresholded(engine, cfg, two_runs):
+    """`sector_rank_pairs` returns EVERY comparable pair (XLK, XLF, XLE — including the below-threshold
+    XLF), unlike `compute_delta`'s own `changes`/`suppressed` split, and each carries a signed `delta`."""
+    run_a_id, run_b_id = two_runs
+    with Session(engine) as session:
+        run_a = session.get(ScannerRun, run_a_id)
+        run_b = session.get(ScannerRun, run_b_id)
+        pairs = sector_rank_pairs(session, run_b, run_a, cfg)
+    by_label = {entry["label"]: entry for entry, _magnitude in pairs}
+    assert set(by_label) == {"Technology", "Financials", "Energy"}
+    assert by_label["Technology"]["delta"] == 2
+    assert by_label["Energy"]["delta"] == -2
+    assert by_label["Financials"]["delta"] == 0  # below rank_move_min=2, but STILL present (not dropped)
+    # most-moved-first ordering (by |delta|)
+    assert [entry["label"] for entry, _m in pairs] in (
+        ["Technology", "Energy", "Financials"], ["Energy", "Technology", "Financials"],
+    )
+
+
+def test_theme_rank_pairs_returns_all_comparable_pairs_uncapped_and_unthresholded(engine, cfg, two_runs):
+    run_a_id, run_b_id = two_runs
+    with Session(engine) as session:
+        run_a = session.get(ScannerRun, run_a_id)
+        run_b = session.get(ScannerRun, run_b_id)
+        pairs = theme_rank_pairs(session, run_b, run_a, cfg)
+    by_label = {entry["label"]: entry for entry, _magnitude in pairs}
+    assert set(by_label) == {"Artificial Intelligence", "Electric Vehicles"}
+    assert by_label["Artificial Intelligence"]["delta"] == 2
+    assert by_label["Electric Vehicles"]["delta"] == -1  # below rank_move_min=2, still present
+
+
+def test_compute_delta_reuses_precomputed_pairs_no_second_query(engine, cfg, two_runs):
+    """Passing precomputed `sector_pairs`/`theme_pairs` into `compute_delta` reuses the SAME entry
+    objects for `session_delta.changes` (identity check) -- proof there is no second, independent
+    recomputation of the pairs."""
+    run_a_id, run_b_id = two_runs
+    with Session(engine) as session:
+        run_a = session.get(ScannerRun, run_a_id)
+        run_b = session.get(ScannerRun, run_b_id)
+        precomputed_sector_pairs = sector_rank_pairs(session, run_b, run_a, cfg)
+        precomputed_theme_pairs = theme_rank_pairs(session, run_b, run_a, cfg)
+        result = compute_delta(
+            session, run_b, run_a, cfg, sector_pairs=precomputed_sector_pairs, theme_pairs=precomputed_theme_pairs,
+        )
+    sector_entry_ids = {id(entry) for entry, _m in precomputed_sector_pairs if entry["magnitude"] >= cfg.compass.delta.rank_move_min}
+    theme_entry_ids = {id(entry) for entry, _m in precomputed_theme_pairs if entry["magnitude"] >= cfg.compass.delta.rank_move_min}
+    for entry in _by_kind(result["changes"], KIND_SECTOR):
+        assert id(entry) in sector_entry_ids
+    for entry in _by_kind(result["changes"], KIND_THEME):
+        assert id(entry) in theme_entry_ids
+
+
+def test_compute_delta_without_precomputed_pairs_matches_precomputed_call(engine, cfg, two_runs):
+    """Omitting `sector_pairs`/`theme_pairs` (every pre-iter-36 caller) yields the SAME `changes`/
+    `suppressed` values as passing them explicitly -- backward-compatible default."""
+    run_a_id, run_b_id = two_runs
+    with Session(engine) as session:
+        run_a = session.get(ScannerRun, run_a_id)
+        run_b = session.get(ScannerRun, run_b_id)
+        implicit = compute_delta(session, run_b, run_a, cfg)
+    with Session(engine) as session:
+        run_a = session.get(ScannerRun, run_a_id)
+        run_b = session.get(ScannerRun, run_b_id)
+        sector_pairs = sector_rank_pairs(session, run_b, run_a, cfg)
+        theme_pairs = theme_rank_pairs(session, run_b, run_a, cfg)
+        explicit = compute_delta(session, run_b, run_a, cfg, sector_pairs=sector_pairs, theme_pairs=theme_pairs)
+    assert implicit == explicit

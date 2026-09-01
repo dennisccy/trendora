@@ -2576,6 +2576,11 @@ class CompassDeltaCfg(BaseModel):
     rank_move_min: int
     stock_score_min_change: float
     top_k: int
+    # goal-market-compass iter-36 (J-13) -- the Leadership rotation section's OWN display cap on
+    # session_delta.rotation.{sector,theme}.{gaining,losing}, independent of `top_k` above (which still
+    # governs ONLY session_delta.changes, unchanged). An above-threshold mover beyond this cap is
+    # disclosed in that side's `residual_count`, never dropped uncounted.
+    rotation_top_k: int
     max_stock_items: int
     velocity_flat_band: float
     # goal-market-compass iter-28 (J-07) — the `state_band.stress` flat-band edge (severity-points
@@ -2602,6 +2607,8 @@ class CompassDeltaCfg(BaseModel):
             raise ValueError("compass.delta.rank_move_min must be positive")
         if self.top_k <= 0:
             raise ValueError("compass.delta.top_k must be positive")
+        if self.rotation_top_k <= 0:
+            raise ValueError("compass.delta.rotation_top_k must be positive")
         if self.max_stock_items <= 0:
             raise ValueError("compass.delta.max_stock_items must be positive")
         return self
@@ -2748,6 +2755,7 @@ def _default_compass() -> "CompassCfg":
             rank_move_min=2,
             stock_score_min_change=8.0,
             top_k=5,
+            rotation_top_k=5,
             max_stock_items=10,
             velocity_flat_band=2.0,
             stress_velocity_flat_band=5.0,

@@ -18,7 +18,7 @@ from app.config import REPO_ROOT, load_config
 from app.db import create_db_and_tables, make_engine
 from app.engine import compass
 from app.engine import market_phase as market_phase_module
-from app.models import DailyPrice, MarketPhaseCache, NextSessionManifest, ScannerResult, ScannerRun
+from app.models import DailyPrice, MarketPhaseCache, NextSessionManifest, ScannerResult, ScannerRun, SectorScoreRow, ThemeScoreRow
 
 BOUNDED_TIMEOUT_S = 30
 
@@ -1079,3 +1079,78 @@ def test_tc34_atr_caution_states_the_fact_only(engine, cfg):
     caution = next(c for c in result["candidates"][0]["cautions"] if c.startswith("ATR_RISK_BUDGET"))
     assert "sized risk accordingly" not in caution
     assert "ATR is 3.00% of price" in caution
+
+
+# --- TC-12/TC-25 (goal-market-compass iter-36, J-13): rotation + schema conformance ---------------
+
+
+@pytest.fixture()
+def frontier_run_with_rotation(engine, cfg):
+    """Frontier-shaped run pair (a `DailyPrice` bar at the LATER as_of — the `frontier_run` convention)
+    carrying real sector/theme rank rows on BOTH runs, so `session_delta.rotation` renders actual
+    gaining/losing content (not the no-prior-run state) for a schema-validation-with-rotation-populated
+    proof."""
+    with Session(engine) as session:
+        run_a = _mk_run(session, date(2024, 8, 1))
+        run_b = _mk_run(session, date(2024, 8, 8))
+        _mk_result(session, run_a.id, "AAA")
+        _mk_result(session, run_b.id, "AAA")
+        session.add(SectorScoreRow(
+            run_id=run_a.id, ticker="XLK", kind="sector", name="XLK", members_json="[]",
+            score=80.0, bucket="A", trend_label="Uptrend", components_json="{}", rank=5,
+        ))
+        session.add(SectorScoreRow(
+            run_id=run_b.id, ticker="XLK", kind="sector", name="XLK", members_json="[]",
+            score=80.0, bucket="A", trend_label="Uptrend", components_json="{}", rank=1,
+        ))
+        session.add(ThemeScoreRow(
+            run_id=run_a.id, slug="ai", name="ai", score=80.0, bucket="A", members_json="[]",
+            breadth_label="universe-relative", trend_label="Uptrend", components_json="{}", rank=4,
+        ))
+        session.add(ThemeScoreRow(
+            run_id=run_b.id, slug="ai", name="ai", score=80.0, bucket="A", members_json="[]",
+            breadth_label="universe-relative", trend_label="Uptrend", components_json="{}", rank=1,
+        ))
+        session.add(DailyPrice(symbol="SPY", date=date(2024, 8, 8), open=1, high=1, low=1, close=1, volume=1))
+        session.commit()
+        session.refresh(run_b)
+        return run_b.id
+
+
+def test_tc12_manifest_with_rotation_validates_against_schema_no_version_bump(
+    engine, cfg, frontier_run_with_rotation, schema,
+):
+    """TC-12: a manifest produced under this change (with real `session_delta.rotation` content) still
+    validates against the committed schema, with NO `schema_version` bump — `session_delta` is an open
+    object there, so the addition is purely additive."""
+    with Session(engine) as session:
+        run = session.get(ScannerRun, frontier_run_with_rotation)
+        row = compass.get_or_create_manifest(session, run, cfg, producer="ingest_finalize")
+        document = compass.manifest_row_payload(row)
+    jsonschema.validate(document, schema)  # raises on failure
+    assert document["session_delta"]["rotation"]["sector"]["gaining"][0]["label"] == "XLK"
+    assert cfg.compass.manifest.schema_version == "v1"  # unchanged by this iteration
+
+
+def test_rotation_absent_key_on_legacy_pre_iter36_row_never_fabricated(engine, cfg, frontier_run_with_rotation, schema):
+    """AG-12 / TC-13 posture: a manifest row minted BEFORE this iteration (simulated by stripping the
+    `rotation` key out of the stored `session_delta_json` blob — exactly the shape every pre-iter-36 row
+    has, since `session_delta` is stored as ONE JSON blob and this iteration adds a key inside it rather
+    than a new column) serves `session_delta` honestly WITHOUT a `rotation` key at all — never fabricated,
+    never crashes the read path, and the resulting (older-shaped) document still validates against the
+    committed schema (session_delta stays an open object)."""
+    with Session(engine) as session:
+        run = session.get(ScannerRun, frontier_run_with_rotation)
+        row = compass.get_or_create_manifest(session, run, cfg, producer="ingest_finalize")
+        stored = json.loads(row.session_delta_json)
+        assert "rotation" in stored  # sanity: this iteration's own write path DID add it
+        del stored["rotation"]
+        row.session_delta_json = json.dumps(stored)
+        session.add(row)
+        session.commit()
+
+    with Session(engine) as session:
+        row = session.exec(select(NextSessionManifest).where(NextSessionManifest.as_of == date(2024, 8, 8))).first()
+        document = compass.manifest_row_payload(row)
+    assert "rotation" not in document["session_delta"]
+    jsonschema.validate(document, schema)

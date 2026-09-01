@@ -17,7 +17,7 @@ from sqlmodel import Session, SQLModel, create_engine, select
 from app.config import load_config
 from app.engine import compass
 from app.engine import market_phase as market_phase_module
-from app.models import MarketPhaseCache, NextSessionManifest, ScannerResult, ScannerRun
+from app.models import MarketPhaseCache, NextSessionManifest, ScannerResult, ScannerRun, SectorScoreRow, ThemeScoreRow
 
 
 @pytest.fixture()
@@ -788,3 +788,280 @@ def test_no_network_or_lookahead_imports_in_compass_module():
         if isinstance(node, ast.Attribute) and node.attr in banned:
             offenders.add(node.attr)
     assert not offenders, f"compass.py references banned identifiers: {offenders}"
+
+
+# --- rotation (goal-market-compass iter-36, J-13) ------------------------------------------------
+
+
+def _mk_sector_row(session: Session, run_id: int, ticker: str, rank: int, kind: str = "sector") -> None:
+    session.add(SectorScoreRow(
+        run_id=run_id, ticker=ticker, kind=kind, name=ticker, members_json="[]",
+        score=80.0, bucket="A", trend_label="Uptrend", components_json="{}", rank=rank,
+    ))
+
+
+def _mk_theme_row(session: Session, run_id: int, slug: str, rank: int) -> None:
+    session.add(ThemeScoreRow(
+        run_id=run_id, slug=slug, name=slug, score=80.0, bucket="A", members_json="[]",
+        breadth_label="universe-relative", trend_label="Uptrend", components_json="{}", rank=rank,
+    ))
+
+
+@pytest.fixture()
+def rotation_run_pair(engine, cfg):
+    """A small run pair with BOTH sides populated for both kinds, plus one below-threshold (suppressed)
+    pair per kind (`rank_move_min` is 2 in the real config):
+      sector XLK: rank 1 -> 5 (delta +4, LOSING)   sector XLE: rank 5 -> 1 (delta -4, GAINING)
+      sector XLF: rank 2 -> 2 (delta 0, suppressed)
+      theme  ai:  rank 1 -> 4 (delta +3, LOSING)   theme  ev:  rank 4 -> 1 (delta -3, GAINING)
+      theme  cyber: rank 2 -> 2 (delta 0, suppressed)
+    """
+    with Session(engine) as session:
+        run_a = _mk_run(session, date(2024, 5, 1))
+        run_b = _mk_run(session, date(2024, 5, 8))
+        _mk_sector_row(session, run_a.id, "XLK", 1)
+        _mk_sector_row(session, run_b.id, "XLK", 5)
+        _mk_sector_row(session, run_a.id, "XLE", 5)
+        _mk_sector_row(session, run_b.id, "XLE", 1)
+        _mk_sector_row(session, run_a.id, "XLF", 2)
+        _mk_sector_row(session, run_b.id, "XLF", 2)
+        _mk_theme_row(session, run_a.id, "ai", 1)
+        _mk_theme_row(session, run_b.id, "ai", 4)
+        _mk_theme_row(session, run_a.id, "ev", 4)
+        _mk_theme_row(session, run_b.id, "ev", 1)
+        _mk_theme_row(session, run_a.id, "cyber", 2)
+        _mk_theme_row(session, run_b.id, "cyber", 2)
+        session.commit()
+        session.refresh(run_a)
+        session.refresh(run_b)
+        return run_a.id, run_b.id
+
+
+@pytest.fixture()
+def all_gainers_sector_run_pair(engine, cfg):
+    """J-13 step 8 (dev handoff citation): EVERY threshold-crossing sector mover is a GAINER -- the losing
+    side must render its explicit empty state while the gaining side is unaffected. One suppressed
+    (below-threshold) row rides alongside so the fixture also proves suppressed != empty-losing."""
+    with Session(engine) as session:
+        run_a = _mk_run(session, date(2024, 5, 15))
+        run_b = _mk_run(session, date(2024, 5, 22))
+        _mk_sector_row(session, run_a.id, "XLK", 5)
+        _mk_sector_row(session, run_b.id, "XLK", 1)  # delta -4, gaining
+        _mk_sector_row(session, run_a.id, "XLE", 4)
+        _mk_sector_row(session, run_b.id, "XLE", 2)  # delta -2, gaining
+        _mk_sector_row(session, run_a.id, "XLF", 3)
+        _mk_sector_row(session, run_b.id, "XLF", 3)  # delta 0, suppressed
+        session.commit()
+        session.refresh(run_a)
+        session.refresh(run_b)
+        return run_a.id, run_b.id
+
+
+@pytest.fixture()
+def full_universe_rotation_runs(engine, cfg):
+    """TC-7/TC-8/TC-15 (goal-market-compass iter-36, J-13): a run pair covering the FULL configured
+    sector/industry (`config.etfs.sector` + `config.etfs.industry`) and theme (`config.themes`) universe
+    on both runs, so the rotation block's accounting can close exactly against `configured_total`. Ranks
+    are REVERSED between the two runs (`prev = N + 1 - cur`, N = the configured count) -- for ODD N (31
+    sector/industry, 11 theme today) this deterministically yields exactly ONE exact-middle pair with
+    delta 0 (below rank_move_min -- suppressed, fails the threshold OUTRIGHT) and `(N-1)/2`
+    above-threshold movers on EACH side (every non-middle delta has |delta| >= 2, matching the real
+    `rank_move_min`). With `rotation_top_k` (5) smaller than 15 (sector's per-side count), this isolates
+    the TC-8/TC-15 condition: a row that CLEARS rank_move_min but is excluded SOLELY by rotation_top_k --
+    counted in `residual_count`, distinct from the middle row that fails rank_move_min outright."""
+    with Session(engine) as session:
+        run_a = _mk_run(session, date(2024, 5, 29))
+        run_b = _mk_run(session, date(2024, 6, 5))
+        sector_tickers = list(cfg.etfs.sector.keys()) + list(cfg.etfs.industry.keys())
+        n_sector = len(sector_tickers)
+        for index, ticker in enumerate(sector_tickers):
+            cur_rank = index + 1
+            prev_rank = n_sector + 1 - cur_rank
+            kind = "sector" if ticker in cfg.etfs.sector else "industry"
+            _mk_sector_row(session, run_a.id, ticker, prev_rank, kind=kind)
+            _mk_sector_row(session, run_b.id, ticker, cur_rank, kind=kind)
+        theme_slugs = list(cfg.themes.keys())
+        n_theme = len(theme_slugs)
+        for index, slug in enumerate(theme_slugs):
+            cur_rank = index + 1
+            prev_rank = n_theme + 1 - cur_rank
+            _mk_theme_row(session, run_a.id, slug, prev_rank)
+            _mk_theme_row(session, run_b.id, slug, cur_rank)
+        session.commit()
+        session.refresh(run_a)
+        session.refresh(run_b)
+        return run_a.id, run_b.id, n_sector, n_theme
+
+
+def test_rotation_block_present_with_sector_theme_keys_and_no_stock_rows(engine, cfg, rotation_run_pair):
+    """TC-1: `session_delta.rotation` carries `sector`/`theme` keys and zero stock-kind rows anywhere --
+    rotation rows carry no `kind` field at all (a purely structural guarantee, not just an empty filter)."""
+    run_a_id, run_b_id = rotation_run_pair
+    with Session(engine) as session:
+        run_a = session.get(ScannerRun, run_a_id)
+        run_b = session.get(ScannerRun, run_b_id)
+        payload = compass.build_manifest_payload(session, run_b, run_a, cfg)
+    rotation = payload["session_delta"]["rotation"]
+    assert set(rotation.keys()) == {"sector", "theme"}
+    for kind_block in rotation.values():
+        for row in kind_block["gaining"] + kind_block["losing"]:
+            assert "kind" not in row
+            assert set(row.keys()) == {"label", "from", "to", "delta", "direction_word", "drill_href"}
+
+
+def test_rotation_two_sides_ordered_most_moved_first_and_capped(engine, cfg, full_universe_rotation_runs):
+    """TC-2: two explicitly labelled sides, each ordered most-moved-first (|delta| descending), each
+    length <= `rotation_top_k`."""
+    run_a_id, run_b_id, _n_sector, _n_theme = full_universe_rotation_runs
+    with Session(engine) as session:
+        run_a = session.get(ScannerRun, run_a_id)
+        run_b = session.get(ScannerRun, run_b_id)
+        payload = compass.build_manifest_payload(session, run_b, run_a, cfg)
+    sector = payload["session_delta"]["rotation"]["sector"]
+    assert len(sector["gaining"]) <= cfg.compass.delta.rotation_top_k
+    assert len(sector["losing"]) <= cfg.compass.delta.rotation_top_k
+    for side in (sector["gaining"], sector["losing"]):
+        magnitudes = [abs(row["delta"]) for row in side]
+        assert magnitudes == sorted(magnitudes, reverse=True)
+
+
+def test_rotation_pair_below_rank_move_min_excluded_from_both_sides(engine, cfg, rotation_run_pair):
+    """TC-3: XLF (delta 0, |0| < rank_move_min=2) appears in neither `gaining` nor `losing`."""
+    run_a_id, run_b_id = rotation_run_pair
+    with Session(engine) as session:
+        run_a = session.get(ScannerRun, run_a_id)
+        run_b = session.get(ScannerRun, run_b_id)
+        payload = compass.build_manifest_payload(session, run_b, run_a, cfg)
+    sector = payload["session_delta"]["rotation"]["sector"]
+    labels = {row["label"] for row in sector["gaining"] + sector["losing"]}
+    assert "XLF" not in labels
+    assert sector["suppressed_count"] == 1
+
+
+def test_rotation_empty_losing_side_when_every_mover_is_a_gainer(engine, cfg, all_gainers_sector_run_pair):
+    """TC-4 / J-13 step 8 (dev handoff citation: this fixture + test): every threshold-crossing sector
+    mover is a gainer -- the losing side is an explicit empty array, the gaining side is unaffected."""
+    run_a_id, run_b_id = all_gainers_sector_run_pair
+    with Session(engine) as session:
+        run_a = session.get(ScannerRun, run_a_id)
+        run_b = session.get(ScannerRun, run_b_id)
+        payload = compass.build_manifest_payload(session, run_b, run_a, cfg)
+    sector = payload["session_delta"]["rotation"]["sector"]
+    assert sector["losing"] == []
+    assert {row["label"] for row in sector["gaining"]} == {"XLK", "XLE"}
+    assert sector["suppressed_count"] == 1  # XLF (delta 0) — suppressed, distinct from "empty losing"
+
+
+def test_rotation_direction_word_falling_rank_number_is_improving(engine, cfg, rotation_run_pair):
+    """TC-5: a FALLING rank number (`cur_rank < prev_rank`) always produces the "improving" word; a
+    RISING one always produces "deteriorating" — spot-checked against the stored ranks directly (the
+    same values `GET /api/sectors`/`GET /api/themes` would serve at each as-of)."""
+    run_a_id, run_b_id = rotation_run_pair
+    with Session(engine) as session:
+        run_a = session.get(ScannerRun, run_a_id)
+        run_b = session.get(ScannerRun, run_b_id)
+        payload = compass.build_manifest_payload(session, run_b, run_a, cfg)
+        stored_xle = list(session.exec(select(SectorScoreRow).where(SectorScoreRow.ticker == "XLE")))
+    sector = payload["session_delta"]["rotation"]["sector"]
+    gaining_by_label = {row["label"]: row for row in sector["gaining"]}
+    losing_by_label = {row["label"]: row for row in sector["losing"]}
+    xle = gaining_by_label["XLE"]  # 5 -> 1, falling
+    assert xle["from"] == 5 and xle["to"] == 1
+    assert xle["direction_word"] == cfg.compass.vocabulary.direction_words["up"] == "improving"
+    xlk = losing_by_label["XLK"]  # 1 -> 5, rising
+    assert xlk["from"] == 1 and xlk["to"] == 5
+    assert xlk["direction_word"] == cfg.compass.vocabulary.direction_words["down"] == "deteriorating"
+    stored_ranks = {row.run_id: row.rank for row in stored_xle}
+    assert stored_ranks[run_a_id] == xle["from"] and stored_ranks[run_b_id] == xle["to"]
+    # one theme row, same check
+    theme = payload["session_delta"]["rotation"]["theme"]
+    ev = {row["label"]: row for row in theme["gaining"]}["ev"]  # 4 -> 1, falling
+    assert ev["direction_word"] == "improving"
+
+
+def test_rotation_changes_entries_carry_same_delta_and_direction_word_as_rotation_rows(engine, cfg, rotation_run_pair):
+    """TC-6: `session_delta.changes` sector/theme-kind entries carry the SAME signed `delta` AND the SAME
+    `direction_word` as their corresponding rotation row (single computation, two placements)."""
+    run_a_id, run_b_id = rotation_run_pair
+    with Session(engine) as session:
+        run_a = session.get(ScannerRun, run_a_id)
+        run_b = session.get(ScannerRun, run_b_id)
+        payload = compass.build_manifest_payload(session, run_b, run_a, cfg)
+    session_delta = payload["session_delta"]
+    sector_rotation = session_delta["rotation"]["sector"]
+    rotation_by_label = {row["label"]: row for row in sector_rotation["gaining"] + sector_rotation["losing"]}
+    sector_changes = {c["label"]: c for c in session_delta["changes"] if c["kind"] == "sector"}
+    for label, rotation_row in rotation_by_label.items():
+        change_entry = sector_changes[label]
+        assert change_entry["delta"] == rotation_row["delta"]
+        assert change_entry["direction_word"] == rotation_row["direction_word"]
+
+
+def test_rotation_no_prior_run_explicit_no_comparison_state(engine, cfg, rotation_run_pair):
+    """TC-9: `previous_run is None` renders each kind's explicit no-prior-run state — empty sides, zero
+    counts, no direction words — consistent with `session_delta`'s own top-level no-prior-run branch."""
+    run_a_id, _run_b_id = rotation_run_pair
+    with Session(engine) as session:
+        run_a = session.get(ScannerRun, run_a_id)
+        payload = compass.build_manifest_payload(session, run_a, None, cfg)
+    assert payload["session_delta"]["prior_as_of"] is None
+    rotation = payload["session_delta"]["rotation"]
+    for kind_block in rotation.values():
+        assert kind_block["gaining"] == [] and kind_block["losing"] == []
+        assert kind_block["shown_count"] == 0
+        assert kind_block["suppressed_count"] == 0
+        assert kind_block["residual_count"] == 0
+    assert rotation["sector"]["configured_total"] == len(cfg.etfs.sector) + len(cfg.etfs.industry)
+    assert rotation["theme"]["configured_total"] == len(cfg.themes)
+
+
+def test_rotation_full_universe_closure_and_residual_isolation(engine, cfg, full_universe_rotation_runs):
+    """TC-7 (accounting closure against the configured group counts) + TC-8/TC-15 (dev handoff citation:
+    this fixture + test — an above-threshold mover excluded SOLELY by `rotation_top_k`, isolated from the
+    separate `rank_move_min` condition, per iter-35's lesson). See `full_universe_rotation_runs`'s
+    docstring for the exact math this test's concrete numbers depend on."""
+    run_a_id, run_b_id, n_sector, n_theme = full_universe_rotation_runs
+    assert cfg.compass.delta.rank_move_min == 2  # this test's concrete numbers depend on the real config
+    assert cfg.compass.delta.rotation_top_k == 5
+    with Session(engine) as session:
+        run_a = session.get(ScannerRun, run_a_id)
+        run_b = session.get(ScannerRun, run_b_id)
+        payload = compass.build_manifest_payload(session, run_b, run_a, cfg)
+    rotation = payload["session_delta"]["rotation"]
+
+    sector = rotation["sector"]
+    assert sector["configured_total"] == n_sector == 31
+    assert len(sector["gaining"]) == 5 and len(sector["losing"]) == 5
+    assert sector["shown_count"] == 10
+    assert sector["suppressed_count"] == 1  # the exact-middle pair, delta 0
+    assert sector["residual_count"] == 20  # 10 gainers + 10 losers cleared the threshold but beyond the cap
+    assert sector["shown_count"] + sector["suppressed_count"] + sector["residual_count"] == n_sector
+
+    theme = rotation["theme"]
+    assert theme["configured_total"] == n_theme == 11
+    assert len(theme["gaining"]) == 5 and len(theme["losing"]) == 5
+    assert theme["shown_count"] == 10
+    assert theme["suppressed_count"] == 1
+    assert theme["residual_count"] == 0  # exactly at the cap on both sides here — nothing left over
+    assert theme["shown_count"] + theme["suppressed_count"] + theme["residual_count"] == n_theme
+
+
+def test_rotation_top_k_is_config_driven(cfg):
+    """`rotation_top_k` lives ONLY in `compass.delta.*` (anti-goal: No magic numbers) — a direct typed-
+    config read, never a literal in the engine module (test_no_magic_numbers.py's static scan enforces
+    the code side; this proves the config wiring)."""
+    assert cfg.compass.delta.rotation_top_k > 0
+
+
+def test_rotation_no_composite_score_field_anywhere(engine, cfg, rotation_run_pair):
+    """AG-11: a rotation row carries only the stored ranks, their signed difference, and the served word
+    — no new blended/composite field."""
+    run_a_id, run_b_id = rotation_run_pair
+    with Session(engine) as session:
+        run_a = session.get(ScannerRun, run_a_id)
+        run_b = session.get(ScannerRun, run_b_id)
+        payload = compass.build_manifest_payload(session, run_b, run_a, cfg)
+    allowed = {"label", "from", "to", "delta", "direction_word", "drill_href"}
+    for kind_block in payload["session_delta"]["rotation"].values():
+        for row in kind_block["gaining"] + kind_block["losing"]:
+            assert set(row.keys()) == allowed

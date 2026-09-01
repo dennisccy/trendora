@@ -1,8 +1,8 @@
 """app.engine.compass — the deterministic narrative + candidate-selection trace + manifest assembly
 (goal-market-compass iter-2, J-03/J-04, CONTENT block; iter-3, J-05/J-06, the freeze/integrity block;
-iter-28, J-07, the `state_band` CONTENT block).
+iter-28, J-07, the `state_band` CONTENT block; iter-36, J-13, the `session_delta.rotation` CONTENT block).
 
-Four CONTENT producers, one assembler:
+Five CONTENT producers, one assembler:
 
   - `build_narrative(...)` — deterministic template sentences (state / direction / breadth /
     focus-count, plus a no-comparison / NA-velocity / retrospective-stamp variant where it applies),
@@ -25,10 +25,20 @@ Four CONTENT producers, one assembler:
     (never a second word map) and the SAME `_flat_band_word` classifier `_direction_word` already used.
     No-prior-run or a missing per-word input renders that word's explicit null/no-comparison state —
     never a fabricated word (mirrors `session_delta`'s and `narrative`'s own no-prior-run handling).
-  - `build_manifest_payload(...)` — assembles `session_delta` + `narrative` + `selection` +
-    `state_band` into one content document and computes `content_hash` (sha256 over the sorted-key
-    JSON of the content block only — unchanged scope/contract from iter-2, including the cohorts
-    nested inside `selection` and, since iter-28, `state_band` alongside them).
+  - `build_rotation(...)` — iter-36 (J-13): `session_delta.rotation.{sector,theme}` — two labelled,
+    signed, both-directions (`gaining`/`losing`) sides per group kind, built from the SAME sector/theme
+    rank pairs `session_delta.sector_rank_pairs`/`theme_rank_pairs` computes (no second computation),
+    each side capped by the NEW `compass.delta.rotation_top_k` and a complete per-kind accounting
+    (`shown_count`/`suppressed_count`/`residual_count`/`configured_total`) that discloses an
+    above-threshold mover beyond the cap rather than dropping it uncounted (the exact defect this
+    iteration fixes). The SAME signed `delta` + a served `direction_word` additionally ride the
+    sector/theme-kind entries of `session_delta.changes` (single computation, two placements) — group-
+    level only, no stock-kind row anywhere in `rotation` (Non-Goal).
+  - `build_manifest_payload(...)` — assembles `session_delta` (now including `rotation`) + `narrative` +
+    `selection` + `state_band` into one content document and computes `content_hash` (sha256 over the
+    sorted-key JSON of the content block only — unchanged scope/contract from iter-2, including the
+    cohorts nested inside `selection`, `state_band` alongside them since iter-28, and `session_delta.
+    rotation` since iter-36).
 
 The freeze/integrity block (iter-3, J-05/J-06) — `_freeze_manifest` is the ONE writer behind all three
 producer paths:
@@ -76,7 +86,14 @@ from app.config import Config, REPO_ROOT, get_config
 from app.engine import engine_identity, evidence, market_phase, readiness
 from app.engine.prices import latest_data_date
 from app.engine.research import _dataset_version  # single-sourced dataset stamp (J-72) — never duplicated
-from app.engine.session_delta import compute_delta, find_previous_run
+from app.engine.session_delta import (
+    KIND_SECTOR,
+    KIND_THEME,
+    compute_delta,
+    find_previous_run,
+    sector_rank_pairs,
+    theme_rank_pairs,
+)
 from app.engine.setups import RISK_OFF_LABEL
 from app.engine.snapshot_serving import dashboard_payload
 from app.engine.universe_screen import POOL_SURVIVORSHIP_LABEL, read_pool
@@ -343,6 +360,113 @@ def build_state_band(
         "stress": {"direction_word": stress_word, "delta": stress_delta},
         "breadth": {"direction_word": breadth_word, "delta": breadth_delta},
     }
+
+
+# --- rotation (iter-36, J-13) -------------------------------------------------------------------
+
+
+def _rank_direction_word(delta: int, cfg: Config) -> str:
+    """The sector/theme rank-delta -> `direction_word` classifier (goal-market-compass iter-36, J-13) --
+    reuses the SAME `_flat_band_word`/`compass.vocabulary.direction_words` map every other direction word
+    in this module uses (never a second word map). `flat_band` reuses `compass.delta.rank_move_min`
+    itself: every caller here already gated the row to `abs(delta) >= rank_move_min`, so the word is
+    never "flat" for a displayed row -- no separate threshold key is needed (AG-15: not a new/retuned
+    threshold, just the SAME gate reused as the word classifier's flat-band). Polarity is resolved
+    engine-side: a FALLING rank number (`delta < 0`) is an IMPROVING position, so `delta` is NEGATED
+    before classifying -- mirrors the `state_band.stress` sign-transform precedent above (a falling
+    severity is also "up"/improving)."""
+    return _flat_band_word(-delta, cfg.compass.delta.rank_move_min, cfg)
+
+
+def _rotation_row(entry: dict, cfg: Config) -> dict:
+    """One `session_delta.rotation.<kind>.{gaining,losing}` row from a `session_delta.py` sector/theme
+    pair entry (already carries a signed `delta`) -- the served shape only (label/from/to/delta/
+    direction_word/drill_href); the internal `kind`/`magnitude`/`threshold` fields stay session_delta's
+    own concern and are not repeated here."""
+    return {
+        "label": entry["label"],
+        "from": entry["from"],
+        "to": entry["to"],
+        "delta": entry["delta"],
+        "direction_word": _rank_direction_word(entry["delta"], cfg),
+        "drill_href": entry["drill_href"],
+    }
+
+
+def _rotation_kind(pairs: list[tuple[dict, float]], cfg: Config, configured_total: int) -> dict:
+    """One group kind's (`sector` | `theme`) rotation block: two labelled, both-directions sides plus a
+    complete accounting (goal-market-compass iter-36, J-13) -- built from `pairs`, the SAME uncapped
+    signed-delta pairs `session_delta.sector_rank_pairs`/`theme_rank_pairs` already computed (no second
+    computation), already sorted most-moved-first.
+
+    `gaining` = an IMPROVING position (`delta < 0`, rank number fell); `losing` = a DETERIORATING one
+    (`delta > 0`); a pair that clears `rank_move_min` can never have `delta == 0` (the gate requires
+    `abs(delta) >= rank_move_min >= 1`), so every above-threshold pair lands in exactly one side.
+
+    Accounting: `shown_count` (rows actually returned, both sides, after the `rotation_top_k` cap) +
+    `suppressed_count` (below-`rank_move_min` pairs) + `residual_count` (above-threshold pairs beyond the
+    cap on EITHER side -- disclosed, never dropped, unlike the prior defect this iteration fixes) sums to
+    exactly `len(pairs)`, which equals `configured_total` whenever both runs score the full configured
+    universe (the fixed sector/industry and theme catalogs always do)."""
+    threshold = cfg.compass.delta.rank_move_min
+    cap = cfg.compass.delta.rotation_top_k
+    above = [(entry, magnitude) for entry, magnitude in pairs if magnitude >= threshold]
+    suppressed_count = len(pairs) - len(above)
+    gaining_all = [entry for entry, _magnitude in above if entry["delta"] < 0]
+    losing_all = [entry for entry, _magnitude in above if entry["delta"] > 0]
+    gaining = gaining_all[:cap]
+    losing = losing_all[:cap]
+    residual_count = (len(gaining_all) - len(gaining)) + (len(losing_all) - len(losing))
+    return {
+        "gaining": [_rotation_row(entry, cfg) for entry in gaining],
+        "losing": [_rotation_row(entry, cfg) for entry in losing],
+        "shown_count": len(gaining) + len(losing),
+        "suppressed_count": suppressed_count,
+        "residual_count": residual_count,
+        "configured_total": configured_total,
+    }
+
+
+def _rotation_no_prior(configured_total: int) -> dict:
+    """One kind's explicit no-prior-run rotation state (TC-9) -- no deltas, no direction words, no
+    fabricated rows, consistent with `session_delta`'s own top-level no-prior-run branch. `configured_total`
+    is a static config fact (not a comparison result), so it is still reported honestly here."""
+    return {
+        "gaining": [], "losing": [], "shown_count": 0, "suppressed_count": 0,
+        "residual_count": 0, "configured_total": configured_total,
+    }
+
+
+def build_rotation(
+    previous_run: Optional[ScannerRun],
+    sector_pairs: list[tuple[dict, float]],
+    theme_pairs: list[tuple[dict, float]],
+    cfg: Config,
+) -> dict:
+    """The `session_delta.rotation` CONTENT block (goal-market-compass iter-36, J-13) -- two labelled,
+    signed, both-directions sides per group kind (`sector`, `theme`), built from the SAME sector/theme
+    rank pairs `compute_delta` already computes (`sector_pairs`/`theme_pairs`, passed in by
+    `build_manifest_payload` -- no second computation). Group-level only -- no stock-kind row anywhere
+    here (Non-Goal, J-13 step 1). `previous_run is None` renders each kind's explicit no-prior-run state
+    (TC-9)."""
+    sector_total = len(cfg.etfs.sector) + len(cfg.etfs.industry)
+    theme_total = len(cfg.themes)
+    if previous_run is None:
+        return {"sector": _rotation_no_prior(sector_total), "theme": _rotation_no_prior(theme_total)}
+    return {
+        "sector": _rotation_kind(sector_pairs, cfg, sector_total),
+        "theme": _rotation_kind(theme_pairs, cfg, theme_total),
+    }
+
+
+def _attach_rank_direction_words(changes: list[dict], cfg: Config) -> None:
+    """TC-6: mutates sector/theme-kind entries of `session_delta.changes` IN PLACE, attaching the SAME
+    `direction_word` their rotation-row counterpart carries -- `delta` already rides these entries from
+    `session_delta.py`'s `_entry` calls (single computation); this adds ONLY the served word, via the SAME
+    `_rank_direction_word` helper `_rotation_row` uses (single computation, two placements, goal.md)."""
+    for entry in changes:
+        if entry["kind"] in (KIND_SECTOR, KIND_THEME) and "delta" in entry:
+            entry["direction_word"] = _rank_direction_word(entry["delta"], cfg)
 
 
 # --- selection (J-04; iter-3 J-05/J-06 adds comparison_cohort + near_threshold_shadow) --------
@@ -794,9 +918,17 @@ def build_manifest_payload(
     block only — never re-derived at serve time; see `manifest_row_payload`). `selection` carries
     `comparison_cohort` / `near_threshold_shadow` (iter-3); `state_band` (iter-28, J-07) is a new
     top-level content block alongside `session_delta`/`narrative`/`selection` — additive to
-    `content_hash`'s scope, no other code change needed for that."""
+    `content_hash`'s scope, no other code change needed for that.
+
+    iter-36 (J-13): `sector_pairs`/`theme_pairs` are computed ONCE here (when `previous_run` exists) and
+    passed into BOTH `compute_delta` (so its own sector/theme classify+cap reuses them, no second query)
+    and `build_rotation` (`session_delta.rotation`) — one pair-building DB read per manifest build."""
     cfg = config or get_config()
-    delta = compute_delta(session, current_run, previous_run, cfg)
+    sector_pairs = sector_rank_pairs(session, current_run, previous_run, cfg) if previous_run is not None else []
+    theme_pairs = theme_rank_pairs(session, current_run, previous_run, cfg) if previous_run is not None else []
+    delta = compute_delta(session, current_run, previous_run, cfg, sector_pairs=sector_pairs, theme_pairs=theme_pairs)
+    _attach_rank_direction_words(delta["changes"], cfg)
+    delta["rotation"] = build_rotation(previous_run, sector_pairs, theme_pairs, cfg)
     selection = evaluate_selection(session, current_run, cfg)
     narrative = build_narrative(session, current_run, previous_run, selection, cfg)
     state_band = build_state_band(session, current_run, previous_run, cfg)

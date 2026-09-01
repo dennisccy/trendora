@@ -1421,6 +1421,7 @@ compass:
     rank_move_min: 2                 # sector/theme rank positions moved to report a change
     stock_score_min_change: 8.0      # leadership-score points a bucket-crossing stock must move to report a "stock" change
     top_k: 5                         # max sector-kind and max theme-kind change entries shown (most-moved first; mirrors the existing Top-Sectors/Top-Themes "top 5" convention)
+    rotation_top_k: 5                # goal-market-compass iter-36 (J-13): max GAINING and max LOSING rows shown per side of session_delta.rotation.{sector,theme} -- independent of top_k above (session_delta.changes stays unchanged); above-threshold movers beyond this cap are counted in that side's residual_count, never dropped uncounted
     max_stock_items: 10              # max stock-kind change entries evaluated/shown (bounds both compute and display — AG-8)
     velocity_flat_band: 2.0          # |regime-score delta| below this reads as "little changed" in the narrative's direction sentence
     stress_velocity_flat_band: 5.0   # goal-market-compass iter-28 (J-07): |severity delta| below this reads as "little changed" for state_band.stress (a dedicated key -- severity is a different 0-100 scale than the regime score, not a reuse of velocity_flat_band above). state_band.breadth reuses breadth_min_change_pts below unchanged.

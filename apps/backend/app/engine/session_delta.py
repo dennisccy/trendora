@@ -11,6 +11,14 @@ Reads ONLY column-projected `ScannerResult` / `SectorScoreRow` / `ThemeScoreRow`
 `record_json` sweep (AG-8); `ScannerRun` itself carries no such blob so its typed columns are read
 directly. Compares only two ALREADY-STORED, already-computed runs — there is no `forward_returns` or
 post-as-of bar for this module to read even by accident (AG-5).
+
+`sector_rank_pairs(session, current_run, previous_run, config)` / `theme_rank_pairs(...)`
+(goal-market-compass iter-36, J-13): the full, uncapped, signed-`delta` sector/theme rank-pair
+computation `_sector_changes`/`_theme_changes` (feeding `session_delta.changes`, still `top_k`-capped,
+unchanged behavior) and `app.engine.compass.build_rotation` (`session_delta.rotation`, independently
+`rotation_top_k`-capped, both directions) both build from — one query pair per manifest build, two
+capped consumers. Sector/theme-kind `changes[]` entries additionally carry this signed `delta`
+(direction-word wording is compass.py's concern — it owns `compass.vocabulary`, this module does not).
 """
 from __future__ import annotations
 
@@ -48,8 +56,11 @@ def _drill_href(kind: str, as_of_iso: str, ticker: Optional[str] = None) -> str:
     return f"/?asof={as_of_iso}"
 
 
-def _entry(kind: str, label: str, frm, to, magnitude: float, threshold: float, drill_href: str) -> dict:
-    return {
+def _entry(
+    kind: str, label: str, frm, to, magnitude: float, threshold: float, drill_href: str,
+    delta: Optional[int] = None,
+) -> dict:
+    entry = {
         "kind": kind,
         "label": label,
         "from": frm,
@@ -58,6 +69,11 @@ def _entry(kind: str, label: str, frm, to, magnitude: float, threshold: float, d
         "threshold": threshold,
         "drill_href": drill_href,
     }
+    # goal-market-compass iter-36 (J-13): a SIGNED rank delta rides sector/theme-kind entries only (never
+    # market/breadth/stock) -- additive, so the older entry shape is unchanged for every other kind.
+    if delta is not None:
+        entry["delta"] = delta
+    return entry
 
 
 def _classify(pairs: list[tuple[dict, float]], threshold: float) -> tuple[list[dict], list[dict]]:
@@ -102,10 +118,21 @@ def _breadth_changes(
     return _classify(pairs, threshold)
 
 
-def _sector_changes(
-    session: Session, current: ScannerRun, previous: ScannerRun, as_of_iso: str, cfg: Config
-) -> tuple[list[dict], list[dict]]:
+def sector_rank_pairs(
+    session: Session, current: ScannerRun, previous: ScannerRun, config: Optional[Config] = None
+) -> list[tuple[dict, float]]:
+    """ALL comparable sector/industry rank pairs between `current` and `previous` (goal-market-compass
+    iter-36, J-13) — BEFORE any `rank_move_min` gate or `top_k`/`rotation_top_k` cap is applied, most-
+    moved-first (stable sort — ties keep the deterministic ticker-ordered input). Each entry carries a
+    SIGNED `delta` (`cur_rank - prev_rank`; a FALLING rank number is an IMPROVING position) alongside the
+    existing `magnitude`/`from`/`to`/`drill_href` shape. This is the ONE pair-building computation both
+    `_sector_changes` (feeding the existing `session_delta.changes`/`suppressed`, `top_k`-capped) and
+    `app.engine.compass.build_rotation` (`rotation_top_k`-capped, both directions) read — callers that
+    already hold these pairs should pass them straight into `compute_delta` so the DB is queried only
+    once per manifest build (see `compass.build_manifest_payload`)."""
+    cfg = config or get_config()
     threshold = cfg.compass.delta.rank_move_min
+    as_of_iso = current.asof_date.isoformat()
     cur_rows = session.exec(
         select(SectorScoreRow.ticker, SectorScoreRow.name, SectorScoreRow.rank)
         .where(SectorScoreRow.run_id == current.id)
@@ -123,20 +150,27 @@ def _sector_changes(
         prev_rank = prev_by_ticker.get(ticker)
         if prev_rank is None:
             continue  # the sector/industry ETF universe is fixed (config.etfs.*) — never new-to-universe
-        magnitude = float(abs(cur_rank - prev_rank))
-        entry = _entry(KIND_SECTOR, name, prev_rank, cur_rank, magnitude, threshold, _drill_href(KIND_SECTOR, as_of_iso))
+        delta = cur_rank - prev_rank
+        magnitude = float(abs(delta))
+        entry = _entry(
+            KIND_SECTOR, name, prev_rank, cur_rank, magnitude, threshold, _drill_href(KIND_SECTOR, as_of_iso),
+            delta=delta,
+        )
         pairs.append((entry, magnitude))
-    # Most-moved first within the kind (stable sort — ties keep the deterministic ticker-ordered input),
-    # THEN cap at top_k (mirrors the existing Top-Sectors "top 5" display convention elsewhere in the app).
+    # Most-moved first (stable sort — ties keep the deterministic ticker-ordered input); no cap here — the
+    # two callers apply their OWN independent cap (top_k vs rotation_top_k).
     pairs.sort(key=lambda pair: pair[1], reverse=True)
-    changes, suppressed = _classify(pairs, threshold)
-    return changes[: cfg.compass.delta.top_k], suppressed
+    return pairs
 
 
-def _theme_changes(
-    session: Session, current: ScannerRun, previous: ScannerRun, as_of_iso: str, cfg: Config
-) -> tuple[list[dict], list[dict]]:
+def theme_rank_pairs(
+    session: Session, current: ScannerRun, previous: ScannerRun, config: Optional[Config] = None
+) -> list[tuple[dict, float]]:
+    """Theme-kind counterpart of `sector_rank_pairs` (see its docstring for the full contract) — same
+    signed-`delta` shape, same "one computation, multiple capped consumers" posture."""
+    cfg = config or get_config()
     threshold = cfg.compass.delta.rank_move_min
+    as_of_iso = current.asof_date.isoformat()
     cur_rows = session.exec(
         select(ThemeScoreRow.slug, ThemeScoreRow.name, ThemeScoreRow.rank)
         .where(ThemeScoreRow.run_id == current.id)
@@ -154,11 +188,27 @@ def _theme_changes(
         prev_rank = prev_by_slug.get(slug)
         if prev_rank is None:
             continue  # the theme universe is fixed (config.themes) — never new-to-universe
-        magnitude = float(abs(cur_rank - prev_rank))
-        entry = _entry(KIND_THEME, name, prev_rank, cur_rank, magnitude, threshold, _drill_href(KIND_THEME, as_of_iso))
+        delta = cur_rank - prev_rank
+        magnitude = float(abs(delta))
+        entry = _entry(
+            KIND_THEME, name, prev_rank, cur_rank, magnitude, threshold, _drill_href(KIND_THEME, as_of_iso),
+            delta=delta,
+        )
         pairs.append((entry, magnitude))
     pairs.sort(key=lambda pair: pair[1], reverse=True)
-    changes, suppressed = _classify(pairs, threshold)
+    return pairs
+
+
+def _sector_changes(pairs: list[tuple[dict, float]], cfg: Config) -> tuple[list[dict], list[dict]]:
+    """`session_delta.changes`/`suppressed`'s sector-kind slice — classify + cap at the EXISTING `top_k`
+    (unchanged behavior/value). `pairs` is `sector_rank_pairs`'s full output — no second query."""
+    changes, suppressed = _classify(pairs, cfg.compass.delta.rank_move_min)
+    return changes[: cfg.compass.delta.top_k], suppressed
+
+
+def _theme_changes(pairs: list[tuple[dict, float]], cfg: Config) -> tuple[list[dict], list[dict]]:
+    """Theme-kind counterpart of `_sector_changes` (see its docstring)."""
+    changes, suppressed = _classify(pairs, cfg.compass.delta.rank_move_min)
     return changes[: cfg.compass.delta.top_k], suppressed
 
 
@@ -221,22 +271,35 @@ def compute_delta(
     current_run: ScannerRun,
     previous_run: Optional[ScannerRun],
     config: Optional[Config] = None,
+    sector_pairs: Optional[list[tuple[dict, float]]] = None,
+    theme_pairs: Optional[list[tuple[dict, float]]] = None,
 ) -> dict:
     """The `session_delta` CONTENT block (goal-market-compass iter-2, J-02). `previous_run` is the
     immediately preceding STORED run (see `find_previous_run`), or `None` for the earliest stored run —
-    the explicit no-prior-run state (TC-6): no deltas, no direction words, nothing fabricated."""
+    the explicit no-prior-run state (TC-6): no deltas, no direction words, nothing fabricated.
+
+    `sector_pairs`/`theme_pairs` (goal-market-compass iter-36, J-13): optional PRECOMPUTED
+    `sector_rank_pairs`/`theme_rank_pairs` output. A caller that also needs the full pairs (e.g.
+    `app.engine.compass.build_manifest_payload`, to build `session_delta.rotation`) computes them once
+    and passes them in here so the DB is queried only once per manifest build; omitted, they are computed
+    the same way internally (unchanged behavior for every other caller)."""
     cfg = config or get_config()
     if previous_run is None:
         return {"prior_as_of": None, "gap_days": None, "changes": [], "suppressed": [], "suppressed_count": 0}
 
     as_of_iso = current_run.asof_date.isoformat()
+    if sector_pairs is None:
+        sector_pairs = sector_rank_pairs(session, current_run, previous_run, cfg)
+    if theme_pairs is None:
+        theme_pairs = theme_rank_pairs(session, current_run, previous_run, cfg)
+
     changes: list[dict] = []
     suppressed: list[dict] = []
     for changes_part, suppressed_part in (
         _market_changes(current_run, previous_run, as_of_iso, cfg),
         _breadth_changes(current_run, previous_run, as_of_iso, cfg),
-        _sector_changes(session, current_run, previous_run, as_of_iso, cfg),
-        _theme_changes(session, current_run, previous_run, as_of_iso, cfg),
+        _sector_changes(sector_pairs, cfg),
+        _theme_changes(theme_pairs, cfg),
         _stock_changes(session, current_run, previous_run, as_of_iso, cfg),
     ):
         changes.extend(changes_part)

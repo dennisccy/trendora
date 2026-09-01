@@ -598,3 +598,31 @@ isolates each one — otherwise the suite is green and blind.
 rules, eligibility checks, threshold partitions) — especially `apps/backend/app/engine/compass.py` and
 its fixtures in `apps/backend/tests/test_compass.py` / `test_manifest_invariants.py`. Before accepting
 a gating test, check that each condition has a fixture row where it is the ONLY one failing.
+
+## iter-36 — 2026-09-01T14:05:00Z
+
+**Verdict:** ESCALATE
+**Lesson:** A screenshot can be present, correctly named, cited in a PASS row, and still contain nothing
+at all — `UT-J-13-rotation-both-directions.png` is 1683×1260 with exactly ONE distinct colour across all
+2.1M pixels. File size was the only cheap tell (9.4 KB against ~120 KB for every real capture in the same
+directory). Never credit a screenshot from its filename or its results row; measure it
+(`PIL.Image.getcolors()` — a single-colour image is a failed capture) or at minimum compare its size to
+its siblings.
+**Applies to:** any evaluator/QA scoring a journey from a screenshot; especially any first-time journey
+promotion, where the capture is the only visual record that will ever exist of the new surface.
+
+## iter-36 — 2026-09-01T14:05:00Z
+
+**Verdict:** ESCALATE
+**Lesson:** The iter-33 depth-drop recurred verbatim and nothing caught it automatically: the spec read
+`Depth: full`, `session.json next_depth` read `"full"`, the decomposer was even dispatched with "BINDING
+by default" — and every downstream agent was still launched as "goal-mode **lean** iteration". The only
+reliable detector is the TRACE (`trace.jsonl` args contain the literal phrase "lean iteration") plus the
+absence of the four full-only artifacts (audit handoff, QA report, ux-regression, closure verdict).
+`iter-N/depth-dispatched` agrees with the trace, but nothing compares it against the SPEC's own
+`**Depth:**` line, so a drop is silent by construction. iter-35 anticipated this and left a written
+"a drop to lean must be surfaced explicitly" instruction — which no agent honoured, because no agent
+reads that block except the decomposer.
+**Applies to:** every goal-mode evaluator; check `docs/phases/<iter>.md` `**Depth:**` against
+`iter-N/depth-dispatched` as a two-line mechanical diff before scoring. Also a framework gap worth
+fixing upstream: the engine should refuse, or loudly stamp, a dispatch whose depth is below the spec's.

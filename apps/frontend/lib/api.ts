@@ -873,9 +873,15 @@ export async function fetchThemes(asof?: string, signal?: AbortSignal): Promise<
   return getJSON<ThemesResponse>(withAsOf("/api/themes", asof), signal);
 }
 
-// --- compass (goal-market-compass iter-2, J-02/J-03/J-04) -----------------------------------
+// --- compass (goal-market-compass iter-2, J-02/J-03/J-04; iter-36, J-13 rotation) ------------
 /** One session-over-session change entry (J-02) — already threshold-gated server-side; the
- *  frontend renders it verbatim and evaluates no threshold itself. */
+ *  frontend renders it verbatim and evaluates no threshold itself.
+ *
+ *  iter-36 (J-13) additive fields: `delta` (signed) + `direction_word` ride `kind === "sector"` and
+ *  `kind === "theme"` entries ONLY — undefined for `market`/`breadth`/`stock` kinds and for any entry
+ *  served from a manifest minted before this field existed (honest absence, never fabricated). These
+ *  are the SAME values the corresponding `session_delta.rotation` row carries (single computation, two
+ *  placements) — the frontend selects no word and computes no sign here either way. */
 export interface SessionDeltaChange {
   kind: "market" | "breadth" | "sector" | "theme" | "stock";
   label: string;
@@ -884,6 +890,55 @@ export interface SessionDeltaChange {
   magnitude: number;
   threshold: number;
   drill_href: string;
+  delta?: number;
+  direction_word?: string;
+}
+
+/** One `session_delta.rotation.<kind>.{gaining,losing}` row (goal-market-compass iter-36, J-13) — a
+ *  served, group-level (sector/theme only, never stock) rank-move row: the label, the stored from/to rank
+ *  positions, a SIGNED `delta` (`to - from`; a FALLING rank number is an IMPROVING position), the served
+ *  `direction_word` (one of `compass.vocabulary.direction_words`' three values, polarity already resolved
+ *  server-side), and the existing drill-through link. Re-formatted only — the frontend selects no word,
+ *  computes no sign, and applies no threshold. */
+export interface CompassRotationRow {
+  label: string;
+  from: number;
+  to: number;
+  delta: number;
+  direction_word: string;
+  drill_href: string;
+}
+
+/** One group kind's (`sector` | `theme`) rotation block (J-13): two explicitly labelled, both-directions
+ *  sides, each capped by the config-only `compass.delta.rotation_top_k` and ordered most-moved-first, plus
+ *  a complete accounting — `shown_count` (rows actually returned across both sides) + `suppressed_count`
+ *  (below-`rank_move_min` pairs) + `residual_count` (above-threshold pairs beyond the cap, disclosed —
+ *  NEVER silently dropped, the exact defect this iteration fixes) sums to `configured_total` (31 for
+ *  sector/industry, 11 for theme, read from the SAME config catalogs `GET /api/sectors`/`GET /api/themes`
+ *  serve). An empty `gaining`/`losing` array is the honest empty state for that side — the component
+ *  renders its own explicit empty-state text, never a blank. */
+export interface CompassRotationKind {
+  gaining: CompassRotationRow[];
+  losing: CompassRotationRow[];
+  shown_count: number;
+  suppressed_count: number;
+  residual_count: number;
+  configured_total: number;
+}
+
+/** The `session_delta.rotation` CONTENT block (J-13) — one block per group kind, no stock-kind row
+ *  anywhere (group-level only, Non-Goal). Computed ONCE by `app.engine.compass.build_manifest_payload`
+ *  (reusing `app.engine.session_delta.compute_delta`'s sector/theme rank pairs — no second computation)
+ *  and served only by the existing `GET /api/compass` — no new producer, no new route. `previous_run is
+ *  None` (the earliest stored session) renders each kind's explicit no-prior-run state: empty sides, zero
+ *  counts — never fabricated, consistent with `session_delta`'s own top-level `prior_as_of: null` state
+ *  (check that field, not this block's shape, to detect the no-comparison case). The block itself is
+ *  OPTIONAL on the wire: a stored manifest row minted before iter-36 carries no `rotation` key at all
+ *  ("pre-rotation era", never backfilled — AG-12), which is a THIRD state, distinct from both
+ *  no-prior-run and an empty side. */
+export interface CompassRotation {
+  sector: CompassRotationKind;
+  theme: CompassRotationKind;
 }
 
 /** One BELOW-threshold entry, shown only inside the "suppressed moves" disclosure. */
@@ -901,6 +956,12 @@ export interface SessionDelta {
   changes: SessionDeltaChange[];
   suppressed: SessionDeltaSuppressed[];
   suppressed_count: number;
+  // iter-36 (J-13) — additive and OPTIONAL: every `next_session_manifests` row minted before iter-36
+  // stores a `session_delta` blob with NO `rotation` key at all (the key is added inside the existing
+  // blob, never backfilled — AG-12), and those rows are served verbatim by `manifest_row_payload`. So a
+  // historical as-of can legitimately have a non-null `prior_as_of` and NO `rotation` — consumers must
+  // branch on its absence and show an honest placeholder (AG-8), never dereference it unguarded.
+  rotation?: CompassRotation;
 }
 
 /** One cited fact backing a narrative sentence (J-03) — spot-checkable against the canonical

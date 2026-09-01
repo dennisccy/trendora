@@ -3462,3 +3462,157 @@ QUESTIONS** remain open and non-blocking: J-06's "underlying run unavailable" wo
 test steps; whether an empty "next-session focus" is acceptable; whether MNST joins the recovery list;
 and whether 12 August should keep showing its "rebuilt" note. **ONE MECHANICAL ITEM:** the whole
 iteration is uncommitted at scoring time; confirm it lands.
+
+## Iteration 36 — goal-market-compass-iter-36
+
+**Date:** 2026-09-01T14:05:00Z
+**Verdict:** ESCALATE
+**Depth dispatched:** lean — **but the spec said `full`, and the drop was never surfaced. I verified
+this by artifact, not by marker.** `docs/phases/goal-market-compass-iter-36.md` reads `Depth: full`
+with an explicit "Full trigger: 1 — structural/cross-cutting"; `session.json` `next_depth` is `"full"`;
+the decomposer was dispatched with "Evaluator depth recommendation for THIS iteration: full — BINDING
+by default" (trace step 368) and correctly planned full. Then EVERY downstream agent was dispatched as
+"goal-mode **lean** iteration" — developer (370), reviewer (371), developer (372), reviewer (373),
+browser-qa-agent (374), coherence-auditor (375). `iter-36/depth-dispatched` reads `lean`. **No auditor,
+no QA, no ux-regression, no closure, no demo agent appears anywhere in the trace, and none of their
+files exists on disk.** The iteration-state "Do not redo" block written by iter-35 said in terms:
+"Depth for the J-13 round is `full` … A drop to `lean` must be surfaced explicitly and marked unmet."
+Nobody surfaced it. **I am surfacing it now.** This is the iter-33 failure mode repeating.
+
+**Owner-facing lines:** `THE LAST UNBUILT JOB IS BUILT AND I RE-DERIVED EVERY NUMBER MYSELF — all 7
+sector and both theme rotation rows match the STORED rankings exactly at runs 3157/3158` · `THE COUNTING
+HOLE IS CLOSED: sector 7+24+0 = 31 of 31 and theme 2+9+0 = 11 of 11, where last round measured 29/31` ·
+`THE TWO ROWS THAT WERE COUNTED NOWHERE ARE NOW SHOWN — Banks (SPDR) 15→13 and Technology 16→14, both
+verified against the stored ranks` · `WHAT-CHANGED IS PROVABLY UNMOVED — v9's `changes` is identical to
+v8's once the two new additive fields are stripped: same 17 entries, same order, same thresholds, same
+suppressed list, same count 36` · `NOTHING FROZEN MOVED — v7's md5 d905dcfeb788… still matches the value
+iter-35 recorded, and every pre-existing export predates this round` · `ANTI-GOAL LEDGER: 9 total, 0
+unresolved; I answered all EIGHTEEN explicitly` · `BUT THE ONE PICTURE OF THE NEW SCREEN IS 100% BLANK —
+one single colour across 1683×1260 pixels` · `AND THE ROUND RAN THE LIGHT TEAM WHEN ITS OWN PLAN SAID
+FULL` · `EVERY AUTOMATIC GATE PASSES — journeys 13/13 exit 0 — AND I AM STILL DECLINING TO CERTIFY, FOR
+ONE ROUND, AND I SAY WHY`.
+
+**Journey deltas:**
+- **Newly passing: J-13** "Leadership rotation says which way, shows both directions, and stops
+  repeating What-changed" — the last unbuilt Must-have journey. Promoted on artifacts I opened and
+  numbers I computed, never on a handoff claim. The newly minted `2026-08-12_v9.json` serves a real
+  `session_delta.rotation` block: sector gaining 5 / losing 2, theme gaining 1 / losing 1, **zero stock
+  rows anywhere**, row shape closed to `{label, from, to, delta, direction_word, drill_href}`. Accounting
+  closes EXACTLY — sector **7 + 24 + 0 = 31**, theme **2 + 9 + 0 = 11** — against a `configured_total`
+  the code derives from `len(cfg.etfs.sector) + len(cfg.etfs.industry)` and `len(cfg.themes)`, which I
+  confirmed equals the 31 and 11 rows actually stored for run 3158. **AG-3 re-derived by me on all nine
+  rows** (the journey asks for three): Regional Banks 13→10 (−3), Bitcoin Miners 29→26 (−3), Real Estate
+  25→22 (−3), Banks (SPDR) 15→13 (−2), Technology 16→14 (−2), Home Construction 21→25 (+4), Materials
+  12→16 (+4), Ai Data Centre 9→4 (−5), Homebuilders 5→10 (+5) — every one equal to the stored
+  `sector_scores`/`theme_scores` rank at both as-of dates. Polarity right in all nine: falling rank →
+  `improving`, rising rank → `deteriorating`. TC-6 holds — the same signed `delta` + `direction_word`
+  ride the sector/theme `changes` entries and, correctly, NOT the stock ones. The client-side
+  `ROTATION_KINDS` / `.filter(...)` duplication is GONE (I diffed the old file against the new).
+- **Newly failing: none. Regressed: none.** `goal_gate.py regressions pre→post` exits 0.
+- **Re-verified, unchanged: J-02, J-04, J-05, J-06, J-07, J-08, J-12** — the Required-still-passing set,
+  8/8 executed PASS in the merged results (with J-13), 0 skipped, 0 FAIL, 0 `DEFERRED-BUDGET`, fresh
+  screenshot each, all re-stamped to iter-36. **J-01, J-03, J-09, J-10, J-11 were NOT re-verified** and
+  I say so rather than implying they were; they carry over under A.6, and I checked the durability
+  precondition instead of assuming it. **For J-03 that check was necessary, not decorative** — `compass.py`
+  WAS touched (150 lines), so instead of arguing from the file list I proved the OUTPUT is unmoved: the
+  `narrative` block is byte-identical between v8 and v9. Same method for J-07 (`state_band` identical),
+  J-04/J-12 (`selection`, `comparison_cohort`, `near_threshold_shadow` identical), J-05/J-06
+  (`candidate_rule_hash`, `cohort_rule_hash`, `manifest_config_hash` identical). **The ONLY content key
+  that differs between v8 and v9 is `session_delta`.**
+- **Two spot-checks opened.** `J-07-verify.png` at 2026-08-03 reads 66.07 improving / 29.35 improving /
+  45.1% little changed with the Summary agreeing (+4.7 regime-score points) — identical **to the decimal**
+  to iters 29/31/32/33/34. `J-02-verify.png` is the 1996-02-01 earliest-session viewport showing the
+  honest no-prior-run text; I then read J-02's golden rather than assuming, and its FIRST step asserts
+  `"vs 2026-08-11 (1 day ago)"` on the DEFAULT `/` and its second clicks `"Suppressed moves (36)"` for
+  `"0.26 < 5.00"` — so the frontier What-changed path WAS exercised against v9 and passed, independently
+  corroborating my own v8/v9 comparison.
+- **`spec_hash`: all thirteen byte-identical to the recorded values** — drift `changed: []`. Re-stamped
+  for the eight I verified; carried forward unchanged for the five I did not.
+- Anti-goal violations: **NONE new** among AG-1..AG-18 — I answered all eighteen explicitly with
+  citations. Strongest facts, each derived by me read-only: the `config.yaml` diff is **exactly ONE added
+  line** (`rotation_top_k: 5`) with every existing threshold appearing only as unchanged context (AG-15);
+  `host-guard.env` untouched (mtime 2026-08-19) and `memory_cap_mb` 8192 / `malloc_arena_max` 2 /
+  `pool_size` 24 / `max_overflow` 44 all show an EMPTY diff (AG-10); the new rank reads are
+  column-projected `select(ticker, name, rank)` bounded to one `run_id`, never a whole-table or
+  `record_json` sweep (AG-8); rotation row keys are closed to six fields with zero banned-term hits
+  (AG-11); `prospective_eligible = 1` on 0 rows (AG-17). Ledger unchanged at **9 total, 0 unresolved**.
+- **A CENSUS FINDING I CHECKED RATHER THAN ASSUMED.** The database gained **five** manifest rows this
+  round (29 → 34) and **two** scanner runs (3128 → 3130), where iter-35 gained exactly one. I traced every
+  one: id 30 is the sanctioned v9 regenerate on the frontier as-of; ids 31-34 (2026-08-01, 2026-01-02,
+  2020-01-02, 1996-01-02) and scanner runs 3159/3160 were created at 12:33-12:34 UTC by the browser-QA
+  lane visiting historical dates — the documented read-path memoization ("computed once on first
+  GET /api/compass for a not-yet-computed as-of"). **No existing row was mutated or deleted**, the price
+  frontier is still 2026-08-12, and `data_provider_runs` is still 549. A `mode=ro` control refused
+  `CREATE TABLE`, so my whole census was read-only. Not an AG-12 breach — AG-12 forbids mutation and
+  deletion, not creation of a previously-uncomputed as-of.
+- Deterministic gates, all run by me: `results` **exit 0** · `journeys` **exit 0**,
+  `{"total":13,"passing":13,"blocking":[]}` · `regressions` **exit 0** · `coherence --for-achievement`
+  **exit 0** · drift `changed: []`. Review: **PASS_WITH_NOTES** at round 2 (round 1 was a **FAIL with 1
+  CRITICAL**). Coherence: **COHERENCE-PASS**. Scan: **CLEAN**.
+
+**THE TWO THINGS THAT STOPPED CERTIFICATION, both of which I found myself:**
+1. **The J-13 acceptance screenshot is empty.** `UT-J-13-rotation-both-directions.png` is 1683×1260 with
+   **exactly ONE distinct colour** across all 2,120,580 pixels (RGB 18,22,27) — I measured it, I did not
+   eyeball it. It is the sole cited artifact for the promoted journey and it shows nothing, so **no visual
+   record of the new screen exists anywhere.** I did NOT let that downgrade the journey (A.7: a defective
+   capture never downgrades a confirmed behaviour, and my contract forbids scoring a capture gap as
+   blocking) — the behaviour is established by the served bytes, the stored ranks and the component
+   source, and one REAL browser image of the same section does exist for the legacy-date state. But it
+   does mean nobody has ever seen the thing being certified.
+2. **The mandated FULL depth silently became lean.** Detailed at the top. The lanes that were lost are
+   exactly the ones the spec's own Full trigger named: the independent auditor, QA, **ux-regression** (the
+   lane that exists to look at rewritten screens — and this round rewrote 136 lines of one), and closure.
+3. **A THIRD ITEM, smaller but the same family.** J-13's new golden
+   (`journey-scripts/J-13.json`, mtime **13:35**) was written **AFTER** the replay run (**13:30**), so it
+   has never been executed even once. I checked the mtimes before crediting anything, per the spec's own
+   applied lesson — and every OTHER golden's mtime does predate the replay, so hygiene is otherwise clean
+   for the fifth round running.
+
+**Reasoning:** The job asked for this round was done properly, and I proved it myself rather than
+believing the write-up. A panel on the front page used to just copy the list above it, and gave no sense
+of whether a move was good or bad. Now it has two clearly labelled sides, a signed number and a plain
+word. I opened the data file the system wrote today and checked all nine rows against the stored
+rankings by hand: every single one matches, including the two groups that used to be counted nowhere at
+all. The counts now add up to every one of the 31 sector groups and all 11 themes. Nothing that already
+worked was disturbed — I compared the new data file against the previous one key by key, and the ONLY
+part that changed is the part this round was meant to change. Nothing frozen moved. No rule was broken;
+I went through all eighteen of them one at a time. So why not call the project finished? Two reasons,
+and neither is about whether the feature works. First, this round was told in writing to use the full
+checking team, and it quietly used the light one instead; the previous round had even left a note saying
+that if this happened, somebody had to say so out loud, and nobody did. The four missing checkers include
+the one whose whole job is looking at changed screens — and this round changed a screen. Second, the one
+picture meant to show that new screen is blank: a flat rectangle of a single colour. So the thing I would
+be certifying has never been seen. I want to be very clear that every automatic gate passes and a
+"finished" verdict was available to me; I am declining it for exactly one round, and I am writing down
+why so nobody thinks I missed it. The same thing happened at round 33, the round after it ran the full
+team, and that team then found five real problems nobody else had found. Why not halt on a problem?
+Nothing that worked stopped working, no frozen record moved, and the database was never written to except
+by its own normal caching. Why not just continue lightly? Because the fault is precisely that the light
+path was used where the full one was required, so repeating it would repeat the fault.
+
+**Next-step recommendation:** Run ONE more round at FULL depth and treat it as the closing round — there
+is no new feature work left. Three things must come back, and all three are cheap: (1) **actually run the
+full checking team**, and prove it by the presence of the four reports this round does not have, not by
+a marker file — the independent checker's file, the quality file, the visual-change file and the sign-off
+file; (2) **take the Leadership rotation picture again**, because the one taken this round is blank and
+nobody has ever seen the new panel — this rides as a passenger, never as the round's purpose; (3)
+**run the new J-13 check script once**, since it was written five minutes after the replay finished and
+has never actually executed. **TWO SMALL REPAIRS TO CARRY ALONG:** raise the test fixture's risk value
+above 60.0, and turn the two bare guard statements into real errors. **ONE OWNER POINT, NOT BLOCKING:**
+the rotation panel shows up to five rows per side while the list above it shows five per group in total,
+so a mover can appear in the panel but not in the list — this round, Banks and Technology do exactly
+that. It is deliberate and it is what closes the counting hole, but if you would rather both panels
+always show the same rows, that is a separate small change. **TWO LIMBS PROVEN ONLY BY TEST FIXTURE, NOT
+BY LIVE DATA, and I say so rather than implying otherwise:** the "further movers not shown" count is zero
+on today's data, and no side is empty on today's data, so the live page exercises neither path; both are
+covered by unit fixtures that do isolate each condition properly (this round applied last round's lesson
+correctly). **STILL OWED, and never a round of their own:** J-04's picture has now been taken 18 times
+with the same wrong crop, and eight journeys owe a labelled walkthrough recording. **CARRIED, none
+blocking:** one pre-existing red test on three untouched files; a known start-script gap that leaves a
+stray server process holding the port (the reviewer hit it twice this round); the iteration-23 throwaway
+copy (7.8 GB); `apps/frontend/.next-verify/` still tracked in git; J-01's automatic re-check still asserts
+far less than that job claims. **FIVE OLDER OWNER QUESTIONS** remain open and non-blocking: J-06's
+"underlying run unavailable" wording; J-01's first two test steps; whether an empty "next-session focus"
+is acceptable; whether MNST joins the recovery list; and whether 12 August should keep showing its
+"rebuilt" note. **ONE MECHANICAL ITEM:** the whole iteration is uncommitted at scoring time; confirm it
+lands.
