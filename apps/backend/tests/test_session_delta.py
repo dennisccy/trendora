@@ -404,6 +404,139 @@ def test_compute_delta_reuses_precomputed_pairs_no_second_query(engine, cfg, two
         assert id(entry) in theme_entry_ids
 
 
+# --- iter-40 (J-15): stock-kind accounting (shown / suppressed / residual close against evaluated) ----
+
+
+def test_stock_accounting_present_and_closes_exactly_on_two_runs_fixture(engine, cfg, two_runs):
+    """`two_runs` has exactly one bucket crossing (AAPL, above threshold) and one new-to-universe member
+    (NEWC, outside the accounting) -- well under `max_stock_items` (10), so nothing is bounded: the whole
+    crossing is shown, nothing suppressed or residual."""
+    run_a_id, run_b_id = two_runs
+    with Session(engine) as session:
+        run_a = session.get(ScannerRun, run_a_id)
+        run_b = session.get(ScannerRun, run_b_id)
+        result = compute_delta(session, run_b, run_a, cfg)
+    accounting = result["stock_accounting"]
+    assert accounting == {
+        "evaluated_count": 1, "shown_count": 1, "suppressed_count": 0, "residual_count": 0,
+    }
+    assert accounting["evaluated_count"] == (
+        accounting["shown_count"] + accounting["suppressed_count"] + accounting["residual_count"]
+    )
+
+
+def test_no_prior_run_state_has_no_stock_accounting_key(engine, cfg):
+    """The explicit no-prior-run early return stays byte-identical to before this iteration -- no
+    `stock_accounting` key is fabricated when there is nothing to account for (mirrors `rotation`'s own
+    no-prior-run absence, iter-36)."""
+    with Session(engine) as session:
+        run = _mk_run(session, date(2024, 1, 1), 50.0, 40.0, 45.0)
+        session.commit()
+        session.refresh(run)
+        result = compute_delta(session, run, None, cfg)
+    assert "stock_accounting" not in result
+
+
+def test_zero_stock_crossings_yields_explicit_zero_accounting(engine, cfg):
+    """Fixture (c) from the goal text step 8: zero stock-kind crossings evaluated -> an explicit,
+    honest all-zero `stock_accounting`, never a blank/missing block."""
+    with Session(engine) as session:
+        run_a = _mk_run(session, date(2024, 3, 1), 50.0, 40.0, 45.0)
+        run_b = _mk_run(session, date(2024, 3, 8), 50.0, 40.0, 45.0)  # no ScannerResult rows on either side
+        session.commit()
+        session.refresh(run_a)
+        session.refresh(run_b)
+        result = compute_delta(session, run_b, run_a, cfg)
+    assert result["stock_accounting"] == {
+        "evaluated_count": 0, "shown_count": 0, "suppressed_count": 0, "residual_count": 0,
+    }
+
+
+@pytest.fixture()
+def many_crossings_run(engine, cfg):
+    """Fixture (a) from the goal text step 8: MORE above-threshold bucket crossings (12) than
+    `max_stock_items` (10, the live config value) plus 3 below-threshold crossings -- so the accounting
+    must show exactly 10, hold 2 back as residual (never dropped uncounted), and count the 3 as
+    suppressed. All 15 tickers get a DISTINCT magnitude so shown-vs-residual is unambiguous
+    (most-moved-first, ties never arise)."""
+    with Session(engine) as session:
+        run_a = _mk_run(session, date(2024, 4, 1), 50.0, 40.0, 45.0)
+        run_b = _mk_run(session, date(2024, 4, 8), 50.0, 40.0, 45.0)
+        # 12 above-threshold crossings (magnitude 8.5 .. 19.5, all >= stock_score_min_change 8.0), bucket C -> A
+        for i in range(12):
+            ticker = f"X{i:02d}"
+            _mk_result(session, run_a.id, ticker, 50.0, "C")
+            _mk_result(session, run_b.id, ticker, 50.0 + 8.5 + i, "A")
+        # 3 below-threshold crossings (magnitude 1.0 .. 3.0, all < 8.0), bucket C -> B
+        for i in range(3):
+            ticker = f"Y{i:02d}"
+            _mk_result(session, run_a.id, ticker, 50.0, "C")
+            _mk_result(session, run_b.id, ticker, 50.0 + 1.0 + i, "B")
+        session.commit()
+        session.refresh(run_a)
+        session.refresh(run_b)
+        return run_a.id, run_b.id
+
+
+def test_more_crossings_than_cap_close_via_shown_suppressed_residual(engine, cfg, many_crossings_run):
+    assert cfg.compass.delta.max_stock_items == 10  # the live config value this fixture is built against
+    assert cfg.compass.delta.stock_score_min_change == 8.0
+    run_a_id, run_b_id = many_crossings_run
+    with Session(engine) as session:
+        run_a = session.get(ScannerRun, run_a_id)
+        run_b = session.get(ScannerRun, run_b_id)
+        result = compute_delta(session, run_b, run_a, cfg)
+    accounting = result["stock_accounting"]
+    assert accounting == {
+        "evaluated_count": 15, "shown_count": 10, "suppressed_count": 3, "residual_count": 2,
+    }
+    stock_changes = _by_kind(result["changes"], KIND_STOCK)
+    assert len(stock_changes) == 10  # display cap held, exactly as before this iteration
+    shown_labels = {c["label"] for c in stock_changes}
+    # the two LOWEST-magnitude above-threshold movers (X00 magnitude 8.5, X01 magnitude 9.5) are bumped
+    # into the residual bucket -- never shown, never silently dropped, never counted as suppressed
+    assert "X00 leadership bucket" not in shown_labels
+    assert "X01 leadership bucket" not in shown_labels
+    # the highest-magnitude mover (X11, magnitude 19.5) is always shown
+    assert "X11 leadership bucket" in shown_labels
+    # the 3 below-threshold crossings are counted as suppressed, never shown, never residual
+    suppressed_stock = [s for s in result["suppressed"] if s["kind"] == KIND_STOCK]
+    assert len(suppressed_stock) == 3
+    assert all(s["magnitude"] < cfg.compass.delta.stock_score_min_change for s in suppressed_stock)
+
+
+def test_new_to_universe_reduces_available_display_slots_for_crossings(engine, cfg):
+    """Fixture (b) from the goal text step 8: new-to-universe members keep their existing unconditional
+    display priority -- they consume display slots ahead of crossings, so they reduce how many above-
+    threshold crossings can be SHOWN, but they never appear in `stock_accounting` (only crossings are
+    "evaluated" against the threshold) and never turn a crossing into a fabricated suppression."""
+    with Session(engine) as session:
+        run_a = _mk_run(session, date(2024, 5, 1), 50.0, 40.0, 45.0)
+        run_b = _mk_run(session, date(2024, 5, 8), 50.0, 40.0, 45.0)
+        # 2 new-to-universe members (present only in run_b) -- unconditional priority, outside accounting
+        for i in range(2):
+            _mk_result(session, run_b.id, f"NEW{i}", 70.0, "C")
+        # 12 above-threshold crossings (magnitude 8.5 .. 19.5)
+        for i in range(12):
+            ticker = f"X{i:02d}"
+            _mk_result(session, run_a.id, ticker, 50.0, "C")
+            _mk_result(session, run_b.id, ticker, 50.0 + 8.5 + i, "A")
+        session.commit()
+        session.refresh(run_a)
+        session.refresh(run_b)
+        result = compute_delta(session, run_b, run_a, cfg)
+    accounting = result["stock_accounting"]
+    # 2 display slots go to the new-to-universe members first (unconditional), leaving 8 of the 10
+    # max_stock_items slots for crossings -- so 8 shown, 4 residual, 0 suppressed (all 12 clear threshold)
+    assert accounting == {
+        "evaluated_count": 12, "shown_count": 8, "suppressed_count": 0, "residual_count": 4,
+    }
+    stock_changes = _by_kind(result["changes"], KIND_STOCK)
+    assert len(stock_changes) == 10  # 2 new-to-universe + 8 shown crossings, display cap unchanged
+    new_entries = [c for c in stock_changes if c["from"] == "new"]
+    assert len(new_entries) == 2
+
+
 def test_compute_delta_without_precomputed_pairs_matches_precomputed_call(engine, cfg, two_runs):
     """Omitting `sector_pairs`/`theme_pairs` (every pre-iter-36 caller) yields the SAME `changes`/
     `suppressed` values as passing them explicitly -- backward-compatible default."""

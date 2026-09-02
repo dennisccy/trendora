@@ -19,6 +19,15 @@ unchanged behavior) and `app.engine.compass.build_rotation` (`session_delta.rota
 `rotation_top_k`-capped, both directions) both build from — one query pair per manifest build, two
 capped consumers. Sector/theme-kind `changes[]` entries additionally carry this signed `delta`
 (direction-word wording is compass.py's concern — it owns `compass.vocabulary`, this module does not).
+
+`_stock_changes` (goal-market-compass iter-40, J-15): classifies the FULL stock-kind bucket-crossing
+list against `stock_score_min_change` BEFORE applying the `max_stock_items` display bound, so every
+evaluated crossing lands in exactly one of shown / suppressed / residual; `compute_delta` serves the
+partition as `session_delta.stock_accounting = {evaluated_count, shown_count, suppressed_count,
+residual_count}` (`evaluated_count == shown_count + suppressed_count + residual_count`) -- mirroring how
+J-13 (iter-36) closed the same hole for the sector/theme kinds. `max_stock_items` keeps its existing
+value and stays the DISPLAY cap only; new-to-universe members keep their pre-existing unconditional
+display priority and stay outside this accounting (they are never subject to the threshold).
 """
 from __future__ import annotations
 
@@ -214,11 +223,17 @@ def _theme_changes(pairs: list[tuple[dict, float]], cfg: Config) -> tuple[list[d
 
 def _stock_changes(
     session: Session, current: ScannerRun, previous: ScannerRun, as_of_iso: str, cfg: Config
-) -> tuple[list[dict], list[dict]]:
+) -> tuple[list[dict], list[dict], dict]:
     """Stock-kind entries are leadership-BUCKET crossings (TC-5) plus new-to-universe members (TC-7,
-    reported unconditionally — never as a score change). Bounded to `max_stock_items` total (new members
-    prioritized) so this producer never evaluates, ranks, or displays the full ~500+ member universe in
-    one pass (AG-8)."""
+    reported unconditionally — never as a score change, always prioritized ahead of crossings and
+    unconditionally exempt from the threshold, unchanged from before). `changes`/`suppressed` stay
+    bounded to `max_stock_items` total DISPLAY entries (new members prioritized) so this producer never
+    RANKS OR DISPLAYS the full ~500+ member universe in one pass (AG-8) — but every evaluated bucket
+    crossing is still CLASSIFIED (goal-market-compass iter-40, J-15): the third return value,
+    `stock_accounting`, accounts for the full `crossing_pairs` list computed below (no second
+    materialization, no new query) so a crossing lands in exactly one of shown / suppressed / residual
+    (`evaluated_count == shown_count + suppressed_count + residual_count`) — nothing above
+    `stock_score_min_change` vanishes uncounted past the display cap the way it did before this change."""
     threshold = cfg.compass.delta.stock_score_min_change
     max_items = cfg.compass.delta.max_stock_items
     cur_rows = session.exec(
@@ -258,12 +273,26 @@ def _stock_changes(
     new_pairs.sort(key=lambda pair: pair[1], reverse=True)
     crossing_pairs.sort(key=lambda pair: pair[1], reverse=True)
     bounded_new = new_pairs[:max_items]
-    bounded_crossings = crossing_pairs[: max(max_items - len(bounded_new), 0)]
+    available_slots = max(max_items - len(bounded_new), 0)
+
+    # J-15: classify the FULL crossing_pairs list (unchanged threshold semantics) BEFORE applying the
+    # max_stock_items display bound, so every evaluated crossing lands in exactly one bucket. `_classify`
+    # preserves the magnitude-desc order already applied above, so `meets_threshold` is still most-moved
+    # first -- the display bound then splits it into the shown head and the residual tail.
+    meets_threshold, suppressed = _classify(crossing_pairs, threshold)
+    shown_crossings = meets_threshold[:available_slots]
+    residual_crossings = meets_threshold[available_slots:]
 
     changes = [entry for entry, _magnitude in bounded_new]
-    crossing_changes, suppressed = _classify(bounded_crossings, threshold)
-    changes.extend(crossing_changes)
-    return changes, suppressed
+    changes.extend(shown_crossings)
+
+    stock_accounting = {
+        "evaluated_count": len(crossing_pairs),
+        "shown_count": len(shown_crossings),
+        "suppressed_count": len(suppressed),
+        "residual_count": len(residual_crossings),
+    }
+    return changes, suppressed, stock_accounting
 
 
 def compute_delta(
@@ -300,10 +329,17 @@ def compute_delta(
         _breadth_changes(current_run, previous_run, as_of_iso, cfg),
         _sector_changes(sector_pairs, cfg),
         _theme_changes(theme_pairs, cfg),
-        _stock_changes(session, current_run, previous_run, as_of_iso, cfg),
     ):
         changes.extend(changes_part)
         suppressed.extend(suppressed_part)
+
+    # goal-market-compass iter-40 (J-15): `_stock_changes` also returns the stock-kind accounting object
+    # -- computed in the SAME pass over `crossing_pairs` above, no second query, no second materialization.
+    stock_changes, stock_suppressed, stock_accounting = _stock_changes(
+        session, current_run, previous_run, as_of_iso, cfg
+    )
+    changes.extend(stock_changes)
+    suppressed.extend(stock_suppressed)
 
     return {
         "prior_as_of": previous_run.asof_date.isoformat(),
@@ -311,4 +347,5 @@ def compute_delta(
         "changes": changes,
         "suppressed": suppressed,
         "suppressed_count": len(suppressed),
+        "stock_accounting": stock_accounting,
     }

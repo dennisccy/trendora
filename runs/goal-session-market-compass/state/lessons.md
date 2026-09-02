@@ -548,3 +548,31 @@ cause as an unresolved FAIL, and check whether the golden was edited inside the 
 (`git diff <last-good-sha> -- <golden>`) before crediting the overturn.
 **Applies to:** every iteration whose merged `ui-test-results.md` disagrees with
 `regression-replay-results.md`; and to any change to the browser-QA merge step.
+
+## iter-40 — 2026-09-02T09:19:23Z
+
+**Verdict:** GOAL_ACHIEVED
+**Lesson:** A journey that deliberately CHANGES a rendered count invalidates every golden script
+that clicks that count as a literal string — and the engine's golden-refresh step will silently
+rewrite the stale one AFTER its replay FAIL (here `J-02.json` `"Suppressed moves (36)"` →
+`"(79)"` at 10:08:08, 13 minutes after the 09:55 failure, undeclared). The iteration spec correctly
+declared the J-04/J-14 repairs in advance but never enumerated J-02, because nobody asked "which
+goldens assert the string this change edits?". Add that question to any spec that changes a
+user-visible number, and never let a post-failure golden edit stand without a named, traced cause.
+
+**Applies to:** any iteration that changes a displayed count/label on `/` (What-changed card,
+"Not priority" summary, rotation counters); any reviewer/evaluator reading a
+`regression-replay-results.md` reconciliation footer.
+
+## iter-40 — 2026-09-02T09:19:23Z (second)
+
+**Verdict:** GOAL_ACHIEVED
+**Lesson:** When the LLM browser lane captures only the frontier as-of date, the iter-38 failure
+mode (a widened payload field crashing pre-change manifests) has NO direct evidence — but the
+deterministic replay goldens that already target historical dates supply it for free. J-04's golden
+visits `/?asof=2026-07-23` and `/?asof=2026-03-30`, and J-02's visits `/?asof=1996-02-01`; their
+PASS rows plus one opened screenshot proved three pre-change manifests still render. Read the
+goldens' URLs before concluding a degrade path is unevidenced.
+
+**Applies to:** any iteration adding an optional field to `session_delta`/`selection` served from
+stored `next_session_manifests` rows.

@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "journey": "J-15",
+  "name": "\"What changed\" accounts for every stock-level crossing it already evaluated — nothing above the threshold vanishes and \"Suppressed moves\" tells the truth",
+  "default_timeout_ms": 8000,
+  "steps": [
+    {"n": 1, "journey": "J-15", "action": {"type": "goto", "url": "/"}, "expect": {"text": "Showing the top 10 stock moves"}},
+    {"n": 2, "journey": "J-15", "action": {"type": "goto", "url": "/"}, "expect": {"text": "Suppressed moves (79)"}},
+    {"n": 3, "journey": "J-15", "action": {"type": "goto", "url": "/"}, "expect": {"text": "4 more stock moves held back by the display cap"}},
+    {"n": 4, "journey": "J-15", "action": {"type": "click", "target": {"text": "Suppressed moves (79)"}}, "expect": {"text": "7.98 < 8.00"}}
+  ]
+}

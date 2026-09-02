@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Disclosure } from "@/components/ui/disclosure";
 import { formatIsoDate } from "@/lib/dates";
+import { stockResidualDisclosureText, stockShownCapDisclosureText } from "@/lib/stock-accounting-summary";
 import type { CompassResponse, SessionDeltaChange } from "@/lib/api";
 
 const KIND_LABEL: Record<SessionDeltaChange["kind"], string> = {
@@ -35,6 +36,11 @@ export function CompassWhatChangedCard({ compass }: { compass: CompassResponse |
 
   const { session_delta } = compass;
   const noPriorRun = session_delta.prior_as_of === null;
+  // goal-market-compass iter-40 (J-15): both `null` when `session_delta.stock_accounting` is absent (a
+  // manifest frozen before this field existed) -- the card then renders nothing new, exactly as before
+  // this iteration (AG-8).
+  const stockCapText = stockShownCapDisclosureText(session_delta.stock_accounting);
+  const stockResidualText = stockResidualDisclosureText(session_delta.stock_accounting);
 
   return (
     <Card data-testid="compass-whatchanged-card">
@@ -73,6 +79,13 @@ export function CompassWhatChangedCard({ compass }: { compass: CompassResponse |
             ))}
           </ul>
         )}
+        {/* goal-market-compass iter-40 (J-15, TC-4b): discloses its own bound instead of truncating
+            silently -- only when the display cap actually held something back this session. */}
+        {stockCapText !== null ? (
+          <p className="text-xs text-text-faint" data-testid="compass-whatchanged-stock-cap">
+            {stockCapText}
+          </p>
+        ) : null}
         <Disclosure summary={`Suppressed moves (${session_delta.suppressed_count})`}>
           {session_delta.suppressed.length === 0 ? (
             <p className="pt-1 text-xs text-text-faint">No moves were suppressed this session.</p>
@@ -89,6 +102,16 @@ export function CompassWhatChangedCard({ compass }: { compass: CompassResponse |
             </ul>
           )}
         </Disclosure>
+        {/* goal-market-compass iter-40 (J-15, TC-4): a residual disclosure, VISIBLY DISTINCT from the
+            "Suppressed moves" line above -- an above-threshold mover held back by the display cap is a
+            different thing from a below-threshold one; count only, no per-name list (AG-8). Renders only
+            when `session_delta.stock_accounting` is present (absent on manifests frozen before this field
+            existed, TC-5); shows an explicit zero rather than nothing when nothing was held back. */}
+        {stockResidualText !== null ? (
+          <p className="text-xs text-text-muted" data-testid="compass-whatchanged-stock-residual">
+            {stockResidualText}
+          </p>
+        ) : null}
       </CardContent>
     </Card>
   );

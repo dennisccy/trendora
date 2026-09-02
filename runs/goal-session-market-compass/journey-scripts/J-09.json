@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "journey": "J-09",
+  "name": "The backend fits the host — standing memory halves with zero behavior change",
+  "default_timeout_ms": 8000,
+  "steps": [
+    {"n": 1, "journey": "J-09", "action": {"type": "goto", "url": "/"}, "expect": {"text": "The ten-second read after the close"}},
+    {"n": 2, "journey": "J-09", "action": {"type": "goto", "url": "/"}, "expect": {"text": "Market state"}},
+    {"n": 3, "journey": "J-09", "action": {"type": "goto", "url": "/market"}, "expect": {"text": "Market"}}
+  ]
+}

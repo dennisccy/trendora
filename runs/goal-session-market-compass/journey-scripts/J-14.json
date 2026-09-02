@@ -6,6 +6,7 @@
   "steps": [
     {"n": 1, "journey": "J-14", "action": {"type": "goto", "url": "/"}, "expect": {"text": "Not priority (20 shown of 52 held back — 27 cap-excluded, 25 below-floor near-miss)"}},
     {"n": 2, "journey": "J-14", "action": {"type": "click", "target": {"text": "Not priority (20 shown of 52 held back — 27 cap-excluded, 25 below-floor near-miss)"}}, "expect": {"text": "DXCM — ranked #11 of the above-floor names, cap 10"}},
-    {"n": 3, "journey": "J-14", "action": {"type": "goto", "url": "/"}, "expect": {"text": "entry_min_score: 26.5 vs 70.0 (distance 43.5) — advisory"}}
+    {"n": 3, "journey": "J-14", "action": {"type": "goto", "url": "/"}, "expect": {"text": "Not priority (20 shown of 52 held back — 27 cap-excluded, 25 below-floor near-miss)"}},
+    {"n": 4, "journey": "J-14", "action": {"type": "click", "target": {"text": "Not priority (20 shown of 52 held back — 27 cap-excluded, 25 below-floor near-miss)"}}, "expect": {"text": "entry_min_score: 26.5 vs 70.0 (distance 43.5) — advisory"}}
   ]
 }

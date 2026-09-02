@@ -5,7 +5,7 @@
   "default_timeout_ms": 8000,
   "steps": [
     {"n": 1, "journey": "J-04", "action": {"type": "goto", "url": "/?asof=2026-07-23"}, "expect": {"text": "Strong leader (81.2)"}},
-    {"n": 2, "journey": "J-04", "action": {"type": "click", "target": {"text": "Not priority (20)"}}, "expect": {"text": "TRV"}},
+    {"n": 2, "journey": "J-04", "action": {"type": "click", "target": {"text": "Not priority (20 shown — held-back counts unavailable for this manifest version)"}}, "expect": {"text": "TRV"}},
     {"n": 3, "journey": "J-04", "action": {"type": "goto", "url": "/?asof=2026-03-30"}, "expect": {"text": "REGIME_RISK_OFF"}}
   ]
 }

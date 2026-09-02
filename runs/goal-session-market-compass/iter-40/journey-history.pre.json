@@ -1,0 +1,260 @@
+{
+  "journeys": {
+    "J-01": {
+      "id": "J-01",
+      "name": "Sector labels are honest and nearly complete on new runs",
+      "status": "passing",
+      "last_verified_iter": "goal-market-compass-iter-39",
+      "last_passing_iter": "goal-market-compass-iter-39",
+      "first_seen_iter": "goal-market-compass-iter-0",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-39-evidence/J-01-verify.png",
+      "gap": "Deterministic replay PASS (merged results UT-J-01). Evaluator OPENED J-01-verify.png as one of its two stable spot-checks: Stocks leaderboard at as-of 2026-08-12, GRMN leadership 89.12 / entry 28.66 / risk 58.55, sector 'Consumer Discretionary' (honest, not Unknown), all three scores carrying 'Not yet proven' chips (AG-1). 89.12 is byte-identical to the value the iter-38 evaluator recorded from the stored scanner_results row. Spot-check AGREES with the recorded status; no widening needed.",
+      "spec_hash": "5217f3fe85d2a05c2f436d3ec6d140f2b7539b8798c161925a2e9e76ddab61f9"
+    },
+    "J-02": {
+      "id": "J-02",
+      "name": "What changed since the previous session",
+      "status": "passing",
+      "last_verified_iter": "goal-market-compass-iter-39",
+      "last_passing_iter": "goal-market-compass-iter-39",
+      "first_seen_iter": "goal-market-compass-iter-0",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-39-evidence/J-02-verify.png",
+      "gap": "RESTORED from `regressed`. Deterministic replay PASS on the FULL restored 3-step golden, including step 3 at /?asof=1996-02-01 -- one of the 21 as-of dates that crashed at iter-38. Evaluator OPENED J-02-verify.png: the Today page at 1996-02-01 renders in full (state band, Summary with 'This is the earliest stored session -- no prior-session comparison is available.', honest NA breadth/phase placeholders) with NO 'Something went wrong on this page' card. Additionally verified in UT-02-result.png, which the evaluator read at /?asof=2026-08-11: the What-changed card renders with header 'vs 2026-08-10 (1 day ago)' and the ordered sector/theme/stock rows plus 'Suppressed moves (35)'.",
+      "spec_hash": "4a55fbb172e17090c2d095af6a36d95e08edadeda2ed05941cbe3ce9476eb993"
+    },
+    "J-03": {
+      "id": "J-03",
+      "name": "Plain-English summary with cited facts",
+      "status": "passing",
+      "last_verified_iter": "goal-market-compass-iter-39",
+      "last_passing_iter": "goal-market-compass-iter-39",
+      "first_seen_iter": "goal-market-compass-iter-0",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-39-evidence/J-03-verify.png",
+      "gap": "RESTORED from `regressed`. Deterministic replay PASS on the full 3-step golden, including step 3 at /?asof=2025-04-15 (one of the 21 previously-crashing dates). Cross-confirmed by two full-page captures the evaluator opened: UT-06-result.png (2025-04-15) and UT-02-result.png (2026-08-11) both show the Summary card rendering its regime/direction/breadth/focus-count sentences with the 'Show cited facts' disclosure present and no error card.",
+      "spec_hash": "81cd6c9267c0d734cd88b19f43baf53bcab70c7b60d60cd5b2018a76425e87e7"
+    },
+    "J-04": {
+      "id": "J-04",
+      "name": "Each next-session candidate explains why and why-not",
+      "status": "passing",
+      "last_verified_iter": "goal-market-compass-iter-39",
+      "last_passing_iter": "goal-market-compass-iter-39",
+      "first_seen_iter": "goal-market-compass-iter-0",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-39-evidence/UT-05-result.png",
+      "gap": "STAYS `passing` on live LLM-lane evidence (UT-05 + UT-J-04), NOT on the golden lane. GOLDEN-LANE GAP, declared not overridden: J-04.json was restored byte-exact to ab3cca63 (evaluator re-ran `git diff ab3cca63 -- <4 goldens>`: zero differences) and its step 2 clicks the literal text 'Not priority (20)', which was the summary string AT ab3cca63. iter-38 and iter-39 deliberately changed that string, so at /?asof=2026-07-23 the page now renders 'Not priority (20 shown -- held-back counts unavailable for this manifest version)', of which 'Not priority (20)' is not a substring -- the click target cannot resolve and the replay times out. The evaluator OPENED J-04-verify.png and confirms the page at 2026-07-23 renders in FULL (regime 57.87 'Narrow leadership', phase Pullback 36.61, '1 name worth monitoring next session') with no error card: the failure is a stale click-target string, not a page failure. Needs a pre-declared step-2 target repair (match the new string) in a later iteration -- never a weakened assertion, never a moved as-of date.",
+      "spec_hash": "d1521389ca8fcf3fd1b7ac60e53bdb9608112247219ccbbea2ae66e99bff8ad0"
+    },
+    "J-05": {
+      "id": "J-05",
+      "name": "Each close freezes one next-session manifest, exported byte-consistently",
+      "status": "passing",
+      "last_verified_iter": "goal-market-compass-iter-39",
+      "last_passing_iter": "goal-market-compass-iter-39",
+      "first_seen_iter": "goal-market-compass-iter-0",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-39-evidence/J-05-verify.png",
+      "gap": "Deterministic replay PASS on the RESTORED 4-step golden at /?asof=2025-04-15 -- a genuinely pre-existing frozen manifest, not the same-day-minted 2005-04-15 fixture iter-38's edit had substituted -- and INCLUDING the `available_at_utc` assertion `2026-08-20T11:41:00.381102+00:00` that iter-38's edit had deleted. Cross-confirmed in UT-06 (all three values byte-identical before and after an F5 reload). evidence_makeup KEPT: J-05 is still one of the journeys owing a labelled walkthrough frame; this round's 8-step walkthrough covers J-02, J-03, J-04, J-07, J-13, J-14 and not J-05.",
+      "spec_hash": "de33a9d149ebefe4f8cf0ffb9fe86243e3f9fa9d83850c890848f268e5c54c4f",
+      "evidence_makeup": true
+    },
+    "J-06": {
+      "id": "J-06",
+      "name": "A frozen manifest never changes",
+      "status": "passing",
+      "last_verified_iter": "goal-market-compass-iter-39",
+      "last_passing_iter": "goal-market-compass-iter-39",
+      "first_seen_iter": "goal-market-compass-iter-0",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-39-evidence/J-06-verify.png",
+      "gap": "RESTORED from `regressed`, and restored on exactly the evidence the iter-38 evaluator demanded. J-06.json is byte-exact to ab3cca63 (verified by the evaluator), so the replay now runs against /?asof=2025-04-15 -- a manifest frozen 2026-08-20, genuinely pre-existing -- and re-asserts the deleted immutability stamp `2026-08-20T11:41:00.381102+00:00`. Both steps PASS. The evaluator OPENED J-06-verify.png: the Today page at 2025-04-15 renders in full (regime 14.01 Risk-off, phase Recovery 71.47, breadth 15.6%, '10 names worth monitoring next session') with no error card. Read-only DB census confirms no new manifest version was minted by viewing it (36 rows, max created_at 2026-09-01 18:17, before this iteration began). evidence_makeup SET: J-06's labelled walkthrough frame is still owed (not covered by this round's 8 steps).",
+      "spec_hash": "4934b178e966fdb05cfb68537e861e0f34f961f630a57e4098f9fb69be2cdda8",
+      "evidence_makeup": true
+    },
+    "J-07": {
+      "id": "J-07",
+      "name": "The Today page answers the ten-second read",
+      "status": "passing",
+      "last_verified_iter": "goal-market-compass-iter-39",
+      "last_passing_iter": "goal-market-compass-iter-39",
+      "first_seen_iter": "goal-market-compass-iter-0",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-39-evidence/J-07-verify.png",
+      "gap": "Deterministic replay PASS on the RESTORED golden -- all 7 steps, including the market-link click (step 3) and the three direction-word `:has-text(\"little changed\")` assertions (steps 4-6) that iter-38's edit had deleted when it cut the script from 7 steps to 3, plus step 7 at /?asof=2026-08-03. Cross-confirmed by LLM row UT-07. evidence_makeup CLEARED: walkthrough step-02 ('Check the market regime and breadth', flagged J-07) landed this round and is a genuine 7,539-colour capture, so the owed frame exists.",
+      "spec_hash": "3277c326632d90b5aa5d4331f051b419d2e71d022b640c5851acd9f105d57b72"
+    },
+    "J-08": {
+      "id": "J-08",
+      "name": "Market page moves over intact and history stays honest",
+      "status": "passing",
+      "last_verified_iter": "goal-market-compass-iter-39",
+      "last_passing_iter": "goal-market-compass-iter-39",
+      "first_seen_iter": "goal-market-compass-iter-0",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-39-evidence/J-08-verify.png",
+      "gap": "RESTORED from `regressed`. Deterministic replay PASS on all 6 steps: /market still renders 'Top Sectors' and 'Top Themes' (the relocated inventory), /?asof=2025-04-15 shows the `retrospective` label and 'vs 2025-04-14 (1 day ago)', /?asof=2026-08-12 shows 'at ingest', and / shows 'Risk-on'. Steps 3-4 sit on 2025-04-15, one of the 21 previously-crashing dates; the evaluator independently opened UT-06-result.png at that same as-of and confirms a full render with the What-changed card intact.",
+      "spec_hash": "621deda83bfbe069b3899a9860d352ac2ef7f6e7f80acf0630cd39acbb2ce860"
+    },
+    "J-09": {
+      "id": "J-09",
+      "name": "The backend fits the host - standing memory halves with zero behavior change",
+      "status": "passing",
+      "last_verified_iter": "goal-market-compass-iter-39",
+      "last_passing_iter": "goal-market-compass-iter-39",
+      "first_seen_iter": "goal-market-compass-iter-3",
+      "last_evidence_path": "reports/phase-goal-market-compass-iter-39-ui-test-results.md#UT-J-09",
+      "gap": "Re-verified this round after iter-38 DEFERRED it on budget -- it is NOT deferred here. Evidence lane, which is correct rather than a gap: J-09's own docs/goal.md text waives the walkthrough ('deliberately backend-only (no UI surface changes)'), and `state/golden-gaps` records J-09 as the sole golden-less journey. Row UT-J-09 cites config.yaml cache_size -65536 and a live backend VmPeak of 2,477,024 kB, under the 2,621,440 kB (2.5 GB) target. Evaluator independently re-read config.yaml line 109: `cache_size: -65536` confirmed, and `git diff 69e86ef2 -- config.yaml` is EMPTY, so nothing in the memory envelope moved this iteration.",
+      "spec_hash": "a067a11b356f9d24bf56963bac5bee35a616b5c4af06479c92c0ae900fca9551"
+    },
+    "J-10": {
+      "id": "J-10",
+      "name": "Bounded recovery of the two trading days the iter-5 drill deleted",
+      "status": "passing",
+      "last_verified_iter": "goal-market-compass-iter-39",
+      "last_passing_iter": "goal-market-compass-iter-39",
+      "first_seen_iter": "goal-market-compass-iter-6",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-39-evidence/J-10-verify.png",
+      "gap": "Deterministic replay PASS on both steps (AVB $187.89 at 2026-08-12, $187.94 at 2026-08-11). Untouched by this iteration: the product diff is two frontend TS files plus two new frontend TS files, with zero backend and zero data-path change (evaluator ran `git diff 69e86ef2 --stat`). Read-only census confirms the daily_prices frontier is still 2026-08-12 -- no dataset advancement (AG-9).",
+      "spec_hash": "42ad18079fd7b367ce272c1a13960375b428c36ba9b21f0f709a09b3465384c2"
+    },
+    "J-11": {
+      "id": "J-11",
+      "name": "Incident-bounded clean regeneration of derived state",
+      "status": "passing",
+      "last_verified_iter": "goal-market-compass-iter-39",
+      "last_passing_iter": "goal-market-compass-iter-39",
+      "first_seen_iter": "goal-market-compass-iter-8",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-39-evidence/J-11-verify.png",
+      "gap": "RESTORED from `regressed`. Deterministic replay PASS on both steps: /?asof=2026-08-11 shows 'Basis: rebuilt' (2026-08-11 is one of the 21 previously-crashing dates and one of the 11 incident dates) and /?asof=2026-08-12 shows 'Basis: available'. The evaluator OPENED both J-11-verify.png (2026-08-12, full render) and UT-02-result.png (2026-08-11), reading the manifest strip out of the latter: 'retrospective / version 3 / frozen / not prospective-eligible / Frozen 8/20/2026, 12:50:57 PM', 'Basis: rebuilt -- the source scanner run was recreated after this manifest was frozen', and the v1/v2/v3 version list each marked 'retrospective  not eligible'. No regeneration work ran this iteration; only the render path was repaired.",
+      "spec_hash": "012568db747b3063b51b4c5e65e53353ae6e780e779d12a06d511b60fc07e8f3"
+    },
+    "J-12": {
+      "id": "J-12",
+      "name": "Every frozen selection disposition is true — the leadership floor is the only inclusion gate, and a caution qualifier moves no membership",
+      "status": "passing",
+      "last_verified_iter": "goal-market-compass-iter-39",
+      "last_passing_iter": "goal-market-compass-iter-39",
+      "first_seen_iter": "goal-market-compass-iter-35",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-39-evidence/J-12-verify.png",
+      "gap": "Deterministic replay PASS on all 3 steps. Evaluator OPENED J-12-verify.png as its second stable spot-check: manifest strip 'at ingest / version 10 / frozen / not prospective-eligible', candidate rule 7734ce9ead..., cohort rule 396c29d22c..., audit table 'comparison cohort (529) + near-threshold shadow (25)', DXCM 85.0/26.5/57.6 disposition 'excluded by cap'. Every value matches the stored v10 row the evaluator read read-only from next_session_manifests id 35, and matches the values iter-38's evaluator recorded. The shadow cohort renders ONLY inside that research-only audit table, never in the focus section (AG-16). Spot-check AGREES with the recorded status. evidence_makeup KEPT: J-12's labelled walkthrough frame is still owed.",
+      "spec_hash": "a6ff5522a37745f8e997b0adf44edd84b17472a99821d5b21b93e9bb39de073c",
+      "evidence_makeup": true
+    },
+    "J-13": {
+      "id": "J-13",
+      "name": "\"Leadership rotation\" says which way, shows both directions, and stops repeating What-changed",
+      "status": "passing",
+      "last_verified_iter": "goal-market-compass-iter-39",
+      "last_passing_iter": "goal-market-compass-iter-39",
+      "first_seen_iter": "goal-market-compass-iter-35",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-39-evidence/J-13-verify.png",
+      "gap": "RESTORED from `regressed`. Deterministic replay PASS on all 7 steps, including the four Sector/Theme rotation assertions at / ('Regional Banks (SPDR)', '13 -> 10 (-3) improving', '21 -> 25 (+4) deteriorating', '7 of 31 shown 24 below threshold 0 beyond the display cap.', '2 of 11 shown 9 below threshold 0 beyond the display cap.') and step 7 at /?asof=1996-01-02 -- the exact as-of where iter-38 captured its crash (UT-J-13-fail.png). The evaluator OPENED J-13-verify.png: the page at 1996-01-02 renders in full with honest NA placeholders and no error card. Also confirmed the honest empty state on an old manifest by reading UT-02-result.png at 2026-08-11: 'Rotation detail was not recorded for this session -- its stored manifest predates this section, and a frozen manifest is never rewritten, so nothing is shown here rather than recomputed.'",
+      "spec_hash": "6269a6022fd62cf27e5aaba77819a48d4f36311ce18061a4da672ed4e6c90b29"
+    },
+    "J-14": {
+      "id": "J-14",
+      "name": "\"Not priority\" names its real reason — the why-not block stops claiming a qualifier pass it never checked, and the actually-near-miss names come back",
+      "status": "passing",
+      "last_verified_iter": "goal-market-compass-iter-39",
+      "last_passing_iter": "goal-market-compass-iter-39",
+      "first_seen_iter": "goal-market-compass-iter-38",
+      "last_evidence_path": "reports/qa/goal-market-compass-iter-39-evidence/UT-09-result.png",
+      "gap": "PROMOTED from `partial`: step 8 ('pre-fix manifests remain readable exactly as they are with their eligibility unchanged') is now MET, which was the sole reason for the partial. Evaluator's own read-only checks: all 21 previously-crashing as-of dates render (browser row UT-08: 21/21 HTTP 200 and 21/21 DOM checks with no error card); next_session_manifests still holds exactly 36 rows over 23 distinct as-of dates with sum(prospective_eligible)=0 and max(created_at)=2026-09-01 18:17, BEFORE this iteration started -- nothing minted, mutated or deleted (AG-12/AG-17). The CROP GAP IS CLOSED: the evaluator opened UT-09-result.png (1668x1200, 2,953 colours) and read the complete 20-entry panel -- 10 cap-excluded (DXCM #11 through STT #20, each 'ranked #N of the above-floor names, cap 10') and 10 below-floor near-misses with leadership distances (EXPE 79.8 vs 80.0 d0.2 ... BKNG 78.4 vs 80.0 d1.6), the panel's closing border visible below the last entry. Every served number re-derived by the evaluator against stored row id 35: why_not_totals 27/25 (= the header's '52 held back'), DXCM cap_rank 11 / cap 10 / entry_min_score 26.53 vs 70.0 d43.47 gating false, EXPE leadership_min_score 79.81 vs 80.0 d0.19 gating true. GOLDEN-LANE GAP, declared: J-14.json step 3 does `goto /` then asserts text that lives inside the `Disclosure` <details>; the evaluator read apps/frontend/components/ui/disclosure.tsx and confirms there is no `open` attribute, so a fresh navigation collapses it and the visible-filtered assertion correctly finds nothing. This is an authoring defect carried in from iter-38 (J-14.json has never passed replay) and needs a pre-declared click-then-assert repair. evidence_makeup KEPT: walkthrough step-08 is a top-of-page viewport that stops far above the expanded 'Not priority' list, and no step carries the [NEW] flag J-14's Walkthrough clause asks for.",
+      "spec_hash": "0ef41bfa5555789df9cedeb9719c6fd89c987601ca25ea8f1082082ec03a1aed",
+      "evidence_makeup": true
+    },
+    "J-15": {
+      "id": "J-15",
+      "name": "\"What changed\" accounts for every stock-level crossing it already evaluated — nothing above the threshold vanishes and \"Suppressed moves\" tells the truth",
+      "status": "unknown",
+      "last_verified_iter": null,
+      "last_passing_iter": null,
+      "first_seen_iter": "goal-market-compass-iter-38",
+      "last_evidence_path": null,
+      "gap": "NEVER BUILT and explicitly OUT OF SCOPE this iteration ('J-15 ... stays unbuilt and queued behind this repair round'). No results row, no screenshot, no code. Status stays `unknown` rather than `failing` -- it was not tested because it does not exist yet. This is the ONLY remaining Must-have journey without positive passing evidence and is the sole blocker to GOAL_ACHIEVED.",
+      "spec_hash": "416df35cd30e55371c354cf675c19e7f1eed95aa0ce7c8261e3148443becfc93"
+    }
+  },
+  "anti_goal_violations": [
+    {
+      "iter": "goal-market-compass-iter-2",
+      "anti_goal": "AG-2 - Decision-quality only: never present return promises, price targets, 'buy/sell' signals, or alpha claims; never place or simulate orders. Candidate framing is 'worth monitoring', never advice.",
+      "severity": "minor",
+      "evidence": "iter-2/a - the ATR caution string ended '- sized risk accordingly' (advice-flavoured), and the runtime banned-language guard scanned only build_narrative's sentences, never evaluate_selection's candidate reason/caution/why-not strings. || RESOLVED in iter-3: verified by the evaluator in reports/qa/goal-market-compass-iter-3-evidence/UT-10-result.png - the MCD and T candidate cards read 'ATR_RISK_BUDGET: ATR is 2.99% of price (p6 of universe).' with no advice tail; the guard now covers the candidate strings (TC-35, test_manifest_invariants.py). || Re-confirmed still closed in iters 4, 6, 7 and 10: no candidate, narrative or config string appears in iter-10's 4-file backend diff.",
+      "resolved": true
+    },
+    {
+      "iter": "goal-market-compass-iter-3",
+      "anti_goal": "AG-12 - Manifest immutability: a stored next_session_manifests row and its exported file are never mutated or deleted by any later ingest, rebuild, data removal, config change, or code change.",
+      "severity": "critical",
+      "evidence": "iter-3/a - the at-ingest export writer compass._write_export (apps/backend/app/engine/compass.py:841) used an unconditional path.write_text, so a second write for the same (as_of, version) replaced the bytes of an artifact an existing immutable row's export_path already pointed at. REPRODUCED by the auditor in an isolated probe. || RESOLVED IN-ITERATION by the audit lane, before any real artifact was overwritten: exclusive create open(path,'x') (compass.py:860) plus a session-autouse conftest fixture pointing TRENDORA_COMPASS_EXPORT_DIR at a per-run temp dir and a regression test (test_manifest_invariants.py:138). || Re-confirmed still closed in iters 4, 6, 7 and again in iter-10 by my own read-only query: 24 next_session_manifests rows, the 12 incident-date rows carrying exactly the content/manifest hashes and source_run_ids recorded in prior iterations, and trendora.db byte-frozen at mtime=1787482245 size=8365871104 across the whole iteration. This iteration's models.py change drops only the FK DECLARATION; no manifest row value was read-modified-written.",
+      "resolved": true
+    },
+    {
+      "iter": "goal-market-compass-iter-7",
+      "anti_goal": "AG-9 - Offline-deterministic ingest: ingest jobs run only against the committed seed / local provider fixtures - no live external network calls or paid data services without an explicit goal.md amendment. || Dated exception (owner, 2026-08-20): '...If the implementation cannot prove a request stays inside this scope, it MUST stop rather than broaden the fetch.' || J-10 step 2a (text in force during that iteration): '...If the conventions do not demonstrably agree within a stated tolerance - or if the comparison cannot be performed at all - insert nothing and STOP for owner review.'",
+      "severity": "critical",
+      "evidence": "iter-7/a - the fail-closed adjustment-convention gate was fail-OPEN on a degenerate sample: with an empty pair list it fell through to verdict='agree' with the self-indicting reason 'all 0 sampled pairs within 0.7500% relative delta'. The auditor reproduced it end to end on a FIXTURE database, writing 4 daily_prices + 2 data_provider_runs rows on a proof of nothing. || RESOLVED IN-ITERATION by the audit lane: a minimum-evidence floor requiring a non-empty comparison covering every sampled symbol, placed deliberately AFTER the mismatch branch so a genuine out-of-tolerance pair can never be downgraded to 'inconclusive' (j10_recovery.py:460-482), docstring corrected, 4 regression tests added; 27/27 pass. || NEVER REACHED PRODUCTION DATA - verified independently at the time. || Re-confirmed closed in iter-10: j10_recovery.py appears nowhere in this iteration's 4-file diff and no network call of any kind occurred (the one live-DB interaction is a read-only SELECT-only inventory script).",
+      "resolved": true
+    },
+    {
+      "iter": "goal-market-compass-iter-8",
+      "anti_goal": "AG-17 - Repair never rewrites provenance (owner, 2026-08-20): ... The incident record itself is evidence: the iter-5 drill result, its handoff, the reviewer/QA evidence already produced, and the explicit statement that the committed seed could not restore these dates MUST NOT be deleted, rewritten, or silently superseded.",
+      "severity": "critical",
+      "evidence": "reports/qa/goal-market-compass-iter-8-evidence/INVALID-forbidden-lane.md (ADDENDUM) and docs/handoffs/goal-market-compass-iter-8-audit.md finding P1. At 12:53-12:55 on 2026-08-21 the contract-forbidden deterministic replay lane ran a SECOND time and overwrote J-01-verify.png and J-04-verify.png, the two quarantined incident-evidence files. RESOLVED INSIDE THAT ITERATION by the in-pipeline auditor: original bytes restored from commit 47d50d04, the second run's bytes preserved as INVALID-rerun-2026-08-21T1254-J-0{1,4}-verify.png. || RE-VERIFIED BYTE-FOR-BYTE BY ME IN ITER-10: md5 J-01-verify.png = bd13782d00c37abd0a0ee4a17eeb852d, J-04-verify.png = 9e9cc6fe68e08e08ab496d6be6c081bd, INVALID-rerun files = eaacb5973639ca0dd96c695b968534fb and 190d16c0f5f8f0df0ec38396a68ee418 -- all four unchanged from the recorded values. || CAUSE STILL NOT FIXED IN THE PIPELINE ITSELF (the UI/replay chain has no awareness of docs/goal.md's lane gate), but the maintenance-isolation contract has now suppressed the lane for two consecutive iterations (9 and 10): iter-10's ui-test-results.md is an all-SKIPPED contract file, no evidence directory or replay artifact exists, and no boot-warmup scanner_runs row was written.",
+      "resolved": true
+    },
+    {
+      "iter": "goal-market-compass-iter-11",
+      "anti_goal": "AG-18 — The authorized manifest migration preserves everything (owner, 2026-08-23): the bounded next_session_manifests schema migration authorized in J-11 step 11 (ruling A1) removes the source_run_id foreign-key constraint and nothing else. ... No other table's schema may be altered under that authorization. A changed stored value is a REGRESSION, never a note.",
+      "severity": "critical",
+      "evidence": "runs/goal-market-compass-iter-11/j11-stage-b1-premigration-ddl.json vs the live sqlite_master text (identical to j11-stage-b1-postmigration-ddl.json — I compared both myself, read-only): `version INTEGER NOT NULL DEFAULT 1` -> `INTEGER NOT NULL`, `frozen BOOLEAN NOT NULL DEFAULT 0` -> `BOOLEAN NOT NULL`, `prospective_eligible BOOLEAN NOT NULL DEFAULT 0` -> `BOOLEAN NOT NULL`, and `version` moved from column ordinal 9 to 3. Cause: apps/backend/app/engine/j11_schema_migration.py:172-192 (create_shadow_table) rebuilds from NextSessionManifest.__table__ rather than the live DDL captured by fetch_object_ddl. Scope-of-authorization breach only — NOT the AG-18 stored-value clause: all 24 rows x 28 columns are byte-equal pre/post (verified independently), the four orphan source_run_id values are unrebound, no manifest was regenerated/rebound/rehashed/upgraded/deleted/minted, and no other table's schema or row count changed. Found by the in-pipeline auditor (finding B1), missed by the developer, reviewer and QA; documented forward and pinned by test_audit_ddl_delta_beyond_fk_removal_is_exactly_the_known_residual_set, but NOT undone — reversing it needs a second live-schema write the owner has not authorized. || RESOLVED 2026-08-24 BY EXPLICIT OWNER ACCEPTANCE, NOT BY REPAIR: docs/goal.md J-11 step 11 'OWNER RULING — iter-11 DDL residual accepted' + rulings A8/A9, and AG-18's own 'Bounded exception on record' paragraph, accept EXACTLY these four already-materialized differences and explicitly decline a second live rewrite on risk grounds. The acceptance is narrow and enumerated: NOT a general AG-18 waiver, NOT a precedent, NOT permission for further drift, and NOT a claim that iter-11 stayed inside its authorization (A8). Ruling A14 keeps iter-11's REGRESSION verdict standing. Verified by me read-only in iter-12: the residual is exactly the four accepted items and nothing more (28-column set identical, only version's ordinal and the three DEFAULTs differ from the captured pre-migration DDL), and no second live rewrite occurred (db mtime/size unchanged since iter-11). Root cause fixed for FUTURE migrations only in iter-12 (ruling A10): create_shadow_table now derives the table body from the captured live DDL and fails closed.",
+      "resolved": true
+    },
+    {
+      "iter": "goal-market-compass-iter-14",
+      "anti_goal": "AG-17 — Repair never rewrites provenance (owner, 2026-08-20): \"The incident record itself is evidence: the iter-5 drill result, its handoff, the reviewer/QA evidence already produced, and the explicit statement that the committed seed could not restore these dates MUST NOT be deleted, rewritten, or silently superseded.\" (read together with J-11 ruling C5, \"do not rewrite ... incident evidence\")",
+      "severity": "critical",
+      "evidence": "A new test in apps/backend/tests/test_j11_stage_c_cli_script.py called apps/backend/scripts/run_j11_stage_c_bounded_clear.py's main() with --confirm but no --evidence-dir; the script's argparse default pointed at the committed evidence directory runs/goal-market-compass-iter-13/, so the test truncated three committed Stage C forensic evidence files. The first dev handoff misattributed it to an unknown external cause.",
+      "resolved": true,
+      "resolution": "Fully reversed inside the same iteration and independently verified three times. The reviewer caught it and returned FAIL (reports/reviews/goal-market-compass-iter-14-review.md); the files were restored from git byte-for-byte; the test now targets tmp_path; --evidence-dir lost its filesystem default and main() returns 2 before any database or filesystem contact (run_j11_stage_c_bounded_clear.py:109-117, ahead of load_config/get_engine/_write_json in source order); and the handoff retracted its misattribution by name. The auditor hashed all 52 evidence files across iterations 9/11/12/13/14 before and after re-running the targeted suite — all byte-identical — and the evaluator independently confirmed `git status --porcelain runs/goal-market-compass-iter-13/` returns 0 lines. Recorded, not omitted: the act is critical-class; the outcome is a clean byte-for-byte restoration, so it does not force a REGRESSION halt (same treatment as the iter-8 entry, which was resolved after the damage was undone byte-for-byte)."
+    },
+    {
+      "iter": "goal-market-compass-iter-16",
+      "anti_goal": "AG-8 - Resilience to data-shape and data-scale change: ... unbounded whole-table ORM loads are forbidden (the delta engine reads column-projected selects, never full record_json sweeps). (critical)",
+      "severity": "minor",
+      "evidence": "apps/backend/app/engine/j11_preboot_guard.py:143 - `session.exec(select(MaintenanceBoundary)).all()` is an unbounded whole-table ORM load, and it now sits on the SHARED boot path every journey's serving depends on (apps/backend/app/engine/warmup.py:107). First raised by the auditor as observation B7; the evaluator confirmed it by reading the code. Practical impact is nil today - the table holds one row per named boundary and is read once per boot - and QA's own AG-8 line ('No new unbounded whole-table loads') is wrong on this point. RECORDED AS MINOR AND AS LETTER-BUT-NOT-SUBJECT: AG-8's subject is data-SCALE change, and this control table does not widen with the data basis, so the evaluator judged it a real but minor pattern breach rather than a critical one and says so openly; the owner may downgrade it to a non-violation at no cost. Fix is one line (filter by name / .limit(...) / select only the needed columns). || RESOLVED in goal-market-compass-iter-17: the unbounded select(MaintenanceBoundary) is replaced by _relevant_boundary_rows_statement() — filtered `active IS NOT FALSE`, projected to 4 columns, bounded LIMIT 101 — plus a fail-closed `len(rows) > 100` branch (apps/backend/app/engine/j11_preboot_guard.py:173-182, :218-228). Verified by the evaluator: code read directly, and tests/test_j11_preboot_guard.py + test_j11_preboot_guard_cli_scripts.py re-run -> 39 passed.",
+      "resolved": true
+    },
+    {
+      "iter": "goal-market-compass-iter-23",
+      "anti_goal": "OWNER RULING (docs/goal.md, 2026-08-27, binding) item 3 + its Post-Stage-G launch-condition clarification: 'The canonical database remains OFF and must not be mutated by this verification. Backend/frontend/browser verification runs against the disposable verification DB only.' / 'Do not interpret removal of those D->G launch conditions as permission to boot or mutate the canonical database.' Also the iter-23 spec's OUT OF SCOPE: 'Booting or mutating the canonical apps/backend/data/trendora.db for any purpose.'",
+      "kind": "owner-ruling breach -- NOT a breach of any enumerated anti-goal AG-1..AG-18 (all 18 were checked and all held)",
+      "severity": "critical",
+      "evidence": "scripts/automation/goal-iter-lean.sh:256-257 boots 'bash $REPO_ROOT/scripts/start-backend.sh' with no TRENDORA_CONFIG, so the deterministic replay lane served J-01/J-04 from the canonical DB (logs/backend.log boots 2026-08-27T20:16:49Z and 20:18:01Z; no launch-guard line, unlike the clone boot at 20:29:15Z recorded in runs/goal-market-compass-iter-23/verify-clone/backend-qa-boot.log). Result: 10 rows written into 5 derived caches of apps/backend/data/trendora.db -- event_study_cache 0->5, market_phase_cache 0->2 (asof_key 2026-07-23 and 2026-03-30, the J-04 replay dates), coverage_snapshot 0->1, availability_cache 0->1, membership_timeline_cache 0->1; created_at 2026-08-27 20:19:57.215888..20:26:08.352318 UTC, the last matching the canonical trendora.db-wal mtime 20:26:08.352941 to the millisecond. ZERO canonical-data tables changed (verified by a full 25-table rowid sweep against the clone's own creation-time baseline). The dev's 'canonical byte-unchanged' sha256 proof is WAL-blind and its final capture predates the breach by 3 minutes.",
+      "resolved": true,
+      "resolved_iter": "goal-market-compass-iter-24",
+      "resolution": "RESOLVED in iter-24 on two independent grounds, both verified by this evaluator. (1) OWNER DISPOSITION: docs/goal.md \"OWNER RULING — J-11 CLOSED\" (2026-08-27) item 2 accepts the 10 derived-cache rows in place and forbids cleanup writes; item 3 authorizes exactly the launcher fix. (2) REMEDY LANDED AND VERIFIED: goal_iter_lock_backend_launch_context + the ensure_services_running drift guard (lib/common.sh) and goal-iter-lean.sh reading the locked value; reviewer PASS; this evaluator independently ran tests/automation/test-backend-launch-context.sh (18 passed, 0 failed) and observed the fail-closed refusal fire. No further harm occurred: canonical .db/-wal/-shm are byte-identical to their iter-23 values. RESIDUAL (recorded, not a violation): the guard enforces launch-context CONSISTENCY with whatever was locked at iteration start, not canonical-DB PROTECTION — an iteration needing clone isolation must still supply CHAIN_START_BACKEND_CMD/TRENDORA_CONFIG in the engine's environment BEFORE goal-iter-lean.sh starts."
+    },
+    {
+      "iter": "goal-market-compass-iter-27",
+      "anti_goal": "Iteration spec binding live constraint (docs/phases/goal-market-compass-iter-27.md, BACKGROUND 'Row-count safety'): keep 'every live/canonical-DB action strictly read-only and additive-free (regression checks only, on manifests that already exist and whose runs are already intact)'; TESTING REQUIREMENTS authorized only 2025-04-15 (TC-6) and 2026-08-12 (TC-7) as live requests.",
+      "severity": "minor",
+      "evidence": "The LLM browser-QA lane issued an unauthorized GET /api/compass?as_of=2019-03-01 under its UT-J-05 step-7 check (reports/phase-goal-market-compass-iter-27-ui-test-results.llm.md:165-170), minting permanent next_session_manifests row id=26 (as_of 2019-03-01, version 1, retrospective, frozen=1, prospective_eligible=0) and taking the table from 25 to 26 rows. The dev handoff, review report and QA report all still state 25 before AND after, so their AG-12/TC-6/TC-7/TC-8 integrity evidence was falsified; found by the iter-27 auditor (finding B2), independently re-derived by the evaluator read-only (26 rows, ids 1..26 contiguous, scanner_runs 3128, daily_prices 3,310,374, incident-date manifests 0).",
+      "resolved": true,
+      "resolution": "No enumerated anti-goal is breached: the row is additive (AG-12 forbids mutation/deletion, not creation, and forbids deleting this row now), correctly classified retrospective and prospective_eligible=0 (AG-17), and no live fetch occurred (AG-9). Owner ruling 2026-08-27 item 6 gates 'immutable-manifest mutation', not an additive create-once row produced by the shipped read path, and directs the non-destructive default. Remedy applied: the auditor appended a dated correction to the dev handoff so 26, not 25, is the standing record. Residual is a PROCESS gap only — a browser lane took a permanent write on its own judgment against an explicit prohibition; carried as a lesson, not as an open data defect."
+    },
+    {
+      "iter": "goal-market-compass-iter-38",
+      "anti_goal": "AG-8 — Resilience to data-shape and data-scale change: widening the data basis must never crash an existing page or exhaust memory — consumers of widened fields are re-validated, the UI degrades gracefully (contained error boundary, honest \"—\"/NA placeholder), and unbounded whole-table ORM loads are forbidden (the delta engine reads column-projected selects, never full record_json sweeps).",
+      "severity": "critical",
+      "evidence": "apps/frontend/components/compass-focus-section.tsx:192-197 (unguarded selection.why_not_totals.excluded_by_cap_uncapped dereference) + apps/frontend/lib/api.ts:1089 (why_not_totals declared REQUIRED, not optional). The data shape was widened this iteration; the consumer was NOT re-validated against rows that predate the widening. Read-only sqlite census: 34 of 36 next_session_manifests rows carry no why_not_totals key, so 21 of 23 distinct stored as-of dates render TypeError and the whole Today page becomes 'Something went wrong on this page' — no graceful degradation, no NA placeholder. Screenshots opened by the evaluator: reports/qa/goal-market-compass-iter-38-evidence/UT-J-11-fail.png (/?asof=2026-08-11), UT-J-13-fail.png (/?asof=1996-01-02), J-07-verify.png (/?asof=2026-08-03). Regressed J-02, J-03, J-06, J-08, J-11, J-13.",
+      "resolved": true,
+      "resolved_iter": "goal-market-compass-iter-39",
+      "resolution_evidence": "RESOLVED at iter-39 and re-derived by the evaluator, not accepted from a report. apps/frontend/lib/api.ts now declares CompassSelection.why_not_totals and WhyNotEntry.reason/cap_rank/cap OPTIONAL, and compass-focus-section.tsx routes the disclosure summary through the guarded pure helper apps/frontend/lib/why-not-summary.ts. Read-only sqlite census (mode=ro): exactly 2 of 36 stored selection_json rows carry why_not_totals (2026-08-12 v10, 2005-04-15 v1); the other 21 distinct as-of dates lack it, which is precisely the crashing set. Browser row UT-08 records 21/21 HTTP 200 and 21/21 DOM checks with no error card; the evaluator opened UT-02-result.png (?asof=2026-08-11) and read the degraded string byte-for-byte: 'Not priority (20 shown - held-back counts unavailable for this manifest version)', with the 20 per-entry advisory distances rendering and NO 'ranked #N ... cap' lead-in anywhere. It additionally opened J-02/J-06/J-11/J-13/J-04-verify.png at 1996-02-01, 2025-04-15, 2026-08-12, 1996-01-02 and 2026-07-23 -- every one a full render, none an error card. Six regressed journeys are back to passing."
+    },
+    {
+      "iter": "goal-market-compass-iter-39",
+      "anti_goal": "AG-8 - Resilience to data-shape and data-scale change: widening the data basis must never crash an existing page or exhaust memory - consumers of widened fields are re-validated, the UI degrades gracefully (contained error boundary, honest '-'/NA placeholder), and unbounded whole-table ORM loads are forbidden",
+      "severity": "minor",
+      "evidence": "RESIDUAL, NOT NEWLY CAUSED - a finding no lane made; the auditor's F1 grep covered why_not_totals/reason/cap_rank/cap but not the NESTED failed_conditions[].gating field. apps/frontend/lib/api.ts:1051 still declares WhyNotFailedCondition.gating as REQUIRED (`gating: boolean`), but the field was added by the SAME iter-38 change and is ABSENT on every pre-iter-38 stored row: the evaluator's read-only census of all 787 stored failed_conditions found exactly two keysets - {condition,threshold,actual,distance,gating} and {condition,threshold,actual,distance} - with zero rows on the 21 older as-of dates carrying `gating`. apps/frontend/components/compass-focus-section.tsx:151 renders `{failed.gating ? \"\" : \" - advisory\"}`, so on those older manifests EVERY failed condition is labelled '- advisory', including 26 stored `leadership_min_score` misses across three as-of dates (2001-04-17: 11, 2005-04-01: 5, 2020-01-02: 10) - and leadership_min_score is the SOLE candidacy gate, never advisory. NOT a crash (a truthiness read on an absent property is safe, and all 787 conditions carry condition/threshold/actual/distance, so no .toFixed() can throw) and NOT a wrong NUMBER (every threshold/actual/distance matches the stored row), so it is scored MINOR rather than critical; what it breaks is AG-8's re-validation clause and the same honesty family J-14 exists to fix. It became VISIBLE only because iter-39 stopped those pages crashing. None of the three dates is a journey assertion target. Fix is one line plus a guard: `gating?: boolean` and render an honest 'gating status not recorded' rather than 'advisory' when absent.",
+      "resolved": false
+    }
+  ],
+  "updated_at": "2026-09-02T08:14:35.449770+00:00"
+}

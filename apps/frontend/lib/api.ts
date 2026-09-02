@@ -948,6 +948,22 @@ export interface SessionDeltaSuppressed {
   threshold: number;
 }
 
+/** The stock-kind accounting object (goal-market-compass iter-40, J-15): every stock-kind bucket
+ *  crossing the producer evaluates lands in exactly one bucket — `evaluated_count ==
+ *  shown_count + suppressed_count + residual_count`. `shown_count` is how many crossing entries are
+ *  actually present in `session_delta.changes` (kind `stock`, new-to-universe entries excluded — they
+ *  carry unconditional priority and are never subject to the threshold, so they are outside this
+ *  accounting exactly as before this field existed); `suppressed_count` is crossings below
+ *  `compass.delta.stock_score_min_change`; `residual_count` is crossings that met the threshold but were
+ *  bumped by the `compass.delta.max_stock_items` display cap — a count only, never a per-name list
+ *  (AG-8). */
+export interface SessionDeltaStockAccounting {
+  evaluated_count: number;
+  shown_count: number;
+  suppressed_count: number;
+  residual_count: number;
+}
+
 /** The `session_delta` CONTENT block (J-02). `prior_as_of`/`gap_days` are both `null` for the
  *  earliest stored run — the explicit no-prior-run state; never a fabricated comparison. */
 export interface SessionDelta {
@@ -962,6 +978,11 @@ export interface SessionDelta {
   // historical as-of can legitimately have a non-null `prior_as_of` and NO `rotation` — consumers must
   // branch on its absence and show an honest placeholder (AG-8), never dereference it unguarded.
   rotation?: CompassRotation;
+  // iter-40 (J-15) — additive and OPTIONAL for the SAME reason as `rotation` above: every
+  // `next_session_manifests` row frozen before this field existed has no `stock_accounting` key at all
+  // (never backfilled — AG-12). Consumers MUST branch on its absence and render nothing new, never
+  // dereference it unguarded.
+  stock_accounting?: SessionDeltaStockAccounting;
 }
 
 /** One cited fact backing a narrative sentence (J-03) — spot-checkable against the canonical
@@ -1042,13 +1063,20 @@ export interface CompassCandidate {
  *  `_qualifier_checks` computes for every candidate checklist row: `true` only for `leadership_min_score`
  *  (the sole candidacy gate), `false` for the advisory `entry_min_score`/`risk_max_score` qualifiers
  *  (they annotate a caution and never remove a row from candidacy, and never explain a why-not entry's
- *  `reason` on their own). */
+ *  `reason` on their own).
+ *
+ *  OPTIONAL (goal-market-compass iter-40 — AG-8 regression repair per the iter-39 evaluator's finding):
+ *  `gating` is absent, not `false`, on every `failed_conditions` entry served from a manifest minted
+ *  before the iter-38 `rule_version` bump (all 21 pre-iter-38 stored as-of dates) — it was never a
+ *  required field on the stored data, only mis-declared as one here. A reader MUST treat `undefined` as
+ *  "not recorded for this manifest version", distinct from both `true` and `false`, never defaulted to
+ *  either. */
 export interface WhyNotFailedCondition {
   condition: string;
   threshold: number;
   actual: number;
   distance: number;
-  gating: boolean;
+  gating?: boolean;
 }
 
 /** The closed reason vocabulary for a `WhyNotEntry` (J-14) — reuses `selection_disposition`'s EXISTING

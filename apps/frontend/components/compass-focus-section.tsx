@@ -133,6 +133,21 @@ function WhyNotLeadIn({ entry }: { entry: WhyNotEntry }) {
   );
 }
 
+/** The `failed.gating` suffix (goal-market-compass iter-40 — AG-8 regression repair per the iter-39
+ *  evaluator's finding). Reviewed: `WhyNotFailedCondition.gating` is OPTIONAL (`lib/api.ts`) -- absent,
+ *  not `false`, on every `failed_conditions` entry served from a manifest minted before the iter-38
+ *  `rule_version` bump (all 21 pre-iter-38 stored as-of dates). The prior `failed.gating ? "" : "
+ *  — advisory"` truthiness read treated `undefined` the same as `false`, mislabeling 26 stored
+ *  leadership-floor misses "— advisory" though they were never checked. This is a genuine 3-state
+ *  render: `undefined` ("not recorded for this manifest version") is distinct from BOTH `true` (gating,
+ *  no suffix) and `false` (advisory). */
+function gatingSuffix(gating: boolean | undefined): string {
+  if (gating === undefined) {
+    return " — not recorded";
+  }
+  return gating ? "" : " — advisory";
+}
+
 function WhyNotList({ entries }: { entries: WhyNotEntry[] }) {
   if (entries.length === 0) {
     return <p className="pt-1 text-xs text-text-faint">No near-miss names this session.</p>;
@@ -148,7 +163,7 @@ function WhyNotList({ entries }: { entries: WhyNotEntry[] }) {
               {entry.failed_conditions.map((failed, index) => (
                 <li key={index}>
                   {failed.condition}: {failed.actual.toFixed(1)} vs {failed.threshold.toFixed(1)} (distance{" "}
-                  {failed.distance.toFixed(1)}){failed.gating ? "" : " — advisory"}
+                  {failed.distance.toFixed(1)}){gatingSuffix(failed.gating)}
                 </li>
               ))}
             </ul>
