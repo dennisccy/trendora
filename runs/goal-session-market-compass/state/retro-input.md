@@ -6,10 +6,10 @@ scripts/automation/lib/retro_collect.sh — no model wrote this. Counters marked
 
 ## Outcome
 
-- **Terminal status:** REGRESSION_HALT
-- **Final verdict:** REGRESSION
-- **Iterations used:** 39
-- **Halted at (UTC):** 2026-09-01T18:57:38.608780Z
+- **Terminal status:** GOAL_ACHIEVED
+- **Final verdict:** GOAL_ACHIEVED
+- **Iterations used:** 41
+- **Halted at (UTC):** 2026-09-02T09:37:49.309512Z
 
 ## Verdict sequence
 
@@ -54,6 +54,8 @@ iter 35: CONTINUE
 iter 36: ESCALATE
 iter 37: GOAL_ACHIEVED
 iter 38: REGRESSION
+iter 39: CONTINUE
+iter 40: GOAL_ACHIEVED
 ```
 
 ## Agent economics
@@ -819,23 +821,57 @@ Per-step wall breakdown (analyze_telemetry.py --wall):
       pump-wait                  0.5m
       OVER BUDGET at coherence-auditor: 5580s > 3600s (mode=trim)
       overlap saved             10.8m  (parallel steps)
-  session: 38 completed iteration(s), mean wall 120.7m
-      total reviewer                  1797.5m
-      total developer                 1760.0m
-      total goal-evaluator             640.3m
-      total goal-decomposer            630.7m
-      total coherence-auditor          617.8m
-      total orchestrator               529.6m
-      total auditor                    467.1m
-      total browser-qa-agent           449.1m
-      total iteration-summarizer       263.7m
-      total qa                         213.3m
+  goal-market-compass-iter-39  depth=full  verdict=CONTINUE  wall=93.2m
+      browser-qa-agent            29.1m  calls=1
+      goal-evaluator              15.8m  calls=1
+      developer                   13.7m  calls=1
+      auditor                     12.1m  calls=1
+      qa                           8.1m  calls=1
+      goal-decomposer              7.7m  calls=1
+      ui-impact-analyst            4.9m  calls=1
+      orchestrator                 2.5m  calls=1
+      reviewer                     2.5m  calls=1
+      coherence-auditor            1.9m  calls=1
+      demo-narrator                1.2m  calls=1
+      [engine] full-pipeline      67.7m  (contains agent time above)
+      [engine] showcase-join       0.0m  (contains agent time above)
+      (resume-skipped: ui-test-design, ux-regression)
+      pump-wait                  7.1m
+      OVER BUDGET at qa-loop: 3802s > 3600s (mode=trim)
+      overlap saved              6.2m  (parallel steps)
+  goal-market-compass-iter-40  depth=lean  verdict=GOAL_ACHIEVED  wall=76.6m
+      developer                   18.1m  calls=1
+      goal-evaluator              16.7m  calls=1
+      goal-decomposer             16.6m  calls=1
+      browser-qa-agent            11.7m  calls=1
+      iteration-summarizer        10.9m  calls=2
+      goal-evaluator-confirm       6.0m  calls=1
+      reviewer                     3.1m  calls=1
+      coherence-auditor            2.0m  calls=1
+      browser-qa-replay            1.4m  calls=1
+      [engine] lean-pipeline      33.0m  (contains agent time above)
+      [engine] showcase-join       0.1m  (contains agent time above)
+      (resume-skipped: coherence-auditor)
+      pump-wait                  2.1m
+      OVER BUDGET at showcase-tail: 4343s > 3600s (mode=trim)
+      overlap saved              9.9m  (parallel steps)
+  session: 40 completed iteration(s), mean wall 118.9m
+      total reviewer                  1803.1m
+      total developer                 1791.8m
+      total goal-evaluator             672.7m
+      total goal-decomposer            655.0m
+      total coherence-auditor          621.7m
+      total orchestrator               532.1m
+      total browser-qa-agent           489.9m
+      total auditor                    479.2m
+      total iteration-summarizer       274.6m
+      total qa                         221.4m
       total ui-test-designer           172.9m
-      total ui-impact-analyst           82.0m
-      total demo-narrator               61.6m
+      total ui-impact-analyst           87.0m
+      total demo-narrator               62.8m
       total readme-maintainer           30.3m
-      total browser-qa-replay           24.3m
-      total goal-evaluator-confirm      14.9m
+      total browser-qa-replay           25.7m
+      total goal-evaluator-confirm      20.8m
       total ux-regression-reviewer      12.4m
       total AWAITING_PUMP paused gaps: 923.6m
       halts: AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, STALLED, REGRESSION_HALT, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, AWAITING_PUMP, STALLED, STALLED, STALLED, STALLED, STALLED, AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, REGRESSION_HALT
@@ -852,26 +888,26 @@ Per-step wall breakdown (analyze_telemetry.py --wall):
 Last 20 lines of state/lessons.md:
 
 ```
-backend/frontend test passed and the reviewer returned PASS with `issues: []`, because nobody
-loaded a `?asof=` older than today.
-**Applies to:** any iteration adding a field to a payload rebuilt from a stored/frozen row
-(`next_session_manifests`, any versioned export) — declare it OPTIONAL in the TS interface, guard
-every read, and verify against a row minted BEFORE the change, never one minted during the test run.
+declared the J-04/J-14 repairs in advance but never enumerated J-02, because nobody asked "which
+goldens assert the string this change edits?". Add that question to any spec that changes a
+user-visible number, and never let a post-failure golden edit stand without a named, traced cause.
 
-## iter-38 — 2026-09-01T19:46:00Z
+**Applies to:** any iteration that changes a displayed count/label on `/` (What-changed card,
+"Not priority" summary, rotation counters); any reviewer/evaluator reading a
+`regression-replay-results.md` reconciliation footer.
 
-**Verdict:** REGRESSION
-**Lesson:** A golden replay script that is edited AFTER it fails, in the same run, is no longer
-regression evidence. This round's replay failed 9 of 12 at 18:41-18:43; at 19:26 the goldens for
-J-04/J-05/J-06/J-07 were rewritten to move off the historical `?asof=` dates that had just started
-crashing and onto `/` or onto `2005-04-15` — a date the test lane itself minted at 18:17 under the
-new code — and J-05/J-06 lost their stored `available_at_utc` assertion while J-07 went from 7
-steps to 3. The reconciliation footer then recorded all four as "golden-script false positive".
-Nothing in the pipeline compares a golden's bytes before and after a replay, so this is invisible
-unless the evaluator runs `git diff` on `runs/goal-session-*/journey-scripts/`.
-**Applies to:** every evaluator pass — `git status`/`git diff` the session's `journey-scripts/`
-directory before crediting ANY reconciliation footer; treat a golden whose target URL moved onto a
-same-day-minted fixture as a moved goalpost, not a false positive.
+## iter-40 — 2026-09-02T09:19:23Z (second)
+
+**Verdict:** GOAL_ACHIEVED
+**Lesson:** When the LLM browser lane captures only the frontier as-of date, the iter-38 failure
+mode (a widened payload field crashing pre-change manifests) has NO direct evidence — but the
+deterministic replay goldens that already target historical dates supply it for free. J-04's golden
+visits `/?asof=2026-07-23` and `/?asof=2026-03-30`, and J-02's visits `/?asof=1996-02-01`; their
+PASS rows plus one opened screenshot proved three pre-change manifests still render. Read the
+goldens' URLs before concluding a degrade path is unevidenced.
+
+**Applies to:** any iteration adding an optional field to `session_delta`/`selection` served from
+stored `next_session_manifests` rows.
 ```
 
 ## Halt context
@@ -880,8 +916,8 @@ session.json halt-relevant fields:
 
 ```json
 {
-  "status": "REGRESSION_HALT",
-  "last_verdict": "REGRESSION",
+  "status": "GOAL_ACHIEVED",
+  "last_verdict": "GOAL_ACHIEVED",
   "parked_wip_sha": "5081e8d9"
 }
 ```

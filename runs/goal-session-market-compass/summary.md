@@ -1,39 +1,39 @@
 # Goal Session Summary — market-compass
 
-**Final verdict:** REGRESSION_HALT
-**Total iterations:** 39
-**Wall time (seconds):** 77106
+**Final verdict:** GOAL_ACHIEVED
+**Total iterations:** 41
+**Wall time (seconds):** 10272
 **Quota pauses:** 0
 **Started:** 2026-08-19T21:31:52.886915Z
-**Finished:** 2026-09-01T18:57:38.608780Z
+**Finished:** 2026-09-02T09:37:49.309512Z
 
 ## Branch
 
 This session pushed iteration commits to `goal/market-compass`. Open a PR with:
 
     gh pr create --base main --head goal/market-compass \
-      --title "feat: market-compass — REGRESSION_HALT" \
+      --title "feat: market-compass — GOAL_ACHIEVED" \
       --body-file runs/goal-session-market-compass/summary.md
 
 ## Final journey state
 
 | Journey | Status | Last passing iter |
 |---|---|---|
-| J-01 | passing | goal-market-compass-iter-38 |
-| J-02 | regressed | goal-market-compass-iter-37 |
-| J-03 | regressed | goal-market-compass-iter-37 |
-| J-04 | passing | goal-market-compass-iter-38 |
-| J-05 | passing | goal-market-compass-iter-38 |
-| J-06 | regressed | goal-market-compass-iter-37 |
-| J-07 | passing | goal-market-compass-iter-38 |
-| J-08 | regressed | goal-market-compass-iter-37 |
-| J-09 | passing | goal-market-compass-iter-37 |
-| J-10 | passing | goal-market-compass-iter-38 |
-| J-11 | regressed | goal-market-compass-iter-37 |
-| J-12 | passing | goal-market-compass-iter-38 |
-| J-13 | regressed | goal-market-compass-iter-37 |
-| J-14 | partial | - |
-| J-15 | unknown | - |
+| J-01 | passing | goal-market-compass-iter-40 |
+| J-02 | passing | goal-market-compass-iter-40 |
+| J-03 | passing | goal-market-compass-iter-40 |
+| J-04 | passing | goal-market-compass-iter-40 |
+| J-05 | passing | goal-market-compass-iter-39 |
+| J-06 | passing | goal-market-compass-iter-39 |
+| J-07 | passing | goal-market-compass-iter-40 |
+| J-08 | passing | goal-market-compass-iter-40 |
+| J-09 | passing | goal-market-compass-iter-40 |
+| J-10 | passing | goal-market-compass-iter-39 |
+| J-11 | passing | goal-market-compass-iter-39 |
+| J-12 | passing | goal-market-compass-iter-40 |
+| J-13 | passing | goal-market-compass-iter-40 |
+| J-14 | passing | goal-market-compass-iter-40 |
+| J-15 | passing | goal-market-compass-iter-40 |
 
 ## Anti-goal violations
 
@@ -47,6 +47,7 @@ This session pushed iteration commits to `goal/market-compass`. Open a PR with:
 - [critical] OWNER RULING (docs/goal.md, 2026-08-27, binding) item 3 + its Post-Stage-G launch-condition clarification: 'The canonical database remains OFF and must not be mutated by this verification. Backend/frontend/browser verification runs against the disposable verification DB only.' / 'Do not interpret removal of those D->G launch conditions as permission to boot or mutate the canonical database.' Also the iter-23 spec's OUT OF SCOPE: 'Booting or mutating the canonical apps/backend/data/trendora.db for any purpose.' (iter goal-market-compass-iter-23)
 - [minor] Iteration spec binding live constraint (docs/phases/goal-market-compass-iter-27.md, BACKGROUND 'Row-count safety'): keep 'every live/canonical-DB action strictly read-only and additive-free (regression checks only, on manifests that already exist and whose runs are already intact)'; TESTING REQUIREMENTS authorized only 2025-04-15 (TC-6) and 2026-08-12 (TC-7) as live requests. (iter goal-market-compass-iter-27)
 - [critical] AG-8 — Resilience to data-shape and data-scale change: widening the data basis must never crash an existing page or exhaust memory — consumers of widened fields are re-validated, the UI degrades gracefully (contained error boundary, honest "—"/NA placeholder), and unbounded whole-table ORM loads are forbidden (the delta engine reads column-projected selects, never full record_json sweeps). (iter goal-market-compass-iter-38)
+- [minor] AG-8 - Resilience to data-shape and data-scale change: widening the data basis must never crash an existing page or exhaust memory - consumers of widened fields are re-validated, the UI degrades gracefully (contained error boundary, honest '-'/NA placeholder), and unbounded whole-table ORM loads are forbidden (iter goal-market-compass-iter-39)
 
 ## Telemetry
 
@@ -794,23 +795,57 @@ See `runs/goal-session-market-compass/telemetry.jsonl` for the structured event 
       pump-wait                  0.5m
       OVER BUDGET at coherence-auditor: 5580s > 3600s (mode=trim)
       overlap saved             10.8m  (parallel steps)
-  session: 38 completed iteration(s), mean wall 120.7m
-      total reviewer                  1797.5m
-      total developer                 1760.0m
-      total goal-evaluator             640.3m
-      total goal-decomposer            630.7m
-      total coherence-auditor          617.8m
-      total orchestrator               529.6m
-      total auditor                    467.1m
-      total browser-qa-agent           449.1m
-      total iteration-summarizer       263.7m
-      total qa                         213.3m
+  goal-market-compass-iter-39  depth=full  verdict=CONTINUE  wall=93.2m
+      browser-qa-agent            29.1m  calls=1
+      goal-evaluator              15.8m  calls=1
+      developer                   13.7m  calls=1
+      auditor                     12.1m  calls=1
+      qa                           8.1m  calls=1
+      goal-decomposer              7.7m  calls=1
+      ui-impact-analyst            4.9m  calls=1
+      orchestrator                 2.5m  calls=1
+      reviewer                     2.5m  calls=1
+      coherence-auditor            1.9m  calls=1
+      demo-narrator                1.2m  calls=1
+      [engine] full-pipeline      67.7m  (contains agent time above)
+      [engine] showcase-join       0.0m  (contains agent time above)
+      (resume-skipped: ui-test-design, ux-regression)
+      pump-wait                  7.1m
+      OVER BUDGET at qa-loop: 3802s > 3600s (mode=trim)
+      overlap saved              6.2m  (parallel steps)
+  goal-market-compass-iter-40  depth=lean  verdict=GOAL_ACHIEVED  wall=76.6m
+      developer                   18.1m  calls=1
+      goal-evaluator              16.7m  calls=1
+      goal-decomposer             16.6m  calls=1
+      browser-qa-agent            11.7m  calls=1
+      iteration-summarizer        10.9m  calls=2
+      goal-evaluator-confirm       6.0m  calls=1
+      reviewer                     3.1m  calls=1
+      coherence-auditor            2.0m  calls=1
+      browser-qa-replay            1.4m  calls=1
+      [engine] lean-pipeline      33.0m  (contains agent time above)
+      [engine] showcase-join       0.1m  (contains agent time above)
+      (resume-skipped: coherence-auditor)
+      pump-wait                  2.1m
+      OVER BUDGET at showcase-tail: 4343s > 3600s (mode=trim)
+      overlap saved              9.9m  (parallel steps)
+  session: 40 completed iteration(s), mean wall 118.9m
+      total reviewer                  1803.1m
+      total developer                 1791.8m
+      total goal-evaluator             672.7m
+      total goal-decomposer            655.0m
+      total coherence-auditor          621.7m
+      total orchestrator               532.1m
+      total browser-qa-agent           489.9m
+      total auditor                    479.2m
+      total iteration-summarizer       274.6m
+      total qa                         221.4m
       total ui-test-designer           172.9m
-      total ui-impact-analyst           82.0m
-      total demo-narrator               61.6m
+      total ui-impact-analyst           87.0m
+      total demo-narrator               62.8m
       total readme-maintainer           30.3m
-      total browser-qa-replay           24.3m
-      total goal-evaluator-confirm      14.9m
+      total browser-qa-replay           25.7m
+      total goal-evaluator-confirm      20.8m
       total ux-regression-reviewer      12.4m
       total AWAITING_PUMP paused gaps: 923.6m
       halts: AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, STALLED, REGRESSION_HALT, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, STALLED, AWAITING_PUMP, STALLED, STALLED, STALLED, STALLED, STALLED, AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, AWAITING_PUMP, REGRESSION_HALT
