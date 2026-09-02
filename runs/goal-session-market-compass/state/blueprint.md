@@ -400,3 +400,21 @@ producer and serves them via the SAME endpoint — no new producer, no new route
   "Suppressed moves" undercount, `session_delta.py`, also goal-proposer 2026-09-01) is queued next and
   targets the same already-registered row's `session_delta` field — deliberately not bundled with J-14
   per the priority rubric's "never bundle two risky journeys" rule.
+
+**iter-39 note (2026-09-02 — corrective, no IA change, no new Data Contract row):** repairs the
+AG-8 regression iter-38 introduced on the ALREADY-REGISTERED "Next-session manifest — CONTENT
+block" row's `selection.why_not_totals` field and the `reason`/`cap_rank`/`cap` fields of
+`selection.why_not[]` entries (all registered iter-38). Root cause: `apps/frontend/lib/api.ts`
+declared `why_not_totals` non-optional and `compass-focus-section.tsx:192-197` dereferenced it
+unguarded, so the 34 of 36 stored `next_session_manifests` rows minted before the iter-38
+`rule_version` bump (which genuinely lack the field, by design — it is additive) crashed the
+Today page's error boundary on load. This iteration makes `why_not_totals` and the sibling
+`reason`/`cap_rank`/`cap` fields OPTIONAL in the TS interface, matching what was always true of
+the stored data, and adds a degraded-but-honest render path (an explicit "held-back counts
+unavailable for this manifest version" string) instead of a crash — per AG-8's own requirement
+that a widened field's consumers be re-validated and degrade gracefully. No computing module,
+serving endpoint, or field identity changes: still the SAME `app.engine.compass.evaluate_selection`
+/ `build_manifest_payload` producer and the SAME `GET /api/compass` endpoint. No new Data Contract
+row, no schema-file version bump, no IA change — this is a frontend-only type-contract correction
+plus the corresponding renderer guard. See `docs/phases/goal-market-compass-iter-39.md` for full
+detail.

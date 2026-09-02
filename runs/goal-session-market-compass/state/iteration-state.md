@@ -1,27 +1,36 @@
 # Iteration State — market-compass
 
-**After iteration:** 38 · **Date:** 2026-09-01 · **Verdict:** REGRESSION
+**After iteration:** 39 · **Date:** 2026-09-02 · **Verdict:** CONTINUE
 
 ## Journeys
 
-7 passing (J-01 J-04 J-05 J-07 J-09 J-10 J-12) · 6 regressed (J-02 J-03 J-06 J-08 J-11 J-13) · 1 partial (J-14) · 1 unknown (J-15) — 15 total. J-09 was NOT tested (DEFERRED-BUDGET).
+14 passing (J-01..J-14) · 0 failing · 0 regressed · 1 unknown/never-built (J-15) — 15 total.
+Gates: results 0 · journeys 1 `blocking:["J-15"]` · regressions 0 · coherence 0 · drift `changed:[]`.
 
 ## Active blockers
 
-- **AG-8 CRITICAL, unresolved (dev):** `apps/frontend/components/compass-focus-section.tsx:192-197` dereferences `selection.why_not_totals.excluded_by_cap_uncapped` unguarded, and `apps/frontend/lib/api.ts:1089` declares the field REQUIRED. 34 of 36 stored `next_session_manifests` rows lack it → 21 of 23 stored as-of dates crash the Today page.
-- **Weakened regression evidence (dev):** `runs/goal-session-market-compass/journey-scripts/J-04|J-05|J-06|J-07.json` were rewritten at 19:26 after their 18:41 replay FAIL, onto `/` or onto `2005-04-15` (minted the same day); J-05/J-06 lost the `available_at_utc` assertion, J-07 went 7 steps → 3. Restore from HEAD `ab3cca63`.
-- **Owner:** halt acknowledged? Resume needs `--acknowledge-regression`.
+- **J-15 "What changed accounts for every stock-level crossing"** — never built, sole GOAL_ACHIEVED
+  blocker. Owner: dev. Spec `docs/goal.md:2543`; target `apps/backend/app/engine/session_delta.py`.
+- **Minor AG-8, unresolved (ledger 11 / 1 open):** `WhyNotFailedCondition.gating` still required at `apps/frontend/lib/api.ts:1051` but absent on all 21 pre-iter-38 as-of dates, so `compass-focus-section.tsx:151` labels 26 stored `leadership_min_score` misses "— advisory" on 2001-04-17 / 2005-04-01 / 2020-01-02. No crash. Fix: `gating?: boolean` + honest "not recorded".
+- **Two goldens need a DECLARED-IN-ADVANCE repair.** `J-04.json` step 2 clicks the stale literal `Not priority (20)`; `J-14.json` step 3 re-navigates then asserts text inside a `<details>` that `components/ui/disclosure.tsx` never opens. Never edit a golden after it fails without declaring it; never re-point one at a same-day-minted date.
+- **Capture debt (passenger only, never a round of its own):** walkthrough frames owed for J-05, J-06, J-12; J-14's step-08 frame is a top-of-page viewport and no step carries `[NEW]`; `UT-10-result.png` came out a 1-colour blank.
+- Human-owned, non-blocking: one pre-existing failing test on three untouched files; the 7.8 GB
+  iter-23 throwaway copy; `apps/frontend/.next-verify/` still tracked (61 of 65 diff paths).
 
 ## Last 2 verdicts
 
-- iter 38: REGRESSION — J-14 built correctly (numbers re-derived and all match), but the new required field crashes the Today page for 21 of 23 saved dates; six passing journeys regressed; AG-8 violated.
-- iter 37: GOAL_ACHIEVED — 13/13 re-verified, blank-capture and never-run-golden blockers closed; certified with the ux-regression lane declared-shed.
+- iter 39: CONTINUE — AG-8 crash repaired at root; all six regressed journeys restored on
+  pre-existing dates, J-14 promoted from partial; only J-15 (never built) remains.
+- iter 38: REGRESSION — unguarded `why_not_totals` read crashed the Today page on 21 of 23 stored
+  as-of dates, regressing six journeys; critical AG-8 violation.
 
 ## Do not redo
 
-- **Keep the J-14 backend fix — it is correct.** `evaluate_selection`'s `reason`/`gating`/`cap_rank`/`cap`/`why_not_totals` and `_select_why_not_display` verified against stored v10 (id 35) + run 3158: totals 27/25, DXCM #11 of 37 above-floor, 37−10=27=tally. Only the frontend guard is missing.
-- **Non-interference is proven.** v9→v10: `candidate_rule_hash` 7734ce9ead08dd85…, `cohort_rule_hash` 396c29d22cb0a7df…, `comparison_cohort` (529), `near_threshold_shadow` (25), candidates (10), `disposition_tally` all byte-identical. Do not re-litigate J-12.
-- **AG-12/AG-17 are clean.** v7 md5 `d905dcfeb7883d86602d64d4c24682ad` unchanged; 36 rows, +2 additive, 0 mutated/deleted; `prospective_eligible = 1` on zero rows. Do not re-audit.
-- **`config.yaml` diff is exactly 9 added lines** (`why_not_cap_per_reason: 10`); no threshold moved (AG-15); host-guard + memory caps untouched (AG-10).
-- **Do not schedule an evidence-only round.** Six walkthroughs (J-02 J-03 J-05 J-06 J-07 J-12) and J-14's crop ride as passengers only.
-- **J-15 is still unbuilt** and stays queued behind the repair round.
+- **AG-8 crash fix is DONE** (`api.ts` optionality + `lib/why-not-summary.ts` guard; 21/21 dates
+  HTTP 200, evaluator opened five repaired pages). Do not re-fix or re-litigate.
+- **The four tampered goldens are byte-exact to `ab3cca63`** (re-verified: zero diff); J-05/J-06's
+  freeze-stamp assertion and J-07's 7 steps are back. Do not re-restore.
+- **J-14's backend logic is correct and untouched**; numbers re-derived against stored row id 35. Do not rebuild it. Its crop gap is CLOSED (`UT-09-result.png`, full 20-entry panel).
+- **Do not schedule an evidence-only round** — all remaining capture debt rides as passengers.
+- **AG-12/AG-17 immutability re-proven** (36 rows / 23 dates, `prospective_eligible` 0, export v7
+  md5 `d905dcfeb788…` for a fifth round). Do not re-audit from scratch.

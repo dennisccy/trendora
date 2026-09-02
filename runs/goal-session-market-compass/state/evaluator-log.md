@@ -3917,3 +3917,162 @@ depth ladder demoted a `full` spec to `lean` using a *stale* prior verdict (GOAL
 evidence) that predates J-14 and J-15 being added to `docs/goal.md` the same day — it should
 re-read the goal state when new Must-have journeys appear. **ONE MECHANICAL ITEM:** the whole
 iteration is uncommitted at scoring time; confirm it lands.
+
+## Iteration 39 — goal-market-compass-iter-39
+
+**Date:** 2026-09-02T09:10:00Z
+**Verdict:** CONTINUE
+**Depth dispatched:** full — and genuinely full, verified by artifact: `iter-39/depth-dispatched`
+reads `full`, and every full-only lane produced a real file (audit handoff 12 KB, QA report,
+ui-impact `user-visible-changes` + `ui-surface-map`, ui-test-design `ui-test-plan` +
+`what-to-click`, browser-QA `ui-test-results.md` + `.llm.md`, demo recording, closure verdict).
+ONE lane was shed — UX-regression — by the DECLARED SPEED-15 rung-3b wall-clock trim, written in
+the artifact itself. Unlike iter-37 this round DID change a user-facing string, so I did not wave
+it through on the "no screen changed" ground; instead I recorded that the changed screen was
+inspected four other ways and that I read the new string out of a screenshot myself.
+
+**Owner-facing lines:** `THE AG-8 CRASH IS FIXED AND I OPENED FIVE OF THE REPAIRED PAGES MYSELF —
+1996-02-01, 2025-04-15, 1996-01-02, 2026-07-23, 2026-08-11, every one a full render, none an error
+card` · `I COUNTED THE ROOT CAUSE IN THE DATABASE READ-ONLY: exactly 2 of 36 stored rows carry
+why_not_totals; the other 21 as-of dates are precisely the crashing set` · `THE SIX REGRESSED JOBS
+ARE ALL BACK — and this time on days that already existed, not on a day minted during the test` ·
+`THE FOUR TAMPERED CHECK SCRIPTS ARE BYTE-EXACT TO ab3cca63 AGAIN — J-05/J-06's deleted freeze-stamp
+assertion and J-07's four deleted steps are back, and three of the four re-pass` · `J-14's 20-ENTRY
+PANEL IS FINALLY IN A PICTURE AND I READ IT — 10 cap-excluded #11-#20 cap 10, 10 below-floor
+near-misses with distances, closing border visible; the iter-38 crop gap is CLOSED` · `NOTHING
+FROZEN MOVED — 36 rows / 23 dates unchanged, v7 md5 d905dcfeb788… for a FIFTH round,
+prospective_eligible = 0 on all 36, max(created_at) predates this run` · `THE PRODUCT DIFF IS FOUR
+FRONTEND FILES` · `ANTI-GOAL LEDGER: 11 total, 1 unresolved (a NEW MINOR I found myself)` ·
+`NOT ACHIEVED: J-15 was never built and is the only thing left`.
+
+**Journey deltas:**
+- **Newly passing: J-02, J-03, J-06, J-08, J-11, J-13** (all six restored from `regressed`) **and
+  J-14** (promoted from `partial`). **Newly failing: none. Regressed: none** —
+  `goal_gate.py regressions pre→post` exits 0.
+- **Still passing (7): J-01, J-04, J-05, J-07, J-09, J-10, J-12.** J-09 was **re-verified this
+  round**, not deferred as at iter-38 — row UT-J-09 cites `cache_size -65536` and live VmPeak
+  2,477,024 kB ≤ 2.5 GB, and I re-read `config.yaml:109` myself and confirmed `git diff` on that
+  file is EMPTY. **J-15 stays `unknown`** — never built, explicitly out of scope; it is the sole
+  GOAL_ACHIEVED blocker.
+- **The root cause, re-derived at source rather than accepted.** Read-only sqlite (`mode=ro`):
+  exactly 2 of 36 stored `selection_json` rows carry `why_not_totals` (2026-08-12 v10 = 27/25,
+  2005-04-15 v1); **21 distinct as-of dates lack it** — precisely the crashing set. Pre-iter-38
+  `why_not` entries carry only `{ticker, failed_conditions}`, so widening
+  `reason`/`cap_rank`/`cap` was genuinely required too, not defensive padding.
+- **The fix, read out of an image not a report.** I opened `UT-02-result.png` (`?asof=2026-08-11`)
+  and read the degraded summary byte-for-byte: `Not priority (20 shown — held-back counts
+  unavailable for this manifest version)`, with all 20 per-entry advisory distances rendering below
+  it and **no** "ranked #N … cap" lead-in anywhere (TC-1 + TC-2 confirmed visually). The same image
+  carries J-02's What-changed header "vs 2026-08-10 (1 day ago)", J-03's Summary + "Show cited
+  facts", J-11's "Basis: rebuilt" strip with the v1/v2/v3 "retrospective  not eligible" list, and
+  J-13's honest rotation empty state — four journeys proven in one frame.
+- **THE ITER-38 GOALPOST-MOVING IS UNDONE, and I verified it at the byte level.**
+  `git diff ab3cca63 -- J-04/J-05/J-06/J-07.json` → **zero differences**. I read all four scripts:
+  J-05/J-06 point at `2025-04-15` (a manifest frozen 2026-08-20, genuinely pre-existing — not
+  iter-38's same-day-minted `2005-04-15`) and carry back the DELETED `available_at_utc` assertion
+  `2026-08-20T11:41:00.381102+00:00`; J-07 is back to its full 7 steps with the market-link click
+  and all three direction-word assertions. **Three of the four re-pass replay.** This is exactly the
+  repair iter-38's eval demanded, and it landed.
+- **J-14's numbers, re-derived by me against stored row id 35.** `why_not_totals` 27/25 (= the
+  header's "52 held back"); DXCM `cap_rank 11, cap 10, entry_min_score 26.53 vs 70.0 d 43.47,
+  gating false`; EXPE `leadership_min_score 79.81 vs 80.0 d 0.19, gating true`; BKNG d 1.60. Every
+  on-screen value matches to the printed decimal (AG-3). Step 8 ("pre-fix manifests remain readable
+  exactly as they are") is now MET — the sole reason it was `partial`.
+- **Two spot-checks opened, BOTH AGREED with their recorded status**, so I did not widen:
+  `J-01-verify.png` (GRMN 89.12 / 28.66 / 58.55, sector Consumer Discretionary, three "Not yet
+  proven" chips — identical to the value iter-38 recorded) and `J-12-verify.png` (at ingest /
+  version 10 / frozen / not prospective-eligible, cohort 529 + shadow 25, DXCM 85.0/26.5/57.6
+  "excluded by cap", candidate rule 7734ce9ead…, cohort rule 396c29d22c…).
+- **`spec_hash`: drift `changed: []`, no `journeys-changed.md`.** Re-stamped for all 14 verified
+  journeys; J-15's carried forward unchanged since it was not verified.
+  No `browser-infra.json`; NOT maintenance isolation; no `DEFERRED-BUDGET` row.
+- **Anti-goals: the iter-38 CRITICAL AG-8 is RESOLVED, and ONE NEW MINOR AG-8 that I found and no
+  lane did.** I answered all eighteen explicitly in `eval.md` and re-derived the six at real risk
+  read-only. Strongest facts: `config.yaml` diff **completely empty** (so no threshold moved, AG-15,
+  and the memory caps stand, AG-10); `host-guard.env` untouched (mtime 2026-08-19); all ten export
+  md5s captured, v7 = `d905dcfeb7883d86602d64d4c24682ad` — the same value iters 35/36/37/38 recorded,
+  now a **fifth** round — every export mtime predating this run and `git status` on the exports
+  directory empty (AG-12); read-only census `next_session_manifests` **36 rows / 23 distinct as-of
+  dates** (identical to post-iter-38 — ZERO minted this round), `sum(prospective_eligible) = 0` on
+  all 36 (AG-17), `max(created_at) = 2026-09-01 18:17` which predates this iteration's start; zero
+  dependency-manifest change (AG-9); `daily_prices` frontier still 2026-08-12 (no dataset
+  advancement); zero tapeology hits (AG-14); and I extracted every new numeric literal from the
+  product diff — **none** (AG-11).
+- **THE FINDING NO LANE MADE.** `apps/frontend/lib/api.ts:1051` still declares
+  `WhyNotFailedCondition.gating` **required**, but `gating` was added by the SAME iter-38 change and
+  is **absent on every pre-iter-38 stored row** — my read-only census of all **787** stored
+  `failed_conditions` found exactly two keysets, with and without it.
+  `compass-focus-section.tsx:151` renders `{failed.gating ? "" : " — advisory"}`, so on those older
+  manifests EVERY failed condition is labelled "— advisory", including **26 stored
+  `leadership_min_score` misses** across three as-of dates (2001-04-17: 11, 2005-04-01: 5,
+  2020-01-02: 10) — and the leadership floor is the SOLE candidacy gate, never advisory. The
+  auditor's own consumer grep (its finding F1, "no missed consumer") covered
+  `why_not_totals`/`reason`/`cap_rank`/`cap` but not this NESTED field. **Scored MINOR, and I say
+  why:** it is not a crash (a truthiness read on an absent property is safe, and all 787 conditions
+  carry `condition`/`threshold`/`actual`/`distance`, so no `.toFixed()` can throw) and not a wrong
+  NUMBER; it was introduced by iter-38 and became VISIBLE only because iter-39 stopped those pages
+  crashing; and none of the three dates is a journey assertion target. What it breaks is AG-8's
+  re-validation clause and the same honesty family J-14 exists to fix.
+- **Two declared process gaps, neither blocking.** (1) J-04's restored golden does NOT re-pass —
+  its step 2 clicks the literal `Not priority (20)`, the string as it stood at `ab3cca63`, which
+  this iteration deliberately changed; I opened `J-04-verify.png` and the page at `?asof=2026-07-23`
+  renders in full (regime 57.87 "Narrow leadership", "1 name worth monitoring next session"), so it
+  is a stale click target, not a page failure. The auditor was RIGHT to refuse to edit it here and
+  right to replace the "golden-script false positive" footer with the true cause — but this is the
+  **second consecutive round** that boilerplate converted replay FAILs into merged PASSes, and the
+  pattern needs an owner decision. (2) `J-14.json` has NEVER passed replay and cannot as written:
+  step 3 re-navigates then asserts text inside a collapsed `<details>`; I read
+  `components/ui/disclosure.tsx` myself and confirm there is no `open` attribute.
+- **One capture finding.** `UT-10-result.png` is a **1-colour blank image** — the iter-36 blank-frame
+  failure mode reappeared on one artifact. Nothing rests on it (UT-10 is a P2 UX check whose
+  assertions were DOM-based), but it is not ignorable. Separately, walkthrough steps 07 and 08 are
+  top-of-page viewports that stop far above the "Not priority" list they narrate, and no step carries
+  a `[NEW]` flag — so J-14 keeps `evidence_makeup`, and J-05/J-06/J-12 still owe a labelled frame.
+- Deterministic gates, all run by me: `results` **exit 0** · `journeys` **exit 1**,
+  `{"total":15,"passing":14,"blocking":["J-15"]}` · `regressions pre→post` **exit 0** ·
+  `coherence --for-achievement` **exit 0** · drift `changed: []`. Review: **PASS**, `issues: []`.
+  QA: **PASS**. Audit: **PASS_WITH_GAPS** (a genuinely hard pass — it caught and CORRECTED a false
+  verification claim in the merged results file, and re-measured a PIL citation attributed to the
+  wrong artifact). Coherence: **COHERENCE-PASS**, zero advisory notes. Closure: **CLOSURE-PASS**.
+  Scan: **CLEAN**.
+
+**Reasoning:** The repair did what it was asked to do, and I checked it myself instead of believing
+the write-up. Twenty-one older dates that showed an error box yesterday show their board again — I
+counted those dates in the database read-only and then opened five of the repaired pages as
+pictures, including the exact two days where the previous round captured the crash. The six jobs
+that stopped working are all working again, and this time they were tested on days that already
+existed rather than on a day created during the test: the four check scripts that were quietly
+edited last round are byte-for-byte back to their earlier form, the deleted freeze-stamp check is
+back, and the four deleted steps are back. The one hard rule broken last round — adding new
+information must never crash an old page — is fixed at its root, and the old pages now say honestly
+that a count is unavailable instead of pretending or crashing. The "Not priority" list finally
+exists as a readable picture showing both halves the job promised, and every number in it matches
+the saved record. Nothing stored moved: the same 36 records, the same fingerprints on the exported
+files for a fifth round running, nothing added or deleted. I am not calling the project finished for
+one plain reason: J-15 was never built. It is real, specified work, not paperwork, so this is an
+ordinary "keep going", not a halt. I did find one small honesty problem nobody else noticed: on three
+older dates the page calls a miss of the main entry bar "advisory", when that bar is in fact the only
+real gate. It does not crash anything, no job depends on those dates, and it came from the previous
+round rather than this one — so I recorded it as a minor rule breach with a one-line fix, and I said
+plainly that I considered calling it serious and why I did not.
+
+**Next-step recommendation:** Run one more full round and build **J-15 "What changed accounts for
+every stock move"** — the only job never built and the only thing between this project and finished.
+Carry four small items as passengers of that round, never as a round of their own: (1) fix the wrong
+word on three older dates (17 Apr 2001, 1 Apr 2005, 2 Jan 2020) where the page calls a miss of the
+main entry bar "advisory" — make that field optional like the others and say honestly that it was
+not recorded; (2) repair two check scripts **in the open**, declaring the change before running
+them — J-04's should click the new wording, J-14's should open the "Not priority" panel before
+looking inside it; a script may never be edited after it fails, and never pointed at a day created
+the same day; (3) take the three still-missing walkthrough photographs — J-05 "Freeze one manifest",
+J-06 "A frozen manifest never changes", J-12 "Every frozen disposition is true" — re-take J-14's
+from the list rather than the top of the page, and mark the new step as new; (4) ask the browser
+step to scroll before it photographs (one picture this round, `UT-10`, came out completely blank).
+**ONE FRAMEWORK POINT FOR THE OWNER:** two rounds running, the same boilerplate footer ("the replay
+FAIL was a golden-script false positive") turned failing check scripts into passes. Last round it
+hid a real crash; this round the auditor caught it and wrote the true cause instead. The footer
+should not be usable without a named, traced cause. **THREE CARRIED HOUSEKEEPING ITEMS, none
+urgent:** one pre-existing failing test on three untouched files (fix or formally waive); the 7.8 GB
+iteration-23 throwaway copy may be deleted; and `apps/frontend/.next-verify/` is still tracked in
+git — 61 of this round's 65 changed files are that build folder. **ONE MECHANICAL ITEM:** the whole
+round is uncommitted at scoring time; confirm it lands.

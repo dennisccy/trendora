@@ -1062,18 +1062,26 @@ export type WhyNotReason = "excluded_by_cap" | "below_selection_floor";
  *  means the member genuinely passed every qualifier and was excluded only by the focus-list cap, never
  *  inferred from `reason` alone, and never a fabricated reason. `cap_rank` (1-based rank among all
  *  above-floor qualifying rows) and `cap` (the configured `max_candidates` value) are non-null ONLY when
- *  `reason === "excluded_by_cap"`. */
+ *  `reason === "excluded_by_cap"`.
+ *
+ *  `reason`/`cap_rank`/`cap` are OPTIONAL (goal-market-compass iter-39, fixing an iter-38 AG-8
+ *  regression): `/api/compass` replays each stored manifest's frozen `selection_json` verbatim, and
+ *  these fields are present ONLY on manifests minted at/after the iter-38 `rule_version` bump — they
+ *  are absent (not null, `undefined`) on every stored row minted before it. Every reader MUST treat
+ *  `undefined` as "this manifest predates why-not detail", never dereference it unguarded, and never
+ *  fabricate a value. */
 export interface WhyNotEntry {
   ticker: string;
   failed_conditions: WhyNotFailedCondition[];
-  reason: WhyNotReason;
-  cap_rank: number | null;
-  cap: number | null;
+  reason?: WhyNotReason;
+  cap_rank?: number | null;
+  cap?: number | null;
 }
 
 /** The two UNCAPPED per-reason why-not pool counts (J-14) — how many non-candidates were held back by
  *  each reason BEFORE `why_not_cap` truncates the displayed `why_not` list; each is an explicit `0`,
- *  never a missing field, when that reason class is empty. */
+ *  never a missing field, when that reason class is empty — ON MANIFESTS THAT CARRY IT (see
+ *  `CompassSelection.why_not_totals`). */
 export interface WhyNotTotals {
   excluded_by_cap_uncapped: number;
   below_floor_in_band_uncapped: number;
@@ -1082,11 +1090,17 @@ export interface WhyNotTotals {
 /** The `selection` CONTENT block (J-04) — the Next-session focus section's full trace.
  *  `disposition_tally.below_selection_floor + excluded_by_cap` partitions every non-candidate
  *  member; `candidates_empty_reason` is set (never a bare empty list) whenever `candidates` is
- *  empty. The near-threshold shadow cohort (J-05/J-06) appears nowhere in this shape. */
+ *  empty. The near-threshold shadow cohort (J-05/J-06) appears nowhere in this shape.
+ *
+ *  `why_not_totals` is OPTIONAL (goal-market-compass iter-39, fixing an iter-38 AG-8 regression):
+ *  `/api/compass` replays each stored manifest's frozen `selection_json` verbatim, and this field is
+ *  present ONLY on manifests minted at/after the iter-38 `rule_version` bump — it is absent (not
+ *  null, `undefined`) on older stored rows. Every reader MUST guard for `undefined` and degrade to an
+ *  honest "held-back counts unavailable for this manifest version" state, never crash. */
 export interface CompassSelection {
   candidates: CompassCandidate[];
   why_not: WhyNotEntry[];
-  why_not_totals: WhyNotTotals;
+  why_not_totals?: WhyNotTotals;
   disposition_tally: { below_selection_floor: number; excluded_by_cap: number };
   candidates_empty_reason: string | null;
 }

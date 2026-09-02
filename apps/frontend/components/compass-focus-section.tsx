@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Disclosure } from "@/components/ui/disclosure";
 import type { ChecklistVerdict, CompassCandidate, CompassResponse, WhyNotEntry } from "@/lib/api";
+import { whyNotSummary } from "@/lib/why-not-summary";
 
 const VERDICT_VARIANT: Record<ChecklistVerdict, "ok" | "danger" | "default" | "warn"> = {
   Pass: "ok",
@@ -111,7 +112,14 @@ function CandidateCard({ candidate }: { candidate: CompassCandidate }) {
  *  `cap_rank` / `cap` fields verbatim, applies no threshold and computes no distance of its own. A
  *  cap-excluded entry names its rank among the above-floor names and the configured cap; a
  *  below-floor entry gets no separate lead-in (its `failed_conditions` list, below, already names the
- *  leadership floor first). */
+ *  leadership floor first).
+ *
+ *  Reviewed iter-39 (AG-8 regression repair): `reason`/`cap_rank`/`cap` are now OPTIONAL on
+ *  `WhyNotEntry` (they are absent, not null, on manifests minted before the iter-38 `rule_version`
+ *  bump). This guard already degrades safely for `undefined` with NO code change needed —
+ *  `entry.reason !== "excluded_by_cap"` is `true` when `reason` is `undefined` (an `undefined` is
+ *  never `=== "excluded_by_cap"`), so the OR short-circuits and this returns `null` (no lead-in
+ *  sentence) before either `entry.cap_rank` or `entry.cap` is read. */
 function WhyNotLeadIn({ entry }: { entry: WhyNotEntry }) {
   if (entry.reason !== "excluded_by_cap" || entry.cap_rank === null || entry.cap === null) {
     return null;
@@ -190,11 +198,10 @@ export function CompassFocusSection({ compass }: { compass: CompassResponse | nu
           </div>
         )}
         <Disclosure
-          summary={`Not priority (${selection.why_not.length} shown of ${
-            selection.why_not_totals.excluded_by_cap_uncapped + selection.why_not_totals.below_floor_in_band_uncapped
-          } held back — ${selection.why_not_totals.excluded_by_cap_uncapped} cap-excluded, ${
-            selection.why_not_totals.below_floor_in_band_uncapped
-          } below-floor near-miss)`}
+          summary={whyNotSummary({
+            why_not_count: selection.why_not.length,
+            why_not_totals: selection.why_not_totals,
+          })}
         >
           <WhyNotList entries={selection.why_not} />
         </Disclosure>

@@ -250,17 +250,7 @@ deactivation, a delete) gated on a computed verdict.
 **Applies to:** any spec whose acceptance list is assembled from goal.md prose, especially where a safety
 constraint and a verification requirement reference each other.
 
-## iter-23 — 2026-08-27T21:45:00Z
-
-**Verdict:** STALLED
-**Lesson:** A "run only against a disposable clone" contract cannot be enforced by convention — the
-harness enforces nothing. `scripts/automation/goal-iter-lean.sh:256-257` starts the deterministic replay
-lane with `bash scripts/start-backend.sh` and no `TRENDORA_CONFIG`, so it silently booted the CANONICAL
-`apps/backend/data/trendora.db` and wrote 10 cache rows into it while the iteration's own boot correctly
-used the clone. The developer had already built the right guard (`scripts/start-backend-j11-verify.sh`
-refuses to boot without an off-canonical override) — it just was not on the lane's path. If a future
-iteration must confine the app to a clone, the ONLY reliable lever is making the default launcher itself
-fail closed, never a wrapper the harness does not call.
+## iter-23 — 2026-08-27T21:45:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration that boots services against a non-default database (clone, snapshot,
 fixture, restore drill), and any change to `scripts/automation/goal-iter-lean.sh` / `browser-qa-phase.sh`
 / `qa-phase.sh` service-start blocks.
@@ -280,18 +270,7 @@ this run's final checksum was taken 3 minutes before the breach it was supposed 
 work, any `db_file_fingerprint` / provenance check in `app/engine/j11_*`), and any evaluator re-deriving
 such a claim.
 
-## iter-24 — 2026-08-28T00:05:00Z
-
-**Verdict:** ESCALATE
-**Lesson:** A spec's PROSE can silently disable a whole verification lane. `replay_lane_spec_journeys`
-(`scripts/automation/lib/replay-lane.sh:75-77`) does `grep -iE '<label>' "$SPEC" | head -1` — FIRST
-matching line wins. Iter-24's `Target journeys` bullet wrapped onto a line reading "…see
-Required-still-passing and TESTING", which matched before the real bullet two lines later and carries no
-`J-NN` token, so `REQUIRED_JOURNEYS` parsed EMPTY, `_use_replay=no`, and J-01/J-04/J-10 went unverified
-with NO error — the engine logged only "replay: no", indistinguishable from "nothing to replay". Two
-durable rules: never let a journey-set label appear in prose before its own bullet, and never read
-"replay: no" as benign — cross-check that `reports/phase-<iter>-regression-replay-results.md` exists
-whenever the spec names a non-empty Required-still-passing set.
+## iter-24 — 2026-08-28T00:05:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration whose spec mentions "Target journeys" / "Required-still-passing" outside
 its own metadata bullet; any evaluator scoring an iteration where the replay lane reported no results;
 any future fix to `lib/replay-lane.sh`'s journey-set parsing.
@@ -312,63 +291,23 @@ test is the proof, the live boot is only a confound-free demonstration of the ou
 "can no longer be booted"; any future extension of the guard to the five sibling scripts
 (`browser-qa-phase.sh`, `qa-phase.sh`, `run-phase.sh`, `demo-phase.sh`, `run-benchmark.sh`).
 
-## iter-25 — 2026-08-28T13:10:00Z
-
-**Verdict:** CONTINUE
-**Lesson:** A fix for a silent-wrong-parse can introduce its exact mirror, and the guard shipped
-alongside it can be blind to the mirror by construction. `replay_lane_spec_journeys` was changed from
-"first label-matching line" to "first label-matching line containing a J-NN token" — which also skips a
-legitimate `**Required-still-passing journeys:** None this iteration` bullet and lets an incidental prose
-mention later in the document supply the set (real, demonstrated on the committed
-`docs/phases/goal-market-compass-iter-7.md`, which returned `J-10` for a spec that declares none). The new
-`replay_lane_warn_if_zero_parse` could never catch it because it only fires on EMPTY parses. Reviewer, QA,
-coherence and ux-regression all passed it; the independent auditor caught it, and I reproduced both the
-bug and the fix myself. Second, smaller lesson from the same iteration: a perf addendum asserted a causal
-story ("no second engine shared the host") written purely from the client-side harness's own output while
-`host-guard/events.jsonl` and `logs/backend.log` — which flatly contradict it — sat on disk untouched.
+## iter-25 — 2026-08-28T13:10:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration that patches a parser/guard in `incredible_auto_dev/scripts/automation/`
 (always run the old-vs-new differential across ALL of `docs/phases/*.md`, and ask what shape of wrong
 answer the new guard structurally cannot see); and any iteration writing a `reports/perf-budgets.md`
 addendum (cross-check every causal and load claim against the server log and host-guard event stream, and
 retain the raw sampler output with UTC start/end times).
 
-## iter-26 — 2026-08-28T14:30:00Z
-
-**Verdict:** ESCALATE
-**Lesson:** A documented, unit-tested state can be structurally UNREACHABLE through the live route and
-still look like coverage: `basis.status == "unavailable"` in `app/engine/compass.py` has passing unit
-tests, but `app/api/compass.py:59` calls `resolved_run()` first and `run_scan`'s self-heal recreates the
-missing `ScannerRun`, so no request can ever observe it — and the self-heal is itself the "recompute"
-that J-06 step 2 forbids. Test the state through the ACTUAL serving entry point before crediting it; a
-green unit test on a branch no request can reach is an honesty gap, not coverage. (Found at iter-3 as
-audit finding B2, still open at iter-26.)
+## iter-26 — 2026-08-28T14:30:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any journey whose acceptance names a specific served status/disclosure value; any change
 to `resolved_run` / `snapshot_serving` / `run_scan` self-heal ordering; any future "the code handles X"
 claim backed only by a unit test.
 
-## iter-26 — 2026-08-28T14:31:00Z
-
-**Verdict:** ESCALATE
-**Lesson:** An earlier incident can make a journey's literal acceptance step permanently unprovable on
-the live database. J-05 step 2 wants a frontier manifest reading `at_ingest / version 1 /
-prospective_eligible true`; 2026-08-12's v1 is a legacy pre-freeze row, v2–v6 were regenerated during the
-incident window and are AG-17-correctly ineligible forever, and AG-9 forbids fetching a new trading day —
-so that state can never exist again here. The correct resolution is route-level fixture proof plus an
-explicit assumption-ledger entry, NOT holding the journey open forever (that is the framework's #1
-anti-pattern, an unsatisfiable acceptance criterion looping).
+## iter-26 — 2026-08-28T14:31:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any journey step whose premise depends on the frontier/newest date; any evaluator deciding
 whether fixture evidence may substitute for a live observation.
 
-## iter-27 — 2026-08-28T17:40:00Z
-
-**Verdict:** CONTINUE
-**Lesson:** A test lane can breach an explicit "read-only and additive-free" live constraint with the
-product's own shipped, correct behaviour: the browser-QA lane's out-of-plan
-`GET /api/compass?as_of=2019-03-01` minted permanent `next_session_manifests` row id 26 through the
-ordinary create-once-on-GET path, which no code guard would ever flag — and three downstream reports then
-cited the stale count 25 as proof that "nothing changed in the database". Where a plain GET can write,
-the authorized-inputs list has to be stated to the lane that issues the requests, and every row-count
-claim must be re-derived AFTER the browsing lane finishes, never delegated.
+## iter-27 — 2026-08-28T17:40:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration whose plan declares a live/canonical-DB scope limit, and any iteration whose
 evidence includes before/after row counts on `next_session_manifests`, `scanner_runs` or `daily_prices`.
 
@@ -382,16 +321,7 @@ idempotent write; a read-only connection forecloses it. Copy this method for any
 reads" claim.
 **Applies to:** any iteration claiming a serving path is read-only against the canonical database.
 
-## iter-28 — 2026-08-31T23:05:00Z
-
-**Verdict:** ESCALATE
-**Lesson:** A new field computed at freeze time and stored inside an immutable record is INVISIBLE on
-every pre-existing record, forever — `state_band` reads null on 0-of-26 stored manifests, so J-07's
-headline capability renders "NA" on every date the product can serve, while the summary sentence one
-card below reports the very comparison the band could not name. The compute-at-ingest constraint and the
-create-once/never-backfill rule together mean any new manifest CONTENT field ships dark until a fresh
-freeze happens; plan that freeze (one authorized GET on a manifest-less date) IN the same iteration that
-adds the field, or the iteration cannot demonstrate its own feature.
+## iter-28 — 2026-08-31T23:05:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration adding a field to `next_session_manifests` content
 (`build_manifest_payload` / `_freeze_manifest` in `apps/backend/app/engine/compass.py`), and any spec
 whose live-safety gate restricts `as_of` to dates that already carry manifest rows — that restriction is
@@ -407,149 +337,50 @@ against artifact mtimes, not accepted as fact.
 **Applies to:** any iteration where `coherence.md` comments on the state of the QA/browser lanes; check
 `ls -la` timestamps on `reports/qa/<iter>-evidence/` before repeating such a claim.
 
-## iter-29 — 2026-09-01T00:35:00Z
-
-**Verdict:** ESCALATE
-**Lesson:** Making a manifest-frozen field observable on ONE hand-picked date does not make it
-observable where the journey is actually read. `state_band` now renders real words at
-`/?asof=2026-08-03` (the one row that carries it, 1 of 27) while `/` at the frontier still shows
-"NA" beside a Summary sentence reporting the same comparison — the iter-28 contradiction survived
-on the landing view. When a feature lives inside an immutable record, the demonstration date must
-be the DEFAULT view's date, or the closing action must be a new version of the frontier record;
-picking a convenient manifest-less historical date proves the producer and leaves the journey open.
-Second, smaller trap found the same round: a regression golden written AFTER the replay lane ran is
-not coverage — `journey-scripts/J-07.json` gained its new step at 23:50:41, three minutes after
-`J-07-verify.png` (23:47:10), and the step asserts a narrative sentence that predated the feature
-rather than the three `compass-state-band-*-direction` testids. Compare golden mtimes against the
-replay evidence before crediting a `PASS` row as a guard.
+## iter-29 — 2026-09-01T00:35:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration closing a journey whose value is frozen into `next_session_manifests`
 (or any create-once immutable record), and any iteration that adds/edits a golden in
 `runs/goal-session-<sid>/journey-scripts/` in the same round it claims replay coverage.
 
-## iter-30 — 2026-09-01T02:10:00Z
-
-**Verdict:** CONTINUE
-**Lesson:** Minting a NEW manifest version to fix one field can silently REMOVE an unrelated
-disclosure, because `GET /api/compass` serves only the latest version and the version strip carries
-no per-version basis column (`apps/backend/app/api/compass.py:42-56, 69-73`). Version 7 on
-2026-08-12 was frozen from the already-rebuilt run, so `basis_disclosure` flipped that date's chip
-from `Basis: rebuilt` to `Basis: available` — truthful about v7, but the incident-rebuild warning is
-now invisible everywhere. Nobody in the plan, dev, review or QA lanes noticed; only the independent
-auditor did, and the browser lane framed the resulting replay failure as merely "a stale golden".
+## iter-30 — 2026-09-01T02:10:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration that mints a new manifest version on an as-of that already had one —
 enumerate every read-time-derived field the served payload exposes (basis, mode, eligibility,
 freshness) and state before/after values for each, not just the field being fixed.
 
-## iter-30 — 2026-09-01T02:12:00Z
-
-**Verdict:** CONTINUE
-**Lesson:** The "a golden written AFTER the replay is not coverage" rule was quoted in this
-iteration's own plan — and correctly enforced for J-07 (mtime 01:14:16, before its 01:45 replay) —
-while the SAME defect happened unguarded on J-11 in the same run: `J-11.json` was rewritten at
-01:51:59, after both the replay (01:45) and the LLM lane (01:49-01:51), flipping its expectation
-from `Basis: rebuilt` to `Basis: available`, and has never been executed. A lesson applied to the
-TARGET journey does not automatically protect the REQUIRED-STILL-PASSING journeys.
+## iter-30 — 2026-09-01T02:12:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration where a deterministic replay golden goes red and the merged results
 file then reports PASS — check the golden's mtime against the replay evidence timestamp before
 accepting the reconciliation, and require the repaired golden to be executed in the NEXT replay lane
 before the journey is described as replay-green.
 
-## iter-31 — 2026-09-01T03:00:00Z
-
-**Verdict:** ESCALATE
-**Lesson:** A carried "open owner question" can be a mis-diagnosis that nobody re-reads. Six
-evaluators in a row recorded J-09 as owner-gated on a ~2.99 GB memory figure, but the measurement's
-own iter-25 AUDIT CORRECTION in `reports/perf-budgets.md` says the number "is also not independently
-corroborated: no sampler log or /proc capture from this run survives", that a second goal-mode engine
-(tensteps) was running on the host throughout the burst, and that the load was ~2x what the Method
-section documents — while J-09 step 2 explicitly requires a `/proc/<pid>/status` reading. The blocker
-was an evidence gap, not an owner decision, and re-reading the primary artifact instead of the
-carried summary is what surfaced it.
+## iter-31 — 2026-09-01T03:00:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration about to record, carry, or act on a "waiting on the owner" / STALLED-class
 blocker — open the underlying measurement or artifact and check whether primary evidence actually
 survives before treating the human as the only unblock path.
 
-## iter-31 — 2026-09-01T03:00:00Z
-
-**Verdict:** ESCALATE
-**Lesson:** Fixing the "golden rewritten after the replay lane" defect on the named journey does not
-stop it recurring elsewhere in the same round. The plan bound J-11 explicitly and that worked
-perfectly (`J-11.json` ran first, passed, mtime unchanged) — but the browser-qa lane then overwrote
-`J-02.json` (03:35:14) and `J-03.json` (03:35:18) *after* the replay results were written (03:31:03),
-leaving both newly-promoted journeys with an unexecuted, lint-only guard. Only artifact mtimes reveal
-it; every prose report in the round reads clean, and the browser lane disclosed the rewrite honestly
-without noticing it had voided its own coverage.
+## iter-31 — 2026-09-01T03:00:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration whose plan names a golden-script hygiene rule — bind it to ALL journeys
 in the run, not just the offending one, and require any lane that writes or overwrites a
 `journey-scripts/*.json` to re-run the replay lane afterwards and report the real result.
 
-## iter-32 — 2026-09-01T05:40:00Z
-
-**Verdict:** CONTINUE
-**Lesson:** A perf measurement's *other columns* are where the answer hides. `j09-vmpeak-samples.csv`
-also carried `VmSize_kB` and `VmRSS_kB`, and nobody — developer, reviewer, QA — scored from them; only
-the auditor noticed, and even he filed it as a footnote. Read row-wise, they show the 3,038,684 kB
-VmPeak is a ~1.29 GB spike at t+15.94s (ten seconds BEFORE readiness) that is released by t+20.94s,
-leaving 1,298,796 kB virtual / 725,856 kB resident at serving time. A monotonic high-water metric
-NEVER tells you what a process holds; always plot the neighbouring columns before concluding "the
-footprint is X".
+## iter-32 — 2026-09-01T05:40:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration reading, quoting, or acting on a VmPeak / high-water-mark figure, or
 appending to `reports/perf-budgets.md`.
 
-## iter-32 — 2026-09-01T05:40:00Z (second lesson)
-
-**Verdict:** CONTINUE
-**Lesson:** iter-31's lesson ("check whether a 'waiting on the owner' blocker really is owner-owned")
-needed a second application one level down, and three lanes failed it. The dev handoff, the QA report
-AND the independent auditor all described `docs/goal.md` Constraints (b)/(c) as "owner-only items" and
-recommended halting J-09 for an owner ruling. The goal text says the opposite: the Host-resource-fit
-block is headed "(owner, 2026-08-20 — **binding**)" and `docs/goal.md:2396-2400` states the rules
-"ride the nearest applicable slices", noting (a) and (b) already landed at iter-5. "Owner-authored"
-is not "owner-gated" — an owner-written binding rule is an instruction TO BUILD, not a permission to
-wait for. Open the constraint's own text before recording it as a human-owned blocker.
+## iter-32 — 2026-09-01T05:40:00Z (second lesson)  [condensed: body → lessons.md.archive.md]
 **Applies to:** any evaluator or decomposer about to return STALLED, or to write "owner's call" into
 a blocker list, on the strength of a rule labelled `(owner, <date>)`.
 
-## iter-32 — 2026-09-01T05:40:00Z (third lesson)
-
-**Verdict:** CONTINUE
-**Lesson:** The "golden rewritten after replay is not coverage" family (iters 29/30/31) was genuinely
-closed this round — all ten golden mtimes predate the iteration — but the family MUTATED rather than
-died, for the fifth round running. `demo_runner.py` writes its results file only when `--results` is
-passed (`demo_runner.py:2080-2085`); the developer omitted it, so the TC-7 artifact never existed,
-and the reviewer (04:39) and QA (04:47) both certified a file whose mtime is 05:19 — created later by
-the auditor's own re-run. A gate that asserts an artifact without opening it is indistinguishable
-from a gate that read it, right up until the claim is false.
+## iter-32 — 2026-09-01T05:40:00Z (third lesson)  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iteration whose Definition of Done names a generated report as evidence — bind the
 generating command to the output path, and make the lane fail when the file is absent or empty.
 
-## iter-33 — 2026-09-01T06:55:00Z
-
-**Verdict:** ESCALATE
-**Lesson:** The memory win came from changing the REPRESENTATION, not from capping a size — and it
-runs counter to intuition. `warmup.py:351`'s cadence loop now opens `prefilled_bar_cache` instead of
-the lazy `bar_cache`, so it eagerly scans the WHOLE `daily_prices` table (a superset of what the lazy
-path loaded) into `_SymbolColumns`' `array.array('d')` columns, and peaks **lower** (2,467,888 kB vs
-3,038,684 kB) precisely because it loads MORE rows in a cheaper shape than fewer rows in `list[Bar]`
-NamedTuples. That asymmetry is also the cleanest proof the win is real: a mechanism that reads a
-superset cannot be winning by reading less. Corollary risk to watch: the bound is now tied to the
-data basis, not to a configured ceiling — on a basis where the cadence loop touches only a small
-subset of symbols, the eager whole-table scan could cost more than the lazy path it replaced.
+## iter-33 — 2026-09-01T06:55:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iter touching `apps/backend/app/engine/prices.py` (`_BarCache`/`bar_cache`/
 `prefill`/`prefilled_bar_cache`) or `warmup.py`'s cadence loop; and any future memory-budget work
 under `docs/goal.md` Constraints (c).
 
-## iter-33 — 2026-09-01T06:55:00Z
-
-**Verdict:** ESCALATE
-**Lesson:** A memory measurement's WINDOW LENGTH is itself a variable, and comparing end-of-window
-figures across different window lengths invents regressions that are not there. iter-33 sampled 180s
-and ended at VmRSS 1,627,100 kB; iter-32 sampled 396s and ended at 725,856 kB — which reads as a 2x
-standing-footprint regression until you notice iter-32's own release happened at **t+181**, one
-sample past where iter-33 stopped. Only `VmPeak` (a monotonic high-water mark) is safely comparable
-across unequal windows. Also check where the sampler ATTACHED: iter-32's first row already showed
-VmPeak 2,125,140 kB (mid-boot), iter-33's showed 1,098,724 kB (at boot), so the two captures cover
-different fractions of the process lifetime.
+## iter-33 — 2026-09-01T06:55:00Z  [condensed: body → lessons.md.archive.md]
 **Applies to:** any iter that re-measures J-09 / appends to `reports/perf-budgets.md`, or that
 compares two `/proc` sampler CSVs.
 
@@ -681,3 +512,39 @@ unless the evaluator runs `git diff` on `runs/goal-session-*/journey-scripts/`.
 **Applies to:** every evaluator pass — `git status`/`git diff` the session's `journey-scripts/`
 directory before crediting ANY reconciliation footer; treat a golden whose target URL moved onto a
 same-day-minted fixture as a moved goalpost, not a false positive.
+
+## iter-39 — 2026-09-02T09:10:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** When iter-38 widened the payload it added FOUR fields, not three:
+`why_not_totals`, `reason`, `cap_rank`, `cap` — and the NESTED
+`failed_conditions[].gating`. iter-39's spec, the developer, the reviewer and the auditor's
+own consumer grep (finding F1, "no missed consumer") all enumerated the four top-level names
+and none reached the nested one, so `WhyNotFailedCondition.gating` is still declared required
+in `apps/frontend/lib/api.ts:1051` while absent on all 21 pre-iter-38 as-of dates. It does not
+crash — `{failed.gating ? "" : " — advisory"}` is a safe truthiness read — it silently
+MISLABELS: 26 stored `leadership_min_score` misses (the sole candidacy gate) render as
+"— advisory" on 2001-04-17, 2005-04-01 and 2020-01-02. A crash announces itself; a
+wrong-word degradation does not, and it only became visible once the crash was fixed. When
+auditing a data-shape widening, enumerate fields from the STORED DATA (`select distinct
+keysets`) rather than from the field list the spec repeats — I found this in one read-only
+census of all 787 stored `failed_conditions`, which returned exactly two keysets.
+**Applies to:** any iteration widening or guarding a payload shape under
+`apps/frontend/lib/api.ts` / `compass-focus-section.tsx`; more generally, any AG-8
+"consumers of widened fields are re-validated" check — walk nested objects and array element
+types, not just the top-level interface.
+
+## iter-39 — 2026-09-02T09:11:00Z
+
+**Verdict:** CONTINUE
+**Lesson:** The reconciliation-footer escape hatch ("the replay FAIL was a golden-script false
+positive") has now been used to convert deterministic-replay FAILs into merged PASSes in two
+consecutive iterations. At iter-38 it hid a real page crash on four journeys; at iter-39 the
+pipeline reached for the same boilerplate for J-04 and J-14 and the auditor caught it,
+replaced it with a traced per-journey cause, and left the DoD item openly unmet. The two
+outcomes are indistinguishable from the merged file alone — which is the file the evaluator
+and the achievement gate read. Treat any reconciliation footer WITHOUT a named, reproducible
+cause as an unresolved FAIL, and check whether the golden was edited inside the same run
+(`git diff <last-good-sha> -- <golden>`) before crediting the overturn.
+**Applies to:** every iteration whose merged `ui-test-results.md` disagrees with
+`regression-replay-results.md`; and to any change to the browser-QA merge step.

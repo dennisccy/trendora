@@ -4,8 +4,12 @@
   "name": "The Today page answers the ten-second read from served values only",
   "default_timeout_ms": 8000,
   "steps": [
-    {"n": 1, "journey": "J-07", "action": {"type": "goto", "url": "/"}, "expect": {"text": "Market regime is Risk-on (73.2/100)"}},
-    {"n": 2, "journey": "J-07", "action": {"type": "goto", "url": "/"}, "expect": {"text": "Universe breadth: 59.8% of the universe above its 50-day average, 66.4% above its 200-day average."}},
-    {"n": 3, "journey": "J-07", "action": {"type": "goto", "url": "/"}, "expect": {"text": "10 names worth monitoring next session."}}
+    {"n": 1, "journey": "J-07", "action": {"type": "goto", "url": "/"}, "expect": {"text": "Risk-on"}},
+    {"n": 2, "journey": "J-07", "action": {"type": "goto", "url": "/"}, "expect": {"text": "Universe breadth: 59.8% of the universe above its 50-day average"}},
+    {"n": 3, "journey": "J-07", "action": {"type": "click", "target": {"testid": "compass-state-band-market-link"}}, "expect": {"text": "severity-velocity line"}},
+    {"n": 4, "journey": "J-07", "action": {"type": "goto", "url": "/"}, "expect": {"target": {"css": "[data-testid=\"compass-state-band-regime-direction\"]:has-text(\"little changed\")"}}},
+    {"n": 5, "journey": "J-07", "action": {"type": "goto", "url": "/"}, "expect": {"target": {"css": "[data-testid=\"compass-state-band-stress-direction\"]:has-text(\"little changed\")"}}},
+    {"n": 6, "journey": "J-07", "action": {"type": "goto", "url": "/"}, "expect": {"target": {"css": "[data-testid=\"compass-state-band-breadth-direction\"]:has-text(\"little changed\")"}}},
+    {"n": 7, "journey": "J-07", "action": {"type": "goto", "url": "/?asof=2026-08-03"}, "expect": {"text": "Conditions are improving since the prior session (+4.7 regime-score points)."}}
   ]
 }
