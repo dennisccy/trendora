@@ -418,3 +418,47 @@ serving endpoint, or field identity changes: still the SAME `app.engine.compass.
 row, no schema-file version bump, no IA change — this is a frontend-only type-contract correction
 plus the corresponding renderer guard. See `docs/phases/goal-market-compass-iter-39.md` for full
 detail.
+
+**iter-40 update (2026-09-02 — additive, no IA change, no new Data Contract row):** J-15
+(goal-proposer AUTO block, 2026-09-01) targets the ALREADY-REGISTERED "Next-session manifest —
+CONTENT block" row's `session_delta` field. Confirmed live at
+`apps/backend/app/engine/session_delta.py:261-264`: `_stock_changes` bounds `crossing_pairs` to
+`max_stock_items` BEFORE calling `_classify`, so a stock-kind crossing beyond the display cap is
+never classified as either a change or suppressed — measured on the stored frontier pair
+(2026-08-11 → 2026-08-12): 57 crossings evaluated, 14 above `stock_score_min_change`, only 10
+shown, and the other 47 (4 above-threshold, 43 below) land in neither list. This iteration adds a
+field to the SAME producer (`app.engine.compass.build_manifest_payload`, reusing
+`app.engine.session_delta.compute_delta`'s already-computed stock crossing list — no second
+computation) and serves it via the SAME endpoint (`GET /api/compass`) — no new producer, no new
+route:
+  - `session_delta.stock_accounting = { evaluated_count: int >= 0, shown_count: int >= 0,
+    suppressed_count: int >= 0, residual_count: int >= 0 }`, with
+    `evaluated_count == shown_count + suppressed_count + residual_count`. `residual_count` is a
+    COUNT only — no per-name residual list is added to the payload (AG-8's no-per-name-residual
+    rule). No new config key; reuses the EXISTING `compass.delta.stock_score_min_change` and
+    `compass.delta.max_stock_items` (which keeps its current value and stays the display cap
+    only — AG-15).
+  - The existing flat `session_delta.suppressed` list / `suppressed_count` now correctly include
+    every below-threshold stock crossing (previously undercounted to 0 for the stock kind, since
+    `_classify` only ran on the post-bound subset).
+  - No `schema_version` bump: `session_delta` is an open object in
+    `docs/handoffs/trendora-next-session-manifest-v1.schema.json`, exactly as J-13's `rotation`
+    (iter-36) and J-14's `why_not_totals` (iter-38) were registered. The frontend field is
+    OPTIONAL (`stock_accounting?: {...}` in `apps/frontend/lib/api.ts`) since every
+    `next_session_manifests` row frozen before this ships lacks it (AG-12: no existing row is
+    rewritten to add it) — applying the iter-38/39 optional-field lesson from the start rather
+    than repeating the AG-8 regression. No change to `compass.selection.*`, `evaluate_selection`,
+    candidate membership, either frozen cohort, or `session_delta.rotation` (J-12/J-13/J-14 "Do
+    not redo" all stand). All pre-existing `next_session_manifests` rows and export files stay
+    byte-identical (AG-12) — this change affects only manifests minted AFTER it ships.
+
+  Same note also carries the AG-8 minor passenger fix identified by the iter-39 evaluator:
+  `WhyNotFailedCondition.gating` (an ALREADY-REGISTERED field, iter-38) is corrected from required
+  to `gating?: boolean` in `apps/frontend/lib/api.ts`, with `compass-focus-section.tsx`'s render
+  updated to a 3-state honest label (gating / advisory / not-recorded) instead of a 2-state
+  truthiness read that silently mislabeled absent-field rows "advisory". No new Data Contract row,
+  computing module, or endpoint results from this correction — it is a type/render fix to an
+  existing registered field, the same class of fix as the iter-39 note above.
+
+  This note records the iter-40 PLAN; the `[TARGET]`→delivered status is the goal-evaluator's call
+  pending J-15 evidence. See `docs/phases/goal-market-compass-iter-40.md` for full detail.
