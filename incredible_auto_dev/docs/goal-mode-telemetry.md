@@ -140,6 +140,8 @@ To enable: pass `--push-per-iter` (and optionally `--push-branch <name>`) to `ru
 ### `claude_usage` (default-on headless; best-effort interactive)
 Written by `claude_with_quota_retry` after a successful Claude invocation when `CHAIN_TELEMETRY_TOKENS=true` — which is the **default** for the headless backend (`lib/quota-retry.sh`). Captures Claude API usage from the stream-json `result` event via `lib/claude_stream_renderer.py`. Set `CHAIN_TELEMETRY_TOKENS=false` to opt out. **Interactive-pump path (protocol v2, TOKEN-5):** the pump extracts each dispatch's token totals from its own Claude Code session transcript (`~/.claude/projects/<project>/<session>/subagents/agent-<id>.jsonl`, per-message usage summed — the recipe lives in `skills/goal-interactive-dispatch.md`) and writes them to the request's `usage_path` sidecar; `lib/interactive-dispatch.sh` validates it and emits the same event through the same telemetry helper. Best-effort: a pre-v2 pump, a failed extraction, or a malformed sidecar (skipped with one warning) records no event for that dispatch — absence means "unknown", never estimated. Interactive events omit `total_cost_usd` (no per-call USD price on the interactive plan; the analyzer's cost column reads 0 for them).
 
+On the interactive backend (pump protocol v4, TOKEN-11a) the same event comes from the usage sidecar that `lib/pump_finish.py` writes when the pump calls `goal-await-dispatch.sh --finish`: it sums the subagent transcript's per-message usage (deduped by `message.id`) and never estimates — when the transcript lookup fails no sidecar is written and the dispatch is recorded as usage-unknown. The pump's OWN turns are not in this event; use `lib/analyze_transcripts.py` (below) for those.
+
 | Field | Type | Description |
 |---|---|---|
 | `agent` | string | The agent context that drove the call (set by `record_agent_invocation_start`) |
@@ -203,6 +205,23 @@ Written when the output style the engine requested for a dispatch is **not** the
 | `effective` | string | The style that actually ran (`default` when none; empty on the interactive backend, where there is nothing to read back) |
 | `backend` | string | `headless` \| `interactive` |
 | `reason` | string | Interactive only: `no-emulation-text` |
+
+### `browser_teardown` (per-dispatch QA browser teardown)
+Written by `qa_browser_step_teardown` (`lib/common.sh`) right after a browser dispatch
+(browser-qa-agent / qa) returns — one row per browser acted on. The engine emits it;
+agents never close tabs themselves.
+
+| Field | Type | Description |
+|---|---|---|
+| `backend` | string | `headless` (engine lane) or `interactive` (pump session's MCP browser) |
+| `mode` | string | `close-all` (headless: every page on the lane's pinned port) or `tabs` (interactive: exact-origin tabs only) |
+| `lane` | string | headless only — the pinned lane profile (`CHROME_WS_PROFILE`) |
+| `profile` | string | interactive only — the MCP browser profile from its `.meta.json` |
+| `origin` | string | interactive only — the normalized app origin that was matched (`scheme://host:port`) |
+| `closed_tabs` | number | Pages closed over CDP |
+| `remaining_tabs` | number | Pages still open in that browser afterwards (headless: 0 when it exited cleanly) |
+| `clean_exit` | boolean | headless only — Chrome exited on its own after the close (no reap needed) |
+| `reaped` | number | headless only — browsers terminated by the lane-scoped reap (0 on a clean exit) |
 
 ### Wall-time report and tripwire
 
@@ -278,3 +297,30 @@ python3 scripts/automation/lib/analyze_telemetry.py --json runs/goal-session-<si
 The schema is additive: new event types and new fields may be introduced in future versions. Consumers should ignore unknown event types and unknown fields.
 
 The `event` field values listed above are stable — they will not be renamed or removed without a deprecation cycle.
+
+## Pump-side economics (`lib/analyze_transcripts.py`, TOKEN-12)
+
+`claude_usage` rows cover subagent dispatches only. The foreground pump's own turns — and
+what actually fills a subagent's context — are visible only in the Claude Code session
+transcript, so this read-only analyzer reads it directly:
+
+```bash
+python3 scripts/automation/lib/analyze_transcripts.py ~/.claude/projects/<slug>/<session>.jsonl [--json]
+python3 scripts/automation/lib/analyze_transcripts.py --compare <A.jsonl> <B.jsonl>      # deltas, %
+```
+
+Pump side: usage-bearing turns (deduped by `message.id`, last snapshot wins), output /
+cache_read / cache_creation / input totals, cache_read per turn (≈ the pump's context size),
+per-tool call counts with average input and result bytes, Agent dispatches, **pump turns per
+dispatch** (usage-bearing turns between consecutive Agent calls — the plumbing cost TOKEN-11a
+attacks), resolved `message.model` per turn (EXP-6 records it), compaction events.
+Subagent side (`toolUseResult.agentType` → `<session>/subagents/agent-<id>.jsonl`): invocations,
+turns per invocation, output and cache_read per invocation, tool-result bytes by tool with
+**image reads counted separately** (PNG bytes are not tokens), and the five largest tool results
+with the first 80 chars of the input that produced them. Missing subagent transcripts are
+skipped, never estimated.
+
+Recorded PRE (2026-09-01, tapeology, largest session): pump 1,751 turns, 890M cache_read
+(~508K/turn), 1.41M output, 325 dispatches, 5.4 pump turns per dispatch; developer 124
+turns/inv, 39M cache_read/inv; evaluator 52 turns/inv; browser-qa 64 turns/inv with 13
+screenshot read-backs.
