@@ -51,12 +51,6 @@
       "Bash(./scripts/*)",
       "Bash(scripts/*)",
       "Bash(bash .claude/*)",
-      "Bash(setsid *)",
-      "Bash(nohup *)",
-      "Bash(disown)",
-      "Bash(disown *)",
-      "Bash(google-chrome *)",
-      "Bash(/usr/bin/google-chrome *)",
       "Bash(for *)",
       "Bash(while *)",
       "Bash(until *)",
@@ -368,6 +362,15 @@
             "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-dangerous-commands.sh\" 2>/dev/null || true"
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-read-path-hygiene.sh\" 2>/dev/null || true"
+          }
+        ]
       }
     ],
     "PostToolUse": [
@@ -397,6 +400,17 @@
           {
             "type": "command",
             "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/on-stop-check-artifacts.sh\" 2>/dev/null || true"
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/permission-request-log.sh\" 2>/dev/null || true"
           }
         ]
       }

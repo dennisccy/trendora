@@ -22,6 +22,10 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_ROOT"
 
+# A __pycache__ under hooks/lib/ would be mirrored into .claude/hooks/ by
+# sync-cli-assets.py and trip the drift gate — never let a plain eval run leave one behind.
+export PYTHONDONTWRITEBYTECODE=1
+
 # Keep the suite out of the MACHINE's forensic state. Several tests drive real
 # dispatch paths, and hg_event writes to a machine-global ledger by design — so
 # an unredirected eval run buries the record of what the machine was actually
@@ -29,7 +33,10 @@ cd "$REPO_ROOT"
 # postmortem reader is only as useful as that ledger is honest.
 export HOST_GUARD_EVENTS_FILE="${TMPDIR:-/tmp}/iad-evals-events.$$.jsonl"
 export HOST_GUARD_POSTMORTEM_DIR="${TMPDIR:-/tmp}/iad-evals-postmortems.$$"
-trap 'rm -rf "$HOST_GUARD_EVENTS_FILE" "$HOST_GUARD_EVENTS_FILE.1" "$HOST_GUARD_POSTMORTEM_DIR" 2>/dev/null || true' EXIT
+# Same isolation for the hook-events writer (hook_events.py): a real eval run must not bury
+# per-session hygiene_deny/hygiene_fail_open records under synthetic test events either.
+export IAD_HOOK_EVENTS_FILE="${TMPDIR:-/tmp}/iad-evals-hook-events.$$.jsonl"
+trap 'rm -rf "$HOST_GUARD_EVENTS_FILE" "$HOST_GUARD_EVENTS_FILE.1" "$HOST_GUARD_POSTMORTEM_DIR" "$IAD_HOOK_EVENTS_FILE" 2>/dev/null || true' EXIT
 
 VERBOSE=false
 [[ "${1:-}" == "--verbose" ]] && VERBOSE=true
@@ -174,6 +181,10 @@ _run_self_test scripts/automation/lib/goal_gate.py self-test
 _run_self_test scripts/automation/lib/browser_tabs.py --self-test
 # Pump-side economics + subagent context composition from Claude Code transcripts (TOKEN-12).
 _run_self_test scripts/automation/lib/analyze_transcripts.py --self-test
+# Path-hygiene detector brain (Rules A/B/C, operand tables, tokenizer normalization, unknown/fail-open, oracle manifest).
+_run_self_test hooks/lib/read_path_hygiene.py --self-test
+# Session-scoped hook-event writer (privacy-safe schema, append-safe under flock, concurrent-writer stress).
+_run_self_test hooks/lib/hook_events.py --self-test
 _run_self_test scripts/automation/lib/goal_lint.py self-test
 _run_self_test scripts/automation/lib/scan_diff.py self-test
 _run_self_test scripts/automation/lib/diff_bound.py self-test
@@ -234,6 +245,16 @@ if bash .claude/hooks/guard-dangerous-commands.sh "for d in x; do rm -rf /tmp/ia
 else
   _fail "hook: guard-dangerous-commands wrongly blocks loop-wrapped /tmp cleanup"
 fi
+if bash .claude/hooks/guard-dangerous-commands.sh 'pytest -q > /dev/null 2>&1' >/dev/null 2>&1; then
+  _pass "hook: guard-dangerous-commands allows '> /dev/null' (space before the target)"
+else
+  _fail "hook: guard-dangerous-commands false-positives on '> /dev/null'"
+fi
+if bash .claude/hooks/guard-dangerous-commands.sh 'cat image.img > /dev/sda' >/dev/null 2>&1; then
+  _fail "hook: guard-dangerous-commands let a device write through"
+else
+  _pass "hook: guard-dangerous-commands still blocks a device write ('> /dev/sda')"
+fi
 # SEC-7 Claude-backend protocol: the command arrives as PreToolUse JSON on
 # stdin (argv empty — $CLAUDE_TOOL_INPUT_COMMAND never existed) and the
 # decision returns as hookSpecificOutput deny-JSON on stdout with exit 0.
@@ -252,6 +273,115 @@ if [[ $_g_rc -eq 0 && -z "$_g_out" ]]; then
   _pass "hook: guard-dangerous-commands (stdin/Claude) passes a benign command silently"
 else
   _fail "hook: guard-dangerous-commands (stdin/Claude) noisy or non-zero on benign command (rc=$_g_rc)"
+fi
+# guard-read-path-hygiene: enforces core.md § "File Paths in Bash" so a dispatch
+# never stalls on an approval prompt it cannot get. The two DENY cases are the
+# verbatim commands that stalled goal session contract-pack-v0 iter 1 (developer)
+# and a tapeology reviewer. The ALLOW cases are the carve-outs core.md keeps
+# legal — `cd` before a non-read (pytest/npm/tsc), a piped read with no path
+# argument, and a recursive search already rooted at concrete subdirectories.
+_rp_deny=(
+  'cd /home/x/contracts && grep -rn "book_snapshot" workstation_contracts/*.py | head -30'
+  'cd /home/x/apps/backend && grep -n "PROFILE_DEFAULT" app/config.py | head -5'
+  'grep -rn PATTERN .'
+  'cd docs && sed -n "1,50p" goal.md'
+  $'cd /home/x/apps/backend/tests && \\\nsed -i "s/a/b/" test_x.py\ngrep -n b test_x.py'
+  'cd apps/backend && cp a.py b.py'
+  'cd apps/backend && pytest -q > /tmp/out.log'
+  'cd apps/backend && git status'
+  $'cd apps/backend\ngrep -n foo app/main.py'
+  # Rule C3 is unconditional on the git subcommand (docs: even a read-only `git
+  # diff` after `cd` can execute that directory's hooks) -- this used to allow
+  # under Rule A alone (piped read, no path operand) but now correctly denies.
+  'cd x && git diff | grep foo'
+)
+_rp_allow=(
+  'cd apps/backend && pytest -q'
+  'cd apps/frontend && npm run build'
+  'git diff | grep foo'
+  'grep -rn PATTERN apps/backend/app/ apps/frontend/src/'
+  'grep -n "x" apps/backend/app/main.py'
+  'cd x && ls -la'
+  # Redirections are not read arguments. `2>/dev/null` on almost every command
+  # in this repo tokenized as a path and false-positived the guard on its first
+  # live call; strip_redirects() fixes it and these lock the regression in.
+  'grep -rln PATTERN incredible_auto_dev/policy/ incredible_auto_dev/hooks/ 2>/dev/null'
+  'grep -rn PATTERN apps/ >/dev/null 2>&1'
+  'cat docs/goal.md > /tmp/copy.md'
+  'python3 x.py > /tmp/out.txt 2>&1'
+  'cd apps/backend && pytest -q | tee /tmp/out.log'
+  'cd apps/backend && ls'
+  'cd apps/backend && grep -n foo /home/x/apps/backend/app/main.py'
+  'cd apps/backend && grep -m 1 foo'
+  'cd apps/backend && head -n 20 app/main.py'
+  $'cd apps/backend && python3 - <<\'EOF\'\nimport os\nEOF'
+)
+_rp_bad=0
+for _c in "${_rp_deny[@]}"; do
+  bash .claude/hooks/guard-read-path-hygiene.sh "$_c" >/dev/null 2>&1 && { _rp_bad=1; echo "    missed deny: $_c"; }
+done
+if [[ $_rp_bad -eq 0 ]]; then
+  _pass "hook: guard-read-path-hygiene blocks all ${#_rp_deny[@]} approval-stalling read patterns"
+else
+  _fail "hook: guard-read-path-hygiene let an approval-stalling read through"
+fi
+_rp_bad=0
+for _c in "${_rp_allow[@]}"; do
+  bash .claude/hooks/guard-read-path-hygiene.sh "$_c" >/dev/null 2>&1 || { _rp_bad=1; echo "    false positive: $_c"; }
+done
+if [[ $_rp_bad -eq 0 ]]; then
+  _pass "hook: guard-read-path-hygiene allows all ${#_rp_allow[@]} legitimate cd/read forms"
+else
+  _fail "hook: guard-read-path-hygiene false-positives on a legitimate command"
+fi
+_rp_rc=0
+_rp_out=$(printf '%s' '{"tool_input":{"command":"cd apps/backend && grep -n \"X\" app/config.py"}}' | bash .claude/hooks/guard-read-path-hygiene.sh 2>/dev/null) || _rp_rc=$?
+if [[ $_rp_rc -eq 0 ]] && grep -q '"permissionDecision":"deny"' <<<"$_rp_out"; then
+  _pass "hook: guard-read-path-hygiene (stdin/Claude) denies cd+read via JSON, exit 0"
+else
+  _fail "hook: guard-read-path-hygiene (stdin/Claude) missing deny JSON for cd+read (rc=$_rp_rc)"
+fi
+_rp_rc=0
+_rp_out=$(printf '%s' '{"tool_input":{"command":"pytest -q apps/backend/tests/"}}' | bash .claude/hooks/guard-read-path-hygiene.sh 2>/dev/null) || _rp_rc=$?
+if [[ $_rp_rc -eq 0 && -z "$_rp_out" ]]; then
+  _pass "hook: guard-read-path-hygiene (stdin/Claude) passes a benign command silently"
+else
+  _fail "hook: guard-read-path-hygiene (stdin/Claude) noisy or non-zero on benign command (rc=$_rp_rc)"
+fi
+# Rule C over the stdin/Claude protocol: the deny JSON carries a rule-tagged reason.
+_rp_rc=0
+_rp_out=$(printf '%s' '{"session_id":"evals","agent_id":"a1","agent_type":"developer","tool_use_id":"t1","tool_name":"Bash","tool_input":{"command":"cd apps/backend && sed -i \"s/a/b/\" x.py"}}' | bash .claude/hooks/guard-read-path-hygiene.sh 2>/dev/null) || _rp_rc=$?
+if [[ $_rp_rc -eq 0 ]] && grep -q '"permissionDecision":"deny"' <<<"$_rp_out" && grep -q 'guard-read-path-hygiene: \[C1\]' <<<"$_rp_out"; then
+  _pass "hook: guard-read-path-hygiene (stdin/Claude) denies cd+sed -i with a rule-tagged reason"
+else
+  _fail "hook: guard-read-path-hygiene (stdin/Claude) Rule C deny JSON missing (rc=$_rp_rc out=${_rp_out:0:80})"
+fi
+# The deny is recorded as an attributed, privacy-safe hygiene_deny event (no command text, no hash).
+if [[ -s "$IAD_HOOK_EVENTS_FILE" ]] && grep -q '"event":"hygiene_deny"' "$IAD_HOOK_EVENTS_FILE" && grep -q '"agent_type":"developer"' "$IAD_HOOK_EVENTS_FILE" && grep -q '"rule":"C1"' "$IAD_HOOK_EVENTS_FILE" && ! grep -q 's/a/b/\|cmd_sha\|cmd_raw' "$IAD_HOOK_EVENTS_FILE"; then
+  _pass "hook: guard-read-path-hygiene appends an attributed hygiene_deny event without command text"
+else
+  _fail "hook: guard-read-path-hygiene hygiene_deny event missing or leaks the command ($IAD_HOOK_EVENTS_FILE)"
+fi
+# Unknown syntax fails open AND is logged: a loop passes silently with a complex:control-flow event.
+_rp_rc=0
+_rp_out=$(printf '%s' '{"session_id":"evals","tool_input":{"command":"for d in a; do cd $d && grep -n x y.py; done"}}' | bash .claude/hooks/guard-read-path-hygiene.sh 2>/dev/null) || _rp_rc=$?
+if [[ $_rp_rc -eq 0 && -z "$_rp_out" ]] && grep -q '"reason":"complex:control-flow"' "$IAD_HOOK_EVENTS_FILE"; then
+  _pass "hook: guard-read-path-hygiene passes unknown syntax to the native checker and logs hygiene_fail_open"
+else
+  _fail "hook: guard-read-path-hygiene unknown-syntax fail-open not instrumented (rc=$_rp_rc out=${_rp_out:0:60})"
+fi
+# Registration must verify EVENT and MATCHER, not just the basename.
+if jq -e '.hooks.PreToolUse[] | select(.matcher=="Bash") | .hooks[] | select(.command|contains("guard-read-path-hygiene.sh"))' .claude/settings.json >/dev/null 2>&1; then
+  _pass "hook: guard-read-path-hygiene is registered as a PreToolUse Bash matcher"
+else
+  _fail "hook: guard-read-path-hygiene is NOT registered as PreToolUse/Bash in .claude/settings.json"
+fi
+# permission-oracle.sh must stay wired to the detector's oracle manifest (Task 1
+# --oracle-manifest is the single source; the oracle script carries no probe list of its own).
+if grep -q -- '--oracle-manifest' scripts/automation/permission-oracle.sh && [[ "$(python3 hooks/lib/read_path_hygiene.py --oracle-manifest | cut -f1 | sort | uniq -d | wc -l)" == "0" ]] && [[ "$(python3 hooks/lib/read_path_hygiene.py --oracle-manifest | wc -l)" -ge 15 ]]; then
+  _pass "oracle: permission-oracle.sh probes the detector's manifest (unique ids, >= 15 entries)"
+else
+  _fail "oracle: permission-oracle.sh and the detector's oracle manifest have drifted"
 fi
 # Install gate, Claude path. NOTE: the deny case appends a real record to
 # reports/security/install-decisions.jsonl per eval run (the hook path never
@@ -302,6 +432,21 @@ if (cd "$(mktemp -d)" && bash "$OLDPWD/.claude/hooks/on-stop-check-artifacts.sh"
   _pass "hook: on-stop-check-artifacts exits cleanly with no runs/"
 else
   _fail "hook: on-stop-check-artifacts errored with no runs/"
+fi
+# PermissionRequest recorder (Task 7, log-only stage 1): no decision, no raw
+# command or suggestion text — just an attributed permission_request event so
+# lib/analyze_transcripts.py can count human prompts deterministically.
+_pr_rc=0
+_pr_out=$(printf '%s' '{"hook_event_name":"PermissionRequest","session_id":"evals","agent_id":"a2","agent_type":"qa","tool_use_id":"t9","tool_name":"Bash","permission_mode":"auto","tool_input":{"command":"cd apps && install -m 755 a secret-token-123"},"permission_suggestions":[{"type":"addRules","rules":[{"toolName":"Bash","ruleContent":"install *"}]}]}' | bash .claude/hooks/permission-request-log.sh 2>/dev/null) || _pr_rc=$?
+if [[ $_pr_rc -eq 0 && -z "$_pr_out" ]] && grep -q '"event":"permission_request"' "$IAD_HOOK_EVENTS_FILE" && grep -q '"agent_type":"qa"' "$IAD_HOOK_EVENTS_FILE" && grep -q '"suggestion_types":\["addRules"\]' "$IAD_HOOK_EVENTS_FILE" && ! grep -q 'secret-token-123\|ruleContent\|cmd_sha' "$IAD_HOOK_EVENTS_FILE"; then
+  _pass "hook: permission-request-log records a would-be prompt (no decision, no raw command, no raw suggestions)"
+else
+  _fail "hook: permission-request-log (rc=$_pr_rc out=${_pr_out:0:60})"
+fi
+if jq -e '.hooks.PermissionRequest[] | .hooks[] | select(.command|contains("permission-request-log.sh"))' .claude/settings.json >/dev/null 2>&1; then
+  _pass "hook: permission-request-log is registered on PermissionRequest"
+else
+  _fail "hook: permission-request-log is NOT registered on PermissionRequest"
 fi
 
 # Model config has ONE source: model_tier in agent.yaml → config/model-tiers.yaml.

@@ -78,8 +78,11 @@ allow:
 # `timeout *` and `make *` are command wrappers / arbitrary-target runners —
 # same accepted class as `env *` and `xargs *`; the embedded deny entries below
 # and the built-in rm containment bound the damage. Deliberately excluded:
-# nc, nohup, watch, yes, bare `command *` (wrapper/exfil/interactive risk with
-# no pipeline need).
+# nc, nohup, setsid, disown, watch, yes, bare `command *` (wrapper/exfil/interactive
+# risk with no pipeline need — and per Claude Code's docs `nohup`/`nice`/`timeout` are
+# stripped before rule matching, while `setsid`/`watch`/`flock` cannot be prefix-approved
+# at all; 2026-09-04 audit, .claude/anti-patterns/32). The browser is launched by the
+# Chrome MCP server, never by an agent's Bash tool, so no google-chrome entry belongs here.
 - Bash(make)
 - Bash(make *)
 - Bash(timeout *)
